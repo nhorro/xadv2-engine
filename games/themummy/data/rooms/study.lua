@@ -1,20 +1,29 @@
--- Behavior for the study room. Static layout lives in study.yaml; this file says
--- what happens. M3 uses look_at handlers that return a caption (shown as speech).
+-- Study room behavior. Static layout lives in study.yaml.
 local room = {}
 
-function room.on_load()
-  -- (no music asset yet; M4 wires audio + more hooks)
-end
-
+function room.on_load() end
 function room.on_unload() end
+
+room.on_zone_enter = function(zone)
+  if zone == "to_hall" then
+    change_room("hall", "from_study")
+  end
+end
 
 room.hotspots = {
   door = {
     look_at = function()
-      return "La puerta de salida. Esta cerrada."
+      return "La puerta da al pasillo del instituto."
     end,
-    open = function()
-      return "No puedo abrirla todavia."
+  },
+  notebook = {
+    look_at = function()
+      return "Un cuaderno de notas de campo."
+    end,
+    pick_up = function()
+      add_item("notebook")
+      disable_hotspot("notebook")
+      return "Agarro el cuaderno."
     end,
   },
 }

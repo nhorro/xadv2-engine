@@ -1,0 +1,28 @@
+# Exterior reached through SALIDA. M4 placeholder (sky background).
+version: 1
+id: exterior
+size: { width: 1916, height: 780 }
+
+background:
+  color: { r: 120, g: 170, b: 210 }
+  layers:
+    - id: sky
+      image: c/background/00.png
+      z: 0
+
+walkable:
+  - { x: 60,   y: 600 }
+  - { x: 1850, y: 600 }
+  - { x: 1850, y: 760 }
+  - { x: 60,   y: 760 }
+
+points:
+  player_start: { x: 950, y: 700 }
+  from_hall:    { x: 300, y: 700 }
+
+zones:
+  - id: to_hall
+    polygon: [ {x: 60, y: 600}, {x: 200, y: 600}, {x: 200, y: 760}, {x: 60, y: 760} ]
+
+avatars:
+  - { id: julia, start: player_start, orientation: down, player: true }

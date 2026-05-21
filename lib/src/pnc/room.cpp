@@ -90,6 +90,57 @@ RoomData parse_room(const std::string& yaml_text) {
         }
     }
 
+    for (const YAML::Node& zn : root["zones"] ? root["zones"] : YAML::Node()) {
+        Zone zone;
+        if (!zn["id"] || !zn["polygon"]) {
+            throw DataError("room '" + room.id + "': a zone needs 'id' and 'polygon'");
+        }
+        zone.id = zn["id"].as<std::string>();
+        zone.polygon = parse_polygon(zn["polygon"]);
+        room.zones.push_back(std::move(zone));
+    }
+
+    if (const YAML::Node regions = root["regions"]) {
+        for (const auto& kv : regions) {
+            Region region;
+            region.id = kv.first.as<std::string>();
+            const YAML::Node node = kv.second;
+            if (const YAML::Node area = node["area"]) {
+                region.area = parse_polygon(area);
+            }
+            region.z = node["z"] ? node["z"].as<float>() : 0.0f;
+            if (const YAML::Node states = node["states"]) {
+                for (const auto& sv : states) {
+                    region.states[sv.first.as<std::string>()] = sv.second.as<std::string>();
+                }
+            }
+            if (region.states.empty()) {
+                throw DataError("room '" + room.id + "': region '" + region.id + "' has no states");
+            }
+            region.initial =
+                node["initial"] ? node["initial"].as<std::string>() : region.states.begin()->first;
+            room.regions.emplace(region.id, std::move(region));
+        }
+    }
+
+    if (const YAML::Node objects = root["objects"]) {
+        for (const auto& kv : objects) {
+            RoomObject object;
+            object.id = kv.first.as<std::string>();
+            const YAML::Node node = kv.second;
+            object.image = node["image"] ? node["image"].as<std::string>() : std::string();
+            if (const YAML::Node pos = node["position"]) {
+                object.position = parse_point(pos);
+            }
+            if (node["z"] && node["z"].IsScalar() && node["z"].as<std::string>() != "auto") {
+                object.z_auto = false;
+                object.z = node["z"].as<float>();
+            }
+            object.visible = node["visible"] ? node["visible"].as<bool>() : true;
+            room.objects.emplace(object.id, std::move(object));
+        }
+    }
+
     if (const YAML::Node hotspots = root["hotspots"]) {
         for (const auto& kv : hotspots) {
             RoomHotspot hs;

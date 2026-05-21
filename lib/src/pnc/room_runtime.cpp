@@ -17,18 +17,68 @@ struct RoomRuntime::Behavior {
     bool valid = false;
 };
 
-RoomRuntime::RoomRuntime(RoomData data) : data_(std::move(data)) {}
+RoomRuntime::RoomRuntime(RoomData data) : data_(std::move(data)) {
+    seed_runtime_state();
+}
 RoomRuntime::~RoomRuntime() = default;
 RoomRuntime::RoomRuntime(RoomRuntime&&) noexcept = default;
 RoomRuntime& RoomRuntime::operator=(RoomRuntime&&) noexcept = default;
 
+void RoomRuntime::seed_runtime_state() {
+    for (const auto& [id, region] : data_.regions) {
+        region_states_[id] = region.initial;
+    }
+    for (const auto& [id, object] : data_.objects) {
+        object_visible_[id] = object.visible;
+    }
+    for (const auto& [id, hs] : data_.hotspots) {
+        hotspot_enabled_[id] = hs.enabled;
+    }
+}
+
 const RoomHotspot* RoomRuntime::hotspot_at(geom::Point world) const {
     for (const auto& [id, hs] : data_.hotspots) {
-        if (hs.enabled && !hs.area.empty() && geom::point_in_polygon(world, hs.area)) {
+        if (hotspot_enabled(id) && !hs.area.empty() && geom::point_in_polygon(world, hs.area)) {
             return &hs;
         }
     }
     return nullptr;
+}
+
+const Zone* RoomRuntime::zone_at(geom::Point world) const {
+    for (const Zone& zone : data_.zones) {
+        if (!zone.polygon.empty() && geom::point_in_polygon(world, zone.polygon)) {
+            return &zone;
+        }
+    }
+    return nullptr;
+}
+
+void RoomRuntime::set_region_state(const std::string& region_id, const std::string& state) {
+    region_states_[region_id] = state;
+}
+
+std::string RoomRuntime::region_state(const std::string& region_id) const {
+    const auto it = region_states_.find(region_id);
+    return it != region_states_.end() ? it->second : std::string();
+}
+
+void RoomRuntime::set_object_visible(const std::string& object_id, bool visible) {
+    object_visible_[object_id] = visible;
+}
+
+bool RoomRuntime::object_visible(const std::string& object_id) const {
+    const auto it = object_visible_.find(object_id);
+    return it != object_visible_.end() ? it->second : true;
+}
+
+void RoomRuntime::set_hotspot_enabled(const std::string& hotspot_id, bool enabled) {
+    hotspot_enabled_[hotspot_id] = enabled;
+}
+
+bool RoomRuntime::hotspot_enabled(const std::string& hotspot_id) const {
+    const auto it = hotspot_enabled_.find(hotspot_id);
+    return it != hotspot_enabled_.end() ? it->second : true;
 }
 
 void RoomRuntime::load_behavior(pac::core::Scripting& scripting,
@@ -84,8 +134,24 @@ void RoomRuntime::call_hook(const std::string& name) {
     }
 }
 
+void RoomRuntime::call_zone_hook(const std::string& hook, const std::string& zone_id) {
+    if (!behavior_ || !behavior_->valid) {
+        return;
+    }
+    sol::optional<sol::protected_function> fn = behavior_->table[hook];
+    if (!fn) {
+        return;
+    }
+    const sol::protected_function_result r = (*fn)(zone_id);
+    if (!r.valid()) {
+        const sol::error err = r;
+        behavior_->log->error(std::string("zone hook '" + hook + "' error: ") + err.what());
+    }
+}
+
 std::optional<std::string> RoomRuntime::call_hotspot(const std::string& hotspot_id,
-                                                     const std::string& verb) {
+                                                     const std::string& verb,
+                                                     std::optional<std::string> operand) {
     if (!behavior_ || !behavior_->valid) {
         return std::nullopt;
     }
@@ -101,7 +167,7 @@ std::optional<std::string> RoomRuntime::call_hotspot(const std::string& hotspot_
     if (!fn) {
         return std::nullopt;
     }
-    const sol::protected_function_result r = (*fn)();
+    const sol::protected_function_result r = operand ? (*fn)(*operand) : (*fn)();
     if (!r.valid()) {
         const sol::error err = r;
         behavior_->log->error(std::string("hotspot '" + hotspot_id + "." + verb + "' error: ") +
