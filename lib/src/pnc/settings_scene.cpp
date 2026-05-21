@@ -2,12 +2,13 @@
 
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
-#include "engine/core/resource_source.hpp"
+#include "engine/core/resource_cache.hpp"
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
 #include "engine/core/settings.hpp"
 #include "engine/core/strings.hpp"
 
+#include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/Text.hpp>
@@ -26,13 +27,7 @@ SettingsScene::SettingsScene(pac::core::EngineContext& ctx, const pac::core::Sce
     : ctx_(ctx) {
     const std::string font_path = params.get_or("font", "");
     if (!font_path.empty()) {
-        try {
-            font_data_ = ctx_.resources.read_bytes(font_path);
-            font_loaded_ =
-                !font_data_.empty() && font_.loadFromMemory(font_data_.data(), font_data_.size());
-        } catch (const std::exception& e) {
-            font_loaded_ = false;
-        }
+        font_ = ctx_.resources.try_font(font_path);
     }
 }
 
@@ -64,7 +59,7 @@ void SettingsScene::draw(sf::RenderTarget& target) const {
     bg.setFillColor(sf::Color(12, 14, 22));
     target.draw(bg);
 
-    if (!font_loaded_) {
+    if (!font_) {
         return;
     }
 
@@ -72,7 +67,7 @@ void SettingsScene::draw(sf::RenderTarget& target) const {
     const int volume_pct = static_cast<int>(ctx_.settings.audio.music_volume * 100.0f + 0.5f);
 
     auto centered = [&](const std::string& s, float y, unsigned size, sf::Color color) {
-        sf::Text text(s, font_, size);
+        sf::Text text(s, *font_, size);
         text.setFillColor(color);
         const sf::FloatRect b = text.getLocalBounds();
         text.setPosition(cx - b.width / 2.0f - b.left, y);
