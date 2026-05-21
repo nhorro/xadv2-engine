@@ -1,0 +1,23 @@
+version: 1
+language: es
+
+verbs:
+  look_at: "Mirar"
+  talk_to: "Hablar con"
+  pick_up: "Agarrar"
+  use:     "Usar"
+  give:    "Dar"
+  open:    "Abrir"
+  close:   "Cerrar"
+  push:    "Empujar"
+  pull:    "Tirar"
+
+connectors:
+  use: "con"
+  give: "a"
+
+ui:
+  new_game: "Nuevo juego"
+  continue: "Continuar"
+  settings: "Opciones"
+  quit:     "Salir"
