@@ -1,0 +1,165 @@
+# clang-tidy configuration for xadv2-engine.
+#
+# Checks are organized by family. Disabled checks each carry a one-line rationale
+# so an enabling later is an informed decision.
+#
+# Naming conventions are aligned with the *existing M0/M1 code*:
+#   - Types:            PascalCase           (Scene, ResourceCache)
+#   - Functions:        snake_case           (handle_event, find_path)
+#   - Locals/params:    snake_case           (entry_point, dt)
+#   - Members:          snake_case           (stack_, dt_accumulator_)
+#   - Private suffix:   trailing underscore  (opaque_)
+#   - Enum constants:   UPPER_CASE           (GOTO, PUSH, DEBUG, INFO)
+#   - constexpr const:  k + CamelCase        (kMaxVoices)
+#   - Namespaces:       lower_case           (pac::core, pac::pnc)
+#   - Macros:           PAC_UPPER_SNAKE      (PAC_ASSERT — avoid except harness)
+#
+# Run from the repo root:
+#   clang-tidy -p build path/to/file.cpp
+# Or via clangd in your editor (see .clangd).
+
+---
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  cert-*,
+  -cert-err58-cpp,
+  -cert-dcl21-cpp,
+  -cert-oop54-cpp,
+  clang-analyzer-*,
+  concurrency-*,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-avoid-do-while,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -cppcoreguidelines-init-variables,
+  -cppcoreguidelines-narrowing-conversions,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-special-member-functions,
+  hicpp-*,
+  -hicpp-vararg,
+  -hicpp-signed-bitwise,
+  -hicpp-special-member-functions,
+  -hicpp-no-array-decay,
+  -hicpp-uppercase-literal-suffix,
+  misc-*,
+  -misc-include-cleaner,
+  -misc-no-recursion,
+  -misc-non-private-member-variables-in-classes,
+  -misc-use-anonymous-namespace,
+  modernize-*,
+  -modernize-avoid-c-arrays,
+  -modernize-use-nodiscard,
+  -modernize-use-trailing-return-type,
+  performance-*,
+  portability-*,
+  readability-*,
+  -readability-function-cognitive-complexity,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-named-parameter,
+  -readability-redundant-access-specifiers,
+  -readability-uppercase-literal-suffix
+
+# Don't fail builds yet. The team turns checks into errors per family
+# once the code is clean against them. CI may pass `-warnings-as-errors=*`
+# from outside this file when a strict gate is desired.
+WarningsAsErrors: ''
+
+# Only analyze our own headers (engine, games, tests). Skip third-party,
+# vendored doctest, and any future third_party/ vendoring (e.g. micropather).
+HeaderFilterRegex: '^(.*/)?(lib/include/engine|lib/src|games/[^/]+/(?!data/)|tests)/(?!_vendor/).*\.(h|hpp)$'
+
+# Use the project .clang-format when --fix or --format-style suggests a fix.
+FormatStyle: file
+
+# Don't waste cycles on system / SFML / Lua / sol2 headers.
+SystemHeaders: false
+
+CheckOptions:
+  # ---------- Naming (aligned with existing M0/M1 code) ----------
+
+  # Namespaces: pac::core, pac::pnc, …
+  readability-identifier-naming.NamespaceCase:            lower_case
+
+  # Types
+  readability-identifier-naming.ClassCase:                CamelCase
+  readability-identifier-naming.StructCase:               CamelCase
+  readability-identifier-naming.UnionCase:                CamelCase
+  readability-identifier-naming.EnumCase:                 CamelCase
+  readability-identifier-naming.TypeAliasCase:            CamelCase
+  readability-identifier-naming.TypedefCase:              CamelCase
+  readability-identifier-naming.TemplateParameterCase:    CamelCase
+  readability-identifier-naming.TypeTemplateParameterCase: CamelCase
+  readability-identifier-naming.ValueTemplateParameterCase: CamelCase
+  readability-identifier-naming.ConceptCase:              CamelCase
+
+  # Enum constants: GOTO, PUSH, DEBUG, INFO, …
+  readability-identifier-naming.EnumConstantCase:         UPPER_CASE
+  readability-identifier-naming.ScopedEnumConstantCase:   UPPER_CASE
+
+  # constexpr / inline constexpr constants: kMaxVoices
+  readability-identifier-naming.ConstexprVariableCase:    CamelCase
+  readability-identifier-naming.ConstexprVariablePrefix:  k
+  readability-identifier-naming.GlobalConstantCase:       CamelCase
+  readability-identifier-naming.GlobalConstantPrefix:     k
+  readability-identifier-naming.StaticConstantCase:       CamelCase
+  readability-identifier-naming.StaticConstantPrefix:     k
+  readability-identifier-naming.ClassConstantCase:        CamelCase
+  readability-identifier-naming.ClassConstantPrefix:      k
+
+  # Functions & methods
+  readability-identifier-naming.FunctionCase:             lower_case
+  readability-identifier-naming.MethodCase:               lower_case
+  readability-identifier-naming.ConstexprFunctionCase:    lower_case
+  readability-identifier-naming.ConstexprMethodCase:      lower_case
+  readability-identifier-naming.VirtualMethodCase:        lower_case
+
+  # Locals & parameters
+  readability-identifier-naming.VariableCase:             lower_case
+  readability-identifier-naming.ParameterCase:            lower_case
+  readability-identifier-naming.LocalVariableCase:        lower_case
+  readability-identifier-naming.LocalConstantCase:        lower_case
+
+  # Members (private/protected get a trailing underscore)
+  readability-identifier-naming.MemberCase:               lower_case
+  readability-identifier-naming.PublicMemberCase:         lower_case
+  readability-identifier-naming.PrivateMemberCase:        lower_case
+  readability-identifier-naming.PrivateMemberSuffix:      '_'
+  readability-identifier-naming.ProtectedMemberCase:      lower_case
+  readability-identifier-naming.ProtectedMemberSuffix:    '_'
+
+  # Macros: PAC_ASSERT, PAC_DOCTEST_LOCAL, …
+  readability-identifier-naming.MacroDefinitionCase:      UPPER_CASE
+
+  # ---------- Behavioral options ----------
+
+  # POD with all-default members is fine — don't suggest `= delete` defaults.
+  cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor: true
+  cppcoreguidelines-special-member-functions.AllowMissingMoveFunctions: true
+  cppcoreguidelines-special-member-functions.AllowMissingMoveFunctionsWhenCopyIsDeleted: true
+  hicpp-special-member-functions.AllowSoleDefaultDtor: true
+  hicpp-special-member-functions.AllowMissingMoveFunctions: true
+
+  # Avoid noisy `static_cast<bool>` suggestions for if-conditions.
+  readability-implicit-bool-conversion.AllowIntegerConditions: true
+  readability-implicit-bool-conversion.AllowPointerConditions: true
+
+  # Prefer brace-init for member defaults in modernize fix-its.
+  modernize-use-default-member-init.UseAssignment: false
+
+  # `for (auto x : range)` — never copy unless trivially copyable.
+  performance-for-range-copy.WarnOnAllAutoCopies: true
+
+  # Don't flag short single-letter names in for-loop bodies — `i`, `x`, `it`
+  # are everywhere. The 0-length default would flag them all.
+  readability-identifier-length.MinimumVariableNameLength: 1
+  readability-identifier-length.MinimumParameterNameLength: 1
+  readability-identifier-length.MinimumLoopCounterNameLength: 1
