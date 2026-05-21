@@ -38,7 +38,9 @@ Thank you for your interest in contributing to xadv2-engine. This project is a r
 
 ## Code Contributions
 
-- Follow existing style and conventions in the repository.
+- Follow the [coding conventions](docs/coding-conventions.md): C++ formatting is
+  enforced by `.clang-format` (run it before committing); naming and file layout
+  rules are documented there.
 - Prefer simple, readable solutions.
 - If your change affects documentation, update or add docs under `docs/sources/`.
 - If relevant, add or update tests in `tests/`.
