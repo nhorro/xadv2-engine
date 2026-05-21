@@ -53,6 +53,11 @@ add_library(pac_engine STATIC
     src/pnc/speech_manager.cpp
     src/pnc/room_runtime.cpp
     src/pnc/room_renderer.cpp
+    src/pnc/command.cpp
+    src/pnc/command_builder.cpp
+    src/pnc/inventory.cpp
+    src/pnc/camera.cpp
+    src/pnc/scumm_panel.cpp
     src/pnc/room_scene.cpp
     src/pnc/builtin_scenes.cpp
     src/pnc/game_app.cpp
