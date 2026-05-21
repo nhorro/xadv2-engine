@@ -1,6 +1,6 @@
 # A general view of the architecture
 
-The engine is C++17 + SFML, scripted in Lua, and configured with YAML. Exact
+The engine is C++20 + SFML, scripted in Lua, and configured with YAML. Exact
 versions and platform constraints are defined in
 [Engine requirements](01-engine-requirements.md). This section specifies the
 C++ architecture, the dependency rules, the runtime spine, the manifest, and the
@@ -517,10 +517,10 @@ game scripts.
 
 Tests should be first-class build targets, written with the doctest framework
 (single-header, registered with CTest). When supported by the compiler and
-platform, the test configuration should enable sanitizers such as AddressSanitizer
-and UndefinedBehaviorSanitizer to catch leaks, memory errors, and undefined
-behavior early. Sanitizers are development tools and are not part of release game
-builds.
+platform, the test configuration should enable sanitizers such as
+AddressSanitizer and UndefinedBehaviorSanitizer to catch leaks, memory errors,
+and undefined behavior early. Sanitizers are development tools and are not
+part of release game builds.
 
 This layout supports the long-term scripting-only authoring goal without making
 it artificially strict during engine development. A game that needs only standard
@@ -532,22 +532,28 @@ a controlled place.
 
 | Dependency | Kind | Linux | Windows |
 |------------|------|-------|---------|
-| SFML 2.6 | compiled | apt `libsfml-dev` | vcpkg `sfml` |
+| SFML 2.6 | compiled | apt `libsfml-dev` (`find_package(SFML 2.6)`) | vcpkg `sfml` |
 | Lua 5.4 | compiled | apt `liblua5.4-dev` | vcpkg `lua` |
-| yaml-cpp | compiled | apt `libyaml-cpp-dev` | vcpkg `yaml-cpp` |
+| yaml-cpp | compiled | apt `libyaml-cpp-dev` (`find_package(yaml-cpp)`) | vcpkg `yaml-cpp` |
 | sol2 | header-only | CMake `FetchContent` (pinned) | CMake `FetchContent` (pinned) |
-| doctest (tests) | header-only | CMake `FetchContent` (pinned) | CMake `FetchContent` (pinned) |
-| micropather | vendored | `third_party/micropather/` | `third_party/micropather/` |
+| doctest (tests) | header-only | CMake `FetchContent` (pinned, with vendored fallback) | CMake `FetchContent` (pinned, with vendored fallback) |
+| micropather (post-MVP) | vendored | `third_party/micropather/` | `third_party/micropather/` |
 
 Acquisition rules:
 
-- Compiled libraries come from the system package manager — apt on Linux, vcpkg
-  on Windows.
-- Header-only libraries (sol2, doctest) are pulled with CMake `FetchContent` at a
-  pinned version on both platforms, so there is no per-platform divergence and no
-  dependency on an apt package or vcpkg port.
-- micropather is vendored under `third_party/` because it is not packaged for
-  either platform (see [pathfinding](03-2d-game-concepts.md)).
+- Compiled libraries come from the system package manager — apt on Linux,
+  vcpkg on Windows. CMake picks them up through `find_package`, so a single
+  CMake invocation works on both platforms once the packages are present.
+- Header-only libraries (sol2, doctest) are pulled with CMake `FetchContent`
+  at a pinned version on both platforms, so there is no per-platform
+  divergence and no dependency on an apt package or vcpkg port.
+- doctest may additionally be **vendored** as a single-header fallback under
+  `tests/_vendor/`. The build prefers the vendored copy when present; this is
+  useful in offline / air-gapped environments where git is unreachable.
+- micropather is vendored under `third_party/` when grid A* pathfinding lands
+  (post-MVP); it ships as bare source files without a CMake target. The MVP
+  uses a straight-line walk behind the same `find_path` interface (see
+  [pathfinding](03-2d-game-concepts.md)).
 
 ### Keep `RoomScene` as an orchestrator
 

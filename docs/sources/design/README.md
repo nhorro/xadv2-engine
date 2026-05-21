@@ -1,6 +1,6 @@
 # Third Person Point & Click Game Engine — Design
 
-Design documentation for the **Extraordinary Adventures Engine**, a C++17 / SFML
+Design documentation for the **Extraordinary Adventures Engine**, a C++20 / SFML
 engine for third-person SCUMM-style point-and-click adventure games, scripted in
 Lua and configured with YAML.
 
