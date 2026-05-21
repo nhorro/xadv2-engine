@@ -2,6 +2,7 @@
 
 #include "engine/core/scene_factory.hpp"
 #include "engine/pnc/blank_scene.hpp"
+#include "engine/pnc/room_scene.hpp"
 #include "engine/pnc/settings_scene.hpp"
 #include "engine/pnc/story_text_scene.hpp"
 #include "engine/pnc/title_screen.hpp"
@@ -22,6 +23,10 @@ void register_builtin_scenes(pac::core::SceneFactory& factory) {
     factory.register_type("StoryText",
                           [](pac::core::EngineContext& ctx, const pac::core::SceneParams& params) {
                               return std::make_unique<StoryTextScene>(ctx, params);
+                          });
+    factory.register_type("RoomScene",
+                          [](pac::core::EngineContext& ctx, const pac::core::SceneParams& params) {
+                              return std::make_unique<RoomScene>(ctx, params);
                           });
     factory.register_type("Blank",
                           [](pac::core::EngineContext& ctx, const pac::core::SceneParams& params) {

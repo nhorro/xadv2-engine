@@ -25,7 +25,16 @@ architecture to preserve.
   cutscene scene (verified rendering an intro cutscene). sol2 + Lua are PRIVATE to
   the scripting TUs (never in a public header).
 
-M3 (point-and-click room slice) is next. See the GitHub milestones.
+- **M3 P&C room slice** (`feature/m3-room-slice`): `pac::pnc` room + cast loaders
+  (`parse_room`/`parse_cast`, headless), `Avatar` (AnimatedSprite + straight-line
+  move gated by the walkable area), `SpeechManager`, `RoomRuntime` (Lua behavior
+  held opaquely — sol2 stays out of headers), `RoomRenderer`, and the `RoomScene`
+  orchestrator. Click-to-move + click-a-hotspot → run its default verb → caption as
+  speech. Sample `study` room (Title → intro → room_view) verified rendering Julia
+  on the floor.
+
+M4 (camera, SCUMM panel, inventory, command system, room transitions) is next.
+See the GitHub milestones.
 
 ## The design docs are the source of truth
 
