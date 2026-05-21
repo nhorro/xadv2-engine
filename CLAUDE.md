@@ -11,14 +11,21 @@ scripted in Lua and configured with YAML. It is a remake of
 material only (reusable assets, behavior ideas, comparison targets) — never
 architecture to preserve.
 
-**Status: M0 + M1 implemented.** M0 (Core Shell, branch `feature/m0-core-shell`):
-CMake build, `pac_engine` (`pac::core` harness + `pac::pnc` genre stubs), the
-`pac_themummy` sample (manifest-driven Title/Settings/Blank), headless doctest+CTest.
-M1 (Generic 2D, branch `feature/m1-generic-2d`): `pac::geom` (point-in-polygon,
-bounds, segment intersection), `ResourceCache` + `AudioServices` (now in
-`EngineContext`), and `pac::gfx` (`Spritesheet`, `Animation`, `SequencePlayer`,
-`AnimatedSprite`) verified by the `pac_sprite_test` experiment against the Julia
-atlas. M2 (Lua bridge) is next. See the GitHub milestones.
+**Status: M0–M2 implemented** (M0 + M1 merged to `develop`; M2 on
+`feature/m2-lua-bridge`).
+- **M0 Core Shell**: CMake build, `pac_engine` (`pac::core` harness + `pac::pnc`),
+  `pac_themummy` sample, headless doctest+CTest.
+- **M1 Generic 2D**: `pac::geom`, `ResourceCache` + `AudioServices`, and `pac::gfx`
+  (`Spritesheet`/`Animation`/`SequencePlayer`/`AnimatedSprite`) — verified by
+  `pac_sprite_test` against the Julia atlas.
+- **M2 Lua bridge**: `pac::core::Scripting` (single Lua 5.4 state via sol2, pimpl)
+  with a coroutine scheduler (`spawn`/`wait`/`emit`/`wait_event`, script scopes +
+  cancellation), the core Lua API (`resource_path`, audio, `get_state`/`set_state`
+  over `StateStore`), the id-only `ScriptHandle` usertype, and the `StoryText`
+  cutscene scene (verified rendering an intro cutscene). sol2 + Lua are PRIVATE to
+  the scripting TUs (never in a public header).
+
+M3 (point-and-click room slice) is next. See the GitHub milestones.
 
 ## The design docs are the source of truth
 

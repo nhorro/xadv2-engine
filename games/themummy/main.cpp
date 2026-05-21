@@ -21,6 +21,10 @@ int main(int argc, char** argv) {
             opts.max_frames = std::atoi(argv[++i]);
         } else if (arg.rfind("--frames=", 0) == 0) {
             opts.max_frames = std::atoi(arg.c_str() + 9);
+        } else if (arg == "--shot" && i + 1 < argc) {
+            opts.screenshot_path = argv[++i];
+        } else if (arg.rfind("--shot=", 0) == 0) {
+            opts.screenshot_path = arg.c_str() + 7;
         } else if (!arg.empty() && arg[0] != '-') {
             manifest = arg;
         }
