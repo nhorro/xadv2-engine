@@ -1,0 +1,76 @@
+# clangd LSP configuration for xadv2-engine.
+#
+# This file controls the editor experience (completion, diagnostics, navigation)
+# for any clangd-aware editor: VS Code clangd extension, Neovim, Emacs, Helix.
+# It does NOT affect the CMake build — the toolchain decisions live in
+# CMakeLists.txt. The linting rules live in .clang-tidy.
+#
+# Reference: https://clangd.llvm.org/config
+
+CompileFlags:
+    # Force C++20 even if compile_commands.json was generated for a different
+    # target. Removes any stale -std=<older> flag clangd would otherwise pick up.
+    Add: [-std=c++20, -Wall, -Wextra, -Wpedantic]
+    Remove: [-std=c++17, -std=gnu++17, -std=c++14, -std=gnu++14, -W*]
+
+    # CompilationDatabase auto-detects build/ as the default location.
+    CompilationDatabase: build
+
+Diagnostics:
+    # Run clang-tidy through clangd so editors show the same hints CI sees.
+    # The checks themselves live in .clang-tidy.
+    ClangTidy:
+        FastCheckFilter: Loose
+
+    # Flag headers that are #included but unused. Off by default — turn on per
+    # editor if you want it.
+    UnusedIncludes: None
+    MissingIncludes: None
+
+    # Suppress diagnostics that are intentionally accepted in this project.
+    Suppress:
+        # SFML 2.6 headers throw a few -Wpedantic warnings in user code.
+        - -Wnested-anon-types
+        # sol2 + Lua C API trigger this in the bridge headers.
+        - -Wgnu-zero-variadic-macro-arguments
+
+Index:
+    # Background-index the whole repo on first open so go-to-definition works
+    # immediately. Cache lives next to compile_commands.json.
+    Background: Build
+    StandardLibrary: Yes
+
+InlayHints:
+    Enabled: Yes
+    ParameterNames: Yes
+    DeducedTypes: Yes
+    Designators: Yes
+    BlockEnd: No
+
+Hover:
+    ShowAKA: Yes
+
+Completion:
+    AllScopes: No
+    HeaderInsertion: IWYU
+
+---
+# Per-path overrides.
+
+# Vendored doctest header — don't index it as project code, don't run tidy on it.
+If:
+    PathMatch: tests/_vendor/.*
+Diagnostics:
+    Suppress: ['*']
+Index:
+    Background: Skip
+
+---
+
+# Future vendored deps (e.g. micropather) — same treatment.
+If:
+    PathMatch: third_party/.*
+Diagnostics:
+    Suppress: ['*']
+Index:
+    Background: Skip

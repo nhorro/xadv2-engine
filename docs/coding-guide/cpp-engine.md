@@ -66,12 +66,12 @@ Exception: small related types may share a header (e.g., `ObjectRef`, `Verb`,
 |------|------------|---------|
 | Namespace | lower_case | `pac::pnc` |
 | Class / Struct / Enum / Concept | CamelCase | `CommandBuilder` |
-| Enum constant | CamelCase | `ObjectKind::Hotspot` |
+| Enum constant | UPPER_CASE | `LogLevel::DEBUG`, `OpKind::GOTO` |
 | Function (free or method) | snake_case | `set_region_state` |
 | Variable / parameter | snake_case | `current_room` |
 | Member | snake_case | `room_data` |
 | Private member | trailing underscore | `room_data_` |
-| Constant (`constexpr`/`const`) | snake_case | `inline constexpr auto fixed_dt = 1.0 / 60.0;` |
+| Constant (`constexpr`/`const`) | `k` + CamelCase | `static constexpr std::size_t kMaxVoices = 16;` |
 | Macro | UPPER_SNAKE_CASE (avoid) | `PAC_ASSERT(...)` |
 | Template parameter | CamelCase | `template<class Loader>` |
 
