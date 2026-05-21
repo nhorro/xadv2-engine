@@ -11,10 +11,14 @@ scripted in Lua and configured with YAML. It is a remake of
 material only (reusable assets, behavior ideas, comparison targets) — never
 architecture to preserve.
 
-**Status: M0 (Core Shell) implemented** on branch `feature/m0-core-shell` —
-CMake build, `pac_engine` library (`pac::core` harness + `pac::pnc` genre stubs),
-the `pac_themummy` sample (manifest-driven Title/Settings/Blank scenes), and a
-headless doctest+CTest suite. M1 (Generic 2D) is next. See the GitHub milestones.
+**Status: M0 + M1 implemented.** M0 (Core Shell, branch `feature/m0-core-shell`):
+CMake build, `pac_engine` (`pac::core` harness + `pac::pnc` genre stubs), the
+`pac_themummy` sample (manifest-driven Title/Settings/Blank), headless doctest+CTest.
+M1 (Generic 2D, branch `feature/m1-generic-2d`): `pac::geom` (point-in-polygon,
+bounds, segment intersection), `ResourceCache` + `AudioServices` (now in
+`EngineContext`), and `pac::gfx` (`Spritesheet`, `Animation`, `SequencePlayer`,
+`AnimatedSprite`) verified by the `pac_sprite_test` experiment against the Julia
+atlas. M2 (Lua bridge) is next. See the GitHub milestones.
 
 ## The design docs are the source of truth
 

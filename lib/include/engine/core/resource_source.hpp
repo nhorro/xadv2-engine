@@ -17,6 +17,15 @@ public:
 /// use logical paths exclusively; the resource layer resolves them to bytes.
 bool is_valid_logical_path(const std::string& logical);
 
+/// Directory portion of a logical path ("a/b/c.png" -> "a/b"; "c.png" -> "").
+std::string logical_dir(const std::string& logical);
+
+/// Join a logical directory with a path that may be relative to it. An absolute-
+/// looking `rel` (already containing slashes from the root) is returned as-is when
+/// `dir` is empty; otherwise `dir/rel`. Used to resolve assets referenced relative
+/// to the file that names them (e.g. a spritesheet's image, an anim's spritesheet).
+std::string logical_join(const std::string& dir, const std::string& rel);
+
 /// Opens readable assets named by logical path. Backends: filesystem (MVP) and a
 /// packed archive (design-for).
 class ResourceSource {
