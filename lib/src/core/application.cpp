@@ -1,9 +1,11 @@
 #include "engine/core/application.hpp"
 
+#include "engine/core/audio.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
 #include "engine/core/manifest.hpp"
+#include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
 #include "engine/core/scene.hpp"
 #include "engine/core/scene_factory.hpp"
@@ -78,12 +80,15 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
     settings.fullscreen = manifest.window.fullscreen;
     settings.clamp();
 
-    FilesystemResourceSource resources(manifest.resources_src);
-    Strings strings = load_strings(resources, manifest.strings_path, log);
+    FilesystemResourceSource source(manifest.resources_src);
+    ResourceCache resources(source, log);
+    Strings strings = load_strings(source, manifest.strings_path, log);
+    AudioServices audio(resources, log, settings);
     Display display(manifest.resolution, {manifest.window.width, manifest.window.height});
     SceneManager scenes;
 
-    EngineContext ctx{display, resources, settings, scenes, strings, log, manifest.development};
+    EngineContext
+        ctx{display, resources, audio, settings, scenes, strings, log, manifest.development};
 
     scenes.set_builder([&](const std::string& id) -> std::unique_ptr<Scene> {
         const SceneDesc* desc = manifest.find_scene(id);
