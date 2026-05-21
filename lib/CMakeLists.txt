@@ -47,6 +47,13 @@ add_library(pac_engine STATIC
     src/pnc/title_screen.cpp
     src/pnc/settings_scene.cpp
     src/pnc/story_text_scene.cpp
+    src/pnc/room.cpp
+    src/pnc/cast.cpp
+    src/pnc/avatar.cpp
+    src/pnc/speech_manager.cpp
+    src/pnc/room_runtime.cpp
+    src/pnc/room_renderer.cpp
+    src/pnc/room_scene.cpp
     src/pnc/builtin_scenes.cpp
     src/pnc/game_app.cpp
 )

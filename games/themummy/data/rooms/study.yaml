@@ -1,0 +1,34 @@
+# Study/lab room (M3 slice). Sized to the virtual resolution so it fits without a
+# camera; the camera + scrolling for the full-size art arrives in M4. The single
+# background layer is scaled to fill the room.
+version: 1
+id: study
+size: { width: 1280, height: 720 }
+
+background:
+  color: { r: 0, g: 0, b: 0 }
+  layers:
+    - id: room
+      image: a/background/00.png   # relative to rooms/
+      z: 0
+
+# Navigable floor (lower part of the scene).
+walkable:
+  - { x: 70,   y: 485 }
+  - { x: 1210, y: 485 }
+  - { x: 1210, y: 705 }
+  - { x: 70,   y: 705 }
+
+points:
+  player_start: { x: 380, y: 650 }
+  at_door:      { x: 200, y: 540 }
+
+hotspots:
+  door:
+    name: "la puerta"
+    area: [ {x: 60, y: 70}, {x: 215, y: 70}, {x: 215, y: 460}, {x: 60, y: 460} ]
+    approach: at_door
+    affordances: [ look_at, open ]
+
+avatars:
+  - { id: julia, start: player_start, orientation: down, player: true }

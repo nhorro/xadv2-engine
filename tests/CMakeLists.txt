@@ -29,6 +29,8 @@ add_executable(pac_core_tests
     animation_test.cpp
     state_store_test.cpp
     scripting_test.cpp
+    room_test.cpp
+    cast_test.cpp
 )
 target_link_libraries(pac_core_tests PRIVATE pac_engine doctest::doctest pac_project_options)
 
