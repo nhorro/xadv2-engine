@@ -55,3 +55,6 @@ scenes:
       start_room: study
       player: julia
       font: fonts/scumm.ttf
+      inventory: inventory.yaml
+      inventory_logic: inventory.lua
+      logic: game.lua

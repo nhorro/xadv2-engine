@@ -35,6 +35,11 @@ public:
     sf::View view() const;
     sf::Vector2f to_virtual(sf::Vector2i px) const;
 
+    /// Normalized window viewport rect (for sf::View::setViewport) covering a
+    /// region given in virtual coordinates — e.g. the scenery sub-region above the
+    /// SCUMM panel. Accounts for the letterbox offset and scale.
+    sf::FloatRect viewport_for(sf::FloatRect virtual_rect) const;
+
 private:
     sf::Vector2u virtual_res_;
     sf::Vector2u window_;

@@ -1,0 +1,10 @@
+version: 1
+
+items:
+  key:
+    name: "la llave"
+    affordances: [ look_at, use ]
+    combinable: true       # "use key with <something>"
+  notebook:
+    name: "el cuaderno"
+    affordances: [ look_at ]

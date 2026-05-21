@@ -31,6 +31,9 @@ add_executable(pac_core_tests
     scripting_test.cpp
     room_test.cpp
     cast_test.cpp
+    command_builder_test.cpp
+    inventory_test.cpp
+    camera_test.cpp
 )
 target_link_libraries(pac_core_tests PRIVATE pac_engine doctest::doctest pac_project_options)
 

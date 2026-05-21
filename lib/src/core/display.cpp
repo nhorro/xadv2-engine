@@ -57,4 +57,17 @@ sf::Vector2f Display::to_virtual(sf::Vector2i px) const {
     return window_to_virtual(px, window_, virtual_res_);
 }
 
+sf::FloatRect Display::viewport_for(sf::FloatRect virtual_rect) const {
+    const Viewport vp = letterbox(window_, virtual_res_);
+    if (window_.x == 0 || window_.y == 0) {
+        return {0.0f, 0.0f, 1.0f, 1.0f};
+    }
+    const float wx = static_cast<float>(window_.x);
+    const float wy = static_cast<float>(window_.y);
+    return {(vp.offset.x + virtual_rect.left * vp.scale) / wx,
+            (vp.offset.y + virtual_rect.top * vp.scale) / wy,
+            (virtual_rect.width * vp.scale) / wx,
+            (virtual_rect.height * vp.scale) / wy};
+}
+
 } // namespace pac::core
