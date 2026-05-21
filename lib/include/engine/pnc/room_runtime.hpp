@@ -3,6 +3,7 @@
 #include "engine/geom/geometry.hpp"
 #include "engine/pnc/room.hpp"
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -30,6 +31,19 @@ public:
     /// First enabled hotspot whose area contains `world`, or nullptr.
     const RoomHotspot* hotspot_at(geom::Point world) const;
 
+    /// First zone whose polygon contains `world`, or nullptr.
+    const Zone* zone_at(geom::Point world) const;
+
+    // --- runtime state (live; persistence is mediated by RoomScene) ---
+    void set_region_state(const std::string& region_id, const std::string& state);
+    [[nodiscard]] std::string region_state(const std::string& region_id) const;
+
+    void set_object_visible(const std::string& object_id, bool visible);
+    [[nodiscard]] bool object_visible(const std::string& object_id) const;
+
+    void set_hotspot_enabled(const std::string& hotspot_id, bool enabled);
+    [[nodiscard]] bool hotspot_enabled(const std::string& hotspot_id) const;
+
     /// Load `rooms/<id>.lua` and keep its returned table as this room's behavior.
     void load_behavior(pac::core::Scripting& scripting,
                        pac::core::ResourceCache& resources,
@@ -39,14 +53,25 @@ public:
     /// Call a room lifecycle hook (e.g. on_load / on_unload) if defined.
     void call_hook(const std::string& name);
 
-    /// Call `hotspots.<id>.<verb>()` if defined; returns its string result (a
-    /// caption), or nullopt when there is no handler / no string result.
-    std::optional<std::string> call_hotspot(const std::string& hotspot_id, const std::string& verb);
+    /// Call a zone hook (on_zone_enter / on_zone_exit) with the zone id, if defined.
+    void call_zone_hook(const std::string& hook, const std::string& zone_id);
+
+    /// Call `hotspots.<id>.<verb>(operand?)` if defined; returns its string result
+    /// (a caption), or nullopt when there is no handler / no string result. When
+    /// `operand` is set it is passed as the handler argument (two-operand verbs).
+    std::optional<std::string> call_hotspot(const std::string& hotspot_id,
+                                            const std::string& verb,
+                                            std::optional<std::string> operand = std::nullopt);
 
 private:
     struct Behavior;
+    void seed_runtime_state();
+
     RoomData data_;
     std::unique_ptr<Behavior> behavior_;
+    std::map<std::string, std::string> region_states_;
+    std::map<std::string, bool> object_visible_;
+    std::map<std::string, bool> hotspot_enabled_;
 };
 
 } // namespace pac::pnc

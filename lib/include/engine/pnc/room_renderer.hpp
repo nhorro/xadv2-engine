@@ -13,16 +13,17 @@ class ResourceCache;
 
 namespace pac::pnc {
 
-struct RoomData;
+class RoomRuntime;
 class Avatar;
 
-/// Draws a room's scenery: the background fill, the background layers (textures
-/// resolved relative to `room_dir`, scaled to the room size), and the player
-/// avatar interleaved by z. Speech/UI are drawn by the scene over the top.
+/// Draws a room's scenery in world space (the room view sets the camera/scenery
+/// sf::View first): background fill + layers, visible regions (current-state
+/// image) and objects, and the player avatar — all sorted by z (ZDrawable order).
+/// Textures are resolved relative to `room_dir`. Speech/UI are drawn by the scene.
 class RoomRenderer {
 public:
     void draw(sf::RenderTarget& target,
-              const RoomData& room,
+              const RoomRuntime& room,
               const std::string& room_dir,
               pac::core::ResourceCache& resources,
               const Avatar* player,
