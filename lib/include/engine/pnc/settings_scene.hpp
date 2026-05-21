@@ -2,10 +2,9 @@
 
 #include "engine/core/scene.hpp"
 
-#include <SFML/Graphics/Font.hpp>
-
-#include <cstddef>
-#include <vector>
+namespace sf {
+class Font;
+}
 
 namespace pac::core {
 struct EngineContext;
@@ -25,9 +24,7 @@ public:
 
 private:
     pac::core::EngineContext& ctx_;
-    sf::Font font_;
-    std::vector<std::byte> font_data_; // backs font_ when loaded from memory
-    bool font_loaded_ = false;
+    const sf::Font* font_ = nullptr; // owned by ResourceCache; null if unavailable
 };
 
 } // namespace pac::pnc

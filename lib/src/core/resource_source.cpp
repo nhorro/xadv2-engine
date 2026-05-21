@@ -37,6 +37,18 @@ bool is_valid_logical_path(const std::string& logical) {
     return true;
 }
 
+std::string logical_dir(const std::string& logical) {
+    const std::size_t slash = logical.find_last_of('/');
+    return slash == std::string::npos ? std::string() : logical.substr(0, slash);
+}
+
+std::string logical_join(const std::string& dir, const std::string& rel) {
+    if (dir.empty()) {
+        return rel;
+    }
+    return dir + "/" + rel;
+}
+
 FilesystemResourceSource::FilesystemResourceSource(std::string root) : root_(std::move(root)) {}
 
 std::string FilesystemResourceSource::host_path(const std::string& logical) const {

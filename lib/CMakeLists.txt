@@ -1,5 +1,6 @@
-# Engine library: pac_engine. Owns pac::core (harness) and pac::pnc (genre).
-find_package(SFML 2.6 COMPONENTS graphics window system REQUIRED)
+# Engine library: pac_engine. Owns pac::core (harness), pac::geom, pac::gfx, and
+# pac::pnc (genre).
+find_package(SFML 2.6 COMPONENTS graphics window audio system REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 add_library(pac_engine STATIC
@@ -7,12 +8,19 @@ add_library(pac_engine STATIC
     src/core/settings.cpp
     src/core/scene_params.cpp
     src/core/resource_source.cpp
+    src/core/resource_cache.cpp
     src/core/strings.cpp
     src/core/manifest.cpp
     src/core/display.cpp
+    src/core/audio.cpp
     src/core/scene_factory.cpp
     src/core/scene_manager.cpp
     src/core/application.cpp
+    src/geom/geometry.cpp
+    src/gfx/spritesheet.cpp
+    src/gfx/animation.cpp
+    src/gfx/sequence_player.cpp
+    src/gfx/animated_sprite.cpp
     src/pnc/blank_scene.cpp
     src/pnc/title_screen.cpp
     src/pnc/settings_scene.cpp
@@ -33,5 +41,5 @@ endif()
 # SFML types appear in public headers, so SFML is PUBLIC; yaml-cpp is an
 # implementation detail of the loaders, so it stays PRIVATE.
 target_link_libraries(pac_engine
-    PUBLIC sfml-graphics sfml-window sfml-system pac_project_options
+    PUBLIC sfml-graphics sfml-window sfml-audio sfml-system pac_project_options
     PRIVATE ${PAC_YAMLCPP})

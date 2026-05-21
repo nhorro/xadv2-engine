@@ -1,0 +1,33 @@
+# Placeholder animation to exercise the AnimatedSprite class. The atlas frames are
+# not semantically named (frame_000..frame_019), so these sequences are arbitrary
+# groupings just to verify looping, non-looping, and pivot positioning. Replace
+# with real sequences once the frames are meaningfully named.
+version: 1
+spritesheet: atlas_body.yml   # resolved relative to this file's directory
+pivot: walking_pivot
+
+sequences:
+  idle:
+    loop: true
+    frames:
+      - { sprite: frame_000, duration: 0.15 }
+
+  walk:
+    loop: true
+    frames:
+      - { sprite: frame_000, duration: 0.10 }
+      - { sprite: frame_001, duration: 0.10 }
+      - { sprite: frame_002, duration: 0.10 }
+      - { sprite: frame_003, duration: 0.10 }
+      - { sprite: frame_004, duration: 0.10 }
+      - { sprite: frame_005, duration: 0.10 }
+      - { sprite: frame_006, duration: 0.10 }
+      - { sprite: frame_007, duration: 0.10 }
+
+  wave_once:
+    loop: false
+    frames:
+      - { sprite: frame_008, duration: 0.12 }
+      - { sprite: frame_009, duration: 0.12 }
+      - { sprite: frame_010, duration: 0.12 }
+      - { sprite: frame_011, duration: 0.12 }

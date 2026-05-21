@@ -3,11 +3,12 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
-#include "engine/core/resource_source.hpp"
+#include "engine/core/resource_cache.hpp"
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
 #include "engine/core/strings.hpp"
 
+#include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/Text.hpp>
@@ -43,15 +44,9 @@ TitleScreen::TitleScreen(pac::core::EngineContext& ctx, const pac::core::ScenePa
 
     const std::string font_path = params.get_or("font", "");
     if (!font_path.empty()) {
-        try {
-            font_data_ = ctx_.resources.read_bytes(font_path);
-            font_loaded_ =
-                !font_data_.empty() && font_.loadFromMemory(font_data_.data(), font_data_.size());
-        } catch (const std::exception& e) {
-            font_loaded_ = false;
-        }
-        if (!font_loaded_) {
-            ctx_.log.warn("title: could not load font '" + font_path + "'; drawing labels as bars");
+        font_ = ctx_.resources.try_font(font_path);
+        if (!font_) {
+            ctx_.log.warn("title: no font '" + font_path + "'; drawing labels as bars");
         }
     }
 }
@@ -121,8 +116,8 @@ void TitleScreen::draw(sf::RenderTarget& target) const {
         box.setOutlineColor(sf::Color(90, 100, 130));
         target.draw(box);
 
-        if (font_loaded_) {
-            sf::Text text(entries_[static_cast<std::size_t>(i)].label, font_, kTextSize);
+        if (font_) {
+            sf::Text text(entries_[static_cast<std::size_t>(i)].label, *font_, kTextSize);
             text.setFillColor(hot ? sf::Color::White : sf::Color(210, 215, 230));
             const sf::FloatRect b = text.getLocalBounds();
             text.setPosition(tl.x + (kEntryWidth - b.width) / 2.0f - b.left,

@@ -2,11 +2,12 @@
 
 #include "engine/core/scene.hpp"
 
-#include <SFML/Graphics/Font.hpp>
-
-#include <cstddef>
 #include <string>
 #include <vector>
+
+namespace sf {
+class Font;
+}
 
 namespace pac::core {
 struct EngineContext;
@@ -40,9 +41,7 @@ private:
     std::string new_game_target_;
     std::string exit_target_;
     std::vector<Entry> entries_;
-    sf::Font font_;
-    std::vector<std::byte> font_data_; // backs font_ when loaded from memory
-    bool font_loaded_ = false;
+    const sf::Font* font_ = nullptr; // owned by ResourceCache; null if unavailable
     int hovered_ = -1;
 };
 
