@@ -1,6 +1,6 @@
 # Engine design — index
 
-The **Extraordinary Adventures Engine** is a C++17 / SFML engine for
+The **Extraordinary Adventures Engine** is a C++20 / SFML engine for
 third-person SCUMM-style point-and-click adventure games, scripted in Lua and
 configured with YAML. These documents are the single source of truth for the
 engine; the implementation follows them, not the other way around.
