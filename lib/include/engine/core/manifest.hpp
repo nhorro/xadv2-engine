@@ -1,0 +1,60 @@
+#pragma once
+
+#include "engine/core/dev_flags.hpp"
+#include "engine/core/scene_params.hpp"
+
+#include <SFML/System/Vector2.hpp>
+
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace pac::core {
+
+class ManifestError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+struct WindowConfig {
+    bool fullscreen = false;
+    unsigned width = 1280;
+    unsigned height = 720;
+};
+
+struct SettingsDefaults {
+    float music_volume = 1.0f;
+    float sfx_volume = 1.0f;
+};
+
+struct SceneDesc {
+    std::string id;
+    std::string type;
+    SceneParams parameters;
+};
+
+/// The single source of game-level configuration (`game.yaml`).
+struct Manifest {
+    int version = 1;
+    sf::Vector2u resolution{1280, 720};
+    WindowConfig window;
+    std::string resources_src; // resolved to a host root by load_manifest
+    std::string strings_path;  // logical path
+    SettingsDefaults settings;
+    DevFlags development;
+    std::string entry;
+    std::vector<SceneDesc> scenes;
+
+    const SceneDesc* find_scene(const std::string& id) const;
+};
+
+/// Parse + validate a manifest from YAML text. Throws ManifestError on any
+/// structural problem (missing required fields, duplicate scene ids, entry not
+/// found, ...). `resources_src` is kept verbatim.
+Manifest parse_manifest(const std::string& yaml_text);
+
+/// Read a manifest file, parse it, and resolve `resources_src` relative to the
+/// manifest's directory. Throws ManifestError if the file cannot be read.
+Manifest load_manifest(const std::string& file_path);
+
+} // namespace pac::core

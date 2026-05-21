@@ -1,0 +1,55 @@
+# Formatting rules for xadv2-engine C++ sources (clang-format >= 14, dev uses 18).
+# clang-format only enforces *formatting*. Naming conventions (PascalCase types,
+# snake_case methods/functions, lowercase pac:: namespaces, trailing-underscore
+# members, UPPER_SNAKE enum values) are a project convention — see
+# docs/coding-conventions.md.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++17
+
+ColumnLimit: 100
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+NamespaceIndentation: None
+FixNamespaceComments: true
+CompactNamespaces: false
+
+BreakBeforeBraces: Attach
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: false
+BinPackParameters: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowAllArgumentsOnNextLine: false
+
+SpaceAfterCStyleCast: true
+SpaceAfterTemplateKeyword: true
+
+EmptyLineBeforeAccessModifier: LogicalBlock
+
+# Include grouping: main header first (automatic), then project, third-party, std.
+SortIncludes: CaseInsensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^"'                                       # project headers (quoted)
+    Priority: 1
+  - Regex: '^<(SFML|sol|yaml-cpp|doctest|lua|micropather)' # vendored / third-party
+    Priority: 2
+  - Regex: '^<[^/.]+>$'                               # C++ standard library
+    Priority: 3
+  - Regex: '^<.*>'                                    # any other angled include
+    Priority: 2
