@@ -31,13 +31,20 @@ scenes:
   - id: title
     type: TitleScreen
     parameters:
-      new_game: gameplay
+      new_game: intro
       exit: QUIT
       font: fonts/scumm.ttf
 
   - id: settings
     type: SettingsScene
     parameters:
+      font: fonts/scumm.ttf
+
+  - id: intro
+    type: StoryText
+    parameters:
+      script: scripts/intro.lua
+      on_finish: gameplay
       font: fonts/scumm.ttf
 
   # M0 placeholder for "game started"; replaced by a RoomScene in M3+.
