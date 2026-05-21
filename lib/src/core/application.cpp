@@ -4,16 +4,20 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
+#include "engine/core/lua_api.hpp"
 #include "engine/core/manifest.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
 #include "engine/core/scene.hpp"
 #include "engine/core/scene_factory.hpp"
 #include "engine/core/scene_manager.hpp"
+#include "engine/core/scripting.hpp"
 #include "engine/core/settings.hpp"
+#include "engine/core/state_store.hpp"
 #include "engine/core/strings.hpp"
 
 #include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/Texture.hpp>
 #include <SFML/System/Clock.hpp>
 #include <SFML/Window/Event.hpp>
 
@@ -84,11 +88,22 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
     ResourceCache resources(source, log);
     Strings strings = load_strings(source, manifest.strings_path, log);
     AudioServices audio(resources, log, settings);
+    Scripting scripting(log);
+    StateStore state;
     Display display(manifest.resolution, {manifest.window.width, manifest.window.height});
     SceneManager scenes;
 
-    EngineContext
-        ctx{display, resources, audio, settings, scenes, strings, log, manifest.development};
+    EngineContext ctx{display,
+                      resources,
+                      audio,
+                      scripting,
+                      state,
+                      settings,
+                      scenes,
+                      strings,
+                      log,
+                      manifest.development};
+    bind_core_api(ctx);
 
     scenes.set_builder([&](const std::string& id) -> std::unique_ptr<Scene> {
         const SceneDesc* desc = manifest.find_scene(id);
@@ -148,6 +163,7 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
         accumulator += clock.restart().asSeconds();
         int steps = 0;
         while (accumulator >= kFixedDt && steps < kMaxStepsPerFrame) {
+            scripting.update(kFixedDt);
             scenes.update(kFixedDt);
             scenes.apply_pending();
             accumulator -= kFixedDt;
@@ -166,6 +182,16 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
         window.clear(sf::Color::Black); // letterbox bars
         window.setView(display.view());
         scenes.draw(window);
+
+        const bool last_frame = (opts.max_frames > 0 && frames + 1 >= opts.max_frames);
+        if (last_frame && !opts.screenshot_path.empty()) {
+            sf::Texture shot;
+            shot.create(window.getSize().x, window.getSize().y);
+            shot.update(window); // capture before display swaps buffers
+            if (shot.copyToImage().saveToFile(opts.screenshot_path)) {
+                log.info("wrote screenshot " + opts.screenshot_path);
+            }
+        }
         window.display();
 
         if (opts.max_frames > 0 && ++frames >= opts.max_frames) {

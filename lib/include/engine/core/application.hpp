@@ -9,6 +9,8 @@ class SceneFactory;
 struct RunOptions {
     /// 0 = run until quit. > 0 = render this many frames then exit (smoke test).
     int max_frames = 0;
+    /// If set, save the final rendered frame to this host path (dev/debug capture).
+    std::string screenshot_path;
 };
 
 /// Core harness: load the manifest, create services + window, and run the
