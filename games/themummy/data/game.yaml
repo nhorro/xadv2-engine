@@ -44,9 +44,14 @@ scenes:
     type: StoryText
     parameters:
       script: scripts/intro.lua
-      on_finish: gameplay
+      on_finish: room_view
       font: fonts/scumm.ttf
 
-  # M0 placeholder for "game started"; replaced by a RoomScene in M3+.
-  - id: gameplay
-    type: Blank
+  - id: room_view
+    type: RoomScene
+    parameters:
+      cast: cast.yaml
+      rooms: rooms
+      start_room: study
+      player: julia
+      font: fonts/scumm.ttf

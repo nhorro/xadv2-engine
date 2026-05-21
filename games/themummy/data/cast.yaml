@@ -1,0 +1,12 @@
+version: 1
+
+appearances:
+  julia_body:
+    type: animated_sprite
+    sprite: characters/julia/body.anim.yml
+
+characters:
+  julia:
+    appearance: julia_body
+    name: "Julia"
+    speech_color: { r: 255, g: 240, b: 180 }
