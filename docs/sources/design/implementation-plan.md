@@ -23,8 +23,10 @@ and can show a blank scene.
 
 Issues:
 
-1. Build layout and dependencies: create engine library, game executable, tests
-   target, CTest/doctest setup, SFML 2.6, Lua 5.4, yaml-cpp, sol2.
+1. Build layout and dependencies: create engine library, game executable,
+   tests target, CTest/doctest setup (FetchContent with vendored fallback),
+   SFML 2.6, Lua 5.4, yaml-cpp via `find_package` (apt on Linux, vcpkg on
+   Windows); sol2 via pinned `FetchContent`.
 2. Core application: fixed 60 Hz loop, window creation, virtual resolution,
    letterboxing, physical-to-virtual input mapping.
 3. Core services: `EngineContext`, diagnostics, dev flags, settings skeleton,
@@ -182,7 +184,8 @@ Issues:
 3. Dev actions: room jump, room script reload, add/remove inventory item.
 4. Templates: `game.yaml`, strings file, cast, room YAML/Lua, inventory YAML/Lua,
    dialog Lua.
-5. Packaging smoke path: Ubuntu dev run and Windows/vcpkg build path documented.
+5. Packaging smoke path: Ubuntu dev run and Windows/vcpkg build path
+   documented.
 6. Manual regression script: one checklist for the 3-room sample covering
    startup, movement, commands, dialog, save/load, settings.
 

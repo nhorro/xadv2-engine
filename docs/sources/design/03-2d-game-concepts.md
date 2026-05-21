@@ -370,10 +370,13 @@ find_path(start, destination) -> list<Point>
 
 The room navigation graph is built at room load from the walkable polygon and
 obstacles: the walkable area minus the obstacles is rasterized into a coarse grid
-that A* searches. The MVP uses **micropather** (a small MIT A* library) for the
-search; because it is not packaged for apt or vcpkg, it is **vendored** in
-`third_party/micropather/` and compiled with the engine. A funnel / navmesh
-smoother and dynamic obstacles are design-for.
+that A* searches. The chosen A* implementation is **micropather** (a small MIT
+A* library); because it is not packaged for apt or vcpkg and ships as bare
+source files without a CMake target, it is **vendored** in
+`third_party/micropather/` and compiled with the engine. Pathfinding itself is
+post-MVP — the MVP uses a straight-line walk behind the `find_path` interface
+— so micropather is added when grid A* lands. A funnel / navmesh smoother and
+dynamic obstacles are design-for.
 
 The `find_path` interface is the stable seam: a straight-line walk that stops at
 non-walkable space is an acceptable first-slice stand-in behind it, replaceable by

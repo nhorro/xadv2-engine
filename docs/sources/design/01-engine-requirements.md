@@ -113,7 +113,7 @@ explicit" in [the architecture overview](02-architecture-overview.md).
 
 **R5 — Languages, frameworks, and tools.** *[constraint]*
 
-- Engine: C++17 with SFML 2.6.
+- Engine: C++20 with SFML 2.6.
 - Scripting: Lua 5.4, embedded through the sol2 binding library.
 - Configuration and text-based data files: YAML through `yaml-cpp`.
 - Asset and authoring tools: Python.

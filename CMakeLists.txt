@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(xadv2_engine LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -20,7 +20,7 @@ option(PAC_ENABLE_SANITIZERS "Enable ASan + UBSan (development only)" OFF)
 # on one INTERFACE target ensures sanitizers are applied consistently across the
 # library, the games, and the tests (mixing ASan and non-ASan TUs is unsafe).
 add_library(pac_project_options INTERFACE)
-target_compile_features(pac_project_options INTERFACE cxx_std_17)
+target_compile_features(pac_project_options INTERFACE cxx_std_20)
 if(PAC_ENABLE_WARNINGS)
     target_compile_options(pac_project_options INTERFACE
         $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>)
