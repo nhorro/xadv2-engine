@@ -14,11 +14,25 @@ class Scripting;
 
 namespace pac::pnc {
 
+/// Opaque Lua function reference passed from the dialog runtime to the host so
+/// the host can spawn it as a coroutine task. Defined in the dialog TU (where
+/// sol2 lives); public clients only forward it by pointer.
+struct DialogRunFn;
+
 /// What the dialog runtime calls back into the host (RoomScene) for: rendering
 /// speech, asking whether a bubble is still on screen, and persisting `once`
 /// consumption. Decoupling these keeps the runtime free of SpeechManager,
 /// StateStore, and SFML — the host owns persistence so flags survive across
 /// dialog sessions and save/load.
+///
+/// Run-callback hooks (`spawn_run`/`is_run_running`) let the host execute an
+/// option's `run` function as a coroutine task in the dialog's scope, so that
+/// blocking script APIs (`wait`, `talk`, `move_to`) inside `run` yield as
+/// expected. Tests can wire these synchronously (run, immediately false) and
+/// preserve the simpler semantics.
+///
+/// `should_end()` lets the host abort the dialog after `run` completes — used
+/// to honor a queued `change_room` from within the callback.
 struct DialogHost {
     std::function<void(const std::string& text)> speak_npc;
     std::function<void(const std::string& text)> speak_player;
@@ -29,6 +43,17 @@ struct DialogHost {
     std::function<bool(const std::string& node_id, int option_index)> is_option_consumed;
     /// Mark (node_id, raw_option_index) as consumed.
     std::function<void(const std::string& node_id, int option_index)> mark_option_consumed;
+    /// Spawn the option's `run` callback (or invoke it synchronously in tests).
+    /// `fn` is owned by the runtime for the duration of the call. Optional: if
+    /// unset, the runtime calls the function inline and treats it as finished
+    /// immediately.
+    std::function<void(DialogRunFn& fn)> spawn_run;
+    /// True while the most recently spawned `run` task is still alive in the
+    /// scheduler. Optional: if unset, the runtime treats `run` as synchronous.
+    std::function<bool()> is_run_running;
+    /// Polled after a `run` task finishes. If true, the dialog ends without
+    /// following the option's `to`. Used to honor a queued `change_room`.
+    std::function<bool()> should_end;
 };
 
 /// One option visible at the current dialog node, after `when` filtering and
@@ -46,7 +71,14 @@ struct DialogOption {
 /// Lifetime is room-scoped.
 class DialogRuntime {
 public:
-    enum class State { SPEAKING_NPC, AWAITING_CHOICE, SPEAKING_PLAYER, ENDED };
+    /// SPEAKING_NPC: the bubble shows an NPC line (one of possibly many for the
+    /// node). AWAITING_CHOICE: options panel up. SPEAKING_PLAYER: the chosen
+    /// option's line is on screen. RUNNING_CALLBACK: the option's `run` task
+    /// is in flight (possibly yielding for `wait`/`talk`/`move_to`/`start_dialog`);
+    /// the runtime polls the host until the task finishes, then either ends
+    /// (if `should_end()` flagged a queued change_room) or follows `to`. ENDED:
+    /// terminal — `on_exit` already ran.
+    enum class State { SPEAKING_NPC, AWAITING_CHOICE, SPEAKING_PLAYER, RUNNING_CALLBACK, ENDED };
 
     /// Load `dialogs/<npc_id>.lua` and start the dialog. Calls `on_enter` then
     /// enters the `start` node before returning. Returns nullopt on a missing

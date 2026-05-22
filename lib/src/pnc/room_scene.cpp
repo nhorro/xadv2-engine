@@ -13,6 +13,7 @@
 #include "engine/gfx/animated_sprite.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"
+#include "pnc/dialog_internal.hpp"
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
@@ -212,8 +213,36 @@ void RoomScene::enter() {
     L.set_function("talk",
                    [this](std::string speaker, std::string text) { api_talk(speaker, text); });
     L.set_function("start_dialog", [this](std::string npc_id) { api_start_dialog(npc_id); });
-    // `to = END` sentinel used by dialog Lua tables; matches kEndSentinel in dialog.cpp.
-    L["END"] = std::string("__END__");
+    // `to = END` is injected per-dialog by DialogRuntime::start as a unique
+    // sentinel table — no engine-wide binding needed here.
+
+    // Room-view-state controls (issue #32). `block_input` gates clicks during
+    // cutscene-like sections; `unblock_input` restores normal play.
+    // `set_room_view_state(name)` is the general-purpose setter for the same
+    // states. DIALOG and MENU stay engine-managed: a script asking to enter
+    // them is a logic error and produces a warning rather than a transition.
+    L.set_function("block_input", [this]() {
+        if (view_state_ == ViewState::COMMAND) {
+            view_state_ = ViewState::BLOCKED;
+        }
+    });
+    L.set_function("unblock_input", [this]() {
+        if (view_state_ == ViewState::BLOCKED) {
+            view_state_ = ViewState::COMMAND;
+        }
+    });
+    L.set_function("set_room_view_state", [this](std::string name) {
+        if (name == "command") {
+            view_state_ = ViewState::COMMAND;
+        } else if (name == "blocked") {
+            view_state_ = ViewState::BLOCKED;
+        } else if (name == "dialog" || name == "menu") {
+            ctx_.log.warn("set_room_view_state: '" + name +
+                          "' is engine-managed and not script-settable");
+        } else {
+            ctx_.log.warn("set_room_view_state: unknown state '" + name + "'");
+        }
+    });
     L.set_function("set_room_state", [this](std::string key, sol::object v) {
         if (auto value = to_state_value(v)) {
             api_set_room_state(key, *value);
@@ -233,10 +262,15 @@ void RoomScene::enter() {
     // Continue: TitleScreen stages a loaded GameState that we apply in place
     // of the manifest's default start. The staged state already names the
     // room to load and the player pose to seat at, so we skip load_room here
-    // and let restore()'s pending change_pending_ drive it.
+    // and let restore()'s pending change_pending_ drive it. If restore()
+    // rejects (corrupted scene id, unsupported save_version, ...) we fall
+    // back to the manifest's start_room so the player at least ends up in
+    // a playable state.
     if (auto staged = ctx_.saves.take_pending_restore()) {
-        restore(*staged);
-        return;
+        if (restore(*staged)) {
+            return;
+        }
+        ctx_.log.warn("RoomScene: staged restore was rejected; falling back to start_room");
     }
 
     if (start_room_.empty()) {
@@ -272,11 +306,21 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     ctx_.scripting.set_current_scope(room_scope_);
     room_->load_behavior(ctx_.scripting, ctx_.resources, lua_logical, ctx_.log);
 
-    // Restore persisted region states (else the YAML initial seeded by RoomRuntime).
-    const auto persisted = region_state_persist_.find(id);
-    if (persisted != region_state_persist_.end()) {
-        for (const auto& [region_id, state] : persisted->second) {
+    // Restore persisted runtime state (else RoomRuntime's defaults from YAML
+    // win). Same lookup pattern for regions, hotspot_enabled, object_visible.
+    if (const auto it = region_state_persist_.find(id); it != region_state_persist_.end()) {
+        for (const auto& [region_id, state] : it->second) {
             room_->set_region_state(region_id, state);
+        }
+    }
+    if (const auto it = hotspot_enabled_persist_.find(id); it != hotspot_enabled_persist_.end()) {
+        for (const auto& [hs_id, enabled] : it->second) {
+            room_->set_hotspot_enabled(hs_id, enabled);
+        }
+    }
+    if (const auto it = object_visible_persist_.find(id); it != object_visible_persist_.end()) {
+        for (const auto& [obj_id, visible] : it->second) {
+            room_->set_object_visible(obj_id, visible);
         }
     }
 
@@ -377,14 +421,27 @@ void RoomScene::seat_player(const std::string& entry_point) {
 void RoomScene::unload_room() {
     if (room_) {
         room_->call_hook("on_unload");
-        // Snapshot region states so they persist across the change.
+        // Snapshot live runtime state so per-room flags persist across the
+        // change (they're folded back in by load_room or by GameState restore).
         for (const auto& [region_id, region] : room_->data().regions) {
             region_state_persist_[current_room_id_][region_id] = room_->region_state(region_id);
+        }
+        for (const auto& [hs_id, hs] : room_->data().hotspots) {
+            hotspot_enabled_persist_[current_room_id_][hs_id] = room_->hotspot_enabled(hs_id);
+        }
+        for (const auto& [obj_id, obj] : room_->data().objects) {
+            object_visible_persist_[current_room_id_][obj_id] = room_->object_visible(obj_id);
         }
     }
     ctx_.scripting.cancel_scope(room_scope_);
     // An in-progress dialog references the outgoing room's NPC avatars; the
-    // room change kills both.
+    // room change kills both. Cancelling the dialog scope also reaps any
+    // `run`-task spawned from the option (and anything that task spawned).
+    if (dialog_scope_ != 0) {
+        ctx_.scripting.cancel_scope(dialog_scope_);
+        dialog_scope_ = 0;
+        run_task_ = 0;
+    }
     dialog_.reset();
     view_state_ = ViewState::COMMAND;
 }
@@ -637,7 +694,7 @@ void RoomScene::update(float dt) {
         // Autosave on every room change *except* when the change was the
         // restoring of a save: that would round-trip the save we just loaded
         // (harmless, but a wasted write and a confusing log line).
-        if (!was_restore) {
+        if (!was_restore && can_save()) {
             ctx_.saves.save(pac::core::SaveService::kAutosaveSlot, snap());
         }
         return;
@@ -658,6 +715,14 @@ void RoomScene::update(float dt) {
         dialog_->update();
         if (dialog_->ended()) {
             dialog_.reset();
+            // Reap the dialog scope: cancel the run-task (if still around)
+            // and anything else that was spawned within the dialog. No-op if
+            // the scope was already cancelled by unload_room / restore.
+            if (dialog_scope_ != 0) {
+                ctx_.scripting.cancel_scope(dialog_scope_);
+                dialog_scope_ = 0;
+                run_task_ = 0;
+            }
             view_state_ = ViewState::COMMAND;
         }
     }
@@ -814,10 +879,44 @@ void RoomScene::api_start_dialog(const std::string& npc_id) {
     host.mark_option_consumed = [this, consumed_key](const std::string& node, int idx) {
         ctx_.state.set(consumed_key(node, idx), true);
     };
+    // Dialog scope: spawn run-callbacks (and anything they spawn) here so they
+    // are bounded by the dialog's lifetime. Cancelling the scope on dialog end
+    // / room change kills them deterministically — `spawn` from inside `run`
+    // inherits this scope per the scheduler's `current_scope` discipline.
+    dialog_scope_ = ctx_.scripting.open_scope();
+    run_task_ = 0;
+    host.spawn_run = [this](DialogRunFn& carrier) {
+        // We don't have a C++ entry point for `spawn`, so go through the Lua
+        // global that's bound to `Scripting::Impl::spawn(fn, current_scope)`.
+        // Setting current_scope to dialog_scope_ first places the task (and
+        // anything it spawns) under the dialog's lifetime.
+        const pac::core::ScopeId prev = ctx_.scripting.current_scope();
+        ctx_.scripting.set_current_scope(dialog_scope_);
+        sol::state& L = ctx_.scripting.lua();
+        sol::function spawn_fn = L["spawn"];
+        const sol::protected_function_result r = sol::protected_function(spawn_fn)(carrier.fn);
+        ctx_.scripting.set_current_scope(prev);
+        if (!r.valid()) {
+            const sol::error e = r;
+            ctx_.log.error(std::string("dialog run spawn: ") + e.what());
+            run_task_ = 0;
+            return;
+        }
+        run_task_ = r.get<pac::core::TaskId>();
+    };
+    host.is_run_running = [this]() {
+        return run_task_ != 0 && ctx_.scripting.is_task_alive(run_task_);
+    };
+    // The `run` callback may queue a room change via `change_room`; per design
+    // 04, the dialog ends before the change is honored so we never speak a
+    // line into the outgoing room. `unload_room` reaps the scope.
+    host.should_end = [this]() { return change_pending_; };
 
     auto rt =
         DialogRuntime::start(ctx_.scripting, ctx_.resources, ctx_.log, npc_id, std::move(host));
     if (!rt) {
+        ctx_.scripting.cancel_scope(dialog_scope_);
+        dialog_scope_ = 0;
         return;
     }
     dialog_.emplace(std::move(*rt));
@@ -883,15 +982,22 @@ void RoomScene::handle_menu_event(const sf::Event& event) {
 }
 
 void RoomScene::trigger_menu(MenuAction action) {
+    auto save_to = [this](int slot) {
+        if (!can_save()) {
+            ctx_.log.warn("RoomScene: cannot save here (view state isn't COMMAND/MENU)");
+            return;
+        }
+        ctx_.saves.save(slot, snap());
+    };
     switch (action) {
     case MenuAction::SAVE_SLOT_1:
-        ctx_.saves.save(1, snap());
+        save_to(1);
         break;
     case MenuAction::SAVE_SLOT_2:
-        ctx_.saves.save(2, snap());
+        save_to(2);
         break;
     case MenuAction::SAVE_SLOT_3:
-        ctx_.saves.save(3, snap());
+        save_to(3);
         break;
     case MenuAction::LOAD_SLOT_1:
     case MenuAction::LOAD_SLOT_2:
@@ -1002,6 +1108,17 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
     }
 }
 
+bool RoomScene::can_save() const {
+    if (change_pending_) {
+        return false;
+    }
+    // MENU is reachable only from COMMAND (see handle_event routing), so its
+    // underlying snapshot is the same as the moment ESC was pressed. DIALOG
+    // and BLOCKED carry transient runtime that the save format doesn't
+    // capture; refusing here makes the partial-snapshot bug impossible.
+    return view_state_ == ViewState::COMMAND || view_state_ == ViewState::MENU;
+}
+
 pac::core::GameState RoomScene::snap() const {
     pac::core::GameState s;
     s.save_version = 1;
@@ -1020,33 +1137,63 @@ pac::core::GameState RoomScene::snap() const {
     s.inventory = inventory_.list();
     s.global_state = ctx_.state.entries();
     s.room_state = room_state_;
-    // Region states: snapshot persisted across rooms, then overlay the live
-    // values from the currently loaded room (which may differ from `_persist`
-    // if Lua mutated them this session).
+    // Per-room runtime flags: snapshot persisted history across rooms, then
+    // overlay the live values from the currently loaded room (which may
+    // differ from the persisted snapshot if Lua mutated them this session).
     s.region_states = region_state_persist_;
+    s.hotspot_enabled = hotspot_enabled_persist_;
+    s.object_visible = object_visible_persist_;
     if (room_) {
-        auto& room_map = s.region_states[current_room_id_];
+        auto& region_map = s.region_states[current_room_id_];
         for (const auto& [region_id, region] : room_->data().regions) {
-            room_map[region_id] = room_->region_state(region_id);
+            region_map[region_id] = room_->region_state(region_id);
+        }
+        auto& hs_map = s.hotspot_enabled[current_room_id_];
+        for (const auto& [hs_id, hs] : room_->data().hotspots) {
+            hs_map[hs_id] = room_->hotspot_enabled(hs_id);
+        }
+        auto& obj_map = s.object_visible[current_room_id_];
+        for (const auto& [obj_id, obj] : room_->data().objects) {
+            obj_map[obj_id] = room_->object_visible(obj_id);
         }
     }
     return s;
 }
 
-void RoomScene::restore(const pac::core::GameState& state) {
+bool RoomScene::restore(const pac::core::GameState& state) {
     if (state.save_version != 1) {
         ctx_.log.error("RoomScene::restore: unsupported save_version " +
                        std::to_string(state.save_version));
-        return;
+        return false;
+    }
+    // MVP only supports restoring into a RoomScene. A save with a different
+    // current_scene_id means either a corrupted file or a forward-compat
+    // save written by a future engine version. Fail loud, don't trample
+    // current state.
+    if (state.current_scene_id != "room_view") {
+        ctx_.log.error("RoomScene::restore: save targets scene '" + state.current_scene_id +
+                       "', expected 'room_view'");
+        return false;
+    }
+    if (state.room_view.current_room_id.empty()) {
+        ctx_.log.error("RoomScene::restore: save has empty current_room_id");
+        return false;
     }
     // Replace stores before the room load so on_load observes restored state.
     ctx_.state.replace_all(state.global_state);
     room_state_ = state.room_state;
     region_state_persist_ = state.region_states;
+    hotspot_enabled_persist_ = state.hotspot_enabled;
+    object_visible_persist_ = state.object_visible;
     inventory_.replace_all(state.inventory);
 
     // Kill transient runtime — none of it is part of GameState.
     dialog_.reset();
+    if (dialog_scope_ != 0) {
+        ctx_.scripting.cancel_scope(dialog_scope_);
+        dialog_scope_ = 0;
+        run_task_ = 0;
+    }
     view_state_ = ViewState::COMMAND;
     builder_.cancel();
     speech_.skip();
@@ -1057,6 +1204,7 @@ void RoomScene::restore(const pac::core::GameState& state) {
     pending_room_ = state.room_view.current_room_id;
     pending_entry_.clear();
     pending_restore_player_ = state.room_view.player;
+    return true;
 }
 
 } // namespace pac::pnc
