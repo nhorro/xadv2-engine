@@ -1,7 +1,6 @@
 #pragma once
 
 #include "engine/core/game_state.hpp"
-#include "engine/core/save_service.hpp"
 #include "engine/core/scene.hpp"
 #include "engine/core/scripting.hpp"   // ScopeId
 #include "engine/core/state_store.hpp" // StateValue
@@ -133,9 +132,8 @@ private:
 
     ViewState view_state_ = ViewState::COMMAND;
     std::optional<DialogRuntime> dialog_;
-    // Save system. Lifted from RoomScene to EngineContext in M5c (Title's
-    // Continue button needs read access from a non-RoomScene scene).
-    std::optional<pac::core::SaveService> saves_;
+    // SaveService now lives in EngineContext (ctx_.saves) so TitleScreen can
+    // read it for Continue and stage a restore for us to consume in enter().
 
     struct Lua; // pimpl: inventory.lua + game.lua tables (sol kept out of header)
     std::unique_ptr<Lua> lua_;

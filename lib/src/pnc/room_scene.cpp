@@ -5,11 +5,11 @@
 #include "engine/core/engine_context.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
+#include "engine/core/save_service.hpp"
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
 #include "engine/core/scripting.hpp"
 #include "engine/core/strings.hpp"
-#include "engine/core/user_data.hpp"
 #include "engine/gfx/animated_sprite.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"
@@ -137,10 +137,6 @@ void RoomScene::enter() {
         }
     }
 
-    // Save system anchored under the per-game subtree of the per-user data
-    // dir, so distinct games using this engine never trample each other.
-    saves_.emplace(pac::core::user_data_dir(ctx_.game_id) / "saves", ctx_.log);
-
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
     const float scenery = scenery_height();
     panel_.emplace(sf::FloatRect(0.0f,
@@ -231,6 +227,15 @@ void RoomScene::enter() {
         }
         return std::visit([&s](const auto& x) { return sol::make_object(s, x); }, *v);
     });
+
+    // Continue: TitleScreen stages a loaded GameState that we apply in place
+    // of the manifest's default start. The staged state already names the
+    // room to load and the player pose to seat at, so we skip load_room here
+    // and let restore()'s pending change_pending_ drive it.
+    if (auto staged = ctx_.saves.take_pending_restore()) {
+        restore(*staged);
+        return;
+    }
 
     if (start_room_.empty()) {
         ctx_.log.error("RoomScene: no 'start_room'");
@@ -618,8 +623,8 @@ void RoomScene::update(float dt) {
         // Autosave on every room change *except* when the change was the
         // restoring of a save: that would round-trip the save we just loaded
         // (harmless, but a wasted write and a confusing log line).
-        if (!was_restore && saves_) {
-            saves_->save(pac::core::SaveService::kAutosaveSlot, snap());
+        if (!was_restore) {
+            ctx_.saves.save(pac::core::SaveService::kAutosaveSlot, snap());
         }
         return;
     }
