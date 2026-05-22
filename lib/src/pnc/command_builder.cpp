@@ -93,6 +93,13 @@ bool CommandBuilder::provide_object(const ObjectRef& object, bool affordance_ok,
     return true;
 }
 
+bool CommandBuilder::would_accept(const ObjectRef& object, bool affordance_ok) const {
+    if (!verb_ || (!expecting_param1() && !expecting_param2())) {
+        return false;
+    }
+    return object.valid() && kind_matches(object.kind, expected_class()) && affordance_ok;
+}
+
 void CommandBuilder::cancel() {
     state_ = State::IDLE;
     verb_.reset();

@@ -120,7 +120,22 @@ private:
     void object_clicked(const ObjectRef& object);
     void execute_ready_command();
     std::optional<std::string> dispatch(const Command& cmd);
+
+    /// Resolved display data for a command operand (room hotspot or inventory
+    /// item). `found` is false when the id is unknown; `name` then falls back to
+    /// the id so the bar still shows something.
+    struct Operand {
+        bool found = false;
+        std::string name;
+        const std::vector<std::string>* affordances = nullptr;
+        bool combinable = false;
+        Verb default_verb = Verb::LOOK_AT;
+    };
+    [[nodiscard]] Operand resolve_operand(const ObjectRef& object) const;
     [[nodiscard]] std::string command_preview() const;
+    /// The top-bar text: the command being built, plus a preview of the element
+    /// under the cursor per the room-view command state (design 04 §Top bar).
+    [[nodiscard]] std::string top_bar_text() const;
     [[nodiscard]] geom::Point virtual_to_world(sf::Vector2f virtual_point) const;
     [[nodiscard]] float scenery_height() const;
     void check_zones();
@@ -147,6 +162,9 @@ private:
     RoomRenderer renderer_;
     CommandBuilder builder_;
     std::optional<ScummPanel> panel_;
+    // Last known pointer position in virtual coords; drives the top-bar hover
+    // preview. Off-screen until the first MouseMoved so nothing is "hovered".
+    sf::Vector2f hover_vp_{-1.0f, -1.0f};
     pac::core::ScopeId room_scope_ = 0;
     pac::core::ScopeId dialog_scope_ = 0;
     pac::core::TaskId run_task_ = 0;

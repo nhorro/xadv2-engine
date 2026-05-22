@@ -117,6 +117,22 @@ TEST_CASE("selecting another verb mid-build clears operands") {
     CHECK_FALSE(b.param1().has_value());
 }
 
+TEST_CASE("would_accept previews validity without mutating") {
+    CommandBuilder b;
+    CHECK_FALSE(b.would_accept(room("door"), true)); // IDLE: nothing accepted
+
+    b.select_verb(Verb::GIVE); // EXPECTING_PARAM1_INVENTORY_OBJECT
+    CHECK_FALSE(b.would_accept(room("stan"), true)); // wrong kind
+    CHECK_FALSE(b.would_accept(inv("map"), false));  // affordance fails
+    CHECK(b.would_accept(inv("map"), true));         // valid
+    CHECK(b.state() == State::EXPECTING_PARAM1_INVENTORY_OBJECT); // unchanged
+
+    b.provide_object(inv("map"), true); // EXPECTING_PARAM2_ROOM_OBJECT
+    CHECK_FALSE(b.would_accept(inv("coin"), true));  // recipient must be a room object
+    CHECK(b.would_accept(room("stan"), true));       // valid
+    CHECK(b.state() == State::EXPECTING_PARAM2_ROOM_OBJECT); // unchanged
+}
+
 TEST_CASE("cancel and take_ready guards") {
     CommandBuilder b;
     CHECK_FALSE(b.take_ready().has_value()); // nothing to take
