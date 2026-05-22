@@ -70,7 +70,7 @@ runtime selector are design-for (R3).
 | `language` | req | string | — | Language tag, e.g. `es`. |
 | `verbs` | req | map verb id → string | — | Display label per verb. Keys are the verb ids: `look_at`, `talk_to`, `pick_up`, `use`, `give`, `open`, `close`, `push`, `pull`. |
 | `connectors` | req | map verb id → string | — | Two-operand connector per verb: `use` (e.g. `con`), `give` (e.g. `a`). |
-| `ui` | req | map key → string | — | Built-in menu labels: `new_game`, `continue`, `settings`, `quit`. |
+| `ui` | req | map key → string | — | Built-in UI labels: menu (`new_game`, `continue`, `settings`, `quit`) and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
 
 ```yaml
 version: 1
@@ -92,6 +92,7 @@ connectors:
   give: "a"
 
 ui:
+  walk_to:  "Ir a"
   new_game: "Nuevo juego"
   continue: "Continuar"
   settings: "Opciones"
@@ -146,6 +147,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `id` | req | string | — | Layer id. |
 | `image` | req | path | — | Layer image. |
 | `z` | req | number | — | Draw depth; larger is nearer the camera. |
+| `origin` | opt | `{x, y}` | — | Room-space top-left. When set, the layer draws at native pixel size at this origin (layers may differ in size). When omitted, the layer is stretched to fill the room. |
 | `interactive` | opt | bool | `false` | Whether the layer receives pointer interaction. |
 | `shader` | opt | shader ref | — | Design-for. |
 | `animation` | opt | anim ref | — | Design-for. |

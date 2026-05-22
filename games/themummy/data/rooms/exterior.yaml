@@ -1,4 +1,5 @@
-# Exterior reached through SALIDA. M4 placeholder (sky background).
+# Exterior reached through SALIDA. Multilayer: a stretched sky behind the
+# building plate, which is drawn at its native size at an origin (issue #28).
 version: 1
 id: exterior
 size: { width: 1916, height: 780 }
@@ -6,9 +7,17 @@ size: { width: 1916, height: 780 }
 background:
   color: { r: 120, g: 170, b: 210 }
   layers:
+    # Sky: no origin -> stretched to fill the room (the source is 1916x821).
     - id: sky
       image: c/background/00.png
       z: 0
+    # Building + ground (1916x780, transparent sky region): drawn at native size
+    # at the room origin. A higher-z layer with a different origin/size (e.g.
+    # c/background/02.png as a foreground occluder) would compose the same way.
+    - id: building
+      image: c/background/01.png
+      z: 1
+      origin: { x: 0, y: 0 }
 
 walkable:
   - { x: 60,   y: 600 }

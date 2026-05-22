@@ -17,6 +17,7 @@ connectors:
   give: "a"
 
 ui:
+  walk_to:  "Ir a"
   new_game: "Nuevo juego"
   continue: "Continuar"
   settings: "Opciones"
