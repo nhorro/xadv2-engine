@@ -20,6 +20,7 @@ public:
     void update(float dt);
 
     const std::string& current_sequence() const { return current_; }
+    bool has(const std::string& sequence) const { return anim_.has(sequence); }
     std::string current_frame_id() const; // "" when no valid frame
     bool finished() const { return finished_; }
     void set_on_finished(std::function<void()> callback) { on_finished_ = std::move(callback); }
