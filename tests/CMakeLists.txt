@@ -32,6 +32,7 @@ add_executable(pac_core_tests
     room_test.cpp
     cast_test.cpp
     command_builder_test.cpp
+    avatar_test.cpp
     inventory_test.cpp
     camera_test.cpp
     dialog_test.cpp
