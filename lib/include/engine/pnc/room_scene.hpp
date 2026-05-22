@@ -8,6 +8,7 @@
 #include "engine/pnc/cast.hpp"
 #include "engine/pnc/command.hpp"
 #include "engine/pnc/command_builder.hpp"
+#include "engine/pnc/dialog.hpp"
 #include "engine/pnc/inventory.hpp"
 #include "engine/pnc/room_renderer.hpp"
 #include "engine/pnc/room_runtime.hpp"
@@ -36,6 +37,12 @@ namespace pac::pnc {
 /// State persists across room changes (precursor to GameState in M5).
 class RoomScene : public pac::core::Scene {
 public:
+    /// High-level state of the room view (design 04 §Room view states). The
+    /// SCUMM panel layout, input routing, and scripted-input gating all key off
+    /// this. BLOCKED is reserved for cutscene-like sections and not yet driven
+    /// by an API in M5a.
+    enum class ViewState { COMMAND, DIALOG, BLOCKED };
+
     RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params);
     ~RoomScene() override;
 
@@ -55,14 +62,19 @@ public:
     [[nodiscard]] std::optional<pac::core::StateValue>
     api_get_room_state(const std::string& key) const;
     void api_talk(const std::string& speaker_id, const std::string& text);
+    void api_start_dialog(const std::string& npc_id);
     [[nodiscard]] std::string api_current_room() const { return current_room_id_; }
     [[nodiscard]] InventoryModel& inventory() { return inventory_; }
+    [[nodiscard]] ViewState view_state() const { return view_state_; }
 
 private:
     void load_room(const std::string& id, const std::string& entry_point);
     void unload_room();
     void seat_player(const std::string& entry_point);
+    void spawn_room_npcs();
+    [[nodiscard]] std::optional<Avatar> make_avatar(const std::string& character_id);
     void say(const std::string& text, sf::Color color);
+    void say_at(const std::string& text, sf::Color color, geom::Point world);
     void object_clicked(const ObjectRef& object);
     void execute_ready_command();
     std::optional<std::string> dispatch(const Command& cmd);
@@ -103,6 +115,9 @@ private:
     std::string pending_room_;
     std::string pending_entry_;
     std::string current_zone_;
+
+    ViewState view_state_ = ViewState::COMMAND;
+    std::optional<DialogRuntime> dialog_;
 
     struct Lua; // pimpl: inventory.lua + game.lua tables (sol kept out of header)
     std::unique_ptr<Lua> lua_;

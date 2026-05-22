@@ -31,6 +31,11 @@ constexpr float kCommandBarHeight = 30.0f;
 constexpr float kPad = 8.0f;
 constexpr float kInventorySplit = 0.46f; // verbs left, inventory right
 
+// Dialog-options layout: rows fill the panel below the command bar, clamped
+// so they stay readable even when only one option is shown.
+constexpr float kOptionRowMin = 22.0f;
+constexpr float kOptionRowMax = 40.0f;
+
 } // namespace
 
 ScummPanel::ScummPanel(sf::FloatRect region, const sf::Font* font) : region_(region), font_(font) {}
@@ -133,6 +138,74 @@ void ScummPanel::draw(sf::RenderTarget& target,
         target.draw(text);
         y += row_h;
     }
+}
+
+sf::FloatRect ScummPanel::options_area() const {
+    return {region_.left + kPad,
+            region_.top + kCommandBarHeight + kPad,
+            region_.width - 2.0f * kPad,
+            region_.height - kCommandBarHeight - 2.0f * kPad};
+}
+
+float ScummPanel::option_row_height(std::size_t option_count) const {
+    if (option_count == 0) {
+        return kOptionRowMax;
+    }
+    const float available = options_area().height;
+    const float h = available / static_cast<float>(option_count);
+    if (h < kOptionRowMin) {
+        return kOptionRowMin;
+    }
+    if (h > kOptionRowMax) {
+        return kOptionRowMax;
+    }
+    return h;
+}
+
+void ScummPanel::draw_options(sf::RenderTarget& target,
+                              const std::vector<std::string>& options) const {
+    sf::RectangleShape bg(sf::Vector2f(region_.width, region_.height));
+    bg.setPosition(region_.left, region_.top);
+    bg.setFillColor(sf::Color(18, 20, 30));
+    target.draw(bg);
+
+    if (!font_) {
+        return;
+    }
+
+    const sf::FloatRect area = options_area();
+    const float row = option_row_height(options.size());
+    for (std::size_t i = 0; i < options.size(); ++i) {
+        const float y = area.top + static_cast<float>(i) * row;
+        sf::RectangleShape box(sf::Vector2f(area.width, row - 2.0f));
+        box.setPosition(area.left, y);
+        box.setFillColor(sf::Color(34, 38, 54));
+        box.setOutlineThickness(1.0f);
+        box.setOutlineColor(sf::Color(70, 78, 104));
+        target.draw(box);
+
+        sf::Text label(options[i], *font_, 18);
+        label.setFillColor(sf::Color(220, 224, 235));
+        const sf::FloatRect b = label.getLocalBounds();
+        label.setPosition(area.left + kPad, y + (row - b.height) / 2.0f - b.top - 1.0f);
+        target.draw(label);
+    }
+}
+
+int ScummPanel::click_option(sf::Vector2f p, std::size_t option_count) const {
+    if (option_count == 0) {
+        return -1;
+    }
+    const sf::FloatRect area = options_area();
+    if (!area.contains(p)) {
+        return -1;
+    }
+    const float row = option_row_height(option_count);
+    const auto idx = static_cast<std::size_t>((p.y - area.top) / row);
+    if (idx >= option_count) {
+        return -1;
+    }
+    return static_cast<int>(idx);
 }
 
 } // namespace pac::pnc

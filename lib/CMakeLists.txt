@@ -66,13 +66,16 @@ add_library(pac_engine STATIC
     src/pnc/inventory.cpp
     src/pnc/camera.cpp
     src/pnc/scumm_panel.cpp
+    src/pnc/dialog.cpp
     src/pnc/room_scene.cpp
     src/pnc/builtin_scenes.cpp
     src/pnc/game_app.cpp
 )
 add_library(pac::engine ALIAS pac_engine)
 
-target_include_directories(pac_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(pac_engine
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # yaml-cpp 0.8 exports the namespaced target; older packages use the bare name.
 if(TARGET yaml-cpp::yaml-cpp)

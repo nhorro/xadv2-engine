@@ -11,8 +11,8 @@ scripted in Lua and configured with YAML. It is a remake of
 material only (reusable assets, behavior ideas, comparison targets) — never
 architecture to preserve.
 
-**Status: M0–M2 implemented** (M0 + M1 merged to `develop`; M2 on
-`feature/m2-lua-bridge`).
+**Status: M0–M4 merged to `develop`; M5a (dialog + NPC slice) in progress on
+`feature/m5a-dialog-npc`.**
 - **M0 Core Shell**: CMake build, `pac_engine` (`pac::core` harness + `pac::pnc`),
   `pac_themummy` sample, headless doctest+CTest.
 - **M1 Generic 2D**: `pac::geom`, `ResourceCache` + `AudioServices`, and `pac::gfx`
@@ -22,19 +22,26 @@ architecture to preserve.
   with a coroutine scheduler (`spawn`/`wait`/`emit`/`wait_event`, script scopes +
   cancellation), the core Lua API (`resource_path`, audio, `get_state`/`set_state`
   over `StateStore`), the id-only `ScriptHandle` usertype, and the `StoryText`
-  cutscene scene (verified rendering an intro cutscene). sol2 + Lua are PRIVATE to
-  the scripting TUs (never in a public header).
+  cutscene scene. sol2 + Lua are PRIVATE to the scripting TUs (never in a public
+  header).
+- **M3 P&C room slice**: `pac::pnc` room + cast loaders (`parse_room`/`parse_cast`,
+  headless), `Avatar` (AnimatedSprite + straight-line move gated by the walkable
+  area), `SpeechManager`, `RoomRuntime` (Lua behavior held opaquely), `RoomRenderer`,
+  and the `RoomScene` orchestrator. Click-to-move + click-a-hotspot → run its
+  default verb → caption as speech.
+- **M4 Core gameplay**: room transitions via zones + `change_room`, scrolling
+  `Camera` with dead-zone follow, region/object/z-order rendering, `InventoryModel`
+  + inventory Lua handlers, `Command` model + `CommandBuilder` state machine +
+  dispatcher, and the basic SCUMM panel (verb grid + command bar + text inventory).
+  Verified through the 3-room sample (`study`/`hall`/`exterior`).
+- **M5a (in progress)**: NPC avatars (room-scoped, owned by `RoomRuntime`), the
+  `DialogRuntime` (Lua tree, sol-pimpl, headless tests), the `RoomScene::ViewState`
+  machine (`Command`/`Dialog`/`Blocked`), `ScummPanel::draw_options`+`click_option`
+  for dialog mode, and the `start_dialog` Lua API. Sample dialog with Stan in
+  `themummy/study`.
 
-- **M3 P&C room slice** (`feature/m3-room-slice`): `pac::pnc` room + cast loaders
-  (`parse_room`/`parse_cast`, headless), `Avatar` (AnimatedSprite + straight-line
-  move gated by the walkable area), `SpeechManager`, `RoomRuntime` (Lua behavior
-  held opaquely — sol2 stays out of headers), `RoomRenderer`, and the `RoomScene`
-  orchestrator. Click-to-move + click-a-hotspot → run its default verb → caption as
-  speech. Sample `study` room (Title → intro → room_view) verified rendering Julia
-  on the floor.
-
-M4 (camera, SCUMM panel, inventory, command system, room transitions) is next.
-See the GitHub milestones.
+After M5a the remaining MVP work is: full `GameState` + save service (3 manual
+slots + 1 autosave) and Title/Settings/Continue wiring. See the GitHub milestones.
 
 ## The design docs are the source of truth
 

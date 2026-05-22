@@ -25,6 +25,7 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                         const std::string& room_dir,
                         pac::core::ResourceCache& resources,
                         const Avatar* player,
+                        const std::vector<const Avatar*>& npcs,
                         pac::core::Diagnostics& log) const {
     const RoomData& data = room.data();
 
@@ -105,6 +106,11 @@ void RoomRenderer::draw(sf::RenderTarget& target,
 
     if (player) {
         items.emplace_back(player->z(), [player](sf::RenderTarget& t) { player->draw(t); });
+    }
+    for (const Avatar* npc : npcs) {
+        if (npc) {
+            items.emplace_back(npc->z(), [npc](sf::RenderTarget& t) { npc->draw(t); });
+        }
     }
 
     std::stable_sort(items.begin(), items.end(), [](const auto& a, const auto& b) {
