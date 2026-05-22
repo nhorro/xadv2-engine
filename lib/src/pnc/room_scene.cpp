@@ -272,11 +272,21 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     ctx_.scripting.set_current_scope(room_scope_);
     room_->load_behavior(ctx_.scripting, ctx_.resources, lua_logical, ctx_.log);
 
-    // Restore persisted region states (else the YAML initial seeded by RoomRuntime).
-    const auto persisted = region_state_persist_.find(id);
-    if (persisted != region_state_persist_.end()) {
-        for (const auto& [region_id, state] : persisted->second) {
+    // Restore persisted runtime state (else RoomRuntime's defaults from YAML
+    // win). Same lookup pattern for regions, hotspot_enabled, object_visible.
+    if (const auto it = region_state_persist_.find(id); it != region_state_persist_.end()) {
+        for (const auto& [region_id, state] : it->second) {
             room_->set_region_state(region_id, state);
+        }
+    }
+    if (const auto it = hotspot_enabled_persist_.find(id); it != hotspot_enabled_persist_.end()) {
+        for (const auto& [hs_id, enabled] : it->second) {
+            room_->set_hotspot_enabled(hs_id, enabled);
+        }
+    }
+    if (const auto it = object_visible_persist_.find(id); it != object_visible_persist_.end()) {
+        for (const auto& [obj_id, visible] : it->second) {
+            room_->set_object_visible(obj_id, visible);
         }
     }
 
@@ -377,9 +387,16 @@ void RoomScene::seat_player(const std::string& entry_point) {
 void RoomScene::unload_room() {
     if (room_) {
         room_->call_hook("on_unload");
-        // Snapshot region states so they persist across the change.
+        // Snapshot live runtime state so per-room flags persist across the
+        // change (they're folded back in by load_room or by GameState restore).
         for (const auto& [region_id, region] : room_->data().regions) {
             region_state_persist_[current_room_id_][region_id] = room_->region_state(region_id);
+        }
+        for (const auto& [hs_id, hs] : room_->data().hotspots) {
+            hotspot_enabled_persist_[current_room_id_][hs_id] = room_->hotspot_enabled(hs_id);
+        }
+        for (const auto& [obj_id, obj] : room_->data().objects) {
+            object_visible_persist_[current_room_id_][obj_id] = room_->object_visible(obj_id);
         }
     }
     ctx_.scripting.cancel_scope(room_scope_);
@@ -1020,14 +1037,24 @@ pac::core::GameState RoomScene::snap() const {
     s.inventory = inventory_.list();
     s.global_state = ctx_.state.entries();
     s.room_state = room_state_;
-    // Region states: snapshot persisted across rooms, then overlay the live
-    // values from the currently loaded room (which may differ from `_persist`
-    // if Lua mutated them this session).
+    // Per-room runtime flags: snapshot persisted history across rooms, then
+    // overlay the live values from the currently loaded room (which may
+    // differ from the persisted snapshot if Lua mutated them this session).
     s.region_states = region_state_persist_;
+    s.hotspot_enabled = hotspot_enabled_persist_;
+    s.object_visible = object_visible_persist_;
     if (room_) {
-        auto& room_map = s.region_states[current_room_id_];
+        auto& region_map = s.region_states[current_room_id_];
         for (const auto& [region_id, region] : room_->data().regions) {
-            room_map[region_id] = room_->region_state(region_id);
+            region_map[region_id] = room_->region_state(region_id);
+        }
+        auto& hs_map = s.hotspot_enabled[current_room_id_];
+        for (const auto& [hs_id, hs] : room_->data().hotspots) {
+            hs_map[hs_id] = room_->hotspot_enabled(hs_id);
+        }
+        auto& obj_map = s.object_visible[current_room_id_];
+        for (const auto& [obj_id, obj] : room_->data().objects) {
+            obj_map[obj_id] = room_->object_visible(obj_id);
         }
     }
     return s;
@@ -1043,6 +1070,8 @@ void RoomScene::restore(const pac::core::GameState& state) {
     ctx_.state.replace_all(state.global_state);
     room_state_ = state.room_state;
     region_state_persist_ = state.region_states;
+    hotspot_enabled_persist_ = state.hotspot_enabled;
+    object_visible_persist_ = state.object_visible;
     inventory_.replace_all(state.inventory);
 
     // Kill transient runtime — none of it is part of GameState.
