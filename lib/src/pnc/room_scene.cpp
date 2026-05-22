@@ -214,6 +214,34 @@ void RoomScene::enter() {
     L.set_function("start_dialog", [this](std::string npc_id) { api_start_dialog(npc_id); });
     // `to = END` is injected per-dialog by DialogRuntime::start as a unique
     // sentinel table — no engine-wide binding needed here.
+
+    // Room-view-state controls (issue #32). `block_input` gates clicks during
+    // cutscene-like sections; `unblock_input` restores normal play.
+    // `set_room_view_state(name)` is the general-purpose setter for the same
+    // states. DIALOG and MENU stay engine-managed: a script asking to enter
+    // them is a logic error and produces a warning rather than a transition.
+    L.set_function("block_input", [this]() {
+        if (view_state_ == ViewState::COMMAND) {
+            view_state_ = ViewState::BLOCKED;
+        }
+    });
+    L.set_function("unblock_input", [this]() {
+        if (view_state_ == ViewState::BLOCKED) {
+            view_state_ = ViewState::COMMAND;
+        }
+    });
+    L.set_function("set_room_view_state", [this](std::string name) {
+        if (name == "command") {
+            view_state_ = ViewState::COMMAND;
+        } else if (name == "blocked") {
+            view_state_ = ViewState::BLOCKED;
+        } else if (name == "dialog" || name == "menu") {
+            ctx_.log.warn("set_room_view_state: '" + name +
+                          "' is engine-managed and not script-settable");
+        } else {
+            ctx_.log.warn("set_room_view_state: unknown state '" + name + "'");
+        }
+    });
     L.set_function("set_room_state", [this](std::string key, sol::object v) {
         if (auto value = to_state_value(v)) {
             api_set_room_state(key, *value);
