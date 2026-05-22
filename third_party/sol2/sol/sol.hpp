@@ -6750,9 +6750,13 @@ namespace sol {
 		template <class... Args>
 		T& emplace(Args&&... args) noexcept {
 			static_assert(std::is_constructible<T, Args&&...>::value, "T must be constructible with Args");
-
-			*this = nullopt;
-			this->construct(std::forward<Args>(args)...);
+			// Local patch for sol2 v3.3.0: the upstream body called a nonexistent
+			// `construct(...)` on the reference-specialization (and dropped the
+			// return). GCC 14+ enforces template-body checks (`-Wtemplate-body`),
+			// so this no longer compiles. Reference-optionals rebind via
+			// assignment; delegate to that. Upstream fix lives on sol2 main.
+			*this = optional(std::forward<Args>(args)...);
+			return **this;
 		}
 
 		/// Swaps this optional with the other.
