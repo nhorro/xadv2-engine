@@ -1,0 +1,50 @@
+# CI: build + headless tests on Ubuntu 24.04 (per CLAUDE.md, the dev OS).
+#
+# Headless only: the doctest+CTest suite never opens a window, so no xvfb is
+# needed. The themummy SFML smoke run (--frames N) does create a window and
+# is therefore omitted here — add it with xvfb-run in a follow-up if useful.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [develop, main]
+
+# Newer pushes to the same ref cancel still-running builds; the merge result
+# is what matters, intermediate states aren't worth burning runner minutes on.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            pkg-config \
+            libsfml-dev \
+            liblua5.4-dev \
+            libyaml-cpp-dev
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
