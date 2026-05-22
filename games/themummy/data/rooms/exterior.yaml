@@ -1,28 +1,68 @@
-# Exterior reached through SALIDA. M4 placeholder (sky background).
 version: 1
 id: exterior
-size: { width: 1916, height: 780 }
-
+size:
+  width: 1916
+  height: 780
 background:
-  color: { r: 120, g: 170, b: 210 }
+  color:
+    r: 120
+    g: 170
+    b: 210
   layers:
-    - id: sky
-      image: c/background/00.png
-      z: 0
-
+  - id: sky
+    image: c/background/00.png
+    z: 0
+    x: 0
+    y: 0
+  - id: building
+    image: c/background/01.png
+    z: 1
+    x: 0
+    y: 0
 walkable:
-  - { x: 60,   y: 600 }
-  - { x: 1850, y: 600 }
-  - { x: 1850, y: 760 }
-  - { x: 60,   y: 760 }
-
+- x: 60
+  y: 600
+- x: 1850
+  y: 600
+- x: 1850
+  y: 760
+- x: 60
+  y: 760
 points:
-  player_start: { x: 950, y: 700 }
-  from_hall:    { x: 300, y: 700 }
-
+  player_start:
+    x: 950
+    y: 700
+  from_hall:
+    x: 300
+    y: 700
 zones:
-  - id: to_hall
-    polygon: [ {x: 60, y: 600}, {x: 200, y: 600}, {x: 200, y: 760}, {x: 60, y: 760} ]
-
+- id: to_hall
+  polygon:
+  - x: 60
+    y: 600
+  - x: 200
+    y: 600
+  - x: 200
+    y: 760
+  - x: 60
+    y: 760
 avatars:
-  - { id: julia, start: player_start, orientation: down, player: true }
+- id: julia
+  start: player_start
+  orientation: down
+  player: true
+regions:
+  door:
+    area:
+    - x: 701
+      y: 308.40625
+    - x: 930
+      y: 308.40625
+    - x: 930
+      y: 559.40625
+    - x: 701
+      y: 559.40625
+    z: 0
+    states:
+      default: c/regions/door_default.png
+    initial: default
