@@ -8,6 +8,7 @@ namespace {
 
 const char* kValid = R"YAML(
 version: 1
+id: themummy
 resolution: { width: 1280, height: 720 }
 window: { fullscreen: false, width: 1280, height: 720 }
 resources: { src: "." }
@@ -31,6 +32,7 @@ scenes:
 
 TEST_CASE("valid manifest parses with expected fields") {
     Manifest m = parse_manifest(kValid);
+    CHECK(m.id == "themummy");
     CHECK(m.version == 1);
     CHECK(m.resolution.x == 1280u);
     CHECK(m.resolution.y == 720u);
@@ -51,41 +53,62 @@ TEST_CASE("valid manifest parses with expected fields") {
 }
 
 TEST_CASE("missing required fields throw ManifestError") {
-    CHECK_THROWS_AS(parse_manifest("window: { width: 1 }\nresources: { src: . }\n"
+    CHECK_THROWS_AS(parse_manifest("id: g\nwindow: { width: 1 }\nresources: { src: . }\n"
                                    "strings: s\nentry: a\nscenes: [{id: a, type: B}]\n"),
                     ManifestError); // no resolution
-    CHECK_THROWS_AS(parse_manifest("resolution: { width: 1, height: 1 }\nwindow: {}\n"
+    CHECK_THROWS_AS(parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
                                    "resources: { src: . }\nentry: a\n"
                                    "scenes: [{id: a, type: B}]\n"),
                     ManifestError); // no strings
-    CHECK_THROWS_AS(parse_manifest("resolution: { width: 1, height: 1 }\nwindow: {}\n"
+    CHECK_THROWS_AS(parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
                                    "strings: s\nentry: a\nscenes: [{id: a, type: B}]\n"),
                     ManifestError); // no resources.src
 }
 
 TEST_CASE("zero resolution is rejected") {
-    CHECK_THROWS_AS(parse_manifest("resolution: { width: 0, height: 720 }\nwindow: {}\n"
+    CHECK_THROWS_AS(parse_manifest("id: g\nresolution: { width: 0, height: 720 }\nwindow: {}\n"
                                    "resources: { src: . }\nstrings: s\nentry: a\n"
                                    "scenes: [{id: a, type: B}]\n"),
                     ManifestError);
 }
 
 TEST_CASE("duplicate scene ids are rejected") {
-    CHECK_THROWS_AS(parse_manifest("resolution: { width: 1, height: 1 }\nwindow: {}\n"
+    CHECK_THROWS_AS(parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
                                    "resources: { src: . }\nstrings: s\nentry: a\n"
                                    "scenes: [{id: a, type: B}, {id: a, type: C}]\n"),
                     ManifestError);
 }
 
 TEST_CASE("entry must reference an existing scene") {
-    CHECK_THROWS_AS(parse_manifest("resolution: { width: 1, height: 1 }\nwindow: {}\n"
+    CHECK_THROWS_AS(parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
                                    "resources: { src: . }\nstrings: s\nentry: missing\n"
                                    "scenes: [{id: a, type: B}]\n"),
                     ManifestError);
 }
 
 TEST_CASE("empty scenes list is rejected") {
-    CHECK_THROWS_AS(parse_manifest("resolution: { width: 1, height: 1 }\nwindow: {}\n"
+    CHECK_THROWS_AS(parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
                                    "resources: { src: . }\nstrings: s\nentry: a\nscenes: []\n"),
                     ManifestError);
+}
+
+TEST_CASE("manifest id is required and validated") {
+    // Missing.
+    CHECK_THROWS_AS(parse_manifest("resolution: { width: 1, height: 1 }\nwindow: {}\n"
+                                   "resources: { src: . }\nstrings: s\nentry: a\n"
+                                   "scenes: [{id: a, type: B}]\n"),
+                    ManifestError);
+    // Path-unsafe characters (rejecting '/', '..', uppercase, spaces).
+    auto with_id = [](const char* id) {
+        return std::string("id: ") + id +
+               "\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+               "resources: { src: . }\nstrings: s\nentry: a\n"
+               "scenes: [{id: a, type: B}]\n";
+    };
+    CHECK_THROWS_AS(parse_manifest(with_id("foo/bar")), ManifestError);
+    CHECK_THROWS_AS(parse_manifest(with_id("..")), ManifestError);
+    CHECK_THROWS_AS(parse_manifest(with_id("FooBar")), ManifestError);
+    CHECK_THROWS_AS(parse_manifest(with_id("foo bar")), ManifestError);
+    // Valid: lowercase, digits, underscore, dash.
+    CHECK_NOTHROW(parse_manifest(with_id("the_mummy-2")));
 }
