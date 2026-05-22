@@ -1,8 +1,13 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 # Exterior reached through SALIDA. Multilayer: a stretched sky behind the
 # building plate, which is drawn at its native size at an origin (issue #28).
 >>>>>>> c2fe7bf (M4/playtest: room-view feedback, camera coverage, layer origins (#28))
+=======
+# Exterior reached through SALIDA. Multilayer: a stretched sky behind the
+# building plate, which is drawn at its native size at an origin (issue #28).
+>>>>>>> origin/feature/issue-28-room-view-polish
 version: 1
 id: exterior
 size:
@@ -15,6 +20,7 @@ background:
     b: 210
   layers:
 <<<<<<< HEAD
+<<<<<<< HEAD
   - id: sky
     image: c/background/00.png
     z: 0
@@ -26,6 +32,8 @@ background:
     x: 0
     y: 0
 =======
+=======
+>>>>>>> origin/feature/issue-28-room-view-polish
     # Sky: no origin -> stretched to fill the room (the source is 1916x821).
     - id: sky
       image: c/background/00.png
