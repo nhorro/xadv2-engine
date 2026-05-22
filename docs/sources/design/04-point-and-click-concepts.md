@@ -220,6 +220,7 @@ composition, animation, foreground occlusion, and future shader effects.
 | `id` | Stable layer id. |
 | `image` | Logical resource path. |
 | `z` | Draw depth. Larger values are nearer the camera. |
+| `origin` | Optional `{x, y}` room-space top-left. When set, the layer draws at its **native pixel size** at this origin, so layers may differ in size and be placed freely (e.g. a foreground occluder). When omitted, the layer is **stretched to fill the room** — the default for a single full-room background. |
 | `interactive` | Whether this layer can receive pointer interactions. Usually false. |
 | `shader` | Optional shader resource or shader config. Design-for. |
 | `animation` | Optional animation description. Design-for. |
@@ -322,14 +323,20 @@ never shows space outside the room.
 
 ### Follow behavior
 
-- The camera keeps the player inside a central dead-zone band and scrolls only
-  when the player crosses it.
+- The camera follows the player by mapping the player's **reachable range** — the
+  bounding box of the walkable area — onto the camera's full clamped scroll range,
+  per axis. The leftmost/topmost reachable point shows the start of the
+  background; the rightmost/bottommost shows the end. This guarantees the whole
+  background is visible across a traversal, even though the player can never reach
+  the room's literal edges (the walkable area is usually a strip inside the room).
 - The camera is always clamped to the room bounds. A room no larger than the
   scenery viewport is centered and does not scroll.
-- Both axes use the same dead-zone and clamp. A room wider than the scenery
-  viewport scrolls horizontally; a taller room scrolls vertically by the same
-  mechanism. Vertical scrolling is therefore not a separate feature — it falls out
-  of the clamp for tall rooms, which are uncommon.
+- Both axes use the same mapping. A room wider than the scenery viewport scrolls
+  horizontally; a taller room scrolls vertically by the same mechanism. Vertical
+  scrolling is therefore not a separate feature — it falls out of the clamp for
+  tall rooms, which are uncommon.
+- When no walkable area is defined, the reachable range defaults to the whole
+  room, degenerating to ordinary clamped follow.
 
 ### Scripted overrides
 
@@ -520,8 +527,14 @@ Close      Push       Pull
 ```
 
 `Walk to` is not a verb button. Clicking a walkable floor point moves the player
-there. The target uses click-to-move only; keyboard-driven avatar movement from
-the prototype is not part of the design.
+there. Clicking a point **outside** the walkable area (that is not a hotspot)
+routes the player to the nearest reachable point on the walkable boundary rather
+than doing nothing. The target uses click-to-move only; keyboard-driven avatar
+movement from the prototype is not part of the design.
+
+Clicking empty scenery (no hotspot) while a command is being built **cancels**
+the command and returns the builder to `IDLE`; the same click while already
+`IDLE` walks the player as above.
 
 ### Default verb on click
 
@@ -613,6 +626,9 @@ The command builder exists only in the room-view `Command` state.
 | `COMMAND_READY` | Internal | — | `COMMAND_EXECUTING` | Dispatch command. |
 | `COMMAND_EXECUTING` | Command finished | — | `IDLE` | Clear command and restore UI. |
 
+The **Cancel** input is the player clicking empty scenery (a point that is
+neither a hotspot nor the panel) while a command is being built.
+
 ### Verb-to-state mapping
 
 | Verb | After verb selected | After param 1 |
@@ -680,6 +696,7 @@ The command bar previews the command currently being built.
 | `IDLE` | Verb | `Use` |
 | `IDLE` | Room object | `drawer` / localized name. |
 | `IDLE` | Inventory item | `key` / localized name. |
+| `IDLE` | Walkable floor | The walk label (`Ir a` / localized), from the [UI strings resource](06-data-formats.md#ui-strings--stringslangyaml). |
 | `EXPECTING_PARAM1_*` | Nothing | `Use` |
 | `EXPECTING_PARAM1_*` | Valid object | `Use key` |
 | `EXPECTING_PARAM1_*` | Invalid object | `Use` |

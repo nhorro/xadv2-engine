@@ -1,12 +1,14 @@
 #include "engine/pnc/camera.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace pac::pnc {
 
 Camera::Camera(sf::Vector2f viewport_size, sf::Vector2u room_size)
     : viewport_(viewport_size),
-      room_(static_cast<float>(room_size.x), static_cast<float>(room_size.y)) {
+      room_(static_cast<float>(room_size.x), static_cast<float>(room_size.y)),
+      follow_bounds_(0.0f, 0.0f, room_.x, room_.y) {
     center_ = clamp_center({room_.x / 2.0f, room_.y / 2.0f});
 }
 
@@ -17,7 +19,12 @@ void Camera::set_viewport_size(sf::Vector2f size) {
 
 void Camera::set_room_size(sf::Vector2u size) {
     room_ = {static_cast<float>(size.x), static_cast<float>(size.y)};
+    follow_bounds_ = {0.0f, 0.0f, room_.x, room_.y};
     center_ = clamp_center(center_);
+}
+
+void Camera::set_follow_bounds(sf::FloatRect bounds) {
+    follow_bounds_ = bounds;
 }
 
 sf::Vector2f Camera::clamp_center(sf::Vector2f center) const {
@@ -32,29 +39,49 @@ sf::Vector2f Camera::clamp_center(sf::Vector2f center) const {
     return result;
 }
 
+float Camera::scroll_axis(float target,
+                          float reach_min,
+                          float reach_max,
+                          float room,
+                          float view) const {
+    if (room <= view) {
+        return room / 2.0f; // room fits the viewport: no scroll, stay centered
+    }
+    const float lo = view / 2.0f;        // center showing the start edge of the room
+    const float hi = room - view / 2.0f; // center showing the end edge of the room
+    const float span = reach_max - reach_min;
+    if (span <= 1e-6f) {
+        return std::clamp(target, lo, hi); // no reachable span: plain clamp-follow
+    }
+    // Map the reachable span [reach_min, reach_max] onto [lo, hi] so the extremes
+    // of the player's reach show the extremes of the background.
+    const float t = std::clamp((target - reach_min) / span, 0.0f, 1.0f);
+    return lo + t * (hi - lo);
+}
+
+sf::Vector2f Camera::scroll_center(sf::Vector2f target) const {
+    return {scroll_axis(target.x,
+                        follow_bounds_.left,
+                        follow_bounds_.left + follow_bounds_.width,
+                        room_.x,
+                        viewport_.x),
+            scroll_axis(target.y,
+                        follow_bounds_.top,
+                        follow_bounds_.top + follow_bounds_.height,
+                        room_.y,
+                        viewport_.y)};
+}
+
 void Camera::set_center(sf::Vector2f center) {
     center_ = clamp_center(center);
 }
 
 void Camera::snap_to(sf::Vector2f target) {
-    center_ = clamp_center(target);
+    center_ = scroll_center(target);
 }
 
-void Camera::follow(sf::Vector2f target, sf::Vector2f dead_zone) {
-    sf::Vector2f next = center_;
-    const float dx = target.x - center_.x;
-    if (dx > dead_zone.x) {
-        next.x += dx - dead_zone.x;
-    } else if (dx < -dead_zone.x) {
-        next.x += dx + dead_zone.x;
-    }
-    const float dy = target.y - center_.y;
-    if (dy > dead_zone.y) {
-        next.y += dy - dead_zone.y;
-    } else if (dy < -dead_zone.y) {
-        next.y += dy + dead_zone.y;
-    }
-    center_ = clamp_center(next);
+void Camera::follow(sf::Vector2f target) {
+    center_ = scroll_center(target);
 }
 
 sf::FloatRect Camera::view_rect() const {
