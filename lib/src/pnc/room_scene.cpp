@@ -600,7 +600,16 @@ void RoomScene::update(float dt) {
         const std::string entry = pending_entry_;
         unload_room();
         load_room(id, entry);
-        // (Autosave-on-room-change hook point — wired to the save service in M5.)
+        // Restore overrides the default seat from load_room when restoring a save.
+        if (pending_restore_player_ && player_) {
+            player_->set_position({pending_restore_player_->x, pending_restore_player_->y});
+            player_->face(pending_restore_player_->facing);
+            if (camera_) {
+                camera_->snap_to(player_->position());
+            }
+            pending_restore_player_.reset();
+        }
+        // (Autosave-on-room-change hook point — wired to the save service in M5b/2.)
         return;
     }
     if (player_ && room_) {
@@ -759,6 +768,19 @@ void RoomScene::api_start_dialog(const std::string& npc_id) {
         say_at(text, color, pos);
     };
     host.is_speaking = [this]() { return speech_.active(); };
+    // `once`-consumption persists in the global StateStore under the
+    // engine-reserved `__dialog.<id>.<node>.<idx>` prefix, so it survives
+    // dialog end + restart and folds into GameState on save.
+    auto consumed_key = [npc_id](const std::string& node, int idx) {
+        return "__dialog." + npc_id + "." + node + "." + std::to_string(idx);
+    };
+    host.is_option_consumed = [this, consumed_key](const std::string& node, int idx) {
+        const auto v = ctx_.state.get(consumed_key(node, idx));
+        return v && std::holds_alternative<bool>(*v) && std::get<bool>(*v);
+    };
+    host.mark_option_consumed = [this, consumed_key](const std::string& node, int idx) {
+        ctx_.state.set(consumed_key(node, idx), true);
+    };
 
     auto rt =
         DialogRuntime::start(ctx_.scripting, ctx_.resources, ctx_.log, npc_id, std::move(host));
@@ -767,6 +789,63 @@ void RoomScene::api_start_dialog(const std::string& npc_id) {
     }
     dialog_.emplace(std::move(*rt));
     view_state_ = ViewState::DIALOG;
+}
+
+pac::core::GameState RoomScene::snap() const {
+    pac::core::GameState s;
+    s.save_version = 1;
+    // MVP only saves while RoomScene is active; hardcode the manifest scene id
+    // for forward compat (see design 02 §"Make persistent state explicit").
+    s.current_scene_id = "room_view";
+    s.room_view.current_room_id = current_room_id_;
+    if (player_) {
+        s.room_view.player.x = player_->position().x;
+        s.room_view.player.y = player_->position().y;
+        s.room_view.player.facing = player_->facing();
+    }
+    if (const Character* c = cast_.character(player_char_)) {
+        s.room_view.player.appearance_id = c->appearance;
+    }
+    s.inventory = inventory_.list();
+    s.global_state = ctx_.state.entries();
+    s.room_state = room_state_;
+    // Region states: snapshot persisted across rooms, then overlay the live
+    // values from the currently loaded room (which may differ from `_persist`
+    // if Lua mutated them this session).
+    s.region_states = region_state_persist_;
+    if (room_) {
+        auto& room_map = s.region_states[current_room_id_];
+        for (const auto& [region_id, region] : room_->data().regions) {
+            room_map[region_id] = room_->region_state(region_id);
+        }
+    }
+    return s;
+}
+
+void RoomScene::restore(const pac::core::GameState& state) {
+    if (state.save_version != 1) {
+        ctx_.log.error("RoomScene::restore: unsupported save_version " +
+                       std::to_string(state.save_version));
+        return;
+    }
+    // Replace stores before the room load so on_load observes restored state.
+    ctx_.state.replace_all(state.global_state);
+    room_state_ = state.room_state;
+    region_state_persist_ = state.region_states;
+    inventory_.replace_all(state.inventory);
+
+    // Kill transient runtime — none of it is part of GameState.
+    dialog_.reset();
+    view_state_ = ViewState::COMMAND;
+    builder_.cancel();
+    speech_.skip();
+
+    // Schedule the room load; update() will reseat the player at the saved
+    // position after load_room finishes.
+    change_pending_ = true;
+    pending_room_ = state.room_view.current_room_id;
+    pending_entry_.clear();
+    pending_restore_player_ = state.room_view.player;
 }
 
 } // namespace pac::pnc

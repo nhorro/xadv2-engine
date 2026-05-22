@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/core/game_state.hpp"
 #include "engine/core/scene.hpp"
 #include "engine/core/scripting.hpp"   // ScopeId
 #include "engine/core/state_store.hpp" // StateValue
@@ -67,6 +68,15 @@ public:
     [[nodiscard]] InventoryModel& inventory() { return inventory_; }
     [[nodiscard]] ViewState view_state() const { return view_state_; }
 
+    /// Snapshot of all persistent state — the payload SaveService writes. Pure
+    /// read: no side effects, safe to call mid-update from autosave hooks.
+    [[nodiscard]] pac::core::GameState snap() const;
+
+    /// Replace all stores with `state`, kill any transient runtime (dialog,
+    /// command builder), and schedule a room change so the next `update()`
+    /// loads the saved room and reseats the player at the saved position.
+    void restore(const pac::core::GameState& state);
+
 private:
     void load_room(const std::string& id, const std::string& entry_point);
     void unload_room();
@@ -114,6 +124,10 @@ private:
     bool change_pending_ = false;
     std::string pending_room_;
     std::string pending_entry_;
+    // When set, the next room load overrides the default seat with this pose
+    // (used by restore() to put the player back at the saved position rather
+    // than the room's entry point).
+    std::optional<pac::core::GameState::RoomView::Player> pending_restore_player_;
     std::string current_zone_;
 
     ViewState view_state_ = ViewState::COMMAND;

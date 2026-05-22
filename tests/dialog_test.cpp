@@ -6,6 +6,7 @@
 #include <doctest/doctest.h>
 #include <sol/sol.hpp>
 
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,11 +22,15 @@ using pac::pnc::DialogRuntime;
 namespace {
 
 /// A capture host that records what the dialog asked us to speak and lets the
-/// test simulate the bubble clearing by toggling `speaking`.
+/// test simulate the bubble clearing by toggling `speaking`. `consumed` backs
+/// the `once`-flag callbacks the runtime calls into — in production the host
+/// stores these in StateStore so they survive across dialog sessions and
+/// save/load.
 struct TestHost {
     std::vector<std::string> npc;
     std::vector<std::string> player;
     bool speaking = false;
+    std::set<std::pair<std::string, int>> consumed;
 
     DialogHost host() {
         DialogHost h;
@@ -38,6 +43,12 @@ struct TestHost {
             speaking = true;
         };
         h.is_speaking = [this]() { return speaking; };
+        h.is_option_consumed = [this](const std::string& node, int idx) {
+            return consumed.count({node, idx}) > 0;
+        };
+        h.mark_option_consumed = [this](const std::string& node, int idx) {
+            consumed.insert({node, idx});
+        };
         return h;
     }
 };
@@ -255,6 +266,49 @@ TEST_CASE("silent option skips the player bubble but still runs and follows") {
     d.update();
     CHECK(s.lua()["ran"].get<bool>() == true);
     CHECK(d.ended());
+}
+
+TEST_CASE("`once` persists across dialog sessions via the host-owned store") {
+    // Regression: pre-M5b the runtime owned `consumed_once` locally, so options
+    // tagged `once` re-appeared the next time the dialog was started (the
+    // runtime died on END and lost the set). Externalizing into the host fixes
+    // it: a fresh runtime sharing the same backing store sees the consumption.
+    Diagnostics log = quiet();
+    Scripting s(log);
+    TestHost host;
+    const std::string src = R"lua(
+        return {
+            start = "n",
+            n = {
+                options = {
+                    { "burn", once = true, to = END },
+                    { "stay", to = END },
+                },
+            },
+        }
+    )lua";
+
+    // First session: consume the `once` option.
+    {
+        sol::table tree = load_tree(s, log, src);
+        DialogRuntime d = build(s, log, host, tree);
+        REQUIRE(d.state() == DialogRuntime::State::AWAITING_CHOICE);
+        REQUIRE(d.options().size() == 2);
+        d.choose(0);
+        host.speaking = false;
+        d.update();
+        CHECK(d.ended());
+    }
+
+    // Second session reuses the same host (same persistent store). The `once`
+    // option must not reappear.
+    {
+        sol::table tree = load_tree(s, log, src);
+        DialogRuntime d = build(s, log, host, tree);
+        REQUIRE(d.state() == DialogRuntime::State::AWAITING_CHOICE);
+        REQUIRE(d.options().size() == 1);
+        CHECK(d.options()[0].text == "stay");
+    }
 }
 
 TEST_CASE("dialog with a missing node id ends cleanly instead of crashing") {
