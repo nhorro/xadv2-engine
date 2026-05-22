@@ -10,3 +10,10 @@ characters:
     appearance: julia_body
     name: "Julia"
     speech_color: { r: 255, g: 240, b: 180 }
+
+  # Stan, the night porter of the institute. M5a NPC sample. Borrows Julia's
+  # spritesheet as a placeholder — to be swapped for a dedicated rig later.
+  stan:
+    appearance: julia_body
+    name: "Stan"
+    speech_color: { r: 200, g: 220, b: 255 }

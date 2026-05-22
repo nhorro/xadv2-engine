@@ -208,6 +208,9 @@ void RoomScene::enter() {
     });
     L.set_function("talk",
                    [this](std::string speaker, std::string text) { api_talk(speaker, text); });
+    L.set_function("start_dialog", [this](std::string npc_id) { api_start_dialog(npc_id); });
+    // `to = END` sentinel used by dialog Lua tables; matches kEndSentinel in dialog.cpp.
+    L["END"] = std::string("__END__");
     L.set_function("set_room_state", [this](std::string key, sol::object v) {
         if (auto value = to_state_value(v)) {
             api_set_room_state(key, *value);
@@ -269,29 +272,64 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     camera_.emplace(sf::Vector2f(static_cast<float>(vres.x), scenery_height()), room_->data().size);
 
     if (!player_) {
-        const Character* character = cast_.character(player_char_);
-        if (character) {
-            if (const Appearance* app = cast_.appearance(character->appearance)) {
-                if (app->type == "animated_sprite" && !app->sprite.empty()) {
-                    try {
-                        player_.emplace(gfx::load_animated_sprite(ctx_.resources, app->sprite),
-                                        kAvatarScale);
-                    } catch (const std::exception& e) {
-                        ctx_.log.error(std::string("RoomScene: player appearance: ") + e.what());
-                    }
-                }
-            }
-        } else {
-            ctx_.log.error("RoomScene: player character '" + player_char_ + "' not in cast");
+        if (auto avatar = make_avatar(player_char_)) {
+            player_.emplace(std::move(*avatar));
         }
     }
     seat_player(entry_point);
     if (player_ && camera_) {
         camera_->snap_to(player_->position());
     }
+    spawn_room_npcs();
 
     room_->call_hook("on_load");
     ctx_.scripting.set_current_scope(ctx_.scripting.global_scope());
+}
+
+std::optional<Avatar> RoomScene::make_avatar(const std::string& character_id) {
+    const Character* character = cast_.character(character_id);
+    if (!character) {
+        ctx_.log.error("RoomScene: character '" + character_id + "' not in cast");
+        return std::nullopt;
+    }
+    const Appearance* app = cast_.appearance(character->appearance);
+    if (!app || app->type != "animated_sprite" || app->sprite.empty()) {
+        ctx_.log.error("RoomScene: character '" + character_id +
+                       "' has no usable animated_sprite appearance");
+        return std::nullopt;
+    }
+    try {
+        return Avatar(gfx::load_animated_sprite(ctx_.resources, app->sprite), kAvatarScale);
+    } catch (const std::exception& e) {
+        ctx_.log.error(std::string("RoomScene: appearance for '" + character_id + "': ") +
+                       e.what());
+        return std::nullopt;
+    }
+}
+
+void RoomScene::spawn_room_npcs() {
+    if (!room_) {
+        return;
+    }
+    const RoomData& data = room_->data();
+    for (const RoomAvatarPlacement& placement : data.avatars) {
+        if (placement.player) {
+            continue;
+        }
+        auto avatar = make_avatar(placement.id);
+        if (!avatar) {
+            continue;
+        }
+        const geom::Point* start = data.point(placement.start);
+        if (!start) {
+            ctx_.log.error("RoomScene: NPC '" + placement.id + "' has no start point '" +
+                           placement.start + "'");
+            continue;
+        }
+        avatar->set_position(*start);
+        avatar->face(placement.orientation);
+        room_->add_npc(placement.id, std::move(*avatar));
+    }
 }
 
 void RoomScene::seat_player(const std::string& entry_point) {
@@ -333,20 +371,28 @@ void RoomScene::unload_room() {
         }
     }
     ctx_.scripting.cancel_scope(room_scope_);
+    // An in-progress dialog references the outgoing room's NPC avatars; the
+    // room change kills both.
+    dialog_.reset();
+    view_state_ = ViewState::COMMAND;
 }
 
 void RoomScene::say(const std::string& text, sf::Color color) {
-    if (text.empty()) {
-        return;
-    }
     geom::Point pos{640.0f, 360.0f};
     if (player_) {
         pos = player_->position();
-        pos.y -= kSpeechRise;
     }
+    say_at(text, color, pos);
+}
+
+void RoomScene::say_at(const std::string& text, sf::Color color, geom::Point world) {
+    if (text.empty()) {
+        return;
+    }
+    world.y -= kSpeechRise;
     float duration = 0.5f + 0.06f * static_cast<float>(text.size());
     duration = std::clamp(duration, 1.0f, 7.0f);
-    speech_.show(text, pos, color, duration);
+    speech_.show(text, world, color, duration);
 }
 
 geom::Point RoomScene::virtual_to_world(sf::Vector2f vp) const {
@@ -370,6 +416,18 @@ void RoomScene::handle_event(const sf::Event& event) {
                           static_cast<float>(event.mouseButton.y)};
     if (speech_.active()) {
         speech_.skip();
+        return;
+    }
+    if (view_state_ == ViewState::BLOCKED) {
+        return;
+    }
+    if (view_state_ == ViewState::DIALOG && dialog_) {
+        if (panel_ && panel_->contains(vp)) {
+            const int idx = panel_->click_option(vp, dialog_->options().size());
+            if (idx >= 0) {
+                dialog_->choose(idx);
+            }
+        }
         return;
     }
 
@@ -459,6 +517,13 @@ void RoomScene::execute_ready_command() {
     }
 
     const std::optional<std::string> caption = dispatch(*cmd);
+    // If dispatch flipped us into a non-command state (e.g. a `talk_to` handler
+    // called `start_dialog`), the dialog's first NPC line is already on screen;
+    // suppress the fallback caption that would otherwise overwrite it.
+    if (view_state_ != ViewState::COMMAND) {
+        builder_.finish_execution();
+        return;
+    }
     sf::Color color(230, 230, 230);
     if (const Character* c = cast_.character(player_char_)) {
         color = c->speech_color;
@@ -540,6 +605,7 @@ void RoomScene::update(float dt) {
     }
     if (player_ && room_) {
         player_->update(dt, room_->data());
+        room_->update_npcs(dt);
         if (camera_) {
             const sf::Vector2u vres = ctx_.display.virtual_resolution();
             const sf::Vector2f dead_zone{static_cast<float>(vres.x) * 0.18f,
@@ -549,6 +615,13 @@ void RoomScene::update(float dt) {
         check_zones();
     }
     speech_.update(dt);
+    if (dialog_) {
+        dialog_->update();
+        if (dialog_->ended()) {
+            dialog_.reset();
+            view_state_ = ViewState::COMMAND;
+        }
+    }
 }
 
 void RoomScene::check_zones() {
@@ -583,13 +656,23 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                        room_dir_,
                        ctx_.resources,
                        player_ ? &*player_ : nullptr,
+                       room_->npcs(),
                        ctx_.log);
         speech_.draw(target, font_); // world coordinates, over the scenery
     }
 
     target.setView(ctx_.display.view());
     if (panel_) {
-        panel_->draw(target, ctx_.strings, inventory_, command_preview(), builder_.verb());
+        if (view_state_ == ViewState::DIALOG && dialog_) {
+            std::vector<std::string> labels;
+            labels.reserve(dialog_->options().size());
+            for (const DialogOption& opt : dialog_->options()) {
+                labels.push_back(opt.text);
+            }
+            panel_->draw_options(target, labels);
+        } else {
+            panel_->draw(target, ctx_.strings, inventory_, command_preview(), builder_.verb());
+        }
     }
 }
 
@@ -646,6 +729,44 @@ void RoomScene::api_talk(const std::string& speaker_id, const std::string& text)
         color = c->speech_color;
     }
     say(text, color);
+}
+
+void RoomScene::api_start_dialog(const std::string& npc_id) {
+    if (view_state_ != ViewState::COMMAND) {
+        ctx_.log.error("start_dialog('" + npc_id + "'): a dialog is already running");
+        return;
+    }
+    DialogHost host;
+    host.speak_npc = [this, npc_id](const std::string& text) {
+        sf::Color color(230, 230, 230);
+        if (const Character* c = cast_.character(npc_id)) {
+            color = c->speech_color;
+        }
+        geom::Point pos{640.0f, 360.0f};
+        if (room_) {
+            if (const Avatar* a = room_->npc(npc_id)) {
+                pos = a->position();
+            }
+        }
+        say_at(text, color, pos);
+    };
+    host.speak_player = [this](const std::string& text) {
+        sf::Color color(230, 230, 230);
+        if (const Character* c = cast_.character(player_char_)) {
+            color = c->speech_color;
+        }
+        const geom::Point pos = player_ ? player_->position() : geom::Point{640.0f, 360.0f};
+        say_at(text, color, pos);
+    };
+    host.is_speaking = [this]() { return speech_.active(); };
+
+    auto rt =
+        DialogRuntime::start(ctx_.scripting, ctx_.resources, ctx_.log, npc_id, std::move(host));
+    if (!rt) {
+        return;
+    }
+    dialog_.emplace(std::move(*rt));
+    view_state_ = ViewState::DIALOG;
 }
 
 } // namespace pac::pnc

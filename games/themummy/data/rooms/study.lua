@@ -26,6 +26,14 @@ room.hotspots = {
       return "Agarro el cuaderno."
     end,
   },
+  stan = {
+    look_at = function()
+      return "Es Stan, el portero del instituto."
+    end,
+    talk_to = function()
+      start_dialog("stan")
+    end,
+  },
 }
 
 return room
