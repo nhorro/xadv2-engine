@@ -294,6 +294,12 @@ std::size_t Scripting::active_task_count(ScopeId scope) const {
     return impl_->count(scope);
 }
 
+bool Scripting::is_task_alive(TaskId id) const {
+    return std::any_of(impl_->tasks.begin(), impl_->tasks.end(), [id](const auto& t) {
+        return t.id == id;
+    });
+}
+
 void Scripting::emit(ScopeId scope, const std::string& name) {
     impl_->deliver(scope, name, sol::object());
 }

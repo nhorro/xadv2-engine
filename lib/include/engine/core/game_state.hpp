@@ -57,6 +57,17 @@ struct GameState {
     /// Per-room region states: `region_states[room_id][region_id] = state_id`.
     /// Wins over a region's YAML `initial` after load.
     std::map<std::string, std::map<std::string, std::string>> region_states;
+
+    /// Per-room hotspot enabled flags: `hotspot_enabled[room_id][hotspot_id] = bool`.
+    /// Without this, an author who calls `disable_hotspot("door")` and saves
+    /// would see the door re-enabled on load (the YAML `enabled` default would
+    /// shadow the scripted change) — silent ghost bug per issue #33 review.
+    std::map<std::string, std::map<std::string, bool>> hotspot_enabled;
+
+    /// Per-room object visibility: `object_visible[room_id][object_id] = bool`.
+    /// Same shape, same reasoning as `hotspot_enabled`, for `show_object` /
+    /// `hide_object`.
+    std::map<std::string, std::map<std::string, bool>> object_visible;
 };
 
 } // namespace pac::core
