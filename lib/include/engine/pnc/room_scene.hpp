@@ -41,8 +41,9 @@ public:
     /// High-level state of the room view (design 04 §Room view states). The
     /// SCUMM panel layout, input routing, and scripted-input gating all key off
     /// this. BLOCKED is reserved for cutscene-like sections and not yet driven
-    /// by an API in M5a.
-    enum class ViewState { COMMAND, DIALOG, BLOCKED };
+    /// by an API in M5a. MENU is the in-game pause/save/load overlay (M5c/2):
+    /// the player presses Escape from COMMAND to open it.
+    enum class ViewState { COMMAND, DIALOG, BLOCKED, MENU };
 
     RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params);
     ~RoomScene() override;
@@ -85,6 +86,27 @@ private:
     [[nodiscard]] std::optional<Avatar> make_avatar(const std::string& character_id);
     void say(const std::string& text, sf::Color color);
     void say_at(const std::string& text, sf::Color color, geom::Point world);
+
+    // --- pause / save / load menu (M5c/2) ---
+    enum class MenuAction {
+        SAVE_SLOT_1,
+        SAVE_SLOT_2,
+        SAVE_SLOT_3,
+        LOAD_SLOT_1,
+        LOAD_SLOT_2,
+        LOAD_SLOT_3,
+        RESUME,
+        QUIT_TO_TITLE
+    };
+    struct MenuButton {
+        sf::FloatRect rect;
+        MenuAction action;
+        bool enabled = true;
+    };
+    [[nodiscard]] std::vector<MenuButton> menu_buttons() const;
+    void handle_menu_event(const sf::Event& event);
+    void draw_menu(sf::RenderTarget& target) const;
+    void trigger_menu(MenuAction action);
     void object_clicked(const ObjectRef& object);
     void execute_ready_command();
     std::optional<std::string> dispatch(const Command& cmd);
