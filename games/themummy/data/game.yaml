@@ -33,6 +33,7 @@ scenes:
     type: TitleScreen
     parameters:
       new_game: intro
+      continue: room_view
       exit: QUIT
       font: fonts/scumm.ttf
 

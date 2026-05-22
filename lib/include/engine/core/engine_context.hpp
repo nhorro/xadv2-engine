@@ -7,6 +7,7 @@ namespace pac::core {
 class Diagnostics;
 class Display;
 class ResourceCache;
+class SaveService;
 class SceneManager;
 class Scripting;
 class Settings;
@@ -33,6 +34,9 @@ struct EngineContext {
     /// of the per-user data path, so distinct games using this engine don't
     /// trample each other.
     const std::string& game_id;
+    /// Save/load slots, autosave, latest-slot lookup, and the staged-restore
+    /// hand-off between TitleScreen's Continue and RoomScene::enter().
+    SaveService& saves;
 };
 
 } // namespace pac::core

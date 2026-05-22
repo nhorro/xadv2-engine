@@ -189,3 +189,27 @@ TEST_CASE("load() rejects an unsupported save_version") {
     REQUIRE(svc.save(1, s));
     CHECK_FALSE(svc.load(1).has_value());
 }
+
+TEST_CASE("stage_restore + take_pending_restore hand off a GameState once") {
+    // Continue path: TitleScreen stages a loaded GameState; RoomScene::enter
+    // consumes it via take_pending_restore. The slot is single-shot so a
+    // second scene transition (e.g. quit-to-title-then-new-game) doesn't
+    // accidentally re-apply the stale state.
+    Diagnostics log = quiet();
+    TempDir td;
+    SaveService svc(td.path, log);
+
+    CHECK_FALSE(svc.has_pending_restore());
+    CHECK_FALSE(svc.take_pending_restore().has_value());
+
+    svc.stage_restore(make_rich_state());
+    CHECK(svc.has_pending_restore());
+
+    auto taken = svc.take_pending_restore();
+    REQUIRE(taken.has_value());
+    CHECK(taken->current_scene_id == "room_view");
+    CHECK(taken->room_view.current_room_id == "study");
+
+    CHECK_FALSE(svc.has_pending_restore());
+    CHECK_FALSE(svc.take_pending_restore().has_value());
+}
