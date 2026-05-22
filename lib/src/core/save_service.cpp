@@ -91,6 +91,46 @@ std::map<std::string, StateValue> decode_string_value_map(const YAML::Node& node
     return out;
 }
 
+void emit_string_bool_map(YAML::Emitter& out, const std::map<std::string, bool>& m) {
+    out << YAML::BeginMap;
+    for (const auto& [k, v] : m) {
+        out << YAML::Key << YAML::DoubleQuoted << k << YAML::Value << v;
+    }
+    out << YAML::EndMap;
+}
+
+std::map<std::string, bool> decode_string_bool_map(const YAML::Node& node) {
+    std::map<std::string, bool> out;
+    if (!node || !node.IsMap()) {
+        return out;
+    }
+    for (const auto& kv : node) {
+        out.emplace(kv.first.as<std::string>(), kv.second.as<bool>());
+    }
+    return out;
+}
+
+void emit_room_bool_map(YAML::Emitter& out,
+                        const std::map<std::string, std::map<std::string, bool>>& m) {
+    out << YAML::BeginMap;
+    for (const auto& [room_id, inner] : m) {
+        out << YAML::Key << YAML::DoubleQuoted << room_id << YAML::Value;
+        emit_string_bool_map(out, inner);
+    }
+    out << YAML::EndMap;
+}
+
+std::map<std::string, std::map<std::string, bool>> decode_room_bool_map(const YAML::Node& node) {
+    std::map<std::string, std::map<std::string, bool>> out;
+    if (!node || !node.IsMap()) {
+        return out;
+    }
+    for (const auto& kv : node) {
+        out.emplace(kv.first.as<std::string>(), decode_string_bool_map(kv.second));
+    }
+    return out;
+}
+
 void emit_game_state(YAML::Emitter& out, const GameState& s) {
     out << YAML::BeginMap;
     out << YAML::Key << "save_version" << YAML::Value << s.save_version;
@@ -140,6 +180,11 @@ void emit_game_state(YAML::Emitter& out, const GameState& s) {
     }
     out << YAML::EndMap;
 
+    out << YAML::Key << "hotspot_enabled" << YAML::Value;
+    emit_room_bool_map(out, s.hotspot_enabled);
+    out << YAML::Key << "object_visible" << YAML::Value;
+    emit_room_bool_map(out, s.object_visible);
+
     out << YAML::EndMap;
 }
 
@@ -186,6 +231,9 @@ GameState decode_game_state(const YAML::Node& root) {
             }
         }
     }
+
+    s.hotspot_enabled = decode_room_bool_map(root["hotspot_enabled"]);
+    s.object_visible = decode_room_bool_map(root["object_visible"]);
 
     return s;
 }

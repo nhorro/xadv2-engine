@@ -139,9 +139,11 @@ private:
     std::optional<ScummPanel> panel_;
     pac::core::ScopeId room_scope_ = 0;
 
-    // Persistent state across room changes (folds into GameState in M5).
+    // Persistent state across room changes — all folded into GameState by snap().
     std::map<std::string, std::map<std::string, pac::core::StateValue>> room_state_;
     std::map<std::string, std::map<std::string, std::string>> region_state_persist_;
+    std::map<std::string, std::map<std::string, bool>> hotspot_enabled_persist_;
+    std::map<std::string, std::map<std::string, bool>> object_visible_persist_;
 
     bool change_pending_ = false;
     std::string pending_room_;

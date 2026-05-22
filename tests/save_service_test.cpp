@@ -60,6 +60,10 @@ GameState make_rich_state() {
     s.room_state["hall"]["scratch"] = std::string("anything");
     s.region_states["hall"]["drawer"] = std::string("open");
     s.region_states["exterior"]["door"] = std::string("closed");
+    s.hotspot_enabled["study"]["notebook"] = false; // picked up + disabled
+    s.hotspot_enabled["hall"]["salida"] = true;
+    s.object_visible["hall"]["cart"] = false; // pushed away
+    s.object_visible["study"]["lamp"] = true;
     return s;
 }
 
@@ -102,6 +106,11 @@ TEST_CASE("save -> load round-trip preserves every field") {
 
     CHECK(out.region_states.at("hall").at("drawer") == "open");
     CHECK(out.region_states.at("exterior").at("door") == "closed");
+
+    CHECK(out.hotspot_enabled.at("study").at("notebook") == false);
+    CHECK(out.hotspot_enabled.at("hall").at("salida") == true);
+    CHECK(out.object_visible.at("hall").at("cart") == false);
+    CHECK(out.object_visible.at("study").at("lamp") == true);
 }
 
 TEST_CASE("load() returns nullopt on missing slot") {
