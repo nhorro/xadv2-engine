@@ -33,6 +33,10 @@ public:
     [[nodiscard]] bool has(const std::string& id) const;
     [[nodiscard]] const std::vector<std::string>& list() const { return held_; }
 
+    /// Replace held items with the given list (preserves order). Used when
+    /// restoring a save.
+    void replace_all(std::vector<std::string> ids) { held_ = std::move(ids); }
+
 private:
     std::map<std::string, InventoryItem> defs_;
     std::vector<std::string> held_;

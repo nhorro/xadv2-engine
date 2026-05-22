@@ -22,6 +22,12 @@ public:
     void clear();
     std::size_t size() const { return values_.size(); }
 
+    /// All current entries, for save snapshotting.
+    [[nodiscard]] const std::map<std::string, StateValue>& entries() const { return values_; }
+
+    /// Replace the whole store with `entries`. Used when restoring a save.
+    void replace_all(std::map<std::string, StateValue> entries) { values_ = std::move(entries); }
+
 private:
     std::map<std::string, StateValue> values_;
 };

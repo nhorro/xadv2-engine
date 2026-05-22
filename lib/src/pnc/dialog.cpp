@@ -7,7 +7,6 @@
 
 #include <sol/sol.hpp>
 
-#include <set>
 #include <utility>
 
 namespace pac::pnc {
@@ -38,8 +37,11 @@ struct DialogRuntime::Impl {
     std::vector<DialogOption> visible;
     std::vector<int> visible_raw_index;
 
-    // (node, raw_option_index) pairs the player has used at least once.
-    std::set<std::pair<std::string, int>> consumed_once;
+    // Note: `once`-consumption persistence is delegated to the host (see
+    // `DialogHost::is_option_consumed` / `mark_option_consumed`). The host
+    // typically backs this with the engine StateStore under reserved keys
+    // (`__dialog.<id>.<node>.<idx>`), so flags survive across dialog sessions
+    // and save/load. The test host backs it with a local set.
 
     // The raw index of the option chosen during SPEAKING_PLAYER.
     int chosen_raw = -1;
@@ -114,7 +116,7 @@ struct DialogRuntime::Impl {
                 continue;
             }
             const int raw = static_cast<int>(i);
-            if (consumed_once.count({current_node, raw}) > 0) {
+            if (host.is_option_consumed && host.is_option_consumed(current_node, raw)) {
                 continue;
             }
             if (sol::optional<sol::protected_function> when = (*opt)["when"]; when) {
@@ -161,7 +163,9 @@ struct DialogRuntime::Impl {
             }
         }
         if (sol::optional<bool> once = (*opt)["once"]; once && *once) {
-            consumed_once.insert({current_node, chosen_raw});
+            if (host.mark_option_consumed) {
+                host.mark_option_consumed(current_node, chosen_raw);
+            }
         }
         if (sol::optional<std::string> to = (*opt)["to"]; to) {
             enter_node(*to);

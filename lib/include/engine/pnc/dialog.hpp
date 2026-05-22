@@ -15,12 +15,20 @@ class Scripting;
 namespace pac::pnc {
 
 /// What the dialog runtime calls back into the host (RoomScene) for: rendering
-/// speech and asking whether a bubble is still on screen. Decoupling this keeps
-/// the runtime free of SpeechManager and SFML.
+/// speech, asking whether a bubble is still on screen, and persisting `once`
+/// consumption. Decoupling these keeps the runtime free of SpeechManager,
+/// StateStore, and SFML — the host owns persistence so flags survive across
+/// dialog sessions and save/load.
 struct DialogHost {
     std::function<void(const std::string& text)> speak_npc;
     std::function<void(const std::string& text)> speak_player;
     std::function<bool()> is_speaking;
+    /// Has the option at (node_id, raw_option_index) been consumed by a prior
+    /// `once`? The dialog id is captured by the host (closure) when the host
+    /// is built, so the runtime never needs it.
+    std::function<bool(const std::string& node_id, int option_index)> is_option_consumed;
+    /// Mark (node_id, raw_option_index) as consumed.
+    std::function<void(const std::string& node_id, int option_index)> mark_option_consumed;
 };
 
 /// One option visible at the current dialog node, after `when` filtering and
