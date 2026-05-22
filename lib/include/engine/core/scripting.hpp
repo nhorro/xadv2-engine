@@ -54,6 +54,10 @@ public:
     void update(float dt);
     std::size_t active_task_count() const;
     std::size_t active_task_count(ScopeId scope) const;
+    /// True if a task with `id` still exists in the scheduler (READY, waiting,
+    /// or yielded). Returns false once the task has returned or been cancelled.
+    /// Used by the dialog runtime to poll a spawned `run` callback.
+    [[nodiscard]] bool is_task_alive(TaskId id) const;
 
     /// Engine-side event emit: wake waiters of `name` in `scope`.
     void emit(ScopeId scope, const std::string& name);

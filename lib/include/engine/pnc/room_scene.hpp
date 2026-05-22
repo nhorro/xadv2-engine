@@ -148,6 +148,8 @@ private:
     CommandBuilder builder_;
     std::optional<ScummPanel> panel_;
     pac::core::ScopeId room_scope_ = 0;
+    pac::core::ScopeId dialog_scope_ = 0;
+    pac::core::TaskId run_task_ = 0;
 
     // Persistent state across room changes — all folded into GameState by snap().
     std::map<std::string, std::map<std::string, pac::core::StateValue>> room_state_;
