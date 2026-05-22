@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Room Editor</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Room Editor</h1>
+      <p>Edit walkable areas, zones, regions, hotspots, and named points in the browser.</p>
+    </div>
+    <div class="toolbar">
+      <button id="reload-button">Reload</button>
+      <button id="save-button">Save</button>
+      <span id="status">Ready</span>
+    </div>
+  </header>
+  <main>
+    <aside>
+      <section class="panel">
+        <h2>Room</h2>
+        <pre id="room-info">Loading...</pre>
+        <pre id="asset-base"></pre>
+      </section>
+
+      <section class="panel">
+        <h2>Geometry</h2>
+        <label for="mode-select">Mode</label>
+        <select id="mode-select"></select>
+
+        <label for="entity-select">Entity</label>
+        <select id="entity-select"></select>
+
+        <div class="button-row">
+          <button id="add-entity">Add</button>
+          <button id="remove-entity">Remove</button>
+        </div>
+
+        <div class="button-row">
+          <button id="add-vertex">Add vertex</button>
+          <button id="delete-vertex">Delete vertex</button>
+        </div>
+
+        <label>Vertices</label>
+        <div id="vertex-list" class="vertex-list"></div>
+
+        <div class="button-row">
+          <button id="add-point">Add point</button>
+          <button id="delete-point">Delete point</button>
+        </div>
+
+        <div style="margin-top:0.6rem">
+          <button id="snapshot-region">Snapshot region</button>
+          <div id="snapshot-source" class="hint">Snapshot source: select a layer in Background</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Background</h2>
+        <div id="layers-list"></div>
+        <label for="layer-x">Selected layer position</label>
+        <div id="layer-info">
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <label style="width:3rem">x</label>
+            <input id="layer-x" type="number" step="1" />
+            <label style="width:3rem">y</label>
+            <input id="layer-y" type="number" step="1" />
+          </div>
+          <div style="margin-top:.5rem;display:flex;gap:.5rem">
+            <button id="layer-apply">Apply</button>
+            <button id="layer-reset">Reset</button>
+          </div>
+        </div>
+      </section>
+    </aside>
+    <section class="canvas-panel">
+      <canvas id="room-canvas"></canvas>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
