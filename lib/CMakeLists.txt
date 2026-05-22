@@ -5,12 +5,14 @@ find_package(yaml-cpp REQUIRED)
 find_package(PkgConfig REQUIRED)
 # Distros disagree on the pkg-config name for Lua 5.4: Debian/Ubuntu ship
 # `lua5.4`, Arch ships `lua-5.4`, Fedora/RHEL ship plain `lua` with Version: 5.4.x.
-pkg_check_modules(LUA IMPORTED_TARGET lua5.4)
+# GLOBAL on the IMPORTED_TARGET so `tests/` (a sibling of `lib/`) can also link
+# `PkgConfig::LUA` via pac_sol2's transitive INTERFACE dependency below.
+pkg_check_modules(LUA IMPORTED_TARGET GLOBAL lua5.4)
 if(NOT LUA_FOUND)
-    pkg_check_modules(LUA IMPORTED_TARGET lua-5.4)
+    pkg_check_modules(LUA IMPORTED_TARGET GLOBAL lua-5.4)
 endif()
 if(NOT LUA_FOUND)
-    pkg_check_modules(LUA REQUIRED IMPORTED_TARGET lua>=5.4)
+    pkg_check_modules(LUA REQUIRED IMPORTED_TARGET GLOBAL lua>=5.4)
 endif()
 
 # sol2 (header-only). The vendored single header is preferred (github.com git is
@@ -20,6 +22,14 @@ if(EXISTS ${PAC_SOL2_LOCAL})
     add_library(pac_sol2 INTERFACE)
     target_include_directories(pac_sol2 INTERFACE ${CMAKE_SOURCE_DIR}/third_party/sol2)
     target_compile_definitions(pac_sol2 INTERFACE SOL_ALL_SAFETIES_ON=1)
+    # sol2 #include <lua.h> internally, so anyone linking pac_sol2 transitively
+    # needs Lua's headers/libs. Without this, targets that mention pac_sol2 but
+    # not pac_engine (the test executable's dialog_test in particular) fail to
+    # find lua.h on distros that put it under a versioned subdir like
+    # /usr/include/lua5.4 (Debian/Ubuntu). Fedora has lua.h directly in
+    # /usr/include, which is in the default search path — hence the local build
+    # passed but CI on Ubuntu didn't.
+    target_link_libraries(pac_sol2 INTERFACE PkgConfig::LUA)
     set(PAC_SOL2 pac_sol2)
     message(STATUS "lib: using vendored sol2 single header (third_party/sol2)")
 else()
