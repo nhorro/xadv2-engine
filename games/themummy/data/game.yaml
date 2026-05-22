@@ -1,5 +1,6 @@
 # The Mummy — example game manifest (M0: title + settings + blank gameplay stub).
 version: 1
+id: themummy
 
 resolution: { width: 1280, height: 720 }
 
