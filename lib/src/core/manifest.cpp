@@ -24,6 +24,21 @@ namespace {
     throw ManifestError("manifest: " + msg);
 }
 
+bool is_valid_id_char(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+}
+
+void validate_id(const std::string& id) {
+    if (id.empty()) {
+        fail("'id' is required");
+    }
+    for (const char c : id) {
+        if (!is_valid_id_char(c)) {
+            fail("'id' must match [a-z0-9_-]+ (got '" + id + "')");
+        }
+    }
+}
+
 unsigned require_dimension(const YAML::Node& node, const char* what) {
     if (!node) {
         fail(std::string(what) + " is required");
@@ -50,6 +65,12 @@ Manifest parse_manifest(const std::string& yaml_text) {
 
     Manifest m;
     m.version = root["version"] ? root["version"].as<int>() : 1;
+
+    if (!root["id"]) {
+        fail("'id' is required");
+    }
+    m.id = root["id"].as<std::string>();
+    validate_id(m.id);
 
     const YAML::Node res = root["resolution"];
     if (!res) {

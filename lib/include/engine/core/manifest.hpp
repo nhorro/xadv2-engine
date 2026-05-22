@@ -35,6 +35,11 @@ struct SceneDesc {
 
 /// The single source of game-level configuration (`game.yaml`).
 struct Manifest {
+    /// Stable, filesystem-friendly id for the game. Used as the directory
+    /// name under the per-user data path (e.g. `~/.local/share/<id>/saves/`),
+    /// so two games using this engine get separate save folders. Required;
+    /// allowed chars are `[a-z0-9_-]`.
+    std::string id;
     int version = 1;
     sf::Vector2u resolution{1280, 720};
     WindowConfig window;
