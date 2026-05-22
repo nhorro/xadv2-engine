@@ -233,10 +233,15 @@ void RoomScene::enter() {
     // Continue: TitleScreen stages a loaded GameState that we apply in place
     // of the manifest's default start. The staged state already names the
     // room to load and the player pose to seat at, so we skip load_room here
-    // and let restore()'s pending change_pending_ drive it.
+    // and let restore()'s pending change_pending_ drive it. If restore()
+    // rejects (corrupted scene id, unsupported save_version, ...) we fall
+    // back to the manifest's start_room so the player at least ends up in
+    // a playable state.
     if (auto staged = ctx_.saves.take_pending_restore()) {
-        restore(*staged);
-        return;
+        if (restore(*staged)) {
+            return;
+        }
+        ctx_.log.warn("RoomScene: staged restore was rejected; falling back to start_room");
     }
 
     if (start_room_.empty()) {
@@ -654,7 +659,7 @@ void RoomScene::update(float dt) {
         // Autosave on every room change *except* when the change was the
         // restoring of a save: that would round-trip the save we just loaded
         // (harmless, but a wasted write and a confusing log line).
-        if (!was_restore) {
+        if (!was_restore && can_save()) {
             ctx_.saves.save(pac::core::SaveService::kAutosaveSlot, snap());
         }
         return;
@@ -900,15 +905,22 @@ void RoomScene::handle_menu_event(const sf::Event& event) {
 }
 
 void RoomScene::trigger_menu(MenuAction action) {
+    auto save_to = [this](int slot) {
+        if (!can_save()) {
+            ctx_.log.warn("RoomScene: cannot save here (view state isn't COMMAND/MENU)");
+            return;
+        }
+        ctx_.saves.save(slot, snap());
+    };
     switch (action) {
     case MenuAction::SAVE_SLOT_1:
-        ctx_.saves.save(1, snap());
+        save_to(1);
         break;
     case MenuAction::SAVE_SLOT_2:
-        ctx_.saves.save(2, snap());
+        save_to(2);
         break;
     case MenuAction::SAVE_SLOT_3:
-        ctx_.saves.save(3, snap());
+        save_to(3);
         break;
     case MenuAction::LOAD_SLOT_1:
     case MenuAction::LOAD_SLOT_2:
@@ -1019,6 +1031,17 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
     }
 }
 
+bool RoomScene::can_save() const {
+    if (change_pending_) {
+        return false;
+    }
+    // MENU is reachable only from COMMAND (see handle_event routing), so its
+    // underlying snapshot is the same as the moment ESC was pressed. DIALOG
+    // and BLOCKED carry transient runtime that the save format doesn't
+    // capture; refusing here makes the partial-snapshot bug impossible.
+    return view_state_ == ViewState::COMMAND || view_state_ == ViewState::MENU;
+}
+
 pac::core::GameState RoomScene::snap() const {
     pac::core::GameState s;
     s.save_version = 1;
@@ -1060,11 +1083,24 @@ pac::core::GameState RoomScene::snap() const {
     return s;
 }
 
-void RoomScene::restore(const pac::core::GameState& state) {
+bool RoomScene::restore(const pac::core::GameState& state) {
     if (state.save_version != 1) {
         ctx_.log.error("RoomScene::restore: unsupported save_version " +
                        std::to_string(state.save_version));
-        return;
+        return false;
+    }
+    // MVP only supports restoring into a RoomScene. A save with a different
+    // current_scene_id means either a corrupted file or a forward-compat
+    // save written by a future engine version. Fail loud, don't trample
+    // current state.
+    if (state.current_scene_id != "room_view") {
+        ctx_.log.error("RoomScene::restore: save targets scene '" + state.current_scene_id +
+                       "', expected 'room_view'");
+        return false;
+    }
+    if (state.room_view.current_room_id.empty()) {
+        ctx_.log.error("RoomScene::restore: save has empty current_room_id");
+        return false;
     }
     // Replace stores before the room load so on_load observes restored state.
     ctx_.state.replace_all(state.global_state);
@@ -1086,6 +1122,7 @@ void RoomScene::restore(const pac::core::GameState& state) {
     pending_room_ = state.room_view.current_room_id;
     pending_entry_.clear();
     pending_restore_player_ = state.room_view.player;
+    return true;
 }
 
 } // namespace pac::pnc

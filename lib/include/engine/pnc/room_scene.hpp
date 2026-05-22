@@ -73,10 +73,20 @@ public:
     /// read: no side effects, safe to call mid-update from autosave hooks.
     [[nodiscard]] pac::core::GameState snap() const;
 
+    /// True when a `snap()` taken right now would be a coherent save: the
+    /// view is in COMMAND (or the pause MENU that was entered from COMMAND),
+    /// no dialog is mid-conversation, and no room change is pending. DIALOG /
+    /// BLOCKED hold transient runtime that isn't part of GameState. Used as a
+    /// precondition gate by the autosave hook and the in-game menu.
+    [[nodiscard]] bool can_save() const;
+
     /// Replace all stores with `state`, kill any transient runtime (dialog,
     /// command builder), and schedule a room change so the next `update()`
     /// loads the saved room and reseats the player at the saved position.
-    void restore(const pac::core::GameState& state);
+    /// Returns false (and logs) if the state is rejected (unsupported
+    /// save_version, wrong scene id, empty room id); the scene is left
+    /// untouched in that case so the caller can fall back.
+    bool restore(const pac::core::GameState& state);
 
 private:
     void load_room(const std::string& id, const std::string& entry_point);
