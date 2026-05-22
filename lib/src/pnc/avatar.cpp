@@ -20,7 +20,12 @@ void Avatar::apply_position() {
 }
 
 void Avatar::set_position(geom::Point p) {
+    // Teleport cancels any walk in progress. Without this, room transitions
+    // and save-restores would keep walking toward the previous room's stale
+    // target — which can loop back through a transition zone (e.g.
+    // hall->study left the player still walking into study's `to_hall`).
     pos_ = p;
+    stop();
     apply_position();
 }
 
