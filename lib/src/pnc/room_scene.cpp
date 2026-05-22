@@ -212,8 +212,8 @@ void RoomScene::enter() {
     L.set_function("talk",
                    [this](std::string speaker, std::string text) { api_talk(speaker, text); });
     L.set_function("start_dialog", [this](std::string npc_id) { api_start_dialog(npc_id); });
-    // `to = END` sentinel used by dialog Lua tables; matches kEndSentinel in dialog.cpp.
-    L["END"] = std::string("__END__");
+    // `to = END` is injected per-dialog by DialogRuntime::start as a unique
+    // sentinel table — no engine-wide binding needed here.
     L.set_function("set_room_state", [this](std::string key, sol::object v) {
         if (auto value = to_state_value(v)) {
             api_set_room_state(key, *value);

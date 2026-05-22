@@ -53,12 +53,19 @@ struct TestHost {
     }
 };
 
-/// Load a dialog table from an inline Lua string. Binds `END` and any extra
-/// helpers the dialog might reference (kept minimal — tests should not need a
-/// full RoomScene API surface).
-sol::table load_tree(Scripting& s, Diagnostics& log, const std::string& src) {
+/// A loaded dialog tree paired with its unique END sentinel. Mirrors the
+/// hand-off engine code does: \`DialogRuntime::start\` injects a fresh sentinel
+/// table per dialog; \`DialogInternal::from_table\` stores it for runtime
+/// identity comparisons.
+struct LoadedTree {
+    sol::table tree;
+    sol::table end_sentinel;
+};
+
+LoadedTree load_tree(Scripting& s, Diagnostics& log, const std::string& src) {
     sol::state& L = s.lua();
-    L["END"] = std::string("__END__");
+    sol::table end_sentinel = L.create_table();
+    L["END"] = end_sentinel;
     sol::load_result chunk = L.load(src, "@dialog_test");
     REQUIRE(chunk.valid());
     const sol::protected_function_result r = sol::protected_function(chunk)();
@@ -69,11 +76,16 @@ sol::table load_tree(Scripting& s, Diagnostics& log, const std::string& src) {
     }
     sol::optional<sol::table> t = r;
     REQUIRE(t.has_value());
-    return *t;
+    return {*t, end_sentinel};
 }
 
-DialogRuntime build(Scripting& s, Diagnostics& log, TestHost& host, sol::table tree) {
-    return DialogInternal::from_table(s, log, "test", host.host(), std::move(tree));
+DialogRuntime build(Scripting& s, Diagnostics& log, TestHost& host, LoadedTree lt) {
+    return DialogInternal::from_table(s,
+                                      log,
+                                      "test",
+                                      host.host(),
+                                      std::move(lt.tree),
+                                      lt.end_sentinel);
 }
 
 Diagnostics quiet() {
@@ -87,7 +99,7 @@ TEST_CASE("dialog speaks NPC line, takes a choice, runs `run`, follows `to`, end
     Scripting s(log);
     s.lua()["counter"] = 0;
     TestHost host;
-    sol::table tree = load_tree(s, log, R"lua(
+    LoadedTree tree = load_tree(s, log, R"lua(
         return {
             start = "greet",
             greet = {
@@ -153,7 +165,7 @@ TEST_CASE("multi-line NPC speaks each line in order before showing options") {
     Diagnostics log = quiet();
     Scripting s(log);
     TestHost host;
-    sol::table tree = load_tree(s, log, R"lua(
+    LoadedTree tree = load_tree(s, log, R"lua(
         return {
             start = "n",
             n = {
@@ -188,7 +200,7 @@ TEST_CASE("`when` filters options and `once` removes them after first use") {
     Scripting s(log);
     s.lua()["unlocked"] = false;
     TestHost host;
-    sol::table tree = load_tree(s, log, R"lua(
+    LoadedTree tree = load_tree(s, log, R"lua(
         return {
             start = "n",
             n = {
@@ -244,7 +256,7 @@ TEST_CASE("silent option skips the player bubble but still runs and follows") {
     Scripting s(log);
     s.lua()["ran"] = false;
     TestHost host;
-    sol::table tree = load_tree(s, log, R"lua(
+    LoadedTree tree = load_tree(s, log, R"lua(
         return {
             start = "n",
             n = {
@@ -290,7 +302,7 @@ TEST_CASE("`once` persists across dialog sessions via the host-owned store") {
 
     // First session: consume the `once` option.
     {
-        sol::table tree = load_tree(s, log, src);
+        LoadedTree tree = load_tree(s, log, src);
         DialogRuntime d = build(s, log, host, tree);
         REQUIRE(d.state() == DialogRuntime::State::AWAITING_CHOICE);
         REQUIRE(d.options().size() == 2);
@@ -303,7 +315,7 @@ TEST_CASE("`once` persists across dialog sessions via the host-owned store") {
     // Second session reuses the same host (same persistent store). The `once`
     // option must not reappear.
     {
-        sol::table tree = load_tree(s, log, src);
+        LoadedTree tree = load_tree(s, log, src);
         DialogRuntime d = build(s, log, host, tree);
         REQUIRE(d.state() == DialogRuntime::State::AWAITING_CHOICE);
         REQUIRE(d.options().size() == 1);
@@ -311,11 +323,68 @@ TEST_CASE("`once` persists across dialog sessions via the host-owned store") {
     }
 }
 
+TEST_CASE("DialogInternal::validate accepts a well-formed tree") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    LoadedTree lt = load_tree(s, log, R"lua(
+        return {
+            start = "a",
+            a = { npc = "hi", options = { { "x", to = END } } },
+            b = { npc = "u", to = "a" },
+        }
+    )lua");
+    CHECK(DialogInternal::validate(lt.tree, lt.end_sentinel).empty());
+}
+
+TEST_CASE("DialogInternal::validate rejects a node with both options and to") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    LoadedTree lt = load_tree(s, log, R"lua(
+        return {
+            start = "a",
+            a = { npc = "x", options = { { "x", to = END } }, to = "b" },
+            b = { npc = "y", to = END },
+        }
+    )lua");
+    const std::string err = DialogInternal::validate(lt.tree, lt.end_sentinel);
+    CHECK(err.find("both") != std::string::npos);
+    CHECK(err.find("'a'") != std::string::npos);
+}
+
+TEST_CASE("DialogInternal::validate rejects an option whose `to` is nil") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    // Typo: the dialog author wrote `END_` thinking it was the sentinel.
+    // The Lua field becomes nil — exactly what the validator must catch.
+    LoadedTree lt = load_tree(s, log, R"lua(
+        return {
+            start = "a",
+            a = { npc = "x", options = { { "x", to = END_ } } },
+        }
+    )lua");
+    const std::string err = DialogInternal::validate(lt.tree, lt.end_sentinel);
+    CHECK(err.find("nil") != std::string::npos);
+    CHECK(err.find("option 1") != std::string::npos);
+}
+
+TEST_CASE("DialogInternal::validate rejects a `to` pointing at a missing node") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    LoadedTree lt = load_tree(s, log, R"lua(
+        return {
+            start = "a",
+            a = { npc = "x", options = { { "x", to = "ghost" } } },
+        }
+    )lua");
+    const std::string err = DialogInternal::validate(lt.tree, lt.end_sentinel);
+    CHECK(err.find("ghost") != std::string::npos);
+}
+
 TEST_CASE("dialog with a missing node id ends cleanly instead of crashing") {
     Diagnostics log = quiet();
     Scripting s(log);
     TestHost host;
-    sol::table tree = load_tree(s, log, R"lua(
+    LoadedTree tree = load_tree(s, log, R"lua(
         return {
             start = "ghost",
             other = { npc = "unused", to = END },
