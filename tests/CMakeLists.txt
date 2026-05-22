@@ -34,7 +34,11 @@ add_executable(pac_core_tests
     command_builder_test.cpp
     inventory_test.cpp
     camera_test.cpp
+    dialog_test.cpp
 )
 target_link_libraries(pac_core_tests PRIVATE pac_engine doctest::doctest pac_project_options)
+# Dialog tests reach for the internal sol2-aware factory under lib/src.
+target_include_directories(pac_core_tests PRIVATE ${CMAKE_SOURCE_DIR}/lib/src)
+target_link_libraries(pac_core_tests PRIVATE pac_sol2)
 
 add_test(NAME core_tests COMMAND pac_core_tests)
