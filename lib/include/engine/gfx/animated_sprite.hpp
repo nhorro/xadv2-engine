@@ -26,6 +26,7 @@ public:
 
     void play(const std::string& sequence, bool restart = true) { player_.play(sequence, restart); }
     void update(float dt) { player_.update(dt); }
+    bool has(const std::string& sequence) const { return player_.has(sequence); }
     bool finished() const { return player_.finished(); }
     void set_on_finished(std::function<void()> cb) { player_.set_on_finished(std::move(cb)); }
     const std::string& current_sequence() const { return player_.current_sequence(); }
