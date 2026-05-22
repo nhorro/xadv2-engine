@@ -8,6 +8,7 @@
 #include "engine/core/manifest.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
+#include "engine/core/save_service.hpp"
 #include "engine/core/scene.hpp"
 #include "engine/core/scene_factory.hpp"
 #include "engine/core/scene_manager.hpp"
@@ -15,6 +16,7 @@
 #include "engine/core/settings.hpp"
 #include "engine/core/state_store.hpp"
 #include "engine/core/strings.hpp"
+#include "engine/core/user_data.hpp"
 
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Texture.hpp>
@@ -92,6 +94,7 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
     StateStore state;
     Display display(manifest.resolution, {manifest.window.width, manifest.window.height});
     SceneManager scenes;
+    SaveService saves(user_data_dir(manifest.id) / "saves", log);
 
     EngineContext ctx{display,
                       resources,
@@ -103,7 +106,8 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
                       strings,
                       log,
                       manifest.development,
-                      manifest.id};
+                      manifest.id,
+                      saves};
     bind_core_api(ctx);
 
     scenes.set_builder([&](const std::string& id) -> std::unique_ptr<Scene> {

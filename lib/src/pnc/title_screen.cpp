@@ -4,6 +4,7 @@
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
 #include "engine/core/resource_cache.hpp"
+#include "engine/core/save_service.hpp"
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
 #include "engine/core/strings.hpp"
@@ -36,11 +37,10 @@ sf::Vector2f entry_top_left(const sf::Vector2u& vres, int index, int count) {
 TitleScreen::TitleScreen(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
     : ctx_(ctx) {
     new_game_target_ = params.get_or("new_game", "");
+    continue_target_ = params.get_or("continue", "");
     exit_target_ = params.get_or("exit", "QUIT");
 
-    entries_.push_back({ctx_.strings.ui_label("new_game"), Action::NEW_GAME});
-    entries_.push_back({ctx_.strings.ui_label("settings"), Action::SETTINGS});
-    entries_.push_back({ctx_.strings.ui_label("quit"), Action::EXIT});
+    rebuild_entries();
 
     const std::string font_path = params.get_or("font", "");
     if (!font_path.empty()) {
@@ -49,6 +49,23 @@ TitleScreen::TitleScreen(pac::core::EngineContext& ctx, const pac::core::ScenePa
             ctx_.log.warn("title: no font '" + font_path + "'; drawing labels as bars");
         }
     }
+}
+
+void TitleScreen::enter() {
+    // Every time we return to the title (e.g. quit-to-title), re-check whether
+    // a save exists so Continue shows/hides accordingly.
+    rebuild_entries();
+    hovered_ = -1;
+}
+
+void TitleScreen::rebuild_entries() {
+    entries_.clear();
+    entries_.push_back({ctx_.strings.ui_label("new_game"), Action::NEW_GAME});
+    if (!continue_target_.empty() && ctx_.saves.latest_slot().has_value()) {
+        entries_.push_back({ctx_.strings.ui_label("continue"), Action::CONTINUE});
+    }
+    entries_.push_back({ctx_.strings.ui_label("settings"), Action::SETTINGS});
+    entries_.push_back({ctx_.strings.ui_label("quit"), Action::EXIT});
 }
 
 int TitleScreen::entry_at(float vx, float vy) const {
@@ -72,6 +89,22 @@ void TitleScreen::trigger(Action action) {
             ctx_.scenes.goto_scene(new_game_target_);
         }
         break;
+    case Action::CONTINUE: {
+        const auto slot = ctx_.saves.latest_slot();
+        if (!slot) {
+            ctx_.log.warn("title: 'Continue' clicked with no save on disk");
+            break;
+        }
+        auto state = ctx_.saves.load(*slot);
+        if (!state) {
+            // load() already logged. The save is unreadable; surface a clear
+            // user-facing fallback by simply staying on the title.
+            break;
+        }
+        ctx_.saves.stage_restore(std::move(*state));
+        ctx_.scenes.goto_scene(continue_target_);
+        break;
+    }
     case Action::SETTINGS:
         ctx_.scenes.open_settings();
         break;

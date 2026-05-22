@@ -46,11 +46,25 @@ public:
     /// the manual slots.
     [[nodiscard]] std::optional<int> latest_slot() const;
 
+    /// Stage `state` as the GameState the next scene should restore from.
+    /// Used by TitleScreen's "Continue" button: it loads a slot and stages
+    /// the result here, then triggers the scene change; the new RoomScene
+    /// consumes the staged state via `take_pending_restore()`.
+    void stage_restore(GameState state);
+
+    /// Take and clear the staged restore, if any. Returns nullopt when
+    /// there's nothing pending. RoomScene::enter() calls this to decide
+    /// whether to start fresh (manifest's `start_room`) or restore.
+    [[nodiscard]] std::optional<GameState> take_pending_restore();
+
+    [[nodiscard]] bool has_pending_restore() const { return pending_restore_.has_value(); }
+
 private:
     [[nodiscard]] static bool slot_in_range(int slot);
 
     std::filesystem::path dir_;
     Diagnostics* log_;
+    std::optional<GameState> pending_restore_;
 };
 
 } // namespace pac::core

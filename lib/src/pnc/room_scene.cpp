@@ -5,17 +5,19 @@
 #include "engine/core/engine_context.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
+#include "engine/core/save_service.hpp"
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
 #include "engine/core/scripting.hpp"
 #include "engine/core/strings.hpp"
-#include "engine/core/user_data.hpp"
 #include "engine/gfx/animated_sprite.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"
 
 #include <SFML/Graphics/Font.hpp>
+#include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
+#include <SFML/Graphics/Text.hpp>
 #include <SFML/Graphics/View.hpp>
 #include <SFML/Window/Event.hpp>
 #include <sol/sol.hpp>
@@ -137,10 +139,6 @@ void RoomScene::enter() {
         }
     }
 
-    // Save system anchored under the per-game subtree of the per-user data
-    // dir, so distinct games using this engine never trample each other.
-    saves_.emplace(pac::core::user_data_dir(ctx_.game_id) / "saves", ctx_.log);
-
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
     const float scenery = scenery_height();
     panel_.emplace(sf::FloatRect(0.0f,
@@ -231,6 +229,15 @@ void RoomScene::enter() {
         }
         return std::visit([&s](const auto& x) { return sol::make_object(s, x); }, *v);
     });
+
+    // Continue: TitleScreen stages a loaded GameState that we apply in place
+    // of the manifest's default start. The staged state already names the
+    // room to load and the player pose to seat at, so we skip load_room here
+    // and let restore()'s pending change_pending_ drive it.
+    if (auto staged = ctx_.saves.take_pending_restore()) {
+        restore(*staged);
+        return;
+    }
 
     if (start_room_.empty()) {
         ctx_.log.error("RoomScene: no 'start_room'");
@@ -410,7 +417,19 @@ geom::Point RoomScene::virtual_to_world(sf::Vector2f vp) const {
 
 void RoomScene::handle_event(const sf::Event& event) {
     if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
-        ctx_.scenes.quit();
+        // ESC toggles the in-game pause/save/load menu from COMMAND, and
+        // closes it again from MENU. DIALOG / BLOCKED ignore ESC so the
+        // player can't accidentally lose a dialog mid-conversation; in MVP
+        // the dialog must run to its end (or be skipped via clicks).
+        if (view_state_ == ViewState::COMMAND) {
+            view_state_ = ViewState::MENU;
+        } else if (view_state_ == ViewState::MENU) {
+            view_state_ = ViewState::COMMAND;
+        }
+        return;
+    }
+    if (view_state_ == ViewState::MENU) {
+        handle_menu_event(event);
         return;
     }
     if (event.type != sf::Event::MouseButtonReleased ||
@@ -618,8 +637,8 @@ void RoomScene::update(float dt) {
         // Autosave on every room change *except* when the change was the
         // restoring of a save: that would round-trip the save we just loaded
         // (harmless, but a wasted write and a confusing log line).
-        if (!was_restore && saves_) {
-            saves_->save(pac::core::SaveService::kAutosaveSlot, snap());
+        if (!was_restore) {
+            ctx_.saves.save(pac::core::SaveService::kAutosaveSlot, snap());
         }
         return;
     }
@@ -693,6 +712,9 @@ void RoomScene::draw(sf::RenderTarget& target) const {
         } else {
             panel_->draw(target, ctx_.strings, inventory_, command_preview(), builder_.verb());
         }
+    }
+    if (view_state_ == ViewState::MENU) {
+        draw_menu(target);
     }
 }
 
@@ -800,6 +822,184 @@ void RoomScene::api_start_dialog(const std::string& npc_id) {
     }
     dialog_.emplace(std::move(*rt));
     view_state_ = ViewState::DIALOG;
+}
+
+// --- pause / save / load menu (M5c/2) ---
+
+std::vector<RoomScene::MenuButton> RoomScene::menu_buttons() const {
+    const sf::Vector2u vres = ctx_.display.virtual_resolution();
+    const float w = 480.0f;
+    const float row_h = 56.0f;
+    const float gap = 12.0f;
+    const float footer_y_gap = 32.0f;
+    const float total_h = 3.0f * row_h + 2.0f * gap + footer_y_gap + row_h;
+    const float left = (static_cast<float>(vres.x) - w) / 2.0f;
+    const float top = (static_cast<float>(vres.y) - total_h) / 2.0f;
+    const float btn_w = 100.0f;
+    const float label_w = w - 2.0f * btn_w - 2.0f * gap;
+
+    auto save_action = [](int slot) {
+        return slot == 1   ? MenuAction::SAVE_SLOT_1
+               : slot == 2 ? MenuAction::SAVE_SLOT_2
+                           : MenuAction::SAVE_SLOT_3;
+    };
+    auto load_action = [](int slot) {
+        return slot == 1   ? MenuAction::LOAD_SLOT_1
+               : slot == 2 ? MenuAction::LOAD_SLOT_2
+                           : MenuAction::LOAD_SLOT_3;
+    };
+
+    std::vector<MenuButton> out;
+    for (int slot = 1; slot <= 3; ++slot) {
+        const float y = top + static_cast<float>(slot - 1) * (row_h + gap);
+        const float save_x = left + label_w + gap;
+        const float load_x = save_x + btn_w + gap;
+        out.push_back({{save_x, y, btn_w, row_h}, save_action(slot), true});
+        out.push_back({{load_x, y, btn_w, row_h}, load_action(slot), ctx_.saves.slot_exists(slot)});
+    }
+    // Footer: Resume (left), Quit to title (right).
+    const float footer_y = top + 3.0f * (row_h + gap) - gap + footer_y_gap;
+    const float footer_btn_w = (w - gap) / 2.0f;
+    out.push_back({{left, footer_y, footer_btn_w, row_h}, MenuAction::RESUME, true});
+    out.push_back({{left + footer_btn_w + gap, footer_y, footer_btn_w, row_h},
+                   MenuAction::QUIT_TO_TITLE,
+                   true});
+    return out;
+}
+
+void RoomScene::handle_menu_event(const sf::Event& event) {
+    if (event.type != sf::Event::MouseButtonReleased ||
+        event.mouseButton.button != sf::Mouse::Left) {
+        return;
+    }
+    const sf::Vector2f vp{static_cast<float>(event.mouseButton.x),
+                          static_cast<float>(event.mouseButton.y)};
+    for (const MenuButton& b : menu_buttons()) {
+        if (b.enabled && b.rect.contains(vp)) {
+            trigger_menu(b.action);
+            return;
+        }
+    }
+}
+
+void RoomScene::trigger_menu(MenuAction action) {
+    switch (action) {
+    case MenuAction::SAVE_SLOT_1:
+        ctx_.saves.save(1, snap());
+        break;
+    case MenuAction::SAVE_SLOT_2:
+        ctx_.saves.save(2, snap());
+        break;
+    case MenuAction::SAVE_SLOT_3:
+        ctx_.saves.save(3, snap());
+        break;
+    case MenuAction::LOAD_SLOT_1:
+    case MenuAction::LOAD_SLOT_2:
+    case MenuAction::LOAD_SLOT_3: {
+        const int slot = (action == MenuAction::LOAD_SLOT_1)   ? 1
+                         : (action == MenuAction::LOAD_SLOT_2) ? 2
+                                                               : 3;
+        if (auto state = ctx_.saves.load(slot)) {
+            // Same hand-off as Title's Continue: stage + scene change.
+            // restore() would also work directly, but routing through
+            // scene-change keeps the bootstrapping (cast/inventory/lua
+            // bindings re-init) consistent with a fresh entry.
+            ctx_.saves.stage_restore(std::move(*state));
+            ctx_.scenes.goto_scene("room_view");
+        }
+        break;
+    }
+    case MenuAction::RESUME:
+        view_state_ = ViewState::COMMAND;
+        break;
+    case MenuAction::QUIT_TO_TITLE:
+        ctx_.scenes.goto_scene("title");
+        break;
+    }
+}
+
+void RoomScene::draw_menu(sf::RenderTarget& target) const {
+    const sf::Vector2u vres = ctx_.display.virtual_resolution();
+
+    // Dim the world behind the menu.
+    sf::RectangleShape dim(sf::Vector2f(static_cast<float>(vres.x), static_cast<float>(vres.y)));
+    dim.setFillColor(sf::Color(0, 0, 0, 180));
+    target.draw(dim);
+
+    if (!font_) {
+        return;
+    }
+
+    // Heading.
+    sf::Text title(ctx_.strings.ui_label("pause"), *font_, 36);
+    title.setFillColor(sf::Color(255, 240, 180));
+    const sf::FloatRect tb = title.getLocalBounds();
+    title.setPosition((static_cast<float>(vres.x) - tb.width) / 2.0f - tb.left,
+                      static_cast<float>(vres.y) * 0.18f);
+    target.draw(title);
+
+    // Slot rows (the buttons themselves come from menu_buttons; we still need
+    // to draw a "Slot N — Saved/Empty" label next to each row).
+    const auto buttons = menu_buttons();
+    const float row_h = 56.0f;
+    const float label_pad = 12.0f;
+    for (int slot = 1; slot <= 3; ++slot) {
+        // Save button for this slot is at buttons[(slot-1)*2]; its rect.top is
+        // the row's vertical origin.
+        const sf::FloatRect save_btn = buttons[static_cast<std::size_t>((slot - 1) * 2)].rect;
+        const float row_y = save_btn.top;
+        const float row_left = save_btn.left - 120.0f /* approximate label width */;
+
+        const std::string label = "Slot " + std::to_string(slot) +
+                                  (ctx_.saves.slot_exists(slot) ? " — Guardado" : " — Vacío");
+        sf::Text txt(label, *font_, 22);
+        txt.setFillColor(sf::Color(220, 224, 235));
+        const sf::FloatRect b = txt.getLocalBounds();
+        txt.setPosition(row_left - 200.0f + label_pad,
+                        row_y + (row_h - b.height) / 2.0f - b.top - 1.0f);
+        target.draw(txt);
+    }
+
+    // Buttons themselves.
+    for (const MenuButton& bt : buttons) {
+        sf::RectangleShape box(sf::Vector2f(bt.rect.width, bt.rect.height));
+        box.setPosition(bt.rect.left, bt.rect.top);
+        if (!bt.enabled) {
+            box.setFillColor(sf::Color(24, 26, 36));
+            box.setOutlineColor(sf::Color(50, 54, 70));
+        } else {
+            box.setFillColor(sf::Color(34, 38, 54));
+            box.setOutlineColor(sf::Color(90, 100, 130));
+        }
+        box.setOutlineThickness(1.5f);
+        target.draw(box);
+
+        std::string label;
+        switch (bt.action) {
+        case MenuAction::SAVE_SLOT_1:
+        case MenuAction::SAVE_SLOT_2:
+        case MenuAction::SAVE_SLOT_3:
+            label = "Guardar";
+            break;
+        case MenuAction::LOAD_SLOT_1:
+        case MenuAction::LOAD_SLOT_2:
+        case MenuAction::LOAD_SLOT_3:
+            label = "Cargar";
+            break;
+        case MenuAction::RESUME:
+            label = ctx_.strings.ui_label("resume");
+            break;
+        case MenuAction::QUIT_TO_TITLE:
+            label = ctx_.strings.ui_label("quit_to_title");
+            break;
+        }
+        sf::Text txt(label, *font_, 20);
+        txt.setFillColor(bt.enabled ? sf::Color(220, 224, 235) : sf::Color(120, 128, 145));
+        const sf::FloatRect b = txt.getLocalBounds();
+        txt.setPosition(bt.rect.left + (bt.rect.width - b.width) / 2.0f - b.left,
+                        bt.rect.top + (bt.rect.height - b.height) / 2.0f - b.top);
+        target.draw(txt);
+    }
 }
 
 pac::core::GameState RoomScene::snap() const {
