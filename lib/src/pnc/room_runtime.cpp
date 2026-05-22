@@ -81,6 +81,35 @@ bool RoomRuntime::hotspot_enabled(const std::string& hotspot_id) const {
     return it != hotspot_enabled_.end() ? it->second : true;
 }
 
+void RoomRuntime::add_npc(const std::string& id, Avatar avatar) {
+    npcs_.insert_or_assign(id, std::move(avatar));
+}
+
+Avatar* RoomRuntime::npc(const std::string& id) {
+    const auto it = npcs_.find(id);
+    return it != npcs_.end() ? &it->second : nullptr;
+}
+
+const Avatar* RoomRuntime::npc(const std::string& id) const {
+    const auto it = npcs_.find(id);
+    return it != npcs_.end() ? &it->second : nullptr;
+}
+
+std::vector<const Avatar*> RoomRuntime::npcs() const {
+    std::vector<const Avatar*> out;
+    out.reserve(npcs_.size());
+    for (const auto& [id, avatar] : npcs_) {
+        out.push_back(&avatar);
+    }
+    return out;
+}
+
+void RoomRuntime::update_npcs(float dt) {
+    for (auto& [id, avatar] : npcs_) {
+        avatar.update(dt, data_);
+    }
+}
+
 void RoomRuntime::load_behavior(pac::core::Scripting& scripting,
                                 pac::core::ResourceCache& resources,
                                 const std::string& logical,

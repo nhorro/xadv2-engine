@@ -1,12 +1,14 @@
 #pragma once
 
 #include "engine/geom/geometry.hpp"
+#include "engine/pnc/avatar.hpp"
 #include "engine/pnc/room.hpp"
 
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace pac::core {
 class Diagnostics;
@@ -19,6 +21,9 @@ namespace pac::pnc {
 /// Loaded room: its static data plus the Lua behavior table. The behavior (a
 /// sol::table) is held opaquely (pimpl) so sol2 never leaks into a header. Lua
 /// hooks/handlers are invoked through non-sol methods.
+///
+/// Owns the room's NPC avatars (per [design 04 §Avatars]): the player avatar
+/// outlives the room, but NPC avatars are room-scoped and destroyed on unload.
 class RoomRuntime {
 public:
     explicit RoomRuntime(RoomData data);
@@ -43,6 +48,13 @@ public:
 
     void set_hotspot_enabled(const std::string& hotspot_id, bool enabled);
     [[nodiscard]] bool hotspot_enabled(const std::string& hotspot_id) const;
+
+    // --- NPC avatars (room-scoped) ---
+    void add_npc(const std::string& id, Avatar avatar);
+    [[nodiscard]] Avatar* npc(const std::string& id);
+    [[nodiscard]] const Avatar* npc(const std::string& id) const;
+    [[nodiscard]] std::vector<const Avatar*> npcs() const;
+    void update_npcs(float dt);
 
     /// Load `rooms/<id>.lua` and keep its returned table as this room's behavior.
     void load_behavior(pac::core::Scripting& scripting,
@@ -72,6 +84,7 @@ private:
     std::map<std::string, std::string> region_states_;
     std::map<std::string, bool> object_visible_;
     std::map<std::string, bool> hotspot_enabled_;
+    std::map<std::string, Avatar> npcs_;
 };
 
 } // namespace pac::pnc

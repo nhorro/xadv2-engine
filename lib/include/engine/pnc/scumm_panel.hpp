@@ -47,6 +47,13 @@ public:
               const std::string& command_preview,
               std::optional<Verb> selected_verb) const;
 
+    /// Draw dialog options in place of the verb/inventory layout. Used while
+    /// the room view is in ViewState::DIALOG.
+    void draw_options(sf::RenderTarget& target, const std::vector<std::string>& options) const;
+
+    /// Map a click in the panel to a dialog option index, or -1 on miss.
+    [[nodiscard]] int click_option(sf::Vector2f virtual_point, std::size_t option_count) const;
+
 private:
     struct VerbCell {
         Verb verb;
@@ -54,6 +61,8 @@ private:
     };
     [[nodiscard]] std::vector<VerbCell> verb_cells() const;
     [[nodiscard]] sf::FloatRect inventory_area() const;
+    [[nodiscard]] sf::FloatRect options_area() const;
+    [[nodiscard]] float option_row_height(std::size_t option_count) const;
 
     sf::FloatRect region_;
     const sf::Font* font_;
