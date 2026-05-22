@@ -3,7 +3,15 @@
 find_package(SFML 2.6 COMPONENTS graphics window audio system REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(LUA REQUIRED IMPORTED_TARGET lua5.4)
+# Distros disagree on the pkg-config name for Lua 5.4: Debian/Ubuntu ship
+# `lua5.4`, Arch ships `lua-5.4`, Fedora/RHEL ship plain `lua` with Version: 5.4.x.
+pkg_check_modules(LUA IMPORTED_TARGET lua5.4)
+if(NOT LUA_FOUND)
+    pkg_check_modules(LUA IMPORTED_TARGET lua-5.4)
+endif()
+if(NOT LUA_FOUND)
+    pkg_check_modules(LUA REQUIRED IMPORTED_TARGET lua>=5.4)
+endif()
 
 # sol2 (header-only). The vendored single header is preferred (github.com git is
 # unreachable here); delete third_party/sol2 to fall back to FetchContent.
