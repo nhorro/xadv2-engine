@@ -17,6 +17,11 @@ struct BackgroundLayer {
     std::string image; // logical path, relative to the room file's directory
     float z = 0.0f;
     bool interactive = false;
+    // When set, the layer is drawn at its native pixel size with its top-left at
+    // this room-space origin, so layers may differ in size and be placed freely
+    // (e.g. a foreground occluder). When absent, the layer is stretched to fill
+    // the room — the default for a single full-room background.
+    std::optional<geom::Point> origin;
 };
 
 struct RoomHotspot {

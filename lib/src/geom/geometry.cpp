@@ -79,4 +79,33 @@ std::optional<Point> segment_intersection(Point a, Point b, Point c, Point d) {
     return Point{a.x + t * r_x, a.y + t * r_y};
 }
 
+Point closest_point_on_segment(Point p, Point a, Point b) {
+    const float ab_x = b.x - a.x;
+    const float ab_y = b.y - a.y;
+    const float len2 = ab_x * ab_x + ab_y * ab_y;
+    if (len2 <= 1e-12f) {
+        return a; // degenerate segment
+    }
+    float t = ((p.x - a.x) * ab_x + (p.y - a.y) * ab_y) / len2;
+    t = std::clamp(t, 0.0f, 1.0f);
+    return {a.x + t * ab_x, a.y + t * ab_y};
+}
+
+Point closest_point_in_polygon(Point p, const Polygon& poly) {
+    if (poly.size() < 3 || point_in_polygon(p, poly)) {
+        return p;
+    }
+    Point best = poly[0];
+    float best_d2 = std::numeric_limits<float>::max();
+    for (std::size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+        const Point c = closest_point_on_segment(p, poly[j], poly[i]);
+        const float d2 = distance_squared(p, c);
+        if (d2 < best_d2) {
+            best_d2 = d2;
+            best = c;
+        }
+    }
+    return best;
+}
+
 } // namespace pac::geom

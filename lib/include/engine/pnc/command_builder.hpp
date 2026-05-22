@@ -38,6 +38,12 @@ public:
     /// if the operand was accepted (state advanced).
     bool provide_object(const ObjectRef& object, bool affordance_ok, bool combinable = false);
 
+    /// Whether `provide_object(object, affordance_ok)` would be accepted in the
+    /// current state, without mutating. The top bar uses this to preview a
+    /// hovered operand. `combinable` only affects post-acceptance branching, so
+    /// it is not needed to decide acceptance.
+    [[nodiscard]] bool would_accept(const ObjectRef& object, bool affordance_ok) const;
+
     void cancel();
 
     /// When COMMAND_READY, return the assembled command and move to

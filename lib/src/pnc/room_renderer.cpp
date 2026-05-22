@@ -37,17 +37,24 @@ void RoomRenderer::draw(sf::RenderTarget& target,
     using DrawFn = std::function<void(sf::RenderTarget&)>;
     std::vector<std::pair<float, DrawFn>> items;
 
-    // Background layers fill the room (scaled to room size).
+    // Background layers: a layer with an explicit `origin` draws at its native
+    // pixel size at that origin (so layers may differ in size and be placed
+    // freely); otherwise it is stretched to fill the room.
     for (const BackgroundLayer& layer : data.layers) {
         const std::string image = pac::core::logical_join(room_dir, layer.image);
-        items.emplace_back(layer.z, [&resources, &log, image, &data](sf::RenderTarget& t) {
+        const std::optional<geom::Point> origin = layer.origin;
+        items.emplace_back(layer.z, [&resources, &log, image, origin, &data](sf::RenderTarget& t) {
             try {
                 const sf::Texture& tex = resources.texture(image);
                 sf::Sprite sprite(tex);
-                const sf::Vector2u ts = tex.getSize();
-                if (ts.x > 0 && ts.y > 0) {
-                    sprite.setScale(static_cast<float>(data.size.x) / static_cast<float>(ts.x),
-                                    static_cast<float>(data.size.y) / static_cast<float>(ts.y));
+                if (origin) {
+                    sprite.setPosition(origin->x, origin->y); // native size at origin
+                } else {
+                    const sf::Vector2u ts = tex.getSize();
+                    if (ts.x > 0 && ts.y > 0) {
+                        sprite.setScale(static_cast<float>(data.size.x) / static_cast<float>(ts.x),
+                                        static_cast<float>(data.size.y) / static_cast<float>(ts.y));
+                    }
                 }
                 t.draw(sprite);
             } catch (const std::exception& e) {
