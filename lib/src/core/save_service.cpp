@@ -275,6 +275,19 @@ std::optional<GameState> SaveService::load(int slot) {
     return s;
 }
 
+void SaveService::stage_restore(GameState state) {
+    pending_restore_ = std::move(state);
+}
+
+std::optional<GameState> SaveService::take_pending_restore() {
+    if (!pending_restore_) {
+        return std::nullopt;
+    }
+    GameState s = std::move(*pending_restore_);
+    pending_restore_.reset();
+    return s;
+}
+
 std::optional<int> SaveService::latest_slot() const {
     std::optional<int> best;
     std::filesystem::file_time_type best_time{};
