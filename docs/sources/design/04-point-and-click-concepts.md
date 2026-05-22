@@ -326,9 +326,19 @@ never shows space outside the room.
 - The camera follows the player by mapping the player's **reachable range** — the
   bounding box of the walkable area — onto the camera's full clamped scroll range,
   per axis. The leftmost/topmost reachable point shows the start of the
-  background; the rightmost/bottommost shows the end. This guarantees the whole
-  background is visible across a traversal, even though the player can never reach
-  the room's literal edges (the walkable area is usually a strip inside the room).
+  background; the rightmost/bottommost shows the end. This aims to cover the whole
+  background across a traversal, even though the player can never reach the room's
+  literal edges (the walkable area is usually a strip inside the room).
+- That reveal is bounded by an **on-screen clamp**: the scroll never moves so far
+  that the player's pivot leaves the viewport. A margin (default 15% of the
+  viewport per axis) keeps clickable floor around the player. When the walkable
+  area is a thin slice of a much larger room, the raw reveal would scroll the
+  player off screen — or into an unclickable sliver — and trap them; the clamp
+  caps the scroll so the player stays visible, sacrificing edge coverage only as
+  much as needed. Well-proportioned rooms (a walkable strip that is not tiny
+  relative to the room) reach full coverage before the clamp engages. The room
+  bounds remain the hard limit, so near a literal room edge the player may sit at
+  the viewport edge (there is nothing further to reveal).
 - The camera is always clamped to the room bounds. A room no larger than the
   scenery viewport is centered and does not scroll.
 - Both axes use the same mapping. A room wider than the scenery viewport scrolls
