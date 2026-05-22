@@ -23,6 +23,7 @@ Worked example: [02 — Architecture overview](02-architecture-overview.md).
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `version` | opt | int | 1 | Data-format version. |
+| `id` | req | string | — | Stable game id used as the per-game subdirectory under the per-user data path (e.g. `~/.local/share/<id>/saves/`). Must match `[a-z0-9_-]+`. Two games using this engine get separate save folders by choosing distinct ids. |
 | `resolution` | req | `{width, height}` | — | Virtual design resolution. |
 | `window` | req | `{fullscreen, width, height}` | — | Initial physical window mode and size. |
 | `resources` | req | `{src}` | — | Resource source root. `src` is a directory (MVP) or archive (design-for). |

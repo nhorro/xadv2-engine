@@ -137,10 +137,9 @@ void RoomScene::enter() {
         }
     }
 
-    // Save system anchored to the per-user data dir. Hardcoding the app name
-    // here is the MVP shortcut; M5c will plumb a manifest field through so
-    // distinct games using the engine get distinct save folders.
-    saves_.emplace(pac::core::user_data_dir("xadv2-engine") / "saves", ctx_.log);
+    // Save system anchored under the per-game subtree of the per-user data
+    // dir, so distinct games using this engine never trample each other.
+    saves_.emplace(pac::core::user_data_dir(ctx_.game_id) / "saves", ctx_.log);
 
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
     const float scenery = scenery_height();

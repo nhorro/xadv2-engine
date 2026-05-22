@@ -102,7 +102,8 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
                       scenes,
                       strings,
                       log,
-                      manifest.development};
+                      manifest.development,
+                      manifest.id};
     bind_core_api(ctx);
 
     scenes.set_builder([&](const std::string& id) -> std::unique_ptr<Scene> {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 namespace pac::core {
 
 class Diagnostics;
@@ -26,6 +28,11 @@ struct EngineContext {
     const Strings& strings;
     Diagnostics& log;
     const DevFlags& dev;
+    /// Manifest `id` — stable, filesystem-friendly. Routes per-game data
+    /// (save files, settings overrides, ...) into a game-specific subtree
+    /// of the per-user data path, so distinct games using this engine don't
+    /// trample each other.
+    const std::string& game_id;
 };
 
 } // namespace pac::core
