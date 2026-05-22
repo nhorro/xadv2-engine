@@ -13,6 +13,7 @@
 #include "engine/gfx/animated_sprite.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"
+#include "pnc/dialog_internal.hpp"
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
@@ -434,7 +435,13 @@ void RoomScene::unload_room() {
     }
     ctx_.scripting.cancel_scope(room_scope_);
     // An in-progress dialog references the outgoing room's NPC avatars; the
-    // room change kills both.
+    // room change kills both. Cancelling the dialog scope also reaps any
+    // `run`-task spawned from the option (and anything that task spawned).
+    if (dialog_scope_ != 0) {
+        ctx_.scripting.cancel_scope(dialog_scope_);
+        dialog_scope_ = 0;
+        run_task_ = 0;
+    }
     dialog_.reset();
     view_state_ = ViewState::COMMAND;
 }
@@ -708,6 +715,14 @@ void RoomScene::update(float dt) {
         dialog_->update();
         if (dialog_->ended()) {
             dialog_.reset();
+            // Reap the dialog scope: cancel the run-task (if still around)
+            // and anything else that was spawned within the dialog. No-op if
+            // the scope was already cancelled by unload_room / restore.
+            if (dialog_scope_ != 0) {
+                ctx_.scripting.cancel_scope(dialog_scope_);
+                dialog_scope_ = 0;
+                run_task_ = 0;
+            }
             view_state_ = ViewState::COMMAND;
         }
     }
@@ -864,10 +879,44 @@ void RoomScene::api_start_dialog(const std::string& npc_id) {
     host.mark_option_consumed = [this, consumed_key](const std::string& node, int idx) {
         ctx_.state.set(consumed_key(node, idx), true);
     };
+    // Dialog scope: spawn run-callbacks (and anything they spawn) here so they
+    // are bounded by the dialog's lifetime. Cancelling the scope on dialog end
+    // / room change kills them deterministically — `spawn` from inside `run`
+    // inherits this scope per the scheduler's `current_scope` discipline.
+    dialog_scope_ = ctx_.scripting.open_scope();
+    run_task_ = 0;
+    host.spawn_run = [this](DialogRunFn& carrier) {
+        // We don't have a C++ entry point for `spawn`, so go through the Lua
+        // global that's bound to `Scripting::Impl::spawn(fn, current_scope)`.
+        // Setting current_scope to dialog_scope_ first places the task (and
+        // anything it spawns) under the dialog's lifetime.
+        const pac::core::ScopeId prev = ctx_.scripting.current_scope();
+        ctx_.scripting.set_current_scope(dialog_scope_);
+        sol::state& L = ctx_.scripting.lua();
+        sol::function spawn_fn = L["spawn"];
+        const sol::protected_function_result r = sol::protected_function(spawn_fn)(carrier.fn);
+        ctx_.scripting.set_current_scope(prev);
+        if (!r.valid()) {
+            const sol::error e = r;
+            ctx_.log.error(std::string("dialog run spawn: ") + e.what());
+            run_task_ = 0;
+            return;
+        }
+        run_task_ = r.get<pac::core::TaskId>();
+    };
+    host.is_run_running = [this]() {
+        return run_task_ != 0 && ctx_.scripting.is_task_alive(run_task_);
+    };
+    // The `run` callback may queue a room change via `change_room`; per design
+    // 04, the dialog ends before the change is honored so we never speak a
+    // line into the outgoing room. `unload_room` reaps the scope.
+    host.should_end = [this]() { return change_pending_; };
 
     auto rt =
         DialogRuntime::start(ctx_.scripting, ctx_.resources, ctx_.log, npc_id, std::move(host));
     if (!rt) {
+        ctx_.scripting.cancel_scope(dialog_scope_);
+        dialog_scope_ = 0;
         return;
     }
     dialog_.emplace(std::move(*rt));
@@ -1140,6 +1189,11 @@ bool RoomScene::restore(const pac::core::GameState& state) {
 
     // Kill transient runtime — none of it is part of GameState.
     dialog_.reset();
+    if (dialog_scope_ != 0) {
+        ctx_.scripting.cancel_scope(dialog_scope_);
+        dialog_scope_ = 0;
+        run_task_ = 0;
+    }
     view_state_ = ViewState::COMMAND;
     builder_.cancel();
     speech_.skip();

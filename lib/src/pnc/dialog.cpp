@@ -45,6 +45,12 @@ struct DialogRuntime::Impl {
     // The raw index of the option chosen during SPEAKING_PLAYER.
     int chosen_raw = -1;
 
+    // Cached `to` target for the chosen option, captured at the moment the
+    // option is taken. We resolve `to` then rather than after `run` completes
+    // because `run` may invalidate the option table (e.g., scripted state
+    // changes that reshape the dialog) but the design fixes `to` at choose-time.
+    sol::object pending_to;
+
     void log_error(const std::string& msg) {
         if (log) {
             log->error("dialog '" + npc_id + "': " + msg);
@@ -153,6 +159,66 @@ struct DialogRuntime::Impl {
         }
     }
 
+    /// Kick off the chosen option's `run` callback. Returns true if the host
+    /// reports a run task is still alive (so the caller should leave the state
+    /// machine in RUNNING_CALLBACK); false if `run` completed synchronously or
+    /// the option has no `run`. Errors are caught + logged either way per
+    /// design 04: a failing `run` does not abort the dialog.
+    bool kick_off_run(sol::table opt) {
+        sol::optional<sol::protected_function> run = opt["run"];
+        if (!run) {
+            return false;
+        }
+        if (host.spawn_run) {
+            // Production path: the host wraps `run` in a coroutine task, which
+            // lets blocking script APIs inside `run` (`wait`, `talk`, ...) yield
+            // properly. The host is also responsible for placing the task in
+            // the dialog's scope so it dies with the dialog.
+            DialogRunFn carrier{sol::function(*run)};
+            host.spawn_run(carrier);
+            return host.is_run_running && host.is_run_running();
+        }
+        // Test/fallback path: invoke synchronously. `wait`/`talk` from here
+        // won't yield, but tests don't need them to.
+        const sol::protected_function_result r = (*run)();
+        if (!r.valid()) {
+            const sol::error e = r;
+            log_error(std::string("option 'run' error: ") + e.what());
+        }
+        return false;
+    }
+
+    /// Finalize the chosen option after its `run` (if any) is done: consume
+    /// `once`, then either end (queued change_room) or follow `to`.
+    void after_run() {
+        sol::optional<sol::table> node = tree[current_node];
+        sol::optional<sol::table> opts = node ? (*node)["options"] : sol::optional<sol::table>{};
+        sol::optional<sol::table> opt = opts ? (*opts)[chosen_raw] : sol::optional<sol::table>{};
+        if (opt) {
+            if (sol::optional<bool> once = (*opt)["once"]; once && *once) {
+                if (host.mark_option_consumed) {
+                    host.mark_option_consumed(current_node, chosen_raw);
+                }
+            }
+        }
+        // The design's "if run calls change_room, the dialog ends first" rule:
+        // when the host signals an external termination request after `run`,
+        // skip the `to` follow.
+        if (host.should_end && host.should_end()) {
+            end();
+            return;
+        }
+        const sol::object to = pending_to;
+        pending_to = sol::object();
+        if (is_end(to) || !to.valid()) {
+            end();
+        } else if (to.is<std::string>()) {
+            enter_node(to.as<std::string>());
+        } else {
+            end();
+        }
+    }
+
     void on_player_line_finished() {
         sol::optional<sol::table> node = tree[current_node];
         if (!node) {
@@ -165,26 +231,11 @@ struct DialogRuntime::Impl {
             end();
             return;
         }
-        if (sol::optional<sol::protected_function> run = (*opt)["run"]; run) {
-            const sol::protected_function_result r = (*run)();
-            if (!r.valid()) {
-                const sol::error e = r;
-                log_error(std::string("option 'run' error: ") + e.what());
-            }
+        if (kick_off_run(*opt)) {
+            state = State::RUNNING_CALLBACK;
+            return;
         }
-        if (sol::optional<bool> once = (*opt)["once"]; once && *once) {
-            if (host.mark_option_consumed) {
-                host.mark_option_consumed(current_node, chosen_raw);
-            }
-        }
-        sol::object to = (*opt)["to"];
-        if (is_end(to) || !to.valid()) {
-            end();
-        } else if (to.is<std::string>()) {
-            enter_node(to.as<std::string>());
-        } else {
-            end();
-        }
+        after_run();
     }
 
     void end() {
@@ -289,6 +340,17 @@ void DialogRuntime::update() {
     if (s.state == State::ENDED) {
         return;
     }
+    if (s.state == State::RUNNING_CALLBACK) {
+        // Wait until the host reports the spawned `run` task is no longer
+        // alive. `is_run_running` is only consulted in this state — if the
+        // host left it unset, kick_off_run already returned false and we
+        // never entered RUNNING_CALLBACK.
+        if (s.host.is_run_running && s.host.is_run_running()) {
+            return;
+        }
+        s.after_run();
+        return;
+    }
     if (s.host.is_speaking && s.host.is_speaking()) {
         return;
     }
@@ -328,6 +390,9 @@ void DialogRuntime::choose(int index) {
         s.end();
         return;
     }
+    // Capture `to` now so `run` is free to mutate dialog state without the
+    // runtime losing track of where the option leads.
+    s.pending_to = (*opt)["to"];
     bool silent = false;
     if (sol::optional<bool> v = (*opt)["silent"]; v) {
         silent = *v;
