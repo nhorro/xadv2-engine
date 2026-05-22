@@ -9,6 +9,7 @@
 #include "engine/core/scene_params.hpp"
 #include "engine/core/scripting.hpp"
 #include "engine/core/strings.hpp"
+#include "engine/core/user_data.hpp"
 #include "engine/gfx/animated_sprite.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"
@@ -135,6 +136,11 @@ void RoomScene::enter() {
             ctx_.log.error(std::string("RoomScene: inventory: ") + e.what());
         }
     }
+
+    // Save system anchored to the per-user data dir. Hardcoding the app name
+    // here is the MVP shortcut; M5c will plumb a manifest field through so
+    // distinct games using the engine get distinct save folders.
+    saves_.emplace(pac::core::user_data_dir("xadv2-engine") / "saves", ctx_.log);
 
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
     const float scenery = scenery_height();
@@ -598,6 +604,7 @@ void RoomScene::update(float dt) {
         change_pending_ = false;
         const std::string id = pending_room_;
         const std::string entry = pending_entry_;
+        const bool was_restore = pending_restore_player_.has_value();
         unload_room();
         load_room(id, entry);
         // Restore overrides the default seat from load_room when restoring a save.
@@ -609,7 +616,12 @@ void RoomScene::update(float dt) {
             }
             pending_restore_player_.reset();
         }
-        // (Autosave-on-room-change hook point — wired to the save service in M5b/2.)
+        // Autosave on every room change *except* when the change was the
+        // restoring of a save: that would round-trip the save we just loaded
+        // (harmless, but a wasted write and a confusing log line).
+        if (!was_restore && saves_) {
+            saves_->save(pac::core::SaveService::kAutosaveSlot, snap());
+        }
         return;
     }
     if (player_ && room_) {
