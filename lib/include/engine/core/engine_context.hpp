@@ -14,6 +14,7 @@ class Settings;
 class StateStore;
 class Strings;
 struct AudioServices;
+struct CursorState;
 struct DevFlags;
 
 /// Borrowed, app-owned service references handed to every scene at construction.
@@ -37,6 +38,9 @@ struct EngineContext {
     /// Save/load slots, autosave, latest-slot lookup, and the staged-restore
     /// hand-off between TitleScreen's Continue and RoomScene::enter().
     SaveService& saves;
+    /// Per-frame cursor appearance request channel (issue #73). Scenes call
+    /// `cursor.want(...)`; the harness applies it and resets it each frame.
+    CursorState& cursor;
 };
 
 } // namespace pac::core

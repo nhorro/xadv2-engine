@@ -117,6 +117,25 @@ TEST_CASE("manifest id is required and validated") {
     CHECK_NOTHROW(parse_manifest(with_id("the_mummy-2")));
 }
 
+TEST_CASE("optional cursor block is parsed") {
+    const Manifest m = parse_manifest(
+        "id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+        "resources: { src: . }\nstrings: s\nentry: a\nscenes: [{id: a, type: B}]\n"
+        "cursor: { image: ui/c.png, interact: ui/h.png, hotspot: { x: 2, y: 3 } }\n");
+    CHECK(m.cursor.image == "ui/c.png");
+    CHECK(m.cursor.interact == "ui/h.png");
+    CHECK(m.cursor.hotspot.x == 2u);
+    CHECK(m.cursor.hotspot.y == 3u);
+}
+
+TEST_CASE("cursor block is optional — defaults to no custom cursor") {
+    const Manifest m = parse_manifest(kValid);
+    CHECK(m.cursor.image.empty());
+    CHECK(m.cursor.interact.empty());
+    CHECK(m.cursor.hotspot.x == 0u);
+    CHECK(m.cursor.hotspot.y == 0u);
+}
+
 TEST_CASE("manifest diagnostics carry stable error codes") {
     const char* dup = "id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
                       "resources: { src: . }\nstrings: s\nentry: a\n"
