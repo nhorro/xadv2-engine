@@ -1044,7 +1044,11 @@ Speech rendering supports:
 - configurable duration;
 - skipping;
 - per-character color;
-- optional positioning override.
+- optional positioning override;
+- edge-aware containment: the wrapped text block is centered on the speaker but
+  clamped to the visible scenery rect with a margin, so a speaker near a screen
+  edge keeps its text on-frame ("balloon without the balloon"). A block larger
+  than the available span pins to the top-left edge.
 
 When `talk` is called without an explicit duration, the engine computes one from
 the line length:
