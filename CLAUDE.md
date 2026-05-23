@@ -135,6 +135,10 @@ when you scaffold it, follow this layout and update the build/test commands belo
 
 ## Build & test commands
 
+**Linux (dev OS, system deps).** SFML / yaml-cpp / Lua come from the package manager
+(`libsfml-dev liblua5.4-dev libyaml-cpp-dev pkg-config` on apt); Lua is discovered
+via pkg-config.
+
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug      # add -DPAC_ENABLE_SANITIZERS=ON in dev
 cmake --build build -j"$(nproc)"
@@ -142,6 +146,29 @@ ctest --test-dir build --output-on-failure
 ./build/games/themummy/pac_themummy games/themummy/data/game.yaml          # run the sample
 ./build/games/themummy/pac_themummy games/themummy/data/game.yaml --frames 5   # headless smoke
 ```
+
+Equivalent via CMake presets (`CMakePresets.json`): `cmake --preset linux-debug`
+then `cmake --build --preset linux-debug` and `ctest --preset linux-debug`
+(`linux-release` for an optimized build).
+
+**Windows (primary release target, MSVC + vcpkg).** Compiled deps come from the
+vcpkg manifest (`vcpkg.json`); sol2/doctest stay header-only. SFML is pinned to
+**2.6.1** via a manifest `overrides` entry (the engine uses the SFML 2.x API, not
+SFML 3). Lua is discovered with CMake's `FindLua` (no pkg-config on MSVC).
+
+```powershell
+$env:VCPKG_ROOT = "C:\path\to\vcpkg"             # a vcpkg checkout
+# One-time: stamp the manifest with the local vcpkg baseline so the SFML override
+# resolves. The committed vcpkg.json deliberately omits builtin-baseline (no fixed
+# SHA pinned), so run this once per checkout (and CI does it automatically):
+& "$env:VCPKG_ROOT\vcpkg.exe" x-update-baseline --add-initial-baseline
+cmake --preset windows-msvc                       # configures + vcpkg-installs deps
+cmake --build --preset windows-msvc-release       # or windows-msvc-debug
+ctest --preset windows-msvc-release
+```
+
+Both OSes are covered by CI (`.github/workflows/ci.yml`): Ubuntu on every branch,
+Windows on PRs and develop/main pushes.
 
 Format before committing: `clang-format -i` on changed `*.hpp`/`*.cpp` (never
 `tests/_vendor/` or `third_party/`).

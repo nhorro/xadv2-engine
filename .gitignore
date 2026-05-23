@@ -1,3 +1,4 @@
 .secret
 build*
 .doc
+vcpkg_installed/

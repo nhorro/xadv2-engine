@@ -1,8 +1,12 @@
-# CI: build + headless tests on Ubuntu 24.04 (per CLAUDE.md, the dev OS).
+# CI: build + headless tests.
+#
+#   * Ubuntu 24.04 (the dev OS) — system deps via apt, runs on every branch.
+#   * Windows 2022 (the primary release target, R7) — deps via vcpkg manifest,
+#     runs on PRs and on develop/main pushes to keep runner minutes in check.
 #
 # Headless only: the doctest+CTest suite never opens a window, so no xvfb is
-# needed. The themummy SFML smoke run (--frames N) does create a window and
-# is therefore omitted here — add it with xvfb-run in a follow-up if useful.
+# needed on Linux. The themummy SFML smoke run (--frames N) does create a window
+# and is therefore omitted here — add it (xvfb-run on Linux) in a follow-up.
 name: CI
 
 on:
@@ -48,3 +52,51 @@ jobs:
 
       - name: Run tests
         run: ctest --test-dir build --output-on-failure
+
+  build-and-test-windows:
+    name: Build and test (Windows 2022)
+    runs-on: windows-2022
+    # Skip the slow vcpkg build on routine topic-branch pushes; still gate every PR
+    # and the integration branches.
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+
+    env:
+      # Persist compiled deps between runs via vcpkg's binary cache (see actions/cache).
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg_cache
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up vcpkg env
+        # VCPKG_INSTALLATION_ROOT is a runner env var (vcpkg is pre-installed); it
+        # is not in the ${{ env.* }} context, so surface it as VCPKG_ROOT for the
+        # preset's $env{VCPKG_ROOT} toolchain reference.
+        shell: pwsh
+        run: |
+          "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force -Path "$env:VCPKG_DEFAULT_BINARY_CACHE" | Out-Null
+
+      - name: Cache vcpkg artifacts
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}\vcpkg_cache
+          key: vcpkg-x64-windows-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-x64-windows-
+
+      - name: Pin vcpkg baseline
+        # The committed manifest omits builtin-baseline (no fixed SHA available
+        # offline); add the runner's vcpkg baseline so the sfml 2.6.1 override resolves.
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" x-update-baseline --add-initial-baseline
+
+      - name: Configure
+        run: cmake --preset windows-msvc
+
+      - name: Build
+        run: cmake --build --preset windows-msvc-release
+
+      - name: Run tests
+        run: ctest --preset windows-msvc-release
