@@ -42,6 +42,11 @@ struct RoomHotspot {
     std::string default_verb = "look_at";
     std::string bind; // "object:<id>" / "region:<id>" (unused in M3)
     bool enabled = true;
+    // When true, a command on this hotspot only fires once the player has walked
+    // to `approach`; until then input is blocked. When false (the default) the
+    // action fires immediately even if the player is far (allows distant
+    // interactions, e.g. talking to something across the room).
+    bool requires_approach = false;
 };
 
 struct RoomAvatarPlacement {
@@ -76,6 +81,26 @@ struct RoomObject {
     bool z_auto = true;         // auto: depth = position.y; else explicit z
     float z = 0.0f;
     bool visible = true;
+    // Optional explicit sort line (world Y), in the same space as an avatar's
+    // walking-pivot y. When set, the object sorts at this depth against avatars:
+    // it occludes characters whose feet are above the line (smaller y) and is
+    // occluded by those below it (larger y) — the SCUMM/AGS "baseline". Overrides
+    // `z` / `z_auto`. Use it for a perspective object's foreground piece so the
+    // character passes correctly in front of / behind it (design 04 §Z-order).
+    std::optional<float> baseline;
+};
+
+/// A "walk-behind" mask: a polygon patch of a background `layer`, redrawn on top
+/// at `baseline` (a world-Y sort line). An avatar passes in front of it when its
+/// feet are below the line (larger y) and behind it when above — without
+/// duplicating the art, since the pixels are sampled from the layer itself
+/// (design 04 §Walk-behind). MVP: the polygon must be convex; decompose a concave
+/// occluder into several walk-behind areas.
+struct WalkBehind {
+    std::string id;
+    std::string layer;  // source background layer id (its image is sampled)
+    geom::Polygon area; // mask polygon (convex)
+    float baseline = 0.0f;
 };
 
 /// Optional avatar-scale-by-depth, simulating perspective. Two floor lines, each
@@ -103,6 +128,7 @@ struct RoomData {
     std::map<std::string, Region> regions;
     std::map<std::string, RoomObject> objects;
     std::map<std::string, RoomHotspot> hotspots;
+    std::vector<WalkBehind> walkbehinds;
     std::vector<RoomAvatarPlacement> avatars;
     std::optional<Perspective> perspective;
 

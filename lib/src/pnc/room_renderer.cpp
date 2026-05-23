@@ -9,9 +9,11 @@
 #include "engine/pnc/room_runtime.hpp"
 
 #include <SFML/Graphics/RectangleShape.hpp>
+#include <SFML/Graphics/RenderStates.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Texture.hpp>
+#include <SFML/Graphics/VertexArray.hpp>
 #include <SFML/Graphics/View.hpp>
 
 #include <algorithm>
@@ -105,17 +107,18 @@ void RoomRenderer::draw(sf::RenderTarget& target,
         });
     }
 
-    // Objects: visible ones at their position; z = explicit, or the sprite's
-    // bottom edge for auto (so it sorts with avatars).
+    // Objects: visible ones at their position. Sort depth, in order of priority:
+    // an explicit `baseline` (a world-Y ground line, sorts against avatar feet),
+    // else the sprite's bottom edge for `z: auto`, else the fixed `z`.
     for (const auto& [id, object] : data.objects) {
         if (!room.object_visible(id) || object.image.empty()) {
             continue;
         }
         const std::string image = pac::core::logical_join(room_dir, object.image);
-        float z = object.z;
+        float z = object.baseline ? *object.baseline : object.z;
         try {
             const sf::Texture& tex = resources.texture(image);
-            if (object.z_auto) {
+            if (!object.baseline && object.z_auto) {
                 z = object.position.y + static_cast<float>(tex.getSize().y);
             }
         } catch (const std::exception& e) {
@@ -132,6 +135,47 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                 log.error(e.what());
             }
         });
+    }
+
+    // Walk-behind masks: a convex patch of a source layer redrawn on top at its
+    // baseline (a world-Y line), so avatars sort in front of / behind it like any
+    // baseline object — without duplicating the art (design 04 §Walk-behind). The
+    // patch is a textured triangle fan whose texCoords map each world vertex back
+    // to the source layer's texel ((world - origin) / scale).
+    for (const WalkBehind& wb : data.walkbehinds) {
+        if (wb.area.size() < 3) {
+            continue;
+        }
+        const BackgroundLayer* src = nullptr;
+        for (const BackgroundLayer& l : data.layers) {
+            if (l.id == wb.layer) {
+                src = &l;
+                break;
+            }
+        }
+        if (!src) {
+            log.error("walkbehind '" + wb.id + "': unknown layer '" + wb.layer + "'");
+            continue;
+        }
+        const std::string image = pac::core::logical_join(room_dir, src->image);
+        const geom::Point origin = src->origin;
+        const float scale = src->scale;
+        sf::VertexArray fan(sf::TriangleFan, wb.area.size());
+        for (std::size_t i = 0; i < wb.area.size(); ++i) {
+            const geom::Point& p = wb.area[i];
+            fan[i].position = sf::Vector2f(p.x, p.y);
+            fan[i].texCoords = sf::Vector2f((p.x - origin.x) / scale, (p.y - origin.y) / scale);
+        }
+        items.emplace_back(wb.baseline,
+                           [&resources, &log, image, fan = std::move(fan)](sf::RenderTarget& t) {
+                               try {
+                                   sf::RenderStates states;
+                                   states.texture = &resources.texture(image);
+                                   t.draw(fan, states);
+                               } catch (const std::exception& e) {
+                                   log.error(e.what());
+                               }
+                           });
     }
 
     if (player) {

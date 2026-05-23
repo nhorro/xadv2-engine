@@ -157,8 +157,35 @@ RoomData parse_room(const std::string& yaml_text) {
                 object.z_auto = false;
                 object.z = node["z"].as<float>();
             }
+            if (node["baseline"]) {
+                object.baseline = node["baseline"].as<float>();
+            }
             object.visible = node["visible"] ? node["visible"].as<bool>() : true;
             room.objects.emplace(object.id, std::move(object));
+        }
+    }
+
+    if (const YAML::Node wbs = root["walkbehinds"]) {
+        for (const auto& kv : wbs) {
+            WalkBehind wb;
+            wb.id = kv.first.as<std::string>();
+            const YAML::Node node = kv.second;
+            if (!node["layer"] || !node["area"] || !node["baseline"]) {
+                throw DataError("room '" + room.id + "': walkbehind '" + wb.id +
+                                "' needs 'layer', 'area', and 'baseline'");
+            }
+            wb.layer = node["layer"].as<std::string>();
+            const bool layer_exists =
+                std::any_of(room.layers.begin(), room.layers.end(), [&](const BackgroundLayer& l) {
+                    return l.id == wb.layer;
+                });
+            if (!layer_exists) {
+                throw DataError("room '" + room.id + "': walkbehind '" + wb.id +
+                                "' references unknown layer '" + wb.layer + "'");
+            }
+            wb.area = parse_polygon(node["area"]);
+            wb.baseline = node["baseline"].as<float>();
+            room.walkbehinds.push_back(std::move(wb));
         }
     }
 
@@ -194,6 +221,8 @@ RoomData parse_room(const std::string& yaml_text) {
             hs.default_verb =
                 node["default_verb"] ? node["default_verb"].as<std::string>() : "look_at";
             hs.enabled = node["enabled"] ? node["enabled"].as<bool>() : true;
+            hs.requires_approach =
+                node["requires_approach"] ? node["requires_approach"].as<bool>() : false;
             room.hotspots.emplace(hs.id, std::move(hs));
         }
     }

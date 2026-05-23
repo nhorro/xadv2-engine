@@ -26,6 +26,10 @@ struct DialogRuntime::Impl {
     State state = State::ENDED;
     std::string current_node;
 
+    // Optional room point name where this dialog's NPC speech is anchored. Empty
+    // means the host falls back to the NPC avatar's position.
+    std::string text_anchor;
+
     // Pending NPC lines for the current node (string or array of strings).
     std::vector<std::string> npc_lines;
     std::size_t npc_index = 0;
@@ -331,6 +335,10 @@ const std::string& DialogRuntime::current_node() const {
     return impl_->current_node;
 }
 
+const std::string& DialogRuntime::text_anchor() const {
+    return impl_->text_anchor;
+}
+
 std::vector<DialogOption> DialogRuntime::options() const {
     return impl_->visible;
 }
@@ -419,6 +427,9 @@ DialogRuntime DialogInternal::from_table(pac::core::Scripting& scripting,
     impl->npc_id = npc_id;
     impl->tree = std::move(dialog_table);
     impl->end_sentinel = std::move(end_sentinel);
+    if (sol::optional<std::string> anchor = impl->tree["text_anchor"]; anchor) {
+        impl->text_anchor = *anchor;
+    }
 
     if (sol::optional<sol::protected_function> on_enter = impl->tree["on_enter"]; on_enter) {
         const sol::protected_function_result r = (*on_enter)();
@@ -434,6 +445,11 @@ DialogRuntime DialogInternal::from_table(pac::core::Scripting& scripting,
         return DialogRuntime(std::move(impl));
     }
     DialogRuntime runtime(std::move(impl));
+    // Hand the host the text anchor before the first NPC line is spoken, so even
+    // the opening bubble lands at the anchored point (enter_node speaks it).
+    if (!runtime.impl_->text_anchor.empty() && runtime.impl_->host.set_text_anchor) {
+        runtime.impl_->host.set_text_anchor(runtime.impl_->text_anchor);
+    }
     runtime.impl_->enter_node(*start);
     return runtime;
 }
