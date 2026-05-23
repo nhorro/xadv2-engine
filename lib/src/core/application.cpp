@@ -31,8 +31,9 @@ namespace pac::core {
 
 namespace {
 
-constexpr float kFixedDt = 1.0f / 60.0f; // 60 Hz simulation
-constexpr int kMaxStepsPerFrame = 5;     // cap to avoid the spiral of death
+constexpr float kFixedDt = 1.0f / 60.0f;  // 60 Hz simulation
+constexpr int kMaxStepsPerFrame = 5;      // cap to avoid the spiral of death
+constexpr float kSceneTransition = 0.35f; // fade-to-black seconds between scenes
 
 // Engine-handled scenes are located by their conventional manifest type string;
 // this is a data convention, not a dependency on the genre layer's types.
@@ -167,6 +168,12 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
                       {{settings.window_width, settings.window_height}, settings.fullscreen},
                       manifest.resolution);
     display.set_window_size(window.getSize());
+
+    // Enable fade-to-black between full-screen scene swaps, and fade the first
+    // scene in from black at startup. (Set after the entry scene is already in
+    // place so the entry itself is instant.)
+    scenes.set_transition_duration(kSceneTransition);
+    scenes.start_fade_in();
 
     sf::Clock clock;
     float accumulator = 0.0f;
