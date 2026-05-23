@@ -319,7 +319,7 @@ scenes:
       rooms: rooms
       start_room: study
       player: julia
-      font: fonts/scumm.ttf
+      font: fonts/DepartureMono-Regular.otf
 ```
 
 ### Manifest fields
@@ -363,7 +363,7 @@ example:
 
 ```text
 backgrounds/study.png
-fonts/scumm.ttf
+fonts/DepartureMono-Regular.otf
 rooms/study.yaml
 anims/hero_body.anim.yaml
 ```

@@ -133,8 +133,9 @@ Format before committing: `clang-format -i` on changed `*.hpp`/`*.cpp` (never
 FetchContent'd. `tests/_vendor/doctest/doctest.h` is the genuine doctest **v2.4.11**
 single header (fetched from the raw CDN) and is preferred when present; delete
 `tests/_vendor/` to fall back to `FetchContent` once git access is available. The
-placeholder title font `games/themummy/data/fonts/scumm.ttf` is a copied DejaVu
-Sans — replace with a real SCUMM-style font.
+sample's UI font is **Departure Mono** (SIL OFL 1.1) at
+`games/themummy/data/fonts/DepartureMono-Regular.otf`, with the license bundled
+alongside as `DepartureMono-OFL.txt`.
 
 ## Conventions that must hold
 
