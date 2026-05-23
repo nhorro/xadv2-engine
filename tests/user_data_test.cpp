@@ -21,3 +21,16 @@ TEST_CASE("user_data_dir resolves and creates a per-app subdirectory") {
     std::filesystem::remove_all(p, ec);
     CHECK_FALSE(ec);
 }
+
+TEST_CASE("user_config_dir resolves and creates a per-app subdirectory") {
+    const auto epoch = std::chrono::steady_clock::now().time_since_epoch().count();
+    const std::string app = "pac_cfg_test_" + std::to_string(epoch);
+
+    const auto p = pac::core::user_config_dir(app);
+    CHECK(p.filename() == app);
+    CHECK(std::filesystem::is_directory(p));
+
+    std::error_code ec;
+    std::filesystem::remove_all(p, ec);
+    CHECK_FALSE(ec);
+}

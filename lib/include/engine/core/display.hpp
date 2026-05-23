@@ -18,9 +18,9 @@ struct Viewport {
 };
 
 /// A requested or applied display mode. `size` is the window client size in
-/// windowed mode; in fullscreen the actual mode is chosen by best_fullscreen_mode
-/// and `size` is informational. The virtual resolution never changes with the
-/// mode — gameplay coordinates are unaffected (R6); only the letterbox does.
+/// windowed mode; in fullscreen the desktop's native mode is used and `size` is
+/// informational. The virtual resolution never changes with the mode — gameplay
+/// coordinates are unaffected (R6); only the letterbox does.
 struct DisplayMode {
     sf::Vector2u size{0, 0};
     bool fullscreen = false;
@@ -43,15 +43,6 @@ sf::Vector2f window_to_virtual(sf::Vector2i px, sf::Vector2u window, sf::Vector2
 /// limit", for headless tests). Always returns at least one entry. No bars result
 /// at these sizes because they share the virtual aspect ratio.
 std::vector<sf::Vector2u> windowed_size_options(sf::Vector2u desktop, sf::Vector2u virtual_res);
-
-/// Pure: pick the fullscreen video mode that best matches `preferred` (the game's
-/// virtual resolution — the "optimal" mode). An exact match wins; otherwise the
-/// smallest mode large enough to contain `preferred`; otherwise the largest mode;
-/// and `desktop` is the fallback when `modes` is empty. The chosen mode is
-/// letterboxed to the virtual resolution, so a non-exact match still looks right.
-sf::VideoMode best_fullscreen_mode(const std::vector<sf::VideoMode>& modes,
-                                   sf::Vector2u preferred,
-                                   sf::VideoMode desktop);
 
 /// Owns the virtual resolution and current window size, and produces the SFML
 /// view + input mapping for the `world → virtual → window` pipeline.

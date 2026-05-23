@@ -29,36 +29,6 @@ std::vector<sf::Vector2u> windowed_size_options(sf::Vector2u desktop, sf::Vector
     return out;
 }
 
-sf::VideoMode best_fullscreen_mode(const std::vector<sf::VideoMode>& modes,
-                                   sf::Vector2u preferred,
-                                   sf::VideoMode desktop) {
-    if (modes.empty()) {
-        return desktop;
-    }
-    // Exact match to the game's resolution is ideal (pixel-perfect fullscreen).
-    for (const sf::VideoMode& m : modes) {
-        if (m.width == preferred.x && m.height == preferred.y) {
-            return m;
-        }
-    }
-    // Otherwise the smallest mode that still contains the virtual resolution, so
-    // the image only ever scales up (and is letterboxed) — never cropped.
-    const sf::VideoMode* best = nullptr;
-    for (const sf::VideoMode& m : modes) {
-        if (m.width >= preferred.x && m.height >= preferred.y) {
-            if (!best || (static_cast<unsigned long long>(m.width) * m.height <
-                          static_cast<unsigned long long>(best->width) * best->height)) {
-                best = &m;
-            }
-        }
-    }
-    if (best) {
-        return *best;
-    }
-    // No mode is large enough: take the largest available (SFML sorts desc).
-    return modes.front();
-}
-
 Viewport letterbox(sf::Vector2u window, sf::Vector2u virtual_res) {
     Viewport vp;
     if (window.x == 0 || window.y == 0 || virtual_res.x == 0 || virtual_res.y == 0) {

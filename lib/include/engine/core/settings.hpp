@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 namespace pac::core {
 
 struct AudioSettings {
@@ -16,10 +18,13 @@ public:
     AudioSettings audio;
     bool fullscreen = false;
     // Windowed client size. Ignored while `fullscreen` is true (the fullscreen
-    // mode is chosen to match the game's virtual resolution), but retained so
-    // toggling fullscreen off restores the player's chosen window size.
+    // mode covers the desktop and is letterboxed to the virtual resolution), but
+    // retained so toggling fullscreen off restores the player's chosen size.
     unsigned window_width = 1280;
     unsigned window_height = 720;
+    // Active UI-strings language id (matches a manifest `languages` entry).
+    // Empty means "unset" — the manifest's default language is used at startup.
+    std::string language;
 
     /// Clamp values into their valid ranges.
     void clamp();

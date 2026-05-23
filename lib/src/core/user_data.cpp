@@ -34,16 +34,48 @@ std::filesystem::path platform_base() {
     return std::filesystem::path(".");
 }
 
-} // namespace
+// Config base mirrors platform_base() but follows the per-platform *config*
+// convention: on Linux that is $XDG_CONFIG_HOME / ~/.config, distinct from the
+// data dir; Windows and macOS reuse the same base they use for data.
+std::filesystem::path platform_config_base() {
+#if defined(_WIN32)
+    if (const char* appdata = env("APPDATA")) {
+        return std::filesystem::path(appdata);
+    }
+#elif defined(__APPLE__)
+    if (const char* home = env("HOME")) {
+        return std::filesystem::path(home) / "Library" / "Application Support";
+    }
+#else // Linux + other Unix
+    if (const char* xdg = env("XDG_CONFIG_HOME")) {
+        return std::filesystem::path(xdg);
+    }
+    if (const char* home = env("HOME")) {
+        return std::filesystem::path(home) / ".config";
+    }
+#endif
+    return std::filesystem::path(".");
+}
 
-std::filesystem::path user_data_dir(const std::string& app_name) {
-    std::filesystem::path p = platform_base() / app_name;
+std::filesystem::path resolve_and_create(const std::filesystem::path& base,
+                                         const std::string& app_name) {
+    std::filesystem::path p = base / app_name;
     std::error_code ec;
     std::filesystem::create_directories(p, ec);
     // If creation failed we still return the resolved path; callers that try
     // to write into it will see the I/O error and report it. Suppressing here
     // keeps the helper side-effect-light.
     return p;
+}
+
+} // namespace
+
+std::filesystem::path user_data_dir(const std::string& app_name) {
+    return resolve_and_create(platform_base(), app_name);
+}
+
+std::filesystem::path user_config_dir(const std::string& app_name) {
+    return resolve_and_create(platform_config_base(), app_name);
 }
 
 } // namespace pac::core
