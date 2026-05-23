@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/core/screen_fade.hpp"
+
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -19,12 +21,23 @@ class Scene;
 /// applied at a safe point (apply_pending) so a scene can request one from inside
 /// its own event/update without being destroyed mid-call. Decoupled from the
 /// factory/context via a Builder so the stack logic is headless-testable.
+///
+/// A full-screen `goto_scene` can fade to black and back: when a transition
+/// duration is set, a queued GOTO fades out, swaps the stack at black, then fades
+/// in. Overlays (PUSH/POP — e.g. the pause/settings menu) and QUIT are never
+/// faded. With the default duration of 0 the swap is instant (and the headless
+/// stack tests see the original behavior).
 class SceneManager {
 public:
     using Builder = std::function<std::unique_ptr<Scene>(const std::string& id)>;
 
     void set_builder(Builder builder);
     void set_settings_scene_id(std::string id);
+
+    /// Seconds for a `goto_scene` fade-out/in. 0 (default) = instant swap.
+    void set_transition_duration(float seconds) { transition_duration_ = seconds; }
+    /// Start a fade-in from black (e.g. at startup), using the transition duration.
+    void start_fade_in() { fade_.fade_in(transition_duration_); }
 
     void goto_scene(const std::string& id); // replace stack; "QUIT" token quits
     void push_scene(const std::string& id); // overlay above the current scene
@@ -36,6 +49,7 @@ public:
     bool running() const { return running_; }
     std::size_t size() const { return stack_.size(); }
     Scene* top() const;
+    bool transitioning() const { return transition_pending_; }
 
     void handle_event(const sf::Event& event);
     void update(float dt);
@@ -49,12 +63,18 @@ private:
     };
 
     std::unique_ptr<Scene> build(const std::string& id);
+    void do_goto(const std::string& id);
 
     Builder builder_;
     std::string settings_scene_id_;
     std::vector<std::unique_ptr<Scene>> stack_;
     std::vector<Op> pending_;
     bool running_ = true;
+
+    ScreenFade fade_;
+    float transition_duration_ = 0.0f;
+    bool transition_pending_ = false; // a GOTO is faded out, waiting for black
+    std::string transition_target_;
 };
 
 } // namespace pac::core

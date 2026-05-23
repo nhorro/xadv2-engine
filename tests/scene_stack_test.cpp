@@ -116,3 +116,50 @@ TEST_CASE("popping the last scene stops the manager") {
     CHECK(m.size() == 0);
     CHECK_FALSE(m.running());
 }
+
+TEST_CASE("a faded goto holds the swap until black, then swaps and fades in") {
+    g_counts.clear();
+    SceneManager m = make_manager();
+    m.goto_scene("a");
+    m.apply_pending(); // entry scene is instant (no duration set yet)
+    REQUIRE(m.size() == 1);
+
+    m.set_transition_duration(1.0f);
+    m.goto_scene("b");
+    m.apply_pending();
+    // Fading out: "b" not built yet, "a" still on top.
+    CHECK(m.transitioning());
+    CHECK(g_counts["b"].entered == 0);
+    CHECK(g_counts["a"].left == 0);
+
+    m.update(0.5f); // halfway through the fade-out
+    m.apply_pending();
+    CHECK(m.transitioning());
+    CHECK(g_counts["b"].entered == 0);
+
+    m.update(0.5f); // reaches black -> swap + fade-in begins
+    m.apply_pending();
+    CHECK_FALSE(m.transitioning());
+    CHECK(g_counts["a"].left == 1);
+    CHECK(g_counts["b"].entered == 1);
+    CHECK(m.size() == 1);
+}
+
+TEST_CASE("overlays (push/pop) are never faded") {
+    g_counts.clear();
+    SceneManager m = make_manager();
+    m.goto_scene("a");
+    m.apply_pending();
+    m.set_transition_duration(1.0f);
+
+    m.push_scene("b"); // overlay (e.g. pause/settings) applies instantly
+    m.apply_pending();
+    CHECK_FALSE(m.transitioning());
+    CHECK(m.size() == 2);
+    CHECK(g_counts["b"].entered == 1);
+
+    m.pop_scene();
+    m.apply_pending();
+    CHECK_FALSE(m.transitioning());
+    CHECK(m.size() == 1);
+}

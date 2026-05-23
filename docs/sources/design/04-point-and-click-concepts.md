@@ -504,6 +504,14 @@ The player's position and orientation at unload are not carried into the next
 room — the resolved entry point fully determines placement. Carrying position
 across rooms is a design-for refinement.
 
+`change_room` fades the view to black, loads the new room **at black**, then fades
+back in (duration from the `fade_duration` scene parameter; 0 disables it). Input
+is ignored during the fade-out, and the load — including the autosave on room
+change — happens at black, so the swap is never seen mid-frame. Restoring a save
+loads without a fade (the surrounding menu/scene transition covers it). This is the
+room-level counterpart to the scene-level fade in
+[02 § Scene transitions](02-architecture-overview.md).
+
 ### Avatar interface
 
 | Method | Purpose |
