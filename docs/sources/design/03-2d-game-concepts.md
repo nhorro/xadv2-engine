@@ -438,6 +438,21 @@ The settings UI is a scene pushed over the current scene. It edits the settings
 service and then pops back to the previous scene. This makes the same settings
 available from the title screen or from an in-game pause menu.
 
+It offers a windowed-resolution selector, a fullscreen toggle, and music volume.
+A display change does not happen in the scene: it is **requested** through the
+`Display` service (`request_mode`), and the main loop recreates the OS window
+between frames and reports the applied size/mode back to `Display`. This keeps the
+window owned by the core harness while a genre-layer scene drives the change
+through `EngineContext`. Because the **virtual resolution never changes** — only
+the letterbox does — switching modes is transparent to the game (R6): gameplay
+coordinates, geometry, and input mapping are unaffected.
+
+The windowed sizes offered are aspect-matching multiples of the virtual resolution
+that fit the desktop, so windowed mode never shows bars. Fullscreen targets the
+**optimal mode for the game**: the video mode that matches the virtual resolution
+when the monitor supports it, otherwise the smallest mode large enough to contain
+it (letterboxed), falling back to the desktop mode.
+
 ## Music and sound
 
 The engine exposes two global audio services.
