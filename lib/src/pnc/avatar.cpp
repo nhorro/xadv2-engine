@@ -2,6 +2,7 @@
 
 #include "engine/pnc/room.hpp"
 
+#include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
 
 #include <initializer_list>
@@ -10,8 +11,8 @@
 
 namespace pac::pnc {
 
-Avatar::Avatar(gfx::AnimatedSprite sprite, float scale)
-    : sprite_(std::move(sprite)), scale_(scale) {
+Avatar::Avatar(gfx::AnimatedSprite sprite, float scale, std::optional<Shadow> shadow)
+    : sprite_(std::move(sprite)), scale_(scale), draw_scale_(scale), shadow_(shadow) {
     sprite_.setScale(scale_, scale_);
     apply_animation();
 }
@@ -72,9 +73,27 @@ void Avatar::update(float dt, const RoomData& room) {
     // stays planted as the scale changes.
     const float s = room.avatar_scale_at(mover_.position().y, scale_);
     sprite_.setScale(s, s);
+    draw_scale_ = s;
+}
+
+void Avatar::draw_shadow(sf::RenderTarget& target) const {
+    if (!shadow_ || shadow_->size.x <= 0.0f || shadow_->size.y <= 0.0f) {
+        return;
+    }
+    const geom::Point feet = mover_.position();
+    // A unit circle (origin centered) scaled to the shadow's footprint gives a
+    // cheap ellipse; it shrinks/grows with the avatar's perspective scale so it
+    // stays planted under the feet at any depth.
+    sf::CircleShape blob(0.5f, 24);
+    blob.setOrigin(0.5f, 0.5f);
+    blob.setFillColor(shadow_->color);
+    blob.setScale(shadow_->size.x * draw_scale_, shadow_->size.y * draw_scale_);
+    blob.setPosition(feet.x, feet.y);
+    target.draw(blob);
 }
 
 void Avatar::draw(sf::RenderTarget& target) const {
+    draw_shadow(target); // beneath the sprite, grounded on the pivot
     target.draw(sprite_);
 }
 

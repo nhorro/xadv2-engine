@@ -150,6 +150,9 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
             if (node["over"]) {
                 region.over = node["over"].as<std::string>();
             }
+            if (node["baseline"]) {
+                region.baseline = node["baseline"].as<float>();
+            }
             if (const YAML::Node states = node["states"]) {
                 for (const auto& sv : states) {
                     region.states[sv.first.as<std::string>()] = sv.second.as<std::string>();

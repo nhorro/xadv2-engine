@@ -34,6 +34,7 @@ add_executable(pac_core_tests
     scripting_test.cpp
     room_test.cpp
     cast_test.cpp
+    closeup_test.cpp
     command_builder_test.cpp
     mover_test.cpp
     inventory_test.cpp
