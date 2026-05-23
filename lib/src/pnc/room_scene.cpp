@@ -545,6 +545,7 @@ void RoomScene::say_at(const std::string& text, sf::Color color, geom::Point wor
     float duration = 0.5f + 0.06f * static_cast<float>(text.size());
     duration = std::clamp(duration, 1.0f, 7.0f);
     speech_.show(text, world, color, duration);
+    spoke_during_command_ = true;
 }
 
 geom::Point RoomScene::virtual_to_world(sf::Vector2f vp) const {
@@ -694,6 +695,7 @@ void RoomScene::execute_ready_command() {
         }
     }
 
+    spoke_during_command_ = false;
     const std::optional<std::string> caption = dispatch(*cmd);
     // If dispatch flipped us into a non-command state (e.g. a `talk_to` handler
     // called `start_dialog`), the dialog's first NPC line is already on screen;
@@ -706,7 +708,14 @@ void RoomScene::execute_ready_command() {
     if (const Character* c = cast_.character(player_char_)) {
         color = c->speech_color;
     }
-    say(caption.value_or("No pasa nada."), color);
+    // A command that performs an action is valid even when its handler returns no
+    // text: if it returned a caption show it; otherwise only fall back to the
+    // "nothing happens" line when the handler did not already speak via talk().
+    if (caption) {
+        say(*caption, color);
+    } else if (!spoke_during_command_) {
+        say("No pasa nada.", color);
+    }
     builder_.finish_execution();
 }
 
