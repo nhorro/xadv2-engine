@@ -139,6 +139,14 @@ private:
     /// did not speak (e.g. via talk()). Shared by the immediate path and the
     /// deferred approach-arrival path.
     void dispatch_and_feedback(const Command& cmd);
+    /// Turn the player to face the room hotspot a command targets, so the avatar
+    /// looks at what it examines / talks to. No-op when the command has no room
+    /// target or the player isn't placed.
+    void face_target(const Command& cmd);
+    /// A representative world point for a hotspot (its area centroid, else the
+    /// bound region/object centre), used to decide which way to face. nullopt when
+    /// the hotspot has no resolvable footprint.
+    [[nodiscard]] std::optional<geom::Point> hotspot_focus(const RoomHotspot& hs) const;
 
     /// Resolved display data for a command operand (room hotspot or inventory
     /// item). `found` is false when the id is unknown; `name` then falls back to
