@@ -1428,6 +1428,15 @@ void RoomScene::api_talk(const std::string& speaker_id, const std::string& text)
     if (const Character* c = cast_.character(speaker_id)) {
         color = c->speech_color;
     }
+    // Anchor at the speaking NPC's avatar when there is one, so `talk("npc", ...)`
+    // appears over that NPC instead of the player. Player speech and speakers
+    // without an in-room avatar fall back to the player position.
+    if (room_) {
+        if (const Avatar* npc = room_->npc(speaker_id)) {
+            say_at(text, color, npc->position());
+            return;
+        }
+    }
     say(text, color);
 }
 
