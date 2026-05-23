@@ -52,8 +52,8 @@ points:
     x: 1150
     y: 740
   stan_spot:
-    x: 893
-    y: 760
+    x: 732
+    y: 333
   near_stan:
     x: 768
     y: 746
@@ -85,7 +85,7 @@ hotspots:
     - look_at
     - pick_up
   window:
-    name: ventana
+    name: window
     area:
     - x: 206
       y: 32
@@ -98,7 +98,7 @@ hotspots:
     affordances:
     - look_at
   shovel:
-    name: pala
+    name: shovel
     area:
     - x: 10
       y: 379
@@ -119,7 +119,7 @@ hotspots:
     affordances:
     - look_at
   oscilloscope:
-    name: osciloscopio antiguo
+    name: oscilloscope
     area:
     - x: 1655
       y: 377
@@ -132,7 +132,7 @@ hotspots:
     affordances:
     - look_at
   skull:
-    name: cráneo
+    name: skull
     area:
     - x: 678
       y: 373
@@ -148,7 +148,33 @@ hotspots:
       y: 327
     affordances:
     - look_at
-    - talk_to
+  door:
+    name: door
+    area:
+    - x: 1259
+      y: 169
+    - x: 1260
+      y: 549
+    - x: 1400
+      y: 549
+    - x: 1405
+      y: 172
+    affordances:
+    - look_at
+    - open
+  mapa:
+    name: map
+    area:
+    - x: 701
+      y: 83
+    - x: 702
+      y: 327
+    - x: 984
+      y: 329
+    - x: 990
+      y: 80
+    affordances:
+    - look_at
 avatars:
 - id: julia
   start: player_start

@@ -4,11 +4,11 @@ local room = {}
 function room.on_load() end
 function room.on_unload() end
 
-room.on_zone_enter = function(zone)
-  if zone == "to_hall" then
-    change_room("hall", "from_study")
-  end
-end
+-- room.on_zone_enter = function(zone)
+--   if zone == "to_hall" then
+--     change_room("hall", "from_study")
+--   end
+-- end
 
 room.hotspots = {
   skull = {
@@ -22,6 +22,10 @@ room.hotspots = {
   door = {
     look_at = function()
       return "La puerta da al pasillo del instituto."
+    end,
+    open = function()
+      -- Note: we should be close
+      change_room("hall", "from_study")
     end,
   },
   notebook = {
