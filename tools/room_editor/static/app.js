@@ -10,6 +10,7 @@ const state = {
   dragTarget: null,
   dragOffset: null,
   imageCache: new Map(),
+  viewScale: 1, // world->canvas scale from the last draw(); used to map clicks back to world
 };
 
 const canvas = document.getElementById('room-canvas');
@@ -61,7 +62,7 @@ async function loadInfo() {
 
 async function loadRoom() {
   state.room = await fetchJson('/api/room');
-  roomInfo.textContent = `${state.room.id || '[unknown]'} · ${state.room.size?.width || 0}x${state.room.size?.height || 0}`;
+  updateRoomInfo();
   state.selectedEntity = null;
   state.selectedPoint = null;
   state.addVertexMode = false;
@@ -100,12 +101,32 @@ function updateEntityOptions() {
   }
 }
 
+// Layer origin uses the engine YAML form `origin: {x, y}` (absent = world origin
+// (0,0)). Reads also tolerate a legacy flat x/y so older files still load.
+function layerOrigin(layer) {
+  return {
+    x: layer.origin?.x ?? layer.x ?? 0,
+    y: layer.origin?.y ?? layer.y ?? 0,
+  };
+}
+
+// Write the engine format; omit `origin` at (0,0) so a full-room background stays
+// clean, and drop any legacy flat fields so a save never carries both.
+function setLayerOrigin(layer, x, y) {
+  delete layer.x;
+  delete layer.y;
+  if (x === 0 && y === 0) {
+    delete layer.origin;
+  } else {
+    layer.origin = { x, y };
+  }
+}
+
 function updateLayersList() {
   const background = state.room.background || {};
   const layers = Array.isArray(background.layers) ? background.layers : [];
   layersList.innerHTML = layers.map((layer) => {
-    const x = layer.x ?? 0;
-    const y = layer.y ?? 0;
+    const { x, y } = layerOrigin(layer);
     return `
       <div class="layer-item" data-layer-id="${layer.id || ''}">
         <strong>${layer.id || 'unnamed'}</strong>
@@ -145,8 +166,9 @@ function updateLayerInfoUI() {
     layerY.value = '';
     return;
   }
-  layerX.value = layer.x ?? 0;
-  layerY.value = layer.y ?? 0;
+  const origin = layerOrigin(layer);
+  layerX.value = origin.x;
+  layerY.value = origin.y;
 }
 
 function applyLayerPosition() {
@@ -156,8 +178,7 @@ function applyLayerPosition() {
   if (!layer) return;
   const nx = parseInt(selectedLayerInputX.value || '0', 10);
   const ny = parseInt(selectedLayerInputY.value || '0', 10);
-  layer.x = nx;
-  layer.y = ny;
+  setLayerOrigin(layer, nx, ny);
   updateLayersList();
   draw();
 }
@@ -167,8 +188,7 @@ function resetLayerPosition() {
   const layers = state.room.background?.layers || [];
   const layer = layers.find((l) => l.id === state.selectedLayerId);
   if (!layer) return;
-  layer.x = 0;
-  layer.y = 0;
+  setLayerOrigin(layer, 0, 0);
   updateLayersList();
   updateLayerInfoUI();
   draw();
@@ -279,12 +299,42 @@ function resizeCanvas() {
   ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 }
 
+// Room world bounds, mirroring the engine's compute_room_bounds: the union of
+// every layer's rect [origin, origin + native image size), anchored at (0,0).
+// Origin is the layer's x/y (also accepts an `origin:{x,y}`), default (0,0). The
+// format has no authored `size`; until images load we fall back so the canvas is
+// still usable (img.onload re-runs draw(), which recomputes once sizes are known).
+function computeRoomSize() {
+  const layers = Array.isArray(state.room?.background?.layers) ? state.room.background.layers : [];
+  let width = 0;
+  let height = 0;
+  for (const layer of layers) {
+    if (!layer.image) continue;
+    const img = state.imageCache.get(layer.image);
+    if (!img || !img.complete || !img.naturalWidth) continue;
+    const { x: ox, y: oy } = layerOrigin(layer);
+    width = Math.max(width, ox + img.naturalWidth);
+    height = Math.max(height, oy + img.naturalHeight);
+  }
+  if (width <= 0 || height <= 0) {
+    return { width: state.room?.size?.width || 800, height: state.room?.size?.height || 600 };
+  }
+  return { width, height };
+}
+
+function updateRoomInfo() {
+  if (!state.room) return;
+  const { width, height } = computeRoomSize();
+  roomInfo.textContent = `${state.room.id || '[unknown]'} · ${width}x${height}`;
+}
+
 function draw() {
   if (!state.room) return;
   resizeCanvas();
-  const width = state.room.size?.width || 800;
-  const height = state.room.size?.height || 600;
+  const { width, height } = computeRoomSize();
+  updateRoomInfo();
   const scale = Math.min(canvas.width / devicePixelRatio / width, canvas.height / devicePixelRatio / height, 1);
+  state.viewScale = scale;
 
   ctx.save();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -338,8 +388,7 @@ function drawLayers() {
       state.imageCache.set(layer.image, img);
     }
     if (img.complete && img.naturalWidth !== 0) {
-      const ox = layer.x ?? 0;
-      const oy = layer.y ?? 0;
+      const { x: ox, y: oy } = layerOrigin(layer);
       ctx.drawImage(img, ox, oy);
     }
   });
@@ -421,8 +470,9 @@ function drawSelectedHandles() {
 
 function getCanvasPosition(evt) {
   const rect = canvas.getBoundingClientRect();
-  const x = (evt.clientX - rect.left) * (canvas.width / rect.width) / devicePixelRatio;
-  const y = (evt.clientY - rect.top) * (canvas.height / rect.height) / devicePixelRatio;
+  const scale = state.viewScale || 1;
+  const x = (evt.clientX - rect.left) * (canvas.width / rect.width) / devicePixelRatio / scale;
+  const y = (evt.clientY - rect.top) * (canvas.height / rect.height) / devicePixelRatio / scale;
   return { x, y };
 }
 
@@ -538,25 +588,22 @@ function handlePointerDown(evt) {
     return;
   }
 
-  // Only start dragging layers when in 'layers' mode
-  // check for layer image hit (top-most first)
-  const layers = (state.room.background?.layers || []).slice().reverse();
-  for (const layer of layers) {
-    if (!layer.image) continue;
-    const img = state.imageCache.get(layer.image);
-    if (!img || !img.complete) continue;
-    const ox = layer.x ?? 0;
-    const oy = layer.y ?? 0;
-    if (pos.x >= ox && pos.x <= ox + img.naturalWidth && pos.y >= oy && pos.y <= oy + img.naturalHeight) {
-      // select the layer always
-      selectLayer(layer.id);
-      // if we're in layers mode, start dragging
-      if (state.mode === 'layers') {
+  // Layer hit-test only in 'layers' mode, so a click over the (room-sized)
+  // background doesn't swallow point/vertex selection in the other modes.
+  if (state.mode === 'layers') {
+    const layers = (state.room.background?.layers || []).slice().reverse();
+    for (const layer of layers) {
+      if (!layer.image) continue;
+      const img = state.imageCache.get(layer.image);
+      if (!img || !img.complete) continue;
+      const { x: ox, y: oy } = layerOrigin(layer);
+      if (pos.x >= ox && pos.x <= ox + img.naturalWidth && pos.y >= oy && pos.y <= oy + img.naturalHeight) {
+        selectLayer(layer.id);
         state.dragTarget = { type: 'layer', id: layer.id };
         state.dragOffset = { x: pos.x - ox, y: pos.y - oy };
+        updateUI();
+        return;
       }
-      updateUI();
-      return;
     }
   }
 
@@ -649,8 +696,9 @@ function handlePointerMove(evt) {
     const layers = state.room.background?.layers || [];
     const layer = layers.find((l) => l.id === state.dragTarget.id);
     if (!layer) return;
-    layer.x = Math.round(pos.x - state.dragOffset.x);
-    layer.y = Math.round(pos.y - state.dragOffset.y);
+    setLayerOrigin(layer,
+                   Math.round(pos.x - state.dragOffset.x),
+                   Math.round(pos.y - state.dragOffset.y));
     updateLayersList();
     updateLayerInfoUI();
     draw();
@@ -982,8 +1030,7 @@ async function snapshotRegion() {
   crop.width = Math.max(1, bbox.w);
   crop.height = Math.max(1, bbox.h);
   const cctx = crop.getContext('2d');
-  const ox = layer.x ?? 0;
-  const oy = layer.y ?? 0;
+  const { x: ox, y: oy } = layerOrigin(layer);
   cctx.drawImage(img, ox - bbox.x, oy - bbox.y);
 
   // convert to blob
