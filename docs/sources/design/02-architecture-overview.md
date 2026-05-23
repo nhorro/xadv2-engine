@@ -461,8 +461,6 @@ Recommended project layout:
 
 ```text
 .
-├── third_party/
-│   └── micropather/         # vendored A* (not packaged)
 ├── lib/
 │   ├── include/engine/      # public engine headers
 │   ├── src/                 # engine implementation
@@ -537,7 +535,7 @@ a controlled place.
 | yaml-cpp | compiled | apt `libyaml-cpp-dev` (`find_package(yaml-cpp)`) | vcpkg `yaml-cpp` |
 | sol2 | header-only | CMake `FetchContent` (pinned) | CMake `FetchContent` (pinned) |
 | doctest (tests) | header-only | CMake `FetchContent` (pinned, with vendored fallback) | CMake `FetchContent` (pinned, with vendored fallback) |
-| micropather (post-MVP) | vendored | `third_party/micropather/` | `third_party/micropather/` |
+| micropather (design-for, unused) | vendored if a grid A* is adopted | `third_party/micropather/` | `third_party/micropather/` |
 
 Acquisition rules:
 
@@ -550,9 +548,10 @@ Acquisition rules:
 - doctest may additionally be **vendored** as a single-header fallback under
   `tests/_vendor/`. The build prefers the vendored copy when present; this is
   useful in offline / air-gapped environments where git is unreachable.
-- micropather is vendored under `third_party/` when grid A* pathfinding lands
-  (post-MVP); it ships as bare source files without a CMake target. The MVP
-  uses a straight-line walk behind the same `find_path` interface (see
+- micropather is a design-for alternative, vendored under `third_party/` only if
+  a coarse-grid A* is ever adopted; it ships as bare source files without a CMake
+  target. The MVP ships a built-in visibility-graph A* behind the `find_path`
+  interface, so micropather is not currently vendored (see
   [pathfinding](03-2d-game-concepts.md)).
 
 ### Keep `RoomScene` as an orchestrator
@@ -687,7 +686,7 @@ version first.
 | Resources | Filesystem backend + cache | Packed archive. |
 | Backgrounds | Layers and z-order | Parallax and shaders. |
 | Sprites | Animated sprites with anchors | Advanced composite sprites. |
-| Movement | Basic walk + room geometry | Full pathfinding refinements. |
+| Movement | Visibility-graph pathfinding around obstacles | Navmesh/funnel smoothing, dynamic obstacles. |
 | Dialogs | Text choices | Voice-over synchronization. |
 | Settings | Minimal display/audio support | Complete settings UI. |
 | Save/load | Explicit state snapshot, three manual slots, one autosave slot | Thumbnails. |

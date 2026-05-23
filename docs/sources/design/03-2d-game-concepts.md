@@ -358,29 +358,50 @@ A room has one walkable polygon and zero or more obstacle polygons.
 
 ### Pathfinding
 
-Pathfinding returns a minimal or near-minimal list of waypoints from a start
-point to a destination while avoiding obstacles.
+Pathfinding returns an ordered list of waypoints from a start point to a
+destination, staying inside the walkable polygon and outside all obstacles.
 
-The engine shall wrap the chosen pathfinding implementation behind its own
-interface:
+The engine wraps the pathfinder behind a stable interface:
 
 ```text
 find_path(start, destination) -> list<Point>
 ```
 
-The room navigation graph is built at room load from the walkable polygon and
-obstacles: the walkable area minus the obstacles is rasterized into a coarse grid
-that A* searches. The chosen A* implementation is **micropather** (a small MIT
-A* library); because it is not packaged for apt or vcpkg and ships as bare
-source files without a CMake target, it is **vendored** in
-`third_party/micropather/` and compiled with the engine. Pathfinding itself is
-post-MVP — the MVP uses a straight-line walk behind the `find_path` interface
-— so micropather is added when grid A* lands. A funnel / navmesh smoother and
-dynamic obstacles are design-for.
+The MVP ships a built-in **visibility-graph** A* pathfinder, computed per query
+with no room-load preprocessing:
 
-The `find_path` interface is the stable seam: a straight-line walk that stops at
-non-walkable space is an acceptable first-slice stand-in behind it, replaceable by
-the grid A* without touching callers.
+- **Nodes** are the start, the destination, and one node inset a few pixels off
+  each walkable concave corner and each obstacle corner, on the free-space side.
+  The inset keeps graph edges clear of the boundary instead of grazing it (where
+  the inside/outside test is ambiguous) and is what lets a path round both
+  obstacles and concave walkable pockets (e.g. an L-shaped room).
+- **Edges** connect any two nodes whose connecting chord stays in free space: its
+  midpoint is walkable and outside every obstacle, and it crosses neither the
+  walkable boundary nor an obstacle edge. Edge cost is euclidean distance.
+- **Search** is A* with the euclidean distance to the destination as an
+  (admissible, consistent) heuristic, so the result is a shortest path through
+  the corner graph.
+
+Contract details that callers rely on:
+
+- The returned list excludes the start and ends at the destination; a clear line
+  of sight short-circuits to a single waypoint.
+- A start or destination outside the walkable area is clamped to the nearest
+  reachable point, so a click just past the boundary still routes.
+- The result is **never empty**: when no corner route exists it falls back to a
+  straight walk truncated at the first boundary/obstacle, yielding one reachable
+  waypoint. An empty or degenerate walkable polygon is treated as ungated and
+  yields `{destination}`.
+- Obstacles are assumed **convex** — the midpoint chord test is exact for them;
+  author a concave obstacle as a union of convex polygons.
+
+The avatar walks the returned waypoints in order, turning at each corner.
+
+A coarse-grid A* (e.g. the **micropather** library, vendorable under
+`third_party/` since it is not packaged for apt or vcpkg), a funnel / navmesh
+smoother, and dynamic obstacles are design-for alternatives behind the same
+`find_path` seam. None are required by the MVP, and micropather is not currently
+vendored.
 
 ## Settings
 

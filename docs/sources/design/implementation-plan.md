@@ -230,7 +230,9 @@ Acceptance:
 - Existing prototype assets and 3-room game concept may be reused as sample
   content.
 - F3 is accepted: manifest-declared `SettingsScene`, engine-owned Continue.
-- MVP pathfinding is straight-line with obstacle/walkability refusal; full
-  micropather grid A* can be a post-MVP issue or late M6 stretch.
+- MVP pathfinding is a built-in visibility-graph A* over walkable/obstacle
+  corners behind the `find_path` seam (the M3 straight-line walk was its first
+  stand-in); a coarse-grid A* (micropather) or navmesh smoother remain
+  design-for alternatives.
 - Inventory icons remain design-for; MVP inventory renders localized item names
   as text.
