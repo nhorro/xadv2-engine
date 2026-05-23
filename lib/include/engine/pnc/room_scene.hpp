@@ -2,6 +2,7 @@
 
 #include "engine/core/game_state.hpp"
 #include "engine/core/scene.hpp"
+#include "engine/core/screen_fade.hpp"
 #include "engine/core/scripting.hpp"   // ScopeId
 #include "engine/core/state_store.hpp" // StateValue
 #include "engine/pnc/avatar.hpp"
@@ -207,6 +208,11 @@ private:
     bool change_pending_ = false;
     std::string pending_room_;
     std::string pending_entry_;
+    // change_room fades the scenery to black, loads at black, then fades back in.
+    // `change_armed_` means a change_room is waiting for the fade-out to finish.
+    pac::core::ScreenFade room_fade_;
+    bool change_armed_ = false;
+    float fade_duration_ = 0.0f;
     // When set, the next room load overrides the default seat with this pose
     // (used by restore() to put the player back at the saved position rather
     // than the room's entry point).

@@ -2,6 +2,10 @@
 
 #include "engine/core/scene.hpp"
 
+#include <SFML/Graphics/RectangleShape.hpp>
+#include <SFML/Graphics/RenderTarget.hpp>
+#include <SFML/Graphics/View.hpp>
+
 #include <utility>
 
 namespace pac::core {
@@ -53,23 +57,47 @@ std::unique_ptr<Scene> SceneManager::build(const std::string& id) {
     return builder_ ? builder_(id) : nullptr;
 }
 
+void SceneManager::do_goto(const std::string& id) {
+    while (!stack_.empty()) {
+        stack_.back()->leave();
+        stack_.pop_back();
+    }
+    std::unique_ptr<Scene> scene = build(id);
+    if (scene) {
+        scene->enter();
+        stack_.push_back(std::move(scene));
+    } else {
+        running_ = false; // cannot continue with no scene
+    }
+}
+
 void SceneManager::apply_pending() {
+    // A faded GOTO holds the swap until the screen is fully black, then swaps and
+    // fades back in. While waiting, leave any further ops queued.
+    if (transition_pending_) {
+        if (!fade_.opaque()) {
+            return;
+        }
+        do_goto(transition_target_);
+        transition_pending_ = false;
+        fade_.fade_in(transition_duration_);
+    }
+
     while (!pending_.empty()) {
         const Op op = pending_.front();
         pending_.erase(pending_.begin());
+
+        // Full-screen scene replacement fades to black first (overlays don't).
+        if (op.kind == OpKind::GOTO && transition_duration_ > 0.0f) {
+            transition_pending_ = true;
+            transition_target_ = op.id;
+            fade_.fade_out(transition_duration_);
+            return; // wait for black; remaining ops stay queued
+        }
+
         switch (op.kind) {
         case OpKind::GOTO: {
-            while (!stack_.empty()) {
-                stack_.back()->leave();
-                stack_.pop_back();
-            }
-            std::unique_ptr<Scene> scene = build(op.id);
-            if (scene) {
-                scene->enter();
-                stack_.push_back(std::move(scene));
-            } else {
-                running_ = false; // cannot continue with no scene
-            }
+            do_goto(op.id);
             break;
         }
         case OpKind::PUSH: {
@@ -104,31 +132,48 @@ void SceneManager::apply_pending() {
 }
 
 void SceneManager::handle_event(const sf::Event& event) {
+    if (transition_pending_) {
+        return; // a scene swap is committed; ignore input until it completes
+    }
     if (Scene* t = top()) {
         t->handle_event(event);
     }
 }
 
 void SceneManager::update(float dt) {
+    fade_.update(dt);
     if (Scene* t = top()) {
         t->update(dt);
     }
 }
 
 void SceneManager::draw(sf::RenderTarget& target) const {
-    if (stack_.empty()) {
-        return;
-    }
-    // Draw from the topmost opaque scene upward; lower scenes it hides are skipped.
-    std::size_t start = 0;
-    for (std::size_t i = stack_.size(); i-- > 0;) {
-        if (stack_[i]->opaque()) {
-            start = i;
-            break;
+    if (!stack_.empty()) {
+        // Draw from the topmost opaque scene upward; hidden lower scenes are skipped.
+        std::size_t start = 0;
+        for (std::size_t i = stack_.size(); i-- > 0;) {
+            if (stack_[i]->opaque()) {
+                start = i;
+                break;
+            }
+        }
+        for (std::size_t i = start; i < stack_.size(); ++i) {
+            stack_[i]->draw(target);
         }
     }
-    for (std::size_t i = start; i < stack_.size(); ++i) {
-        stack_[i]->draw(target);
+
+    // Fade overlay: a black quad over the whole window (bars included), drawn in
+    // window pixels so it is independent of whatever view a scene left set.
+    const sf::Uint8 a = fade_.alpha255();
+    if (a > 0) {
+        const sf::View prev = target.getView();
+        const sf::Vector2f size(static_cast<float>(target.getSize().x),
+                                static_cast<float>(target.getSize().y));
+        target.setView(sf::View(sf::FloatRect(0.0f, 0.0f, size.x, size.y)));
+        sf::RectangleShape quad(size);
+        quad.setFillColor(sf::Color(0, 0, 0, a));
+        target.draw(quad);
+        target.setView(prev);
     }
 }
 
