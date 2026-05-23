@@ -130,7 +130,14 @@ private:
     /// (dev warning) and short-circuits when already near it (issue #22).
     void walk_to_approach(geom::Point approach, const std::string& hotspot_id);
     void execute_ready_command();
+    /// Route a command through the handler chain (inventory -> hotspot ->
+    /// game.lua fallback). Returns the handler's caption string, if any.
     std::optional<std::string> dispatch(const Command& cmd);
+    /// Run a command and produce its feedback: shows a returned caption, or the
+    /// "nothing happens" fallback only when the handler returned no caption and
+    /// did not speak (e.g. via talk()). Shared by the immediate path and the
+    /// deferred approach-arrival path.
+    void dispatch_and_feedback(const Command& cmd);
 
     /// Resolved display data for a command operand (room hotspot or inventory
     /// item). `found` is false when the id is unknown; `name` then falls back to
@@ -216,6 +223,22 @@ private:
     // Previous frame's view state: a transition back into COMMAND resumes camera
     // follow after a scripted override (issue #25).
     ViewState prev_view_state_ = ViewState::COMMAND;
+
+    // A command whose hotspot is marked `requires_approach`: the player must walk
+    // to the approach point before the action fires. While set, the view is
+    // BLOCKED (no new input) and the builder stays in COMMAND_EXECUTING; update()
+    // runs the deferred dispatch once the avatar stops at the point.
+    struct PendingApproach {
+        Command cmd;
+        geom::Point target;
+        std::string hotspot_id;
+    };
+    std::optional<PendingApproach> pending_approach_;
+
+    // Resolved static point for the running dialog's NPC speech (from the dialog
+    // file's `text_anchor`). Empty -> bubble follows the NPC avatar position.
+    std::optional<geom::Point> dialog_text_anchor_;
+
     std::optional<DialogRuntime> dialog_;
     // SaveService now lives in EngineContext (ctx_.saves) so TitleScreen can
     // read it for Continue and stage a restore for us to consume in enter().

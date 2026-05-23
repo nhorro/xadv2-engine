@@ -1,5 +1,7 @@
 #include "engine/pnc/avatar.hpp"
 
+#include "engine/pnc/room.hpp"
+
 #include <SFML/Graphics/RenderTarget.hpp>
 
 #include <initializer_list>
@@ -65,6 +67,11 @@ void Avatar::update(float dt, const RoomData& room) {
     sprite_.update(dt);
     mover_.update(dt, room);
     sync_sprite();
+    // Perspective: scale by walking-pivot y when the room defines it, else keep
+    // the base scale. The sprite scales about its pivot (feet), so the avatar
+    // stays planted as the scale changes.
+    const float s = room.avatar_scale_at(mover_.position().y, scale_);
+    sprite_.setScale(s, s);
 }
 
 void Avatar::draw(sf::RenderTarget& target) const {

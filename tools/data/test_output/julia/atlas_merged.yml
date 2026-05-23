@@ -1,0 +1,605 @@
+image: "merged.png"
+size:
+  width: 1024
+  height: 2048
+sprites:
+  - id: "body_frame_000"
+    rect:
+      x: 109
+      y: 2
+      width: 107
+      height: 236
+    source_rect:
+      x: 121
+      y: 38
+      width: 107
+      height: 236
+    anchors:
+      walking_pivot:
+        x: 54
+        y: 236
+  - id: "body_frame_001"
+    rect:
+      x: 218
+      y: 2
+      width: 107
+      height: 236
+    source_rect:
+      x: 411
+      y: 37
+      width: 107
+      height: 236
+    anchors:
+      walking_pivot:
+        x: 54
+        y: 236
+  - id: "body_frame_002"
+    rect:
+      x: 2
+      y: 2
+      width: 105
+      height: 237
+    source_rect:
+      x: 658
+      y: 37
+      width: 105
+      height: 237
+    anchors:
+      walking_pivot:
+        x: 52
+        y: 237
+  - id: "body_frame_003"
+    rect:
+      x: 327
+      y: 2
+      width: 101
+      height: 236
+    source_rect:
+      x: 919
+      y: 38
+      width: 101
+      height: 236
+    anchors:
+      walking_pivot:
+        x: 50
+        y: 236
+  - id: "body_frame_004"
+    rect:
+      x: 430
+      y: 2
+      width: 99
+      height: 236
+    source_rect:
+      x: 1189
+      y: 37
+      width: 99
+      height: 236
+    anchors:
+      walking_pivot:
+        x: 50
+        y: 236
+  - id: "body_frame_005"
+    rect:
+      x: 752
+      y: 241
+      width: 77
+      height: 225
+    source_rect:
+      x: 121
+      y: 314
+      width: 77
+      height: 225
+    anchors:
+      walking_pivot:
+        x: 38
+        y: 225
+  - id: "body_frame_006"
+    rect:
+      x: 396
+      y: 241
+      width: 119
+      height: 226
+    source_rect:
+      x: 394
+      y: 314
+      width: 119
+      height: 226
+    anchors:
+      walking_pivot:
+        x: 60
+        y: 226
+  - id: "body_frame_007"
+    rect:
+      x: 831
+      y: 241
+      width: 96
+      height: 224
+    source_rect:
+      x: 666
+      y: 314
+      width: 96
+      height: 224
+    anchors:
+      walking_pivot:
+        x: 48
+        y: 224
+  - id: "body_frame_008"
+    rect:
+      x: 2
+      y: 473
+      width: 112
+      height: 223
+    source_rect:
+      x: 924
+      y: 314
+      width: 112
+      height: 223
+    anchors:
+      walking_pivot:
+        x: 56
+        y: 223
+  - id: "body_frame_009"
+    rect:
+      x: 929
+      y: 241
+      width: 75
+      height: 224
+    source_rect:
+      x: 1195
+      y: 314
+      width: 75
+      height: 224
+    anchors:
+      walking_pivot:
+        x: 38
+        y: 224
+  - id: "body_frame_010"
+    rect:
+      x: 106
+      y: 241
+      width: 101
+      height: 229
+    source_rect:
+      x: 121
+      y: 577
+      width: 101
+      height: 229
+    anchors:
+      walking_pivot:
+        x: 50
+        y: 229
+  - id: "body_frame_011"
+    rect:
+      x: 209
+      y: 241
+      width: 104
+      height: 228
+    source_rect:
+      x: 409
+      y: 577
+      width: 104
+      height: 228
+    anchors:
+      walking_pivot:
+        x: 52
+        y: 228
+  - id: "body_frame_012"
+    rect:
+      x: 531
+      y: 2
+      width: 104
+      height: 233
+    source_rect:
+      x: 658
+      y: 575
+      width: 104
+      height: 233
+    anchors:
+      walking_pivot:
+        x: 52
+        y: 233
+  - id: "body_frame_013"
+    rect:
+      x: 637
+      y: 2
+      width: 104
+      height: 232
+    source_rect:
+      x: 916
+      y: 577
+      width: 104
+      height: 232
+    anchors:
+      walking_pivot:
+        x: 52
+        y: 232
+  - id: "body_frame_014"
+    rect:
+      x: 743
+      y: 2
+      width: 101
+      height: 232
+    source_rect:
+      x: 1185
+      y: 577
+      width: 101
+      height: 232
+    anchors:
+      walking_pivot:
+        x: 50
+        y: 232
+  - id: "body_frame_015"
+    rect:
+      x: 315
+      y: 241
+      width: 79
+      height: 228
+    source_rect:
+      x: 131
+      y: 840
+      width: 79
+      height: 228
+    anchors:
+      walking_pivot:
+        x: 40
+        y: 228
+  - id: "body_frame_016"
+    rect:
+      x: 635
+      y: 241
+      width: 115
+      height: 226
+    source_rect:
+      x: 400
+      y: 840
+      width: 115
+      height: 226
+    anchors:
+      walking_pivot:
+        x: 58
+        y: 226
+  - id: "body_frame_017"
+    rect:
+      x: 2
+      y: 241
+      width: 102
+      height: 230
+    source_rect:
+      x: 650
+      y: 840
+      width: 102
+      height: 230
+    anchors:
+      walking_pivot:
+        x: 51
+        y: 230
+  - id: "body_frame_018"
+    rect:
+      x: 517
+      y: 241
+      width: 116
+      height: 226
+    source_rect:
+      x: 904
+      y: 840
+      width: 116
+      height: 226
+    anchors:
+      walking_pivot:
+        x: 58
+        y: 226
+  - id: "body_frame_019"
+    rect:
+      x: 846
+      y: 2
+      width: 82
+      height: 231
+    source_rect:
+      x: 1201
+      y: 840
+      width: 82
+      height: 231
+    anchors:
+      walking_pivot:
+        x: 41
+        y: 231
+  - id: "head_frame_000"
+    rect:
+      x: 634
+      y: 473
+      width: 173
+      height: 201
+    source_rect:
+      x: 85
+      y: 42
+      width: 173
+      height: 201
+    anchors:
+      neck_pivot:
+        x: 86
+        y: 20
+  - id: "head_frame_001"
+    rect:
+      x: 116
+      y: 473
+      width: 172
+      height: 202
+    source_rect:
+      x: 348
+      y: 41
+      width: 172
+      height: 202
+    anchors:
+      neck_pivot:
+        x: 86
+        y: 20
+  - id: "head_frame_002"
+    rect:
+      x: 809
+      y: 473
+      width: 170
+      height: 201
+    source_rect:
+      x: 612
+      y: 42
+      width: 170
+      height: 201
+    anchors:
+      neck_pivot:
+        x: 85
+        y: 20
+  - id: "head_frame_003"
+    rect:
+      x: 290
+      y: 473
+      width: 171
+      height: 202
+    source_rect:
+      x: 875
+      y: 41
+      width: 171
+      height: 202
+    anchors:
+      neck_pivot:
+        x: 86
+        y: 20
+  - id: "head_frame_004"
+    rect:
+      x: 463
+      y: 473
+      width: 169
+      height: 202
+    source_rect:
+      x: 1138
+      y: 41
+      width: 169
+      height: 202
+    anchors:
+      neck_pivot:
+        x: 84
+        y: 20
+  - id: "head_frame_005"
+    rect:
+      x: 2
+      y: 1088
+      width: 195
+      height: 190
+    source_rect:
+      x: 63
+      y: 312
+      width: 195
+      height: 190
+    anchors:
+      neck_pivot:
+        x: 98
+        y: 19
+  - id: "head_frame_006"
+    rect:
+      x: 2
+      y: 894
+      width: 196
+      height: 192
+    source_rect:
+      x: 327
+      y: 311
+      width: 196
+      height: 192
+    anchors:
+      neck_pivot:
+        x: 98
+        y: 19
+  - id: "head_frame_007"
+    rect:
+      x: 200
+      y: 894
+      width: 195
+      height: 192
+    source_rect:
+      x: 590
+      y: 311
+      width: 195
+      height: 192
+    anchors:
+      neck_pivot:
+        x: 98
+        y: 19
+  - id: "head_frame_008"
+    rect:
+      x: 397
+      y: 894
+      width: 196
+      height: 191
+    source_rect:
+      x: 853
+      y: 311
+      width: 196
+      height: 191
+    anchors:
+      neck_pivot:
+        x: 98
+        y: 19
+  - id: "head_frame_009"
+    rect:
+      x: 795
+      y: 894
+      width: 197
+      height: 190
+    source_rect:
+      x: 1116
+      y: 312
+      width: 197
+      height: 190
+    anchors:
+      neck_pivot:
+        x: 98
+        y: 19
+  - id: "head_frame_010"
+    rect:
+      x: 2
+      y: 698
+      width: 170
+      height: 194
+    source_rect:
+      x: 88
+      y: 576
+      width: 170
+      height: 194
+    anchors:
+      neck_pivot:
+        x: 85
+        y: 19
+  - id: "head_frame_011"
+    rect:
+      x: 174
+      y: 698
+      width: 170
+      height: 194
+    source_rect:
+      x: 351
+      y: 576
+      width: 170
+      height: 194
+    anchors:
+      neck_pivot:
+        x: 85
+        y: 19
+  - id: "head_frame_012"
+    rect:
+      x: 346
+      y: 698
+      width: 170
+      height: 194
+    source_rect:
+      x: 614
+      y: 576
+      width: 170
+      height: 194
+    anchors:
+      neck_pivot:
+        x: 85
+        y: 19
+  - id: "head_frame_013"
+    rect:
+      x: 518
+      y: 698
+      width: 169
+      height: 194
+    source_rect:
+      x: 878
+      y: 576
+      width: 169
+      height: 194
+    anchors:
+      neck_pivot:
+        x: 84
+        y: 19
+  - id: "head_frame_014"
+    rect:
+      x: 689
+      y: 698
+      width: 169
+      height: 194
+    source_rect:
+      x: 1141
+      y: 576
+      width: 169
+      height: 194
+    anchors:
+      neck_pivot:
+        x: 84
+        y: 19
+  - id: "head_frame_015"
+    rect:
+      x: 397
+      y: 1088
+      width: 195
+      height: 188
+    source_rect:
+      x: 82
+      y: 845
+      width: 195
+      height: 188
+    anchors:
+      neck_pivot:
+        x: 98
+        y: 19
+  - id: "head_frame_016"
+    rect:
+      x: 594
+      y: 1088
+      width: 198
+      height: 187
+    source_rect:
+      x: 343
+      y: 846
+      width: 198
+      height: 187
+    anchors:
+      neck_pivot:
+        x: 99
+        y: 19
+  - id: "head_frame_017"
+    rect:
+      x: 595
+      y: 894
+      width: 198
+      height: 190
+    source_rect:
+      x: 606
+      y: 844
+      width: 198
+      height: 190
+    anchors:
+      neck_pivot:
+        x: 99
+        y: 19
+  - id: "head_frame_018"
+    rect:
+      x: 794
+      y: 1088
+      width: 196
+      height: 187
+    source_rect:
+      x: 870
+      y: 846
+      width: 196
+      height: 187
+    anchors:
+      neck_pivot:
+        x: 98
+        y: 19
+  - id: "head_frame_019"
+    rect:
+      x: 199
+      y: 1088
+      width: 196
+      height: 188
+    source_rect:
+      x: 1134
+      y: 845
+      width: 196
+      height: 188
+    anchors:
+      neck_pivot:
+        x: 98
+        y: 19

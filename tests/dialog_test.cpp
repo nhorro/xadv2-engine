@@ -34,6 +34,10 @@ struct TestHost {
     std::vector<std::string> player;
     bool speaking = false;
     std::set<std::pair<std::string, int>> consumed;
+    // Records what the dialog asked us to anchor NPC speech to, and the npc
+    // count at the moment it was set (to assert it lands before the first line).
+    std::string anchor;
+    std::size_t anchor_set_before_npc = 0;
 
     DialogHost host() {
         DialogHost h;
@@ -44,6 +48,10 @@ struct TestHost {
         h.speak_player = [this](const std::string& t) {
             player.push_back(t);
             speaking = true;
+        };
+        h.set_text_anchor = [this](const std::string& point_name) {
+            anchor = point_name;
+            anchor_set_before_npc = npc.size();
         };
         h.is_speaking = [this]() { return speaking; };
         h.is_option_consumed = [this](const std::string& node, int idx) {
@@ -621,6 +629,41 @@ TEST_CASE("the run callback is placed in the dialog scope") {
     // would survive in the global scope (silent leak after room change).
     s.cancel_scope(host.scope);
     CHECK(s.active_task_count(host.scope) == 0);
+}
+
+TEST_CASE("dialog text_anchor is read and handed to the host before the first line") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    TestHost host;
+    LoadedTree tree = load_tree(s, log, R"lua(
+        return {
+            text_anchor = "skull_talk_spot",
+            start = "n",
+            n = { npc = "Boo.", options = { { "Bye.", to = END } } },
+        }
+    )lua");
+    DialogRuntime d = build(s, log, host, tree);
+    CHECK(d.text_anchor() == "skull_talk_spot");
+    CHECK(host.anchor == "skull_talk_spot");
+    // The anchor must be set before any NPC line is spoken so even the opening
+    // bubble is placed correctly.
+    CHECK(host.anchor_set_before_npc == 0);
+    REQUIRE(host.npc.size() == 1);
+}
+
+TEST_CASE("dialog without text_anchor leaves it empty and never calls the host") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    TestHost host;
+    LoadedTree tree = load_tree(s, log, R"lua(
+        return {
+            start = "n",
+            n = { npc = "Hi.", options = { { "Bye.", to = END } } },
+        }
+    )lua");
+    DialogRuntime d = build(s, log, host, tree);
+    CHECK(d.text_anchor().empty());
+    CHECK(host.anchor.empty());
 }
 
 TEST_CASE("dialog with a missing node id ends cleanly instead of crashing") {

@@ -54,6 +54,10 @@ struct DialogHost {
     /// Polled after a `run` task finishes. If true, the dialog ends without
     /// following the option's `to`. Used to honor a queued `change_room`.
     std::function<bool()> should_end;
+    /// Called once at start with the dialog's `text_anchor` (a room point name)
+    /// if the dialog declares one, before the first NPC line is spoken, so the
+    /// host can place NPC speech at a fixed point instead of the avatar. Optional.
+    std::function<void(const std::string& point_name)> set_text_anchor;
 };
 
 /// One option visible at the current dialog node, after `when` filtering and
@@ -99,6 +103,9 @@ public:
     [[nodiscard]] State state() const;
     [[nodiscard]] bool ended() const;
     [[nodiscard]] const std::string& current_node() const;
+    /// The dialog's declared `text_anchor` (a room point name), or empty if none.
+    /// Where NPC speech for this dialog should be anchored (resolved by the host).
+    [[nodiscard]] const std::string& text_anchor() const;
 
     /// Visible options at the current node (only meaningful in AWAITING_CHOICE).
     [[nodiscard]] std::vector<DialogOption> options() const;

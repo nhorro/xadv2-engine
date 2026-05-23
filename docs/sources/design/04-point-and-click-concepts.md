@@ -222,7 +222,8 @@ composition, animation, foreground occlusion, and future shader effects.
 | `id` | Stable layer id. |
 | `image` | Logical resource path. |
 | `z` | Draw depth. Larger values are nearer the camera. |
-| `origin` | Optional `{x, y}` room-space top-left. Every layer draws at its **native pixel size**; `origin` is just where its top-left sits (default the world origin `(0,0)`), so layers may differ in size and be placed freely — a foreground occluder, a parallax-ready backdrop, a decal. Layers are **never stretched**. |
+| `origin` | Optional `{x, y}` room-space top-left where the layer is drawn (default the world origin `(0,0)`), so layers may differ in size and be placed freely — a foreground occluder, a parallax-ready backdrop, a decal. |
+| `scale` | Optional uniform render scale about `origin` (default `1.0` = native pixel size). Aspect ratio is **always preserved** — layers are never distorted, only uniformly enlarged/shrunk. Mainly a development aid for sizing furniture-style occluder layers; in production layers should ship at their correct native size (`scale: 1`). |
 | `interactive` | Whether this layer can receive pointer interactions. Usually false. |
 | `visible` | Optional initial visibility (default `true`). Toggled at runtime with `set_layer_visible(id, bool)`; requires the layer to carry an `id`. World bounds are derived from **all** layers, hidden or not, so toggling never reshapes the room. |
 | `shader` | Optional shader resource or shader config. Design-for. |
@@ -253,8 +254,9 @@ changes and save/load.
 #### World bounds
 
 A room has no authored `size`. Its world bounds are **derived** from the layers:
-each layer occupies `[origin, origin + native image size)`, the world is the union
-of those rects anchored at `(0,0)`, and it is floored to the room-view size so the
+each layer occupies `[origin, origin + native image size × scale)`, the world is
+the union of those rects anchored at `(0,0)`, and it is floored to the room-view
+size so the
 world is never smaller than the visible scenery viewport. Only the right/bottom
 extents grow the world; a layer at a negative `origin` spills off the top-left and
 is simply never scrolled to. Anything not covered by a layer shows
@@ -316,7 +318,8 @@ Default `z` values:
 | Background base | Behind all sorted drawables. |
 | Background layer | Explicit layer `z`. |
 | Region | Explicit `z`, or the `z` of the layer named by `over`. |
-| Object | `z: auto` (default): world-Y of the sprite pivot; numeric `z` overrides. |
+| Object | `baseline` (a floor-line world-Y) if set; else `z: auto` (the sprite's bottom edge); else numeric `z`. |
+| Walk-behind | Its `baseline` (a floor-line world-Y); the masked layer patch sorts there. |
 | Avatar | Its walking pivot y coordinate. |
 | Speech | Drawn above scenery, not sorted as world geometry. |
 | SCUMM panel | UI layer, not part of room z-order. |
@@ -324,6 +327,69 @@ Default `z` values:
 An object's `z: auto` and a region's `over: <layer_id>` let scenery be authored
 without hand-tuning depths: the object sorts by its pivot's world-Y like an
 avatar, and the region sorts with the background layer it changes.
+
+### Perspective objects and the object `baseline`
+
+An avatar already sorts by a *baseline*: its depth key is the world-Y of its
+walking pivot (its feet). The same idea makes a perspective object — one an avatar
+can pass in front of and behind, like a cart or a table — order correctly without
+arbitrary depths or splitting the art into "front/back" layers.
+
+Give the object's foreground piece an explicit **`baseline`**: the world-Y of the
+line where it meets the floor. The renderer then sorts that object at `z =
+baseline`, in the *same coordinate space* as avatar feet:
+
+- an avatar whose feet are **above** the line (smaller y → standing behind the
+  object's contact line) is drawn first, so the object occludes it;
+- an avatar whose feet are **below** the line (larger y → standing nearer) is
+  drawn over the object.
+
+So as the player walks past, the engine flips the occlusion at the baseline
+automatically — one number with a physical meaning, not a hand-tuned `z`.
+
+```yaml
+objects:
+  cart_front:                 # the near edge of the cart that should occlude feet
+    image: objects/cart_front.png
+    position: { x: 400, y: 360 }
+    baseline: 640             # floor-contact line; sorts against avatar feet
+```
+
+The rest of the cart (the part always behind the player) is just background — a
+layer or a `z: auto` object — so only the genuinely foreground piece needs a
+`baseline`. `baseline` overrides `z` / `z: auto` for that object.
+
+### Walk-behind areas
+
+`baseline` on an object needs a separate foreground sprite. A **walk-behind area**
+removes even that: it occludes using pixels sampled from an existing background
+**layer**, so the perspective art lives in a single image and is never duplicated.
+
+A walk-behind is a polygon mask over part of a layer plus a `baseline`. The engine
+redraws that patch of the layer on top of the scene at `z = baseline`, sorted
+against avatars exactly like a baseline object — but the pixels come straight from
+the layer, so they always match the background.
+
+```yaml
+background:
+  layers:
+    - { id: bg, image: rooms/hall/bg.png, z: 0 }   # the whole cart is painted here
+walkbehinds:
+  cart:
+    layer: bg                 # sample pixels from this layer
+    area: [ {x: 360, y: 470}, {x: 720, y: 470}, {x: 720, y: 640}, {x: 360, y: 640} ]
+    baseline: 640             # floor-contact line; sorts against avatar feet
+```
+
+The avatar walks behind the cart when its feet are above `baseline` (the patch is
+drawn over it) and in front when below it. Because the patch is the same pixels
+already in `bg`, the double-draw is invisible.
+
+MVP constraint: the `area` polygon must be **convex** (it is filled as a triangle
+fan). Model a concave occluder as several convex walk-behind areas sharing a
+`baseline`. True per-pixel perspective (an avatar standing amid an object at many
+depths at once) remains out of scope; the design-for answer would be a per-sprite
+depth map, also reducible to this baseline model.
 
 ## Perspective scaling
 
@@ -335,11 +401,17 @@ perspective:
   bottom: { y: 700, scale: 1.15 }
 ```
 
-The engine interpolates scale from the avatar's walking pivot y coordinate.
-Characters are usually smaller near the top of the screen and larger near the
-bottom, because the bottom represents the foreground in a front-facing room.
+Each anchor is a floor line: a world-space `y` and the avatar render `scale` at
+that line. The engine linearly interpolates an avatar's scale from its walking
+pivot y between `top` and `bottom`, and clamps to the nearest anchor's scale
+outside the band. This applies to every avatar in the room (player and NPCs), and
+because an avatar scales about its walking pivot (feet), it stays planted as the
+scale changes. Characters are usually smaller near the top of the screen and
+larger near the bottom, because the bottom represents the foreground in a
+front-facing room.
 
-If `perspective` is omitted, the room uses scale `1.0` everywhere.
+If `perspective` is omitted, each avatar keeps its base scale (the value it was
+created with, `1.0` by default).
 
 ## Camera
 
@@ -410,7 +482,8 @@ A hotspot has:
 | `name` | Localized display noun shown in the command bar. |
 | `area` | Optional explicit hit-test polygon. |
 | `bind` | Optional binding to a visual object or region. |
-| `approach` | Point the player walks to before executing a command. |
+| `approach` | Point the player walks toward when a command targets this hotspot. |
+| `requires_approach` | Optional bool (default `false`). When `true`, the command does not run until the player reaches `approach`; until then input is blocked. When `false`, the player still walks toward `approach`, but the command fires immediately — allowing interactions from a distance. |
 | `affordances` | Verbs that the UI may offer for this hotspot. |
 | `default_verb` | Optional verb used on a plain click. Must be `look_at` or in `affordances`. Defaults to `look_at`. |
 
@@ -840,6 +913,7 @@ return {
 | Field | Applies to | Meaning |
 |-------|------------|---------|
 | `start` | Dialog | Entry node id. |
+| `text_anchor` | Dialog | Optional room point name. NPC speech for this dialog is drawn at that fixed point instead of following the NPC avatar. Useful for off-screen or static speakers (e.g. a talking skull). |
 | `on_enter` | Dialog | Optional setup callback. |
 | `on_exit` | Dialog | Optional cleanup callback. |
 | `npc` | Node | NPC line or list of lines. |

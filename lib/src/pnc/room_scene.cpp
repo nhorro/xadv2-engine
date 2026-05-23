@@ -36,6 +36,9 @@ namespace {
 constexpr float kScenerFraction = 0.85f;
 constexpr float kAvatarScale = 1.1f;
 constexpr float kSpeechRise = 250.0f;
+// Distance (world px) within which the avatar is considered "at" an approach
+// point: closer than this we don't bother walking / waiting.
+constexpr float kApproachReached = 8.0f;
 constexpr float kRoomFadeDefault = 0.3f; // change_room fade-out/in seconds
 
 /// Whether `verb` is offered for an operand with these affordances. `look_at` is
@@ -535,6 +538,10 @@ void RoomScene::unload_room() {
         run_task_ = 0;
     }
     dialog_.reset();
+    dialog_text_anchor_.reset();
+    // A command deferred for approach belongs to the outgoing room; drop it so it
+    // can't fire into the new room (e.g. a zone hook changed rooms mid-walk).
+    pending_approach_.reset();
     view_state_ = ViewState::COMMAND;
 }
 
@@ -693,22 +700,46 @@ void RoomScene::execute_ready_command() {
     if (!cmd) {
         return;
     }
-    // Walk to the room operand's approach point, if any (caption shows immediately).
+    // Resolve the room operand the command targets (if any) and its approach point.
     const ObjectRef* room_target = nullptr;
     if (cmd->param2 && cmd->param2->kind == ObjectKind::ROOM_OBJECT) {
         room_target = &*cmd->param2;
     } else if (cmd->param1.kind == ObjectKind::ROOM_OBJECT) {
         room_target = &cmd->param1;
     }
-    if (room_target && room_ && player_) {
+    const RoomHotspot* hs = nullptr;
+    if (room_target && room_) {
         const auto it = room_->data().hotspots.find(room_target->id);
-        if (it != room_->data().hotspots.end() && it->second.approach) {
-            walk_to_approach(*it->second.approach, room_target->id);
+        if (it != room_->data().hotspots.end()) {
+            hs = &it->second;
         }
     }
 
+    if (hs && hs->approach && player_ && room_) {
+        // Always start walking toward the approach point. The (clamped-to-walkable)
+        // distance then decides whether we act now or wait to arrive.
+        const RoomData& d = room_->data();
+        geom::Point ap = *hs->approach;
+        if (!d.walkable.empty() && !d.is_walkable(ap)) {
+            ap = geom::closest_point_in_polygon(ap, d.walkable);
+        }
+        const bool far = geom::distance(player_->position(), ap) > kApproachReached;
+        walk_to_approach(*hs->approach, room_target->id);
+        if (hs->requires_approach && far) {
+            // Defer: block input and run the command on arrival (update() polls
+            // for the avatar to stop). The builder stays in COMMAND_EXECUTING.
+            pending_approach_ = PendingApproach{*cmd, ap, room_target->id};
+            view_state_ = ViewState::BLOCKED;
+            return;
+        }
+    }
+
+    dispatch_and_feedback(*cmd);
+}
+
+void RoomScene::dispatch_and_feedback(const Command& cmd) {
     spoke_during_command_ = false;
-    const std::optional<std::string> caption = dispatch(*cmd);
+    const std::optional<std::string> caption = dispatch(cmd);
     // If dispatch flipped us into a non-command state (e.g. a `talk_to` handler
     // called `start_dialog`), the dialog's first NPC line is already on screen;
     // suppress the fallback caption that would otherwise overwrite it.
@@ -721,8 +752,8 @@ void RoomScene::execute_ready_command() {
         color = c->speech_color;
     }
     // A command that performs an action is valid even when its handler returns no
-    // text: if it returned a caption show it; otherwise only fall back to the
-    // "nothing happens" line when the handler did not already speak via talk().
+    // text: show a returned caption; otherwise fall back to "nothing happens" only
+    // when the handler did not already speak via talk().
     if (caption) {
         say(*caption, color);
     } else if (!spoke_during_command_) {
@@ -773,7 +804,6 @@ void RoomScene::walk_to_approach(geom::Point approach, const std::string& hotspo
             "': approach point outside walkable area; routing to nearest reachable point");
     }
     // Near-enough short-circuit: don't shuffle in place when already there.
-    constexpr float kApproachReached = 8.0f;
     if (geom::distance(player_->position(), ap) <= kApproachReached) {
         return;
     }
@@ -935,6 +965,15 @@ void RoomScene::update(float dt) {
             }
         }
         check_zones();
+    }
+    // A command deferred until the player reaches a `requires_approach` hotspot's
+    // approach point fires once the avatar stops (path complete, or as close as
+    // pathing allowed). We unblock first so dispatch runs in the COMMAND view.
+    if (pending_approach_ && player_ && !player_->moving()) {
+        const Command cmd = pending_approach_->cmd;
+        pending_approach_.reset();
+        view_state_ = ViewState::COMMAND;
+        dispatch_and_feedback(cmd);
     }
     // Returning to COMMAND (e.g. a cutscene unblocking) resumes camera follow
     // after a scripted override (issue #25).
@@ -1136,14 +1175,27 @@ void RoomScene::api_start_dialog(const std::string& npc_id) {
         ctx_.log.error("start_dialog('" + npc_id + "'): a dialog is already running");
         return;
     }
+    dialog_text_anchor_.reset();
     DialogHost host;
+    host.set_text_anchor = [this](const std::string& point_name) {
+        if (room_) {
+            if (const geom::Point* p = room_->data().point(point_name)) {
+                dialog_text_anchor_ = *p;
+                return;
+            }
+        }
+        ctx_.log.warn("dialog text_anchor '" + point_name + "' is not a known room point");
+    };
     host.speak_npc = [this, npc_id](const std::string& text) {
         sf::Color color(230, 230, 230);
         if (const Character* c = cast_.character(npc_id)) {
             color = c->speech_color;
         }
+        // A declared text_anchor wins; otherwise the bubble follows the NPC avatar.
         geom::Point pos{640.0f, 360.0f};
-        if (room_) {
+        if (dialog_text_anchor_) {
+            pos = *dialog_text_anchor_;
+        } else if (room_) {
             if (const Avatar* a = room_->npc(npc_id)) {
                 pos = a->position();
             }
