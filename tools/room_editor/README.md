@@ -8,6 +8,11 @@ A minimal Python-based room YAML editor for the xadv2-engine room format.
 - Edit background layers and geometry sections only.
 - Preserve other room fields intact.
 - Visual GUI editor for room geometry and points.
+- Move, resize, and depth-sort background layers (handy for placing furniture
+  occluders). In **layers** mode, select a layer then drag its corner handles to
+  resize — scaling is aspect-locked and keeps the layer's base (bottom-centre)
+  fixed, so furniture stays grounded. The Background panel exposes the numeric
+  `scale`/`z` and a "z = base" button that sorts the layer by its floor line.
 - Asset validation against a base asset directory.
 
 ## Requirements
@@ -21,6 +26,14 @@ Start the web-based room editor and open it in a browser:
 
 ```bash
 PYTHONPATH=tools python3 -m tools.room_editor serve --room games/themummy/data/rooms/hall.yaml
+```
+
+`--room` is optional. Omit it and point `--base-path` at the rooms folder to start
+without a file loaded, then choose one from the **Room file** dropdown (top-left)
+and click **Open** — no restart needed to switch between rooms in that folder:
+
+```bash
+PYTHONPATH=tools python3 -m tools.room_editor serve --base-path games/themummy/data/rooms
 ```
 
 (Optional) override the asset base path:

@@ -222,7 +222,8 @@ composition, animation, foreground occlusion, and future shader effects.
 | `id` | Stable layer id. |
 | `image` | Logical resource path. |
 | `z` | Draw depth. Larger values are nearer the camera. |
-| `origin` | Optional `{x, y}` room-space top-left. Every layer draws at its **native pixel size**; `origin` is just where its top-left sits (default the world origin `(0,0)`), so layers may differ in size and be placed freely — a foreground occluder, a parallax-ready backdrop, a decal. Layers are **never stretched**. |
+| `origin` | Optional `{x, y}` room-space top-left where the layer is drawn (default the world origin `(0,0)`), so layers may differ in size and be placed freely — a foreground occluder, a parallax-ready backdrop, a decal. |
+| `scale` | Optional uniform render scale about `origin` (default `1.0` = native pixel size). Aspect ratio is **always preserved** — layers are never distorted, only uniformly enlarged/shrunk. Mainly a development aid for sizing furniture-style occluder layers; in production layers should ship at their correct native size (`scale: 1`). |
 | `interactive` | Whether this layer can receive pointer interactions. Usually false. |
 | `shader` | Optional shader resource or shader config. Design-for. |
 | `animation` | Optional animation description. Design-for. |
@@ -243,8 +244,9 @@ transparent layers, exported foregrounds, and authoring workflows.
 #### World bounds
 
 A room has no authored `size`. Its world bounds are **derived** from the layers:
-each layer occupies `[origin, origin + native image size)`, the world is the union
-of those rects anchored at `(0,0)`, and it is floored to the room-view size so the
+each layer occupies `[origin, origin + native image size × scale)`, the world is
+the union of those rects anchored at `(0,0)`, and it is floored to the room-view
+size so the
 world is never smaller than the visible scenery viewport. Only the right/bottom
 extents grow the world; a layer at a negative `origin` spills off the top-left and
 is simply never scrolled to. Anything not covered by a layer shows
@@ -325,11 +327,17 @@ perspective:
   bottom: { y: 700, scale: 1.15 }
 ```
 
-The engine interpolates scale from the avatar's walking pivot y coordinate.
-Characters are usually smaller near the top of the screen and larger near the
-bottom, because the bottom represents the foreground in a front-facing room.
+Each anchor is a floor line: a world-space `y` and the avatar render `scale` at
+that line. The engine linearly interpolates an avatar's scale from its walking
+pivot y between `top` and `bottom`, and clamps to the nearest anchor's scale
+outside the band. This applies to every avatar in the room (player and NPCs), and
+because an avatar scales about its walking pivot (feet), it stays planted as the
+scale changes. Characters are usually smaller near the top of the screen and
+larger near the bottom, because the bottom represents the foreground in a
+front-facing room.
 
-If `perspective` is omitted, the room uses scale `1.0` everywhere.
+If `perspective` is omitted, each avatar keeps its base scale (the value it was
+created with, `1.0` by default).
 
 ## Camera
 

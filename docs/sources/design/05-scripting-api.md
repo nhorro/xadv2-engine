@@ -521,8 +521,3 @@ The engine shall provide templates for:
 
 Templates encode the expected behavior and reduce the amount of boilerplate
 required to start a new game.
-
-## Migration notes
-
-Prototype divergences and refactoring tasks are tracked separately in
-[migration notes](migration-notes.md). They are not part of the target design.

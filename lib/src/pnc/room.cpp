@@ -4,6 +4,8 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace pac::pnc {
@@ -15,6 +17,19 @@ const geom::Point* RoomData::point(const std::string& name) const {
 
 bool RoomData::is_walkable(geom::Point p) const {
     return geom::point_in_polygon(p, walkable) && !geom::point_in_any_polygon(p, obstacles);
+}
+
+float RoomData::avatar_scale_at(float y, float fallback) const {
+    if (!perspective) {
+        return fallback;
+    }
+    const Perspective& p = *perspective;
+    const float span = p.bottom_y - p.top_y;
+    if (std::abs(span) < 1e-3f) {
+        return p.bottom_scale;
+    }
+    const float t = std::clamp((y - p.top_y) / span, 0.0f, 1.0f);
+    return p.top_scale + t * (p.bottom_scale - p.top_scale);
 }
 
 namespace {
@@ -69,6 +84,11 @@ RoomData parse_room(const std::string& yaml_text) {
             layer.interactive = ln["interactive"] ? ln["interactive"].as<bool>() : false;
             if (const YAML::Node origin = ln["origin"]) {
                 layer.origin = parse_point(origin);
+            }
+            layer.scale = ln["scale"] ? ln["scale"].as<float>() : 1.0f;
+            if (!(layer.scale > 0.0f)) {
+                throw DataError("room '" + room.id + "': layer '" + layer.id +
+                                "' has a non-positive scale (must be > 0)");
             }
             room.layers.push_back(std::move(layer));
         }
@@ -187,6 +207,23 @@ RoomData parse_room(const std::string& yaml_text) {
         placement.orientation = av["orientation"] ? av["orientation"].as<std::string>() : "down";
         placement.player = av["player"] ? av["player"].as<bool>() : false;
         room.avatars.push_back(std::move(placement));
+    }
+
+    if (const YAML::Node persp = root["perspective"]) {
+        const YAML::Node top = persp["top"];
+        const YAML::Node bottom = persp["bottom"];
+        if (!top || !bottom) {
+            throw DataError("room '" + room.id + "': perspective needs 'top' and 'bottom'");
+        }
+        Perspective p;
+        p.top_y = top["y"].as<float>();
+        p.top_scale = top["scale"].as<float>();
+        p.bottom_y = bottom["y"].as<float>();
+        p.bottom_scale = bottom["scale"].as<float>();
+        if (!(p.top_scale > 0.0f) || !(p.bottom_scale > 0.0f)) {
+            throw DataError("room '" + room.id + "': perspective scales must be > 0");
+        }
+        room.perspective = p;
     }
 
     return room;

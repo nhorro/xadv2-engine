@@ -43,16 +43,21 @@ void RoomRenderer::draw(sf::RenderTarget& target,
     using DrawFn = std::function<void(sf::RenderTarget&)>;
     std::vector<std::pair<float, DrawFn>> items;
 
-    // Background layers draw at their native pixel size with the top-left at the
-    // layer's `origin` (default (0,0)), so layers may differ in size and be placed
-    // freely. The room's world bounds are the union of these rects.
+    // Background layers draw at native pixel size × the layer's uniform `scale`
+    // (aspect-preserving) with the top-left at the layer's `origin` (default
+    // (0,0)), so layers may differ in size and be placed freely. The room's world
+    // bounds are the union of these rects.
     for (const BackgroundLayer& layer : data.layers) {
         const std::string image = pac::core::logical_join(room_dir, layer.image);
         const geom::Point origin = layer.origin;
-        items.emplace_back(layer.z, [&resources, &log, image, origin](sf::RenderTarget& t) {
+        const float scale = layer.scale;
+        items.emplace_back(layer.z, [&resources, &log, image, origin, scale](sf::RenderTarget& t) {
             try {
                 sf::Sprite sprite(resources.texture(image));
                 sprite.setPosition(origin.x, origin.y);
+                if (scale != 1.0f) {
+                    sprite.setScale(scale, scale);
+                }
                 t.draw(sprite);
             } catch (const std::exception& e) {
                 log.error(e.what());
@@ -158,8 +163,8 @@ sf::Vector2u compute_room_bounds(const RoomData& data,
             const sf::Texture& tex =
                 resources.texture(pac::core::logical_join(room_dir, layer.image));
             const sf::Vector2u ts = tex.getSize();
-            right = std::max(right, layer.origin.x + static_cast<float>(ts.x));
-            bottom = std::max(bottom, layer.origin.y + static_cast<float>(ts.y));
+            right = std::max(right, layer.origin.x + static_cast<float>(ts.x) * layer.scale);
+            bottom = std::max(bottom, layer.origin.y + static_cast<float>(ts.y) * layer.scale);
         } catch (const std::exception& e) {
             log.error(e.what());
         }

@@ -129,7 +129,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `version` | opt | int | 1 | Data-format version. |
 | `id` | req | string | — | Room id (matches the file name). |
 | `background` | req | `{color?, layers}` | — | See below. |
-| `perspective` | opt | `{top: {y, scale}, bottom: {y, scale}}` | scale 1.0 | Avatar scale interpolation by pivot y. |
+| `perspective` | opt | `{top: {y, scale}, bottom: {y, scale}}` | base scale | Avatar render scale interpolated by walking-pivot y, clamped outside `[top.y, bottom.y]`. Omitted ⇒ each avatar keeps its base scale. See [04 § Perspective scaling](04-point-and-click-concepts.md). |
 | `walkable` | req | polygon | — | Navigable area. |
 | `obstacles` | opt | `[polygon]` | `[]` | Non-walkable polygons inside `walkable`. |
 | `points` | opt | map id → `{x, y}` | — | Named coordinates (starts, approach, camera targets). |
@@ -146,7 +146,8 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `id` | req | string | — | Layer id. |
 | `image` | req | path | — | Layer image. |
 | `z` | req | number | — | Draw depth; larger is nearer the camera. |
-| `origin` | opt | `{x, y}` | `{0, 0}` | Room-space top-left of the layer's **native-size** image (layers are never stretched, so they may differ in size and be placed freely). The room's world bounds are the union of all layer rects, floored to the room view; see [04 § World bounds](04-point-and-click-concepts.md). |
+| `origin` | opt | `{x, y}` | `{0, 0}` | Room-space top-left of the layer image (layers may differ in size and be placed freely). The room's world bounds are the union of all layer rects, floored to the room view; see [04 § World bounds](04-point-and-click-concepts.md). |
+| `scale` | opt | number | `1.0` | Uniform render scale about `origin`, **aspect always preserved** (never distorted). A development aid for sizing furniture-style occluders; production layers ship native (`1.0`). The room editor resizes about the layer's base (bottom-centre) and can set `z` to the scaled base line. |
 | `interactive` | opt | bool | `false` | Whether the layer receives pointer interaction. |
 | `shader` | opt | shader ref | — | Design-for. |
 | `animation` | opt | anim ref | — | Design-for. |
