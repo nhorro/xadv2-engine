@@ -69,7 +69,8 @@ The YAML file defines what exists. The Lua file defines what happens.
 ```yaml
 version: 1
 id: study
-size: { width: 1600, height: 720 }
+# No explicit size: the room's world bounds are derived from the background
+# layers (the union of their rects, floored to the room view). See below.
 
 background:
   color: { r: 0, g: 0, b: 0, a: 255 }
@@ -87,6 +88,7 @@ background:
     - id: table_front
       image: backgrounds/study/table_front.png
       z: 640
+      origin: { x: 980, y: 300 }   # foreground occluder, placed at native size
       interactive: false
 
 perspective:
@@ -220,7 +222,7 @@ composition, animation, foreground occlusion, and future shader effects.
 | `id` | Stable layer id. |
 | `image` | Logical resource path. |
 | `z` | Draw depth. Larger values are nearer the camera. |
-| `origin` | Optional `{x, y}` room-space top-left. When set, the layer draws at its **native pixel size** at this origin, so layers may differ in size and be placed freely (e.g. a foreground occluder). When omitted, the layer is **stretched to fill the room** — the default for a single full-room background. |
+| `origin` | Optional `{x, y}` room-space top-left. Every layer draws at its **native pixel size**; `origin` is just where its top-left sits (default the world origin `(0,0)`), so layers may differ in size and be placed freely — a foreground occluder, a parallax-ready backdrop, a decal. Layers are **never stretched**. |
 | `interactive` | Whether this layer can receive pointer interactions. Usually false. |
 | `shader` | Optional shader resource or shader config. Design-for. |
 | `animation` | Optional animation description. Design-for. |
@@ -237,6 +239,21 @@ Use cases:
 
 A layer may use a solid `background.color` behind all images. This is useful for
 transparent layers, exported foregrounds, and authoring workflows.
+
+#### World bounds
+
+A room has no authored `size`. Its world bounds are **derived** from the layers:
+each layer occupies `[origin, origin + native image size)`, the world is the union
+of those rects anchored at `(0,0)`, and it is floored to the room-view size so the
+world is never smaller than the visible scenery viewport. Only the right/bottom
+extents grow the world; a layer at a negative `origin` spills off the top-left and
+is simply never scrolled to. Anything not covered by a layer shows
+`background.color` — leaving a gap is an authoring mistake, not a format error.
+This keeps the world coordinate system a consequence of the art rather than a
+number to keep in sync with it. Because the derivation needs image pixel
+dimensions, it happens render-side when textures load (`compute_room_bounds`); the
+headless room loader and geometry/camera logic never depend on it (the `Camera`
+takes explicit bounds).
 
 ## Room view screen layout
 
