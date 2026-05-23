@@ -7,6 +7,7 @@
 #include "engine/core/scene_params.hpp"
 #include "engine/core/settings.hpp"
 #include "engine/core/strings.hpp"
+#include "engine/core/text_encoding.hpp"
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
@@ -67,7 +68,7 @@ void SettingsScene::draw(sf::RenderTarget& target) const {
     const int volume_pct = static_cast<int>(ctx_.settings.audio.music_volume * 100.0f + 0.5f);
 
     auto centered = [&](const std::string& s, float y, unsigned size, sf::Color color) {
-        sf::Text text(s, *font_, size);
+        sf::Text text(pac::core::utf8(s), *font_, size);
         text.setFillColor(color);
         const sf::FloatRect b = text.getLocalBounds();
         text.setPosition(cx - b.width / 2.0f - b.left, y);

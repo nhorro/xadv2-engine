@@ -11,8 +11,8 @@ scripted in Lua and configured with YAML. It is a remake of
 material only (reusable assets, behavior ideas, comparison targets) — never
 architecture to preserve.
 
-**Status: M0–M4 merged to `develop`; M5a (dialog + NPC slice) in progress on
-`feature/m5a-dialog-npc`.**
+**Status: M0–M5 merged to `develop`; all M0–M5 milestone issues are closed. M6
+(hardening) is next.**
 - **M0 Core Shell**: CMake build, `pac_engine` (`pac::core` harness + `pac::pnc`),
   `pac_themummy` sample, headless doctest+CTest.
 - **M1 Generic 2D**: `pac::geom`, `ResourceCache` + `AudioServices`, and `pac::gfx`
@@ -34,14 +34,17 @@ architecture to preserve.
   + inventory Lua handlers, `Command` model + `CommandBuilder` state machine +
   dispatcher, and the basic SCUMM panel (verb grid + command bar + text inventory).
   Verified through the 3-room sample (`study`/`hall`/`exterior`).
-- **M5a (in progress)**: NPC avatars (room-scoped, owned by `RoomRuntime`), the
-  `DialogRuntime` (Lua tree, sol-pimpl, headless tests), the `RoomScene::ViewState`
-  machine (`Command`/`Dialog`/`Blocked`), `ScummPanel::draw_options`+`click_option`
-  for dialog mode, and the `start_dialog` Lua API. Sample dialog with Stan in
-  `themummy/study`.
+- **M5 Dialog, NPCs, save/load**: room-scoped NPC avatars (owned by `RoomRuntime`),
+  the `DialogRuntime` (Lua tree, sol-pimpl, headless tests), the
+  `RoomScene::ViewState` machine (`Command`/`Dialog`/`Blocked`/`Menu`), dialog
+  options in the SCUMM panel + the `start_dialog` Lua API, full `GameState` +
+  `SaveService` (3 manual slots + 1 autosave), and Title/Settings/Continue plus the
+  in-game pause/save/load menu.
 
-After M5a the remaining MVP work is: full `GameState` + save service (3 manual
-slots + 1 autosave) and Title/Settings/Continue wiring. See the GitHub milestones.
+All M0–M5 milestone issues are closed. The remaining work lives in **M6
+(hardening)**: loader validation diagnostics, debug overlays, dev actions,
+authoring templates, a packaging smoke path, and the manual MVP regression
+checklist (issues #36–#41). See the GitHub milestones.
 
 ## The design docs are the source of truth
 
