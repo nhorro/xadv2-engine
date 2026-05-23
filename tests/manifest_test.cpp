@@ -1,8 +1,12 @@
 #include "engine/core/manifest.hpp"
+#include "loader_diag.hpp"
 
 #include <doctest/doctest.h>
 
+#include <string>
+
 using namespace pac::core;
+using pac::test::error_code;
 
 namespace {
 
@@ -111,4 +115,16 @@ TEST_CASE("manifest id is required and validated") {
     CHECK_THROWS_AS(parse_manifest(with_id("foo bar")), ManifestError);
     // Valid: lowercase, digits, underscore, dash.
     CHECK_NOTHROW(parse_manifest(with_id("the_mummy-2")));
+}
+
+TEST_CASE("manifest diagnostics carry stable error codes") {
+    const char* dup = "id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                      "resources: { src: . }\nstrings: s\nentry: a\n"
+                      "scenes: [{id: a, type: B}, {id: a, type: C}]\n";
+    CHECK(error_code([&] { parse_manifest(dup); }) == "manifest.duplicate-scene-id");
+
+    const char* bad_entry = "id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                            "resources: { src: . }\nstrings: s\nentry: missing\n"
+                            "scenes: [{id: a, type: B}]\n";
+    CHECK(error_code([&] { parse_manifest(bad_entry); }) == "manifest.entry-not-in-scenes");
 }

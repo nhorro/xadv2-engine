@@ -1,5 +1,7 @@
 #include "engine/core/manifest.hpp"
 
+#include "core/load_error_yaml.hpp"
+
 #include <yaml-cpp/yaml.h>
 
 #include <filesystem>
@@ -20,32 +22,38 @@ const SceneDesc* Manifest::find_scene(const std::string& id) const {
 
 namespace {
 
-[[noreturn]] void fail(const std::string& msg) {
-    throw ManifestError("manifest: " + msg);
+[[noreturn]] void manifest_fail(const std::string& code,
+                                const std::string& msg,
+                                const YAML::Node& at = YAML::Node()) {
+    fail_at<ManifestError>("manifest-loader", code, msg, at);
 }
 
 bool is_valid_id_char(char c) {
     return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
 }
 
-void validate_id(const std::string& id) {
+void validate_id(const std::string& id, const YAML::Node& node) {
     if (id.empty()) {
-        fail("'id' is required");
+        manifest_fail("manifest.id-missing", "'id' is required", node);
     }
     for (const char c : id) {
         if (!is_valid_id_char(c)) {
-            fail("'id' must match [a-z0-9_-]+ (got '" + id + "')");
+            manifest_fail("manifest.id-invalid",
+                          "'id' must match [a-z0-9_-]+ (got '" + id + "')",
+                          node);
         }
     }
 }
 
 unsigned require_dimension(const YAML::Node& node, const char* what) {
     if (!node) {
-        fail(std::string(what) + " is required");
+        manifest_fail("manifest.dimension-missing", std::string(what) + " is required", node);
     }
     const auto value = node.as<long long>();
     if (value <= 0) {
-        fail(std::string(what) + " must be a positive integer");
+        manifest_fail("manifest.dimension-invalid",
+                      std::string(what) + " must be a positive integer",
+                      node);
     }
     return static_cast<unsigned>(value);
 }
@@ -57,31 +65,31 @@ Manifest parse_manifest(const std::string& yaml_text) {
     try {
         root = YAML::Load(yaml_text);
     } catch (const YAML::Exception& e) {
-        fail(std::string("invalid YAML: ") + e.what());
+        manifest_fail("manifest.invalid-yaml", std::string("invalid YAML: ") + e.what());
     }
     if (!root || !root.IsMap()) {
-        fail("root must be a mapping");
+        manifest_fail("manifest.root-not-map", "root must be a mapping");
     }
 
     Manifest m;
     m.version = root["version"] ? root["version"].as<int>() : 1;
 
     if (!root["id"]) {
-        fail("'id' is required");
+        manifest_fail("manifest.id-missing", "'id' is required", root);
     }
     m.id = root["id"].as<std::string>();
-    validate_id(m.id);
+    validate_id(m.id, root["id"]);
 
     const YAML::Node res = root["resolution"];
     if (!res) {
-        fail("'resolution' is required");
+        manifest_fail("manifest.resolution-missing", "'resolution' is required", root);
     }
     m.resolution = {require_dimension(res["width"], "resolution.width"),
                     require_dimension(res["height"], "resolution.height")};
 
     const YAML::Node win = root["window"];
     if (!win) {
-        fail("'window' is required");
+        manifest_fail("manifest.window-missing", "'window' is required", root);
     }
     m.window.fullscreen = win["fullscreen"] ? win["fullscreen"].as<bool>() : false;
     m.window.width = win["width"] ? win["width"].as<unsigned>() : m.resolution.x;
@@ -89,12 +97,12 @@ Manifest parse_manifest(const std::string& yaml_text) {
 
     const YAML::Node resources = root["resources"];
     if (!resources || !resources["src"] || resources["src"].as<std::string>().empty()) {
-        fail("'resources.src' is required");
+        manifest_fail("manifest.resources-src-missing", "'resources.src' is required", root);
     }
     m.resources_src = resources["src"].as<std::string>();
 
     if (!root["strings"] || root["strings"].as<std::string>().empty()) {
-        fail("'strings' is required");
+        manifest_fail("manifest.strings-missing", "'strings' is required", root);
     }
     m.strings_path = root["strings"].as<std::string>();
 
@@ -120,27 +128,31 @@ Manifest parse_manifest(const std::string& yaml_text) {
     }
 
     if (!root["entry"] || root["entry"].as<std::string>().empty()) {
-        fail("'entry' is required");
+        manifest_fail("manifest.entry-missing", "'entry' is required", root);
     }
     m.entry = root["entry"].as<std::string>();
 
     const YAML::Node scenes = root["scenes"];
     if (!scenes || !scenes.IsSequence() || scenes.size() == 0) {
-        fail("'scenes' must be a non-empty sequence");
+        manifest_fail("manifest.scenes-missing", "'scenes' must be a non-empty sequence", root);
     }
 
     std::set<std::string> seen_ids;
     for (const YAML::Node& sn : scenes) {
         SceneDesc desc;
         if (!sn["id"] || sn["id"].as<std::string>().empty()) {
-            fail("a scene is missing 'id'");
+            manifest_fail("manifest.scene-id-missing", "a scene is missing 'id'", sn);
         }
         desc.id = sn["id"].as<std::string>();
         if (!seen_ids.insert(desc.id).second) {
-            fail("duplicate scene id '" + desc.id + "'");
+            manifest_fail("manifest.duplicate-scene-id",
+                          "duplicate scene id '" + desc.id + "'",
+                          sn);
         }
         if (!sn["type"] || sn["type"].as<std::string>().empty()) {
-            fail("scene '" + desc.id + "' is missing 'type'");
+            manifest_fail("manifest.scene-type-missing",
+                          "scene '" + desc.id + "' is missing 'type'",
+                          sn);
         }
         desc.type = sn["type"].as<std::string>();
 
@@ -157,7 +169,8 @@ Manifest parse_manifest(const std::string& yaml_text) {
     }
 
     if (!m.find_scene(m.entry)) {
-        fail("entry scene '" + m.entry + "' is not in 'scenes'");
+        manifest_fail("manifest.entry-not-in-scenes",
+                      "entry scene '" + m.entry + "' is not in 'scenes'");
     }
     return m;
 }
@@ -165,12 +178,23 @@ Manifest parse_manifest(const std::string& yaml_text) {
 Manifest load_manifest(const std::string& file_path) {
     std::ifstream in(file_path, std::ios::binary);
     if (!in) {
-        throw ManifestError("manifest: cannot open file '" + file_path + "'");
+        SourceLocation loc;
+        loc.file = file_path;
+        throw ManifestError("manifest-loader",
+                            "manifest.file-unreadable",
+                            "cannot open file '" + file_path + "'",
+                            loc);
     }
     std::ostringstream ss;
     ss << in.rdbuf();
 
-    Manifest m = parse_manifest(ss.str());
+    Manifest m;
+    try {
+        m = parse_manifest(ss.str());
+    } catch (LoadError& e) {
+        e.with_file(file_path);
+        throw;
+    }
 
     std::filesystem::path src(m.resources_src);
     if (src.is_relative()) {

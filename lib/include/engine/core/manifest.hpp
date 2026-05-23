@@ -1,19 +1,22 @@
 #pragma once
 
 #include "engine/core/dev_flags.hpp"
+#include "engine/core/load_error.hpp"
 #include "engine/core/scene_params.hpp"
 
 #include <SFML/System/Vector2.hpp>
 
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace pac::core {
 
-class ManifestError : public std::runtime_error {
+/// Manifest loader diagnostic. A `LoadError` with `source = "manifest-loader"`.
+class ManifestError : public LoadError {
 public:
-    using std::runtime_error::runtime_error;
+    using LoadError::LoadError;
+    explicit ManifestError(const std::string& message)
+        : LoadError("manifest-loader", "", message) {}
 };
 
 struct WindowConfig {

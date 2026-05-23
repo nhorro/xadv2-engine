@@ -1,5 +1,6 @@
 #include "engine/pnc/cast.hpp"
 
+#include "core/load_error_yaml.hpp"
 #include "engine/pnc/data_error.hpp"
 
 #include <yaml-cpp/yaml.h>
@@ -7,6 +8,17 @@
 #include <utility>
 
 namespace pac::pnc {
+
+namespace {
+
+constexpr const char* kSource = "cast-loader";
+
+[[noreturn]] void
+cast_fail(const std::string& code, const std::string& msg, const YAML::Node& at = YAML::Node()) {
+    pac::core::fail_at<DataError>(kSource, code, msg, at);
+}
+
+} // namespace
 
 const Appearance* Cast::appearance(const std::string& id) const {
     const auto it = appearances.find(id);
@@ -23,10 +35,10 @@ Cast parse_cast(const std::string& yaml_text) {
     try {
         root = YAML::Load(yaml_text);
     } catch (const YAML::Exception& e) {
-        throw DataError(std::string("cast: invalid YAML: ") + e.what());
+        cast_fail("cast.invalid-yaml", std::string("invalid YAML: ") + e.what());
     }
     if (!root || !root.IsMap()) {
-        throw DataError("cast: root must be a mapping");
+        cast_fail("cast.root-not-map", "root must be a mapping");
     }
 
     Cast cast;
@@ -37,8 +49,9 @@ Cast parse_cast(const std::string& yaml_text) {
             const YAML::Node node = kv.second;
             app.type = node["type"] ? node["type"].as<std::string>() : std::string();
             if (app.type.empty()) {
-                throw DataError("cast: appearance '" + kv.first.as<std::string>() +
-                                "' is missing 'type'");
+                cast_fail("cast.appearance-type-missing",
+                          "appearance '" + kv.first.as<std::string>() + "' is missing 'type'",
+                          node);
             }
             app.sprite = node["sprite"] ? node["sprite"].as<std::string>() : std::string();
             app.composite = node["composite"] ? node["composite"].as<std::string>() : std::string();
@@ -52,7 +65,9 @@ Cast parse_cast(const std::string& yaml_text) {
             ch.id = kv.first.as<std::string>();
             const YAML::Node node = kv.second;
             if (!node["appearance"]) {
-                throw DataError("cast: character '" + ch.id + "' is missing 'appearance'");
+                cast_fail("cast.character-appearance-missing",
+                          "character '" + ch.id + "' is missing 'appearance'",
+                          node);
             }
             ch.appearance = node["appearance"].as<std::string>();
             ch.name = node["name"] ? node["name"].as<std::string>() : ch.id;

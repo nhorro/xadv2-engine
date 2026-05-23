@@ -140,8 +140,11 @@ struct RoomData {
     float avatar_scale_at(float y, float fallback = 1.0f) const;
 };
 
-/// Parse + validate room YAML. Throws DataError on malformed input. Hotspot
-/// `approach` given as a point name is resolved against `points`.
-RoomData parse_room(const std::string& yaml_text);
+/// Parse + validate room YAML. Throws a `pac::core::LoadError` (source
+/// `room-loader`) on malformed input. Hotspot `approach` given as a point name is
+/// resolved against `points`. When `expected_id` is non-empty it must match the
+/// YAML `id` (the filename-vs-id check); pass it empty to skip that check (e.g.
+/// headless tests that feed raw text without a filename).
+RoomData parse_room(const std::string& yaml_text, const std::string& expected_id = {});
 
 } // namespace pac::pnc

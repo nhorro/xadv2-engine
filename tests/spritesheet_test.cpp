@@ -1,9 +1,11 @@
 #include "engine/gfx/asset_error.hpp"
 #include "engine/gfx/spritesheet.hpp"
+#include "loader_diag.hpp"
 
 #include <doctest/doctest.h>
 
 using namespace pac::gfx;
+using pac::test::error_code;
 
 namespace {
 
@@ -54,4 +56,8 @@ TEST_CASE("parse_spritesheet rejects malformed atlases") {
     CHECK_THROWS_AS(parse_spritesheet("image: x.png\n"), AssetError); // no sprites
     CHECK_THROWS_AS(parse_spritesheet("sprites:\n  - rect: { x: 0, y: 0, width: 1, height: 1 }\n"),
                     AssetError); // sprite without id
+    CHECK(error_code([] { parse_spritesheet("image: x.png\n"); }) == "spritesheet.sprites-not-seq");
+    CHECK(error_code([] {
+              parse_spritesheet("sprites:\n  - rect: { x: 0, y: 0, width: 1, height: 1 }\n");
+          }) == "spritesheet.sprite-id-missing");
 }
