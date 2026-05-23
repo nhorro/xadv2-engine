@@ -30,7 +30,7 @@ public:
     void draw(sf::RenderTarget& target) const override;
 
 private:
-    enum Row { ROW_RESOLUTION = 0, ROW_FULLSCREEN, ROW_MUSIC, ROW_COUNT };
+    enum Row { ROW_RESOLUTION = 0, ROW_FULLSCREEN, ROW_MUSIC, ROW_SFX, ROW_COUNT };
 
     void adjust(int dir);        // change the selected row's value by direction
     void request_current_mode(); // push the current settings as a display mode
