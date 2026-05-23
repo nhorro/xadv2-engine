@@ -60,6 +60,7 @@ TEST_CASE("parse_room reads layout, points, hotspots, and avatars") {
     REQUIRE(door.approach.has_value());
     CHECK(door.approach->x == doctest::Approx(170.0f)); // resolved from points
     CHECK(door.affordances.size() == 2);
+    CHECK_FALSE(door.requires_approach); // omitted -> distant interaction allowed
 
     REQUIRE(r.avatars.size() == 1);
     CHECK(r.avatars[0].player == true);
@@ -183,6 +184,70 @@ TEST_CASE("parse_room rejects malformed rooms") {
     CHECK_THROWS_AS(parse_room("version: 1\n"), DataError); // no id
     CHECK_THROWS_AS(parse_room("id: x\nhotspots:\n  h: { name: n }\n"),
                     DataError); // hotspot without area or bind
+}
+
+TEST_CASE("parse_room reads the per-hotspot requires_approach flag") {
+    const char* yaml = R"YAML(
+id: r
+points:
+  spot: { x: 50, y: 60 }
+hotspots:
+  near_only:
+    name: "cofre"
+    area: [ {x: 0, y: 0}, {x: 10, y: 0}, {x: 10, y: 10}, {x: 0, y: 10} ]
+    approach: spot
+    requires_approach: true
+  distant_ok:
+    name: "loro"
+    area: [ {x: 20, y: 0}, {x: 30, y: 0}, {x: 30, y: 10}, {x: 20, y: 10} ]
+)YAML";
+    const RoomData r = parse_room(yaml);
+    CHECK(r.hotspots.at("near_only").requires_approach);
+    CHECK_FALSE(r.hotspots.at("distant_ok").requires_approach); // default
+}
+
+TEST_CASE("parse_room reads the optional object baseline (perspective sort line)") {
+    const char* yaml = R"YAML(
+id: r
+objects:
+  cart_front: { image: o/cart_front.png, position: { x: 400, y: 360 }, baseline: 640 }
+  vase:       { image: o/vase.png, position: { x: 100, y: 100 } }
+)YAML";
+    const RoomData r = parse_room(yaml);
+    REQUIRE(r.objects.at("cart_front").baseline.has_value());
+    CHECK(r.objects.at("cart_front").baseline.value() == doctest::Approx(640.0f));
+    CHECK_FALSE(r.objects.at("vase").baseline.has_value()); // omitted -> z/z_auto
+}
+
+TEST_CASE("parse_room reads walk-behind areas and validates the layer reference") {
+    const char* yaml = R"YAML(
+id: r
+background:
+  layers:
+    - { id: bg, image: a/bg.png, z: 0 }
+walkbehinds:
+  cart:
+    layer: bg
+    area: [ {x: 0, y: 0}, {x: 10, y: 0}, {x: 10, y: 10}, {x: 0, y: 10} ]
+    baseline: 640
+)YAML";
+    const RoomData r = parse_room(yaml);
+    REQUIRE(r.walkbehinds.size() == 1);
+    CHECK(r.walkbehinds[0].id == "cart");
+    CHECK(r.walkbehinds[0].layer == "bg");
+    CHECK(r.walkbehinds[0].area.size() == 4);
+    CHECK(r.walkbehinds[0].baseline == doctest::Approx(640.0f));
+
+    // Unknown layer reference fails loudly.
+    CHECK_THROWS_AS(parse_room("id: r\nwalkbehinds:\n  c:\n    layer: ghost\n"
+                               "    area: [ {x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: 1} ]\n"
+                               "    baseline: 1\n"),
+                    DataError);
+    // Missing baseline fails loudly.
+    CHECK_THROWS_AS(parse_room("id: r\nbackground:\n  layers:\n    - { id: bg, image: a.png }\n"
+                               "walkbehinds:\n  c:\n    layer: bg\n"
+                               "    area: [ {x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: 1} ]\n"),
+                    DataError);
 }
 
 TEST_CASE("parse_room reads region states and the optional 'over' layer pin") {
