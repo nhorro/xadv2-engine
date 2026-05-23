@@ -22,6 +22,10 @@ struct BackgroundLayer {
     // world bounds are derived from the union of all layer rects (see
     // compute_room_bounds). Defaults to the world origin (0,0).
     geom::Point origin{0, 0};
+    // Initial visibility. Toggled at runtime via set_layer_visible (Lua), which
+    // requires the layer to carry an `id`. Persisted per room like object/region
+    // state. World bounds are still derived from all layers, hidden or not.
+    bool visible = true;
 };
 
 struct RoomHotspot {

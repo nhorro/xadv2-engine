@@ -210,6 +210,8 @@ void RoomScene::enter() {
     L.set_function("get_region_state", [this](std::string id) { return api_get_region_state(id); });
     L.set_function("show_object", [this](std::string id) { api_show_object(id, true); });
     L.set_function("hide_object", [this](std::string id) { api_show_object(id, false); });
+    L.set_function("set_layer_visible",
+                   [this](std::string id, bool visible) { api_set_layer_visible(id, visible); });
     L.set_function("enable_hotspot", [this](std::string id) { api_set_hotspot_enabled(id, true); });
     L.set_function("disable_hotspot",
                    [this](std::string id) { api_set_hotspot_enabled(id, false); });
@@ -385,6 +387,11 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
             room_->set_object_visible(obj_id, visible);
         }
     }
+    if (const auto it = layer_visible_persist_.find(id); it != layer_visible_persist_.end()) {
+        for (const auto& [layer_id, visible] : it->second) {
+            room_->set_layer_visible(layer_id, visible);
+        }
+    }
 
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
     const sf::Vector2f viewport(static_cast<float>(vres.x), scenery_height());
@@ -502,6 +509,11 @@ void RoomScene::unload_room() {
         }
         for (const auto& [obj_id, obj] : room_->data().objects) {
             object_visible_persist_[current_room_id_][obj_id] = room_->object_visible(obj_id);
+        }
+        for (const BackgroundLayer& layer : room_->data().layers) {
+            if (!layer.id.empty()) {
+                layer_visible_persist_[current_room_id_][layer.id] = room_->layer_visible(layer.id);
+            }
         }
     }
     ctx_.scripting.cancel_scope(room_scope_);
@@ -1001,6 +1013,12 @@ void RoomScene::api_show_object(const std::string& object_id, bool visible) {
     }
 }
 
+void RoomScene::api_set_layer_visible(const std::string& layer_id, bool visible) {
+    if (room_) {
+        room_->set_layer_visible(layer_id, visible);
+    }
+}
+
 void RoomScene::api_set_hotspot_enabled(const std::string& hotspot_id, bool enabled) {
     if (room_) {
         room_->set_hotspot_enabled(hotspot_id, enabled);
@@ -1369,6 +1387,7 @@ pac::core::GameState RoomScene::snap() const {
     s.region_states = region_state_persist_;
     s.hotspot_enabled = hotspot_enabled_persist_;
     s.object_visible = object_visible_persist_;
+    s.layer_visible = layer_visible_persist_;
     if (room_) {
         auto& region_map = s.region_states[current_room_id_];
         for (const auto& [region_id, region] : room_->data().regions) {
@@ -1381,6 +1400,12 @@ pac::core::GameState RoomScene::snap() const {
         auto& obj_map = s.object_visible[current_room_id_];
         for (const auto& [obj_id, obj] : room_->data().objects) {
             obj_map[obj_id] = room_->object_visible(obj_id);
+        }
+        auto& layer_map = s.layer_visible[current_room_id_];
+        for (const BackgroundLayer& layer : room_->data().layers) {
+            if (!layer.id.empty()) {
+                layer_map[layer.id] = room_->layer_visible(layer.id);
+            }
         }
     }
     return s;
@@ -1411,6 +1436,7 @@ bool RoomScene::restore(const pac::core::GameState& state) {
     region_state_persist_ = state.region_states;
     hotspot_enabled_persist_ = state.hotspot_enabled;
     object_visible_persist_ = state.object_visible;
+    layer_visible_persist_ = state.layer_visible;
     inventory_.replace_all(state.inventory);
 
     // Kill transient runtime — none of it is part of GameState.

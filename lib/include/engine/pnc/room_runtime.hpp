@@ -56,6 +56,9 @@ public:
     void set_object_visible(const std::string& object_id, bool visible);
     [[nodiscard]] bool object_visible(const std::string& object_id) const;
 
+    void set_layer_visible(const std::string& layer_id, bool visible);
+    [[nodiscard]] bool layer_visible(const std::string& layer_id) const;
+
     void set_hotspot_enabled(const std::string& hotspot_id, bool enabled);
     [[nodiscard]] bool hotspot_enabled(const std::string& hotspot_id) const;
 
@@ -93,6 +96,7 @@ private:
     std::unique_ptr<Behavior> behavior_;
     std::map<std::string, std::string> region_states_;
     std::map<std::string, bool> object_visible_;
+    std::map<std::string, bool> layer_visible_;
     std::map<std::string, bool> hotspot_enabled_;
     std::map<std::string, Avatar> npcs_;
 };
