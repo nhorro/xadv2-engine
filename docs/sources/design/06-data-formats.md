@@ -29,6 +29,7 @@ Worked example: [02 — Architecture overview](02-architecture-overview.md).
 | `resources` | req | `{src}` | — | Resource source root. `src` is a directory (MVP) or archive (design-for). |
 | `strings` | req | path | — | UI strings resource (engine-emitted text). One file in the MVP; a language→file map is design-for. See [UI strings](#ui-strings--stringslangyaml). |
 | `settings` | opt | map | — | Default player-facing settings (e.g. `audio.music_volume`, `audio.sfx_volume`). User settings override these. |
+| `cursor` | opt | `{image, interact?, hotspot?}` | OS cursor | Custom point-and-click cursor. `image` is the resting cursor; `interact` (opt) shows over an interactive hotspot; `hotspot` (opt `{x, y}`, default `0,0`) is the active click pixel within both images. Omitted ⇒ the OS cursor is used. |
 | `development` | opt | map | — | Dev-only flags: `edit_mode` (master gate for the debug overlays), `show_walkboxes`, `show_hotspots`, `show_anchors`, `show_state` (seed the overlay layers), `allow_room_reload`. Not persisted as player settings. |
 | `entry` | req | scene id | — | Initial scene. |
 | `scenes` | req | `[scene]` | — | Scene list and outcome wiring. |

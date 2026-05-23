@@ -15,6 +15,13 @@ resources:
 
 strings: strings/es.yaml
 
+# Custom point-and-click cursor (#73). `interact` is shown over hotspots;
+# `hotspot` is the active click pixel within both images.
+cursor:
+  image: ui/cursor.png
+  interact: ui/cursor_interact.png
+  hotspot: { x: 1, y: 1 }
+
 settings:
   audio:
     music_volume: 0.8
