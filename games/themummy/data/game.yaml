@@ -55,7 +55,7 @@ scenes:
     parameters:
       cast: cast.yaml
       rooms: rooms
-      start_room: study
+      start_room: hall
       player: julia
       font: fonts/DepartureMono-Regular.otf
       inventory: inventory.yaml

@@ -1,7 +1,9 @@
 -- Study room behavior. Static layout lives in study.yaml.
 local room = {}
 
-function room.on_load() end
+function room.on_load()
+  play_music("music/thestudy.mp3") 
+end
 function room.on_unload() end
 
 -- room.on_zone_enter = function(zone)
@@ -26,6 +28,7 @@ room.hotspots = {
     open = function()
       -- Note: we should be close
       change_room("hall", "from_study")
+      return "Abro la puerta y entro al pasillo."
     end,
   },
   notebook = {

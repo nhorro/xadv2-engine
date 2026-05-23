@@ -1,36 +1,69 @@
-# Exterior reached through SALIDA. Multilayer: a stretched sky behind the
-# building plate, which is drawn at its native size at an origin (issue #28).
 version: 1
 id: exterior
-
 background:
-  color: { r: 120, g: 170, b: 210 }
+  color:
+    r: 120
+    g: 170
+    b: 210
   layers:
-    # Sky: no origin -> stretched to fill the room (the source is 1916x821).
-    - id: sky
-      image: c/background/00.png
-      z: 0
-    # Building + ground (1916x780, transparent sky region): drawn at native size
-    # at the room origin. A higher-z layer with a different origin/size (e.g.
-    # c/background/02.png as a foreground occluder) would compose the same way.
-    - id: building
-      image: c/background/01.png
-      z: 1
-      origin: { x: 0, y: 0 }
-
+  - id: sky
+    image: c/background/00.png
+    z: 0
+  - id: building
+    image: c/background/01.png
+    z: 1
+    origin: {x: 0, y: 236}
+perspective:
+  top:
+    y: 700
+    scale: 0.5
+  bottom:
+    y: 900
+    scale: 0.7
 walkable:
-  - { x: 60,   y: 600 }
-  - { x: 1850, y: 600 }
-  - { x: 1850, y: 760 }
-  - { x: 60,   y: 760 }
-
+- {x: 31, y: 902}
+- {x: 481, y: 862}
+- {x: 557, y: 860}
+- {x: 653, y: 829}
+- {x: 681, y: 802}
+- {x: 702, y: 773}
+- {x: 906, y: 776}
+- {x: 971, y: 808}
+- {x: 1047, y: 818}
+- {x: 1340, y: 838}
+- {x: 1523, y: 882}
+- {x: 1776, y: 904}
+- {x: 1845, y: 880}
+- {x: 1832, y: 835}
+- {x: 1883, y: 814}
+- {x: 1919, y: 826}
+- {x: 1911, y: 1015}
+- {x: 3, y: 1011}
 points:
-  player_start: { x: 950, y: 700 }
-  from_hall:    { x: 300, y: 700 }
-
+  player_start: {x: 230, y: 1004}
+  from_hall: {x: 821, y: 785}
 zones:
-  - id: to_hall
-    polygon: [ {x: 60, y: 600}, {x: 200, y: 600}, {x: 200, y: 760}, {x: 60, y: 760} ]
-
+- id: to_hall
+  polygon:
+  - {x: 60, y: 600}
+  - {x: 200, y: 600}
+  - {x: 200, y: 760}
+  - {x: 60, y: 760}
 avatars:
-  - { id: julia, start: player_start, orientation: down, player: true }
+- id: julia
+  start: player_start
+  orientation: down
+  player: true
+obstacles: []
+regions: {}
+hotspots:
+  door:
+    name: puerta
+    area:
+    - {x: 750, y: 577}
+    - {x: 751, y: 768}
+    - {x: 887, y: 768}
+    - {x: 885, y: 581}
+    affordances:
+    - look_at
+    - open

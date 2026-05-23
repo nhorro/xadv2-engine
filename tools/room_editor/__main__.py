@@ -20,14 +20,14 @@ def parse_args() -> argparse.Namespace:
     edit_parser.add_argument("--base-path", help="Optional base directory for asset validity checks.")
 
     serve_parser = subparsers.add_parser("serve", help="Start the web-based room editor in a browser.")
-    serve_parser.add_argument("--room", required=True, help="Path to the room YAML file.")
-    serve_parser.add_argument("--base-path", help="Optional base directory for logical asset paths. Defaults to the room YAML directory.")
+    serve_parser.add_argument("--room", help="Optional room YAML to open at startup. Omit to pick one in the UI.")
+    serve_parser.add_argument("--base-path", help="Base directory for logical asset paths and the room list. Defaults to the room YAML directory, or the current directory when --room is omitted.")
     serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind the web server to.")
     serve_parser.add_argument("--port", type=int, default=8000, help="Port to bind the web server to.")
 
     gui_parser = subparsers.add_parser("gui", help="Start the web-based room editor in a browser. Alias for serve.")
-    gui_parser.add_argument("--room", required=True, help="Path to the room YAML file.")
-    gui_parser.add_argument("--base-path", help="Optional base directory for logical asset paths. Defaults to the room YAML directory.")
+    gui_parser.add_argument("--room", help="Optional room YAML to open at startup. Omit to pick one in the UI.")
+    gui_parser.add_argument("--base-path", help="Base directory for logical asset paths and the room list. Defaults to the room YAML directory, or the current directory when --room is omitted.")
     gui_parser.add_argument("--host", default="127.0.0.1", help="Host to bind the web server to.")
     gui_parser.add_argument("--port", type=int, default=8000, help="Port to bind the web server to.")
 
@@ -36,14 +36,20 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    room_path = Path(args.room)
 
     if args.command in {"serve", "gui"}:
-        base_path = Path(args.base_path) if args.base_path else room_path.parent
+        room_path = Path(args.room) if args.room else None
+        if args.base_path:
+            base_path = Path(args.base_path)
+        elif room_path:
+            base_path = room_path.parent
+        else:
+            base_path = Path.cwd()
         run_server(room_path=room_path, base_path=base_path, host=args.host, port=args.port)
         return 0
 
     if args.command == "edit":
+        room_path = Path(args.room)
         patch_path = Path(args.patch)
         patch = load_patch(patch_path)
         room = load_room_yaml(room_path)

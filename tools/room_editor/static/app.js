@@ -24,6 +24,8 @@ const vertexList = document.getElementById('vertex-list');
 const status = document.getElementById('status');
 const reloadButton = document.getElementById('reload-button');
 const saveButton = document.getElementById('save-button');
+const roomFileSelect = document.getElementById('room-file');
+const openRoomButton = document.getElementById('open-room');
 const addEntityButton = document.getElementById('add-entity');
 const removeEntityButton = document.getElementById('remove-entity');
 const addVertexButton = document.getElementById('add-vertex');
@@ -32,6 +34,16 @@ const addPointButton = document.getElementById('add-point');
 const deletePointButton = document.getElementById('delete-point');
 const snapshotRegionButton = document.getElementById('snapshot-region');
 const snapshotSource = document.getElementById('snapshot-source');
+const hotspotProps = document.getElementById('hotspot-props');
+const hotspotIdInput = document.getElementById('hotspot-id');
+const hotspotRenameButton = document.getElementById('hotspot-rename');
+const hotspotNameInput = document.getElementById('hotspot-name');
+const hotspotAffordances = document.getElementById('hotspot-affordances');
+
+// The game's verb set, mirroring `verbs:` in strings/<lang>.yaml. Used to offer
+// affordance checkboxes; any verb already on a hotspot is shown too (see
+// affordanceVerbs), so a custom/unknown verb is never hidden or dropped.
+const KNOWN_VERBS = ['look_at', 'talk_to', 'pick_up', 'use', 'give', 'open', 'close', 'push', 'pull'];
 
 const modeOptions = ['walkable', 'obstacles', 'zones', 'regions', 'hotspots', 'points', 'layers', 'preview'];
 const entityPrefix = {
@@ -40,8 +52,6 @@ const entityPrefix = {
   hotspots: 'hotspot',
   points: 'point',
 };
-let selectedLayerInputX = null;
-let selectedLayerInputY = null;
 
 function setStatus(message, isError = false) {
   status.textContent = message;
@@ -65,11 +75,55 @@ async function loadRoom() {
   updateRoomInfo();
   state.selectedEntity = null;
   state.selectedPoint = null;
+  state.selectedLayerId = null;
   state.addVertexMode = false;
   state.deleteVertexMode = false;
   state.selectedVertex = null;
   updateUI();
   draw();
+  if (!state.room || !state.room.id) {
+    setStatus('No room loaded — pick a room file and click Open.');
+  }
+}
+
+// Populate the room-file dropdown from the rooms found in base_path, keeping the
+// currently-open file selected.
+async function loadRooms() {
+  try {
+    const data = await fetchJson('/api/rooms');
+    const rooms = data.rooms || [];
+    if (!rooms.length) {
+      roomFileSelect.innerHTML = '<option value="">(no rooms found in base path)</option>';
+      return;
+    }
+    roomFileSelect.innerHTML = rooms.map((r) => `<option value="${r}">${r}</option>`).join('');
+    if (data.current) roomFileSelect.value = data.current;
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+}
+
+async function openSelectedRoom() {
+  const name = roomFileSelect.value;
+  if (!name) {
+    setStatus('No room file selected.', true);
+    return;
+  }
+  try {
+    const res = await fetch('/api/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room: name }),
+    });
+    const result = await res.json();
+    if (!result.ok) throw new Error(result.error || 'Open failed');
+    state.imageCache.clear();
+    await loadRoom();
+    await loadRooms();
+    setStatus(`Opened ${name}.`);
+  } catch (err) {
+    setStatus(err.message, true);
+  }
 }
 
 function updateModeOptions() {
@@ -101,6 +155,12 @@ function updateEntityOptions() {
   } else {
     entitySelect.value = state.selectedEntity;
   }
+  // Points track selection via selectedPoint (drawing, drag, delete); keep it in
+  // lockstep with the entity selection so the dropdown, canvas clicks, Remove and
+  // Delete point all act on the same point.
+  if (state.mode === 'points') {
+    state.selectedPoint = state.selectedEntity;
+  }
 }
 
 // Layer origin uses the engine YAML form `origin: {x, y}` (absent = world origin
@@ -124,17 +184,72 @@ function setLayerOrigin(layer, x, y) {
   }
 }
 
+// Uniform render scale (engine `scale:`, aspect always preserved). Absent = 1.0
+// (native size); we omit it on save when it rounds back to native.
+function layerScale(layer) {
+  const s = Number(layer.scale);
+  return Number.isFinite(s) && s > 0 ? s : 1;
+}
+
+function setLayerScale(layer, scale) {
+  const s = Math.max(0.05, scale);
+  if (Math.abs(s - 1) < 1e-3) {
+    delete layer.scale;
+  } else {
+    layer.scale = Math.round(s * 1000) / 1000;
+  }
+}
+
+// Native (unscaled) image size from the cache, or null until the image loads.
+function layerNativeSize(layer) {
+  if (!layer || !layer.image) return null;
+  const img = state.imageCache.get(layer.image);
+  if (!img || !img.complete || !img.naturalWidth) return null;
+  return { w: img.naturalWidth, h: img.naturalHeight };
+}
+
+// Drawn rect in world space: [origin, origin + native size × scale). Null until
+// the image loads (we need the native size to know the on-screen extent).
+function layerRect(layer) {
+  const native = layerNativeSize(layer);
+  if (!native) return null;
+  const { x, y } = layerOrigin(layer);
+  const s = layerScale(layer);
+  return { x, y, w: native.w * s, h: native.h * s };
+}
+
+// The layer's base anchor: the bottom-centre of its drawn rect (its floor line).
+function layerBase(layer) {
+  const r = layerRect(layer);
+  return r ? { x: r.x + r.w / 2, y: r.y + r.h } : { x: 0, y: 0 };
+}
+
+// Rescale about the base (bottom-centre) so a piece of furniture stays grounded:
+// its floor line and horizontal centre hold while it grows/shrinks. Optionally
+// pass a fixed base (world point) to hold during a drag.
+function rescaleLayerAboutBase(layer, newScale, base) {
+  const native = layerNativeSize(layer);
+  if (!native) return;
+  const s = Math.max(0.05, newScale);
+  const anchor = base || layerBase(layer);
+  const w = native.w * s;
+  const h = native.h * s;
+  setLayerScale(layer, s);
+  setLayerOrigin(layer, Math.round(anchor.x - w / 2), Math.round(anchor.y - h));
+}
+
 function updateLayersList() {
   const background = state.room.background || {};
   const layers = Array.isArray(background.layers) ? background.layers : [];
   layersList.innerHTML = layers.map((layer) => {
     const { x, y } = layerOrigin(layer);
+    const s = layerScale(layer);
     return `
       <div class="layer-item" data-layer-id="${layer.id || ''}">
         <strong>${layer.id || 'unnamed'}</strong>
         <div>${layer.image || ''}</div>
         <div>z: ${layer.z ?? ''} interactive: ${layer.interactive ?? false}</div>
-        <div>pos: ${x}, ${y}</div>
+        <div>pos: ${x}, ${y} · scale: ${s === 1 ? '1 (native)' : s}</div>
       </div>
     `;
   }).join('');
@@ -154,46 +269,110 @@ function selectLayer(layerId) {
 function updateLayerInfoUI() {
   const layerX = document.getElementById('layer-x');
   const layerY = document.getElementById('layer-y');
-  selectedLayerInputX = layerX;
-  selectedLayerInputY = layerY;
-  if (!state.room || !state.selectedLayerId) {
+  const layerScaleInput = document.getElementById('layer-scale');
+  const layerZ = document.getElementById('layer-z');
+  const clear = () => {
     layerX.value = '';
     layerY.value = '';
-    return;
-  }
+    layerScaleInput.value = '';
+    layerZ.value = '';
+  };
+  if (!state.room || !state.selectedLayerId) return clear();
   const layers = state.room.background?.layers || [];
   const layer = layers.find((l) => l.id === state.selectedLayerId);
-  if (!layer) {
-    layerX.value = '';
-    layerY.value = '';
-    return;
-  }
+  if (!layer) return clear();
   const origin = layerOrigin(layer);
   layerX.value = origin.x;
   layerY.value = origin.y;
+  layerScaleInput.value = layerScale(layer);
+  layerZ.value = layer.z ?? 0;
+}
+
+function selectedLayer() {
+  if (!state.room || !state.selectedLayerId) return null;
+  const layers = state.room.background?.layers || [];
+  return layers.find((l) => l.id === state.selectedLayerId) || null;
 }
 
 function applyLayerPosition() {
-  if (!state.room || !state.selectedLayerId) return;
-  const layers = state.room.background?.layers || [];
-  const layer = layers.find((l) => l.id === state.selectedLayerId);
+  const layer = selectedLayer();
   if (!layer) return;
-  const nx = parseInt(selectedLayerInputX.value || '0', 10);
-  const ny = parseInt(selectedLayerInputY.value || '0', 10);
+  const nx = parseInt(document.getElementById('layer-x').value || '0', 10);
+  const ny = parseInt(document.getElementById('layer-y').value || '0', 10);
   setLayerOrigin(layer, nx, ny);
   updateLayersList();
   draw();
 }
 
 function resetLayerPosition() {
-  if (!state.room || !state.selectedLayerId) return;
-  const layers = state.room.background?.layers || [];
-  const layer = layers.find((l) => l.id === state.selectedLayerId);
+  const layer = selectedLayer();
   if (!layer) return;
   setLayerOrigin(layer, 0, 0);
   updateLayersList();
   updateLayerInfoUI();
   draw();
+}
+
+function applyLayerScale() {
+  const layer = selectedLayer();
+  if (!layer) return;
+  if (!layerNativeSize(layer)) {
+    setStatus('Layer image not loaded yet; cannot scale.', true);
+    return;
+  }
+  const next = parseFloat(document.getElementById('layer-scale').value || '1');
+  if (!Number.isFinite(next) || next <= 0) {
+    setStatus('Scale must be a positive number.', true);
+    return;
+  }
+  rescaleLayerAboutBase(layer, next);
+  updateLayersList();
+  updateLayerInfoUI();
+  draw();
+  setStatus(`Layer scaled to ${layerScale(layer)}× (base fixed).`);
+}
+
+function resetLayerSize() {
+  const layer = selectedLayer();
+  if (!layer) return;
+  rescaleLayerAboutBase(layer, 1);
+  updateLayersList();
+  updateLayerInfoUI();
+  draw();
+  setStatus('Layer reset to native size.');
+}
+
+function applyLayerZ() {
+  const layer = selectedLayer();
+  if (!layer) return;
+  const z = parseFloat(document.getElementById('layer-z').value || '0');
+  if (!Number.isFinite(z)) {
+    setStatus('z must be a number.', true);
+    return;
+  }
+  layer.z = Math.round(z);
+  updateLayersList();
+  draw();
+  setStatus(`Layer z set to ${layer.z}.`);
+}
+
+// Sort a furniture layer by its floor line: set z to the rect's bottom edge in
+// world space — a fixed value (unlike an object's per-frame `z: auto`), which is
+// exactly right for static furniture: the avatar passes behind it above the line,
+// in front below it. Re-click after moving/resizing the layer to re-snap.
+function setLayerZBase() {
+  const layer = selectedLayer();
+  if (!layer) return;
+  const rect = layerRect(layer);
+  if (!rect) {
+    setStatus('Layer image not loaded yet; cannot derive base z.', true);
+    return;
+  }
+  layer.z = Math.round(rect.y + rect.h);
+  document.getElementById('layer-z').value = layer.z;
+  updateLayersList();
+  draw();
+  setStatus(`Layer z set to its base (${layer.z}).`);
 }
 
 function updateUI() {
@@ -202,7 +381,92 @@ function updateUI() {
   updateLayersList();
   updateVertexList();
   updateSnapshotSource();
+  updateHotspotProps();
   draw();
+}
+
+function selectedHotspot() {
+  if (state.mode !== 'hotspots' || !state.selectedEntity) return null;
+  return (state.room?.hotspots || {})[state.selectedEntity] || null;
+}
+
+// Show the id/name editor only for a selected hotspot; ids are the ASCII keys,
+// names are the in-game (e.g. Spanish) display text.
+function updateHotspotProps() {
+  const hotspot = selectedHotspot();
+  if (!hotspot) {
+    hotspotProps.style.display = 'none';
+    return;
+  }
+  hotspotProps.style.display = '';
+  hotspotIdInput.value = state.selectedEntity;
+  hotspotNameInput.value = hotspot.name ?? '';
+  renderAffordances(hotspot);
+}
+
+// The known verbs plus any extra already on this hotspot, in a stable order, so a
+// verb the game added (or an older file) still gets a checkbox.
+function affordanceVerbs(hotspot) {
+  const verbs = [...KNOWN_VERBS];
+  for (const v of hotspot.affordances || []) {
+    if (!verbs.includes(v)) verbs.push(v);
+  }
+  return verbs;
+}
+
+function renderAffordances(hotspot) {
+  const have = new Set(hotspot.affordances || []);
+  hotspotAffordances.innerHTML = affordanceVerbs(hotspot)
+    .map((v) => `<label style="white-space:nowrap"><input type="checkbox" value="${v}"${
+      have.has(v) ? ' checked' : ''
+    } /> ${v}</label>`)
+    .join('');
+}
+
+// Rebuild the affordance list from the checkbox states in display order, so the
+// saved order is stable regardless of the click sequence.
+function applyAffordances() {
+  const hotspot = selectedHotspot();
+  if (!hotspot) return;
+  const checked = new Set(
+    Array.from(hotspotAffordances.querySelectorAll('input:checked')).map((el) => el.value)
+  );
+  hotspot.affordances = affordanceVerbs(hotspot).filter((v) => checked.has(v));
+  setStatus(`'${state.selectedEntity}' affordances: ${hotspot.affordances.join(', ') || '(none)'}`);
+}
+
+function applyHotspotName() {
+  const hotspot = selectedHotspot();
+  if (!hotspot) return;
+  hotspot.name = hotspotNameInput.value;
+  setStatus(`Name set to "${hotspot.name}".`);
+}
+
+// Rename a hotspot's id (its map key), preserving key order. The display name and
+// every other field carry over. Note: a Lua verb handler keyed by the old id must
+// be renamed by hand — the editor only touches the room YAML.
+function renameHotspot() {
+  const oldId = state.selectedEntity;
+  if (!oldId || state.mode !== 'hotspots') return;
+  const newId = (hotspotIdInput.value || '').trim();
+  if (!newId || newId === oldId) return;
+  if (/\s/.test(newId)) {
+    setStatus('Hotspot id cannot contain spaces (it is a key).', true);
+    return;
+  }
+  const hotspots = state.room.hotspots || {};
+  if (hotspots[newId]) {
+    setStatus(`A hotspot '${newId}' already exists.`, true);
+    return;
+  }
+  const rebuilt = {};
+  for (const [key, value] of Object.entries(hotspots)) {
+    rebuilt[key === oldId ? newId : key] = value;
+  }
+  state.room.hotspots = rebuilt;
+  state.selectedEntity = newId;
+  updateUI();
+  setStatus(`Hotspot renamed '${oldId}' → '${newId}'. Update its Lua handler if any.`);
 }
 
 function updateSnapshotSource() {
@@ -301,18 +565,25 @@ function pointNear(point, target, threshold = 12) {
 
 function resizeCanvas() {
   const rect = canvas.parentElement.getBoundingClientRect();
-  canvas.width = rect.width * devicePixelRatio;
-  canvas.height = rect.height * devicePixelRatio;
-  canvas.style.width = `${rect.width}px`;
-  canvas.style.height = `${rect.height}px`;
+  const w = Math.round(rect.width * devicePixelRatio);
+  const h = Math.round(rect.height * devicePixelRatio);
+  // Assigning canvas.width/height reallocates (and clears) the backing store, so
+  // only do it on an actual size change — draw() runs this every frame, including
+  // on every pointermove during a drag.
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
+  }
   ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 }
 
 // Room world bounds, mirroring the engine's compute_room_bounds: the union of
-// every layer's rect [origin, origin + native image size), anchored at (0,0).
-// Origin is the layer's x/y (also accepts an `origin:{x,y}`), default (0,0). The
-// format has no authored `size`; until images load we fall back so the canvas is
-// still usable (img.onload re-runs draw(), which recomputes once sizes are known).
+// every layer's rect [origin, origin + native image size × scale), anchored at
+// (0,0). Origin is the layer's x/y (also accepts an `origin:{x,y}`), default
+// (0,0). Until images load we fall back to a default so the canvas is still
+// usable (img.onload re-runs draw(), which recomputes once sizes are known).
 function computeRoomSize() {
   const layers = Array.isArray(state.room?.background?.layers) ? state.room.background.layers : [];
   let width = 0;
@@ -322,11 +593,12 @@ function computeRoomSize() {
     const img = state.imageCache.get(layer.image);
     if (!img || !img.complete || !img.naturalWidth) continue;
     const { x: ox, y: oy } = layerOrigin(layer);
-    width = Math.max(width, ox + img.naturalWidth);
-    height = Math.max(height, oy + img.naturalHeight);
+    const s = layerScale(layer);
+    width = Math.max(width, ox + img.naturalWidth * s);
+    height = Math.max(height, oy + img.naturalHeight * s);
   }
   if (width <= 0 || height <= 0) {
-    return { width: state.room?.size?.width || 800, height: state.room?.size?.height || 600 };
+    return { width: 800, height: 600 }; // no art loaded yet
   }
   return { width, height };
 }
@@ -358,7 +630,80 @@ function draw() {
   drawTempRegion();
   drawPoints();
   drawSelectedHandles();
+  drawLayerHandles();
 
+  ctx.restore();
+}
+
+// The selected layer's drawn rect, its four corners, and its base (bottom-centre)
+// anchor — all in world space. Null until the image (hence native size) loads.
+function selectedLayerCorners() {
+  const layer = selectedLayer();
+  if (!layer) return null;
+  const r = layerRect(layer);
+  if (!r) return null;
+  return {
+    rect: r,
+    tl: { x: r.x, y: r.y },
+    tr: { x: r.x + r.w, y: r.y },
+    bl: { x: r.x, y: r.y + r.h },
+    br: { x: r.x + r.w, y: r.y + r.h },
+    base: { x: r.x + r.w / 2, y: r.y + r.h },
+  };
+}
+
+// In 'layers' mode, outline the selected layer, draw a resize handle at each
+// corner, mark the base (bottom-centre) anchor that resizing holds fixed, and
+// trace the layer's depth line.
+function drawLayerHandles() {
+  if (state.mode !== 'layers') return;
+  const layer = selectedLayer();
+  if (!layer) return;
+
+  // Depth guide: a faint dotted horizontal line across the room at world-Y = z.
+  // It shows where this layer sorts — an avatar/object whose pivot is below the
+  // line draws in front of the layer, above it draws behind.
+  const { width } = computeRoomSize();
+  const zy = Number(layer.z) || 0;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(45, 212, 191, 0.85)';
+  ctx.fillStyle = 'rgba(45, 212, 191, 0.95)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(0, zy);
+  ctx.lineTo(width, zy);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.font = '12px sans-serif';
+  ctx.fillText(`z ${Math.round(zy)}`, 6, zy - 4);
+  ctx.restore();
+
+  const c = selectedLayerCorners();
+  if (!c) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(165, 180, 252, 0.9)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(c.rect.x, c.rect.y, c.rect.w, c.rect.h);
+  ctx.setLineDash([]);
+  for (const key of ['tl', 'tr', 'bl', 'br']) {
+    ctx.fillStyle = '#a5b4fc';
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(c[key].x, c[key].y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  // Base anchor marker (the floor line / pivot resizing keeps fixed).
+  ctx.fillStyle = '#f59e0b';
+  ctx.beginPath();
+  ctx.moveTo(c.base.x, c.base.y - 10);
+  ctx.lineTo(c.base.x - 7, c.base.y + 5);
+  ctx.lineTo(c.base.x + 7, c.base.y + 5);
+  ctx.closePath();
+  ctx.fill();
   ctx.restore();
 }
 
@@ -398,7 +743,8 @@ function drawLayers() {
     }
     if (img.complete && img.naturalWidth !== 0) {
       const { x: ox, y: oy } = layerOrigin(layer);
-      ctx.drawImage(img, ox, oy);
+      const s = layerScale(layer);
+      ctx.drawImage(img, ox, oy, img.naturalWidth * s, img.naturalHeight * s);
     }
   });
 }
@@ -603,16 +949,41 @@ function handlePointerDown(evt) {
   // Layer hit-test only in 'layers' mode, so a click over the (room-sized)
   // background doesn't swallow point/vertex selection in the other modes.
   if (state.mode === 'layers') {
+    // 1) A corner handle of the already-selected layer starts an aspect-locked
+    //    resize about the base (bottom-centre stays fixed).
+    const corners = selectedLayerCorners();
+    if (corners) {
+      for (const key of ['tl', 'tr', 'bl', 'br']) {
+        if (!pointNear(corners[key], pos, 14)) continue;
+        const native = layerNativeSize(selectedLayer());
+        // The grabbed corner's offset from the base at scale 1, as a unit
+        // direction + length. The drag projects the cursor onto this ray, so
+        // moving perpendicular to it (e.g. dragging a bottom handle vertically)
+        // doesn't change the scale.
+        const dx = (key === 'tl' || key === 'bl') ? -native.w / 2 : native.w / 2;
+        const dy = (key === 'tl' || key === 'tr') ? -native.h : 0;
+        const cornerBaseDist = Math.hypot(dx, dy) || 1;
+        state.dragTarget = {
+          type: 'layer-resize',
+          id: state.selectedLayerId,
+          base: { x: corners.base.x, y: corners.base.y },
+          dir: { x: dx / cornerBaseDist, y: dy / cornerBaseDist },
+          cornerBaseDist,
+        };
+        setStatus('Drag to resize (aspect locked, base fixed).');
+        return;
+      }
+    }
+
+    // 2) Otherwise select / move a layer body (topmost first).
     const layers = (state.room.background?.layers || []).slice().reverse();
     for (const layer of layers) {
-      if (!layer.image) continue;
-      const img = state.imageCache.get(layer.image);
-      if (!img || !img.complete) continue;
-      const { x: ox, y: oy } = layerOrigin(layer);
-      if (pos.x >= ox && pos.x <= ox + img.naturalWidth && pos.y >= oy && pos.y <= oy + img.naturalHeight) {
+      const r = layerRect(layer);
+      if (!r) continue;
+      if (pos.x >= r.x && pos.x <= r.x + r.w && pos.y >= r.y && pos.y <= r.y + r.h) {
         selectLayer(layer.id);
         state.dragTarget = { type: 'layer', id: layer.id };
-        state.dragOffset = { x: pos.x - ox, y: pos.y - oy };
+        state.dragOffset = { x: pos.x - r.x, y: pos.y - r.y };
         updateUI();
         return;
       }
@@ -624,6 +995,7 @@ function handlePointerDown(evt) {
     if (found) {
       const [id] = found;
       state.selectedPoint = id;
+      state.selectedEntity = id; // keep the dropdown + Remove in sync with the click
       state.dragTarget = { type: 'point', id };
       updateUI();
       return;
@@ -712,7 +1084,17 @@ function handlePointerMove(evt) {
     setLayerOrigin(layer,
                    Math.round(pos.x - state.dragOffset.x),
                    Math.round(pos.y - state.dragOffset.y));
-    updateLayersList();
+    updateLayerInfoUI();
+    draw();
+    return;
+  }
+  if (state.dragTarget.type === 'layer-resize') {
+    const layers = state.room.background?.layers || [];
+    const layer = layers.find((l) => l.id === state.dragTarget.id);
+    if (!layer) return;
+    const { base, dir, cornerBaseDist } = state.dragTarget;
+    const proj = (pos.x - base.x) * dir.x + (pos.y - base.y) * dir.y;
+    rescaleLayerAboutBase(layer, proj / cornerBaseDist, base);
     updateLayerInfoUI();
     draw();
     return;
@@ -726,11 +1108,14 @@ function handlePointerMove(evt) {
 }
 
 function handlePointerUp() {
-  if (state.dragTarget && state.dragTarget.type === 'layer') {
-    // keep selection, but clear drag state
+  if (state.dragTarget && (state.dragTarget.type === 'layer' || state.dragTarget.type === 'layer-resize')) {
+    // keep selection, but clear drag state. The layer list (pos/scale text) is
+    // refreshed here rather than on every pointermove to keep dragging smooth.
+    const resized = state.dragTarget.type === 'layer-resize';
     state.dragTarget = null;
     state.dragOffset = null;
-    setStatus('Layer moved.');
+    updateLayersList();
+    setStatus(resized ? 'Layer resized.' : 'Layer moved.');
     return;
   }
   if (state.dragTarget && state.dragTarget.type === 'region-create') {
@@ -952,10 +1337,13 @@ async function saveRoom() {
 
 reloadButton.addEventListener('click', async () => {
   setStatus('Reloading...');
+  state.imageCache.clear(); // re-fetch images in case the art changed on disk
   await loadRoom();
+  await loadRooms();
   setStatus('Room reloaded.');
 });
 saveButton.addEventListener('click', saveRoom);
+openRoomButton.addEventListener('click', openSelectedRoom);
 // layer controls
 document.addEventListener('click', (evt) => {
   const target = evt.target;
@@ -968,16 +1356,28 @@ document.addEventListener('click', (evt) => {
 
 document.getElementById('layer-apply').addEventListener('click', applyLayerPosition);
 document.getElementById('layer-reset').addEventListener('click', resetLayerPosition);
+document.getElementById('layer-scale').addEventListener('change', applyLayerScale);
+document.getElementById('layer-reset-size').addEventListener('click', resetLayerSize);
+document.getElementById('layer-z').addEventListener('change', applyLayerZ);
+document.getElementById('layer-z-base').addEventListener('click', setLayerZBase);
 snapshotRegionButton.addEventListener('click', snapshotRegion);
 modeSelect.addEventListener('change', changeMode);
 entitySelect.addEventListener('change', changeEntity);
 addEntityButton.addEventListener('click', addEntity);
 removeEntityButton.addEventListener('click', removeEntity);
+hotspotRenameButton.addEventListener('click', renameHotspot);
+hotspotNameInput.addEventListener('change', applyHotspotName);
+hotspotAffordances.addEventListener('change', applyAffordances);
 addVertexButton.addEventListener('click', toggleAddVertex);
 deleteVertexButton.addEventListener('click', toggleDeleteVertex);
 addPointButton.addEventListener('click', addPoint);
 deletePointButton.addEventListener('click', deletePoint);
-canvas.addEventListener('pointerdown', handlePointerDown);
+canvas.addEventListener('pointerdown', (evt) => {
+  // Capture so a drag that wanders off the canvas still delivers move/up here,
+  // instead of leaving state.dragTarget stuck set. Auto-releases on pointerup.
+  try { canvas.setPointerCapture(evt.pointerId); } catch (_) { /* unsupported */ }
+  handlePointerDown(evt);
+});
 canvas.addEventListener('pointermove', (evt) => {
   if (evt.buttons === 1) handlePointerMove(evt);
 });
@@ -1052,7 +1452,8 @@ async function snapshotRegion() {
   crop.height = Math.max(1, bbox.h);
   const cctx = crop.getContext('2d');
   const { x: ox, y: oy } = layerOrigin(layer);
-  cctx.drawImage(img, ox - bbox.x, oy - bbox.y);
+  const s = layerScale(layer);
+  cctx.drawImage(img, ox - bbox.x, oy - bbox.y, img.naturalWidth * s, img.naturalHeight * s);
 
   // convert to blob
   const blob = await new Promise((res) => crop.toBlob(res, 'image/png'));
@@ -1081,4 +1482,7 @@ async function snapshotRegion() {
 }
 
 updateModeOptions();
-loadInfo().then(loadRoom).catch((err) => setStatus(err.message, true));
+loadInfo()
+  .then(loadRooms)
+  .then(loadRoom)
+  .catch((err) => setStatus(err.message, true));

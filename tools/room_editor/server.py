@@ -5,9 +5,16 @@ import mimetypes
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
-from .room_data import apply_room_patch, list_assets, load_room_yaml, save_room_yaml
+from .room_data import (
+    apply_room_patch,
+    list_assets,
+    list_rooms,
+    load_room_yaml,
+    resolve_within,
+    save_room_yaml,
+)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
@@ -27,6 +34,9 @@ class RoomEditorHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/assets":
             self.handle_api_assets(parsed.query)
+            return
+        if parsed.path == "/api/rooms":
+            self.handle_api_rooms()
             return
         if parsed.path == "/api/save_asset":
             self.send_json({"ok": False, "error": "Use POST for /api/save_asset"}, status=405)
@@ -50,6 +60,9 @@ class RoomEditorHandler(BaseHTTPRequestHandler):
         if self.path == "/api/save":
             self.handle_api_save(body)
             return
+        if self.path == "/api/open":
+            self.handle_api_open(body)
+            return
         if self.path == "/api/save_asset":
             self.handle_api_save_asset(body)
             return
@@ -58,18 +71,46 @@ class RoomEditorHandler(BaseHTTPRequestHandler):
         self.send_json({"ok": False, "error": f"Unknown endpoint: {self.path}"}, status=404)
 
     def handle_api_room(self) -> None:
+        # No room loaded yet (server started without --room): return an empty
+        # mapping so the client can render an idle canvas and prompt for a pick.
+        if not self.server.room_path:
+            self.send_json({})
+            return
         room = load_room_yaml(self.server.room_path)
         self.send_json(room)
 
     def handle_api_info(self) -> None:
         self.send_json(
             {
-                "room_path": str(self.server.room_path),
+                "room_path": str(self.server.room_path) if self.server.room_path else None,
+                "room": self.server.room_path.name if self.server.room_path else None,
                 "base_path": str(self.server.base_path),
                 "host": self.server.server_address[0],
                 "port": self.server.server_address[1],
             }
         )
+
+    def handle_api_rooms(self) -> None:
+        rooms = list_rooms(self.server.base_path)
+        current = self.server.room_path.name if self.server.room_path else None
+        self.send_json({"rooms": rooms, "current": current})
+
+    def handle_api_open(self, body: bytes) -> None:
+        # Switch the active room to a file inside base_path. Constraining to
+        # base_path keeps asset resolution valid (layer images are served relative
+        # to base_path) and prevents path escaping.
+        try:
+            payload = json.loads(body.decode("utf-8"))
+            name = payload.get("room")
+            if not name or not isinstance(name, str):
+                raise ValueError("room name must be provided")
+            target = resolve_within(self.server.base_path, name)
+            if not target.exists() or not target.is_file():
+                raise FileNotFoundError(f"Room file not found: {name}")
+            self.server.room_path = target
+            self.send_json({"ok": True, "room": target.name})
+        except Exception as exc:
+            self.send_json({"ok": False, "error": str(exc)}, status=400)
 
     def handle_api_assets(self, query: str) -> None:
         params = urllib.parse.parse_qs(query)
@@ -79,6 +120,8 @@ class RoomEditorHandler(BaseHTTPRequestHandler):
 
     def handle_api_save(self, body: bytes) -> None:
         try:
+            if not self.server.room_path:
+                raise ValueError("No room loaded; open a room first.")
             payload = json.loads(body.decode("utf-8"))
             patch = payload.get("patch")
             if not isinstance(patch, dict):
@@ -92,14 +135,11 @@ class RoomEditorHandler(BaseHTTPRequestHandler):
 
     def serve_asset(self, path: str) -> None:
         asset_name = urllib.parse.unquote(path[len("/assets/"):])
-        asset_path = (self.server.base_path / asset_name).resolve()
         try:
-            base = self.server.base_path.resolve()
-            if not str(asset_path).startswith(str(base)):
-                raise FileNotFoundError
+            asset_path = resolve_within(self.server.base_path, asset_name)
             if not asset_path.exists() or not asset_path.is_file():
                 raise FileNotFoundError
-        except FileNotFoundError:
+        except (FileNotFoundError, ValueError):
             self.send_error(404, "Asset not found")
             return
 
@@ -161,18 +201,16 @@ class RoomEditorHandler(BaseHTTPRequestHandler):
             if not data or not isinstance(data, str):
                 raise ValueError("data must be base64 string")
 
-            # prevent path escaping
-            asset_path = (self.server.base_path / filename).resolve()
-            base = self.server.base_path.resolve()
-            if not str(asset_path).startswith(str(base)):
-                raise FileNotFoundError("Invalid filename")
+            asset_path = resolve_within(self.server.base_path, filename)
 
             asset_path.parent.mkdir(parents=True, exist_ok=True)
             blob = base64.b64decode(data)
             with asset_path.open("wb") as handle:
                 handle.write(blob)
 
-            self.send_json({"ok": True, "path": str(asset_path.relative_to(base))})
+            self.send_json(
+                {"ok": True, "path": str(asset_path.relative_to(self.server.base_path.resolve()))}
+            )
         except Exception as exc:
             self.send_json({"ok": False, "error": str(exc)}, status=400)
 
@@ -182,7 +220,7 @@ class RoomEditorServer(ThreadingHTTPServer):
         self,
         server_address: tuple[str, int],
         RequestHandlerClass,
-        room_path: Path,
+        room_path: Optional[Path],
         base_path: Path,
         static_dir: Path,
     ) -> None:
@@ -192,11 +230,11 @@ class RoomEditorServer(ThreadingHTTPServer):
         self.static_dir = static_dir
 
 
-def run_server(room_path: Path, base_path: Path, host: str, port: int) -> None:
+def run_server(room_path: Optional[Path], base_path: Path, host: str, port: int) -> None:
     static_dir = Path(__file__).resolve().parent / "static"
     server = RoomEditorServer((host, port), RoomEditorHandler, room_path, base_path, static_dir)
     print(f"Serving room editor at http://{host}:{port}/")
-    print(f"Editing room file: {room_path}")
+    print(f"Editing room file: {room_path if room_path else '(none — pick one in the UI)'}")
     print(f"Asset base path: {base_path}")
     try:
         server.serve_forever()

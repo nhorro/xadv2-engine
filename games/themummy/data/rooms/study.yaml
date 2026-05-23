@@ -9,172 +9,107 @@ background:
   - id: room
     image: a/background/00.png
     z: 0
+  - id: table
+    image: a/background/01.png
+    z: 737
+    origin: {x: 657, y: 427}
+    scale: 0.52
 walkable:
-- x: 535
-  y: 559
-- x: 1416
-  y: 552
-- x: 1432
-  y: 657
-- x: 1549
-  y: 653
-- x: 1620
-  y: 697
-- x: 1634
-  y: 737
-- x: 1750
-  y: 799
-- x: 1856
-  y: 772
-- x: 1944
-  y: 849
-- x: -2
-  y: 860
-- x: 17
-  y: 735
-- x: 146
-  y: 699
-- x: 251
-  y: 690
-- x: 353
-  y: 652
+- {x: 535, y: 559}
+- {x: 1416, y: 552}
+- {x: 1432, y: 657}
+- {x: 1549, y: 653}
+- {x: 1620, y: 697}
+- {x: 1634, y: 737}
+- {x: 1750, y: 799}
+- {x: 1856, y: 772}
+- {x: 1944, y: 849}
+- {x: -2, y: 860}
+- {x: 17, y: 735}
+- {x: 146, y: 699}
+- {x: 251, y: 690}
+- {x: 353, y: 652}
 points:
-  player_start:
-    x: 461
-    y: 706
-  from_hall:
-    x: 1349
-    y: 573
-  at_door:
-    x: 1277
-    y: 572
-  at_desk:
-    x: 1150
-    y: 740
-  stan_spot:
-    x: 732
-    y: 333
-  near_stan:
-    x: 768
-    y: 746
-zones:
-- id: to_hall
-  polygon:
-  - x: 1238
-    y: 462
-  - x: 1422
-    y: 451
-  - x: 1430
-    y: 565
-  - x: 1248
-    y: 552
+  from_hall: {x: 1349, y: 573}
+  at_door: {x: 1277, y: 572}
+  at_desk: {x: 447, y: 654}
+  player_start: {x: 368, y: 740}
+  near_skull: {x: 588, y: 597}
+  skull_talk_spot: {x: 740, y: 293}
+zones: []
 hotspots:
-  notebook:
-    name: el cuaderno
-    area:
-    - x: 723
-      y: 457
-    - x: 794
-      y: 460
-    - x: 792
-      y: 490
-    - x: 713
-      y: 494
-    approach: at_desk
-    affordances:
-    - look_at
-    - pick_up
   window:
-    name: window
+    name: ventana
     area:
-    - x: 206
-      y: 32
-    - x: 201
-      y: 413
-    - x: 357
-      y: 400
-    - x: 356
-      y: 77
+    - {x: 206, y: 32}
+    - {x: 201, y: 413}
+    - {x: 357, y: 400}
+    - {x: 356, y: 77}
     affordances:
     - look_at
   shovel:
-    name: shovel
+    name: pala
     area:
-    - x: 10
-      y: 379
-    - x: 57
-      y: 615
-    - x: 33
-      y: 631
-    - x: 71
-      y: 712
-    - x: 116
-      y: 702
-    - x: 109
-      y: 648
-    - x: 82
-      y: 612
-    - x: 50
-      y: 372
+    - {x: 10, y: 379}
+    - {x: 57, y: 615}
+    - {x: 33, y: 631}
+    - {x: 71, y: 712}
+    - {x: 116, y: 702}
+    - {x: 109, y: 648}
+    - {x: 82, y: 612}
+    - {x: 50, y: 372}
     affordances:
     - look_at
   oscilloscope:
-    name: oscilloscope
+    name: osciloscopio antiguo
     area:
-    - x: 1655
-      y: 377
-    - x: 1653
-      y: 468
-    - x: 1751
-      y: 484
-    - x: 1753
-      y: 371
+    - {x: 1655, y: 377}
+    - {x: 1653, y: 468}
+    - {x: 1751, y: 484}
+    - {x: 1753, y: 371}
     affordances:
     - look_at
   skull:
-    name: skull
+    name: cráneo
     area:
-    - x: 678
-      y: 373
-    - x: 675
-      y: 399
-    - x: 780
-      y: 411
-    - x: 794
-      y: 392
-    - x: 796
-      y: 351
-    - x: 776
-      y: 327
+    - {x: 678, y: 373}
+    - {x: 675, y: 399}
+    - {x: 780, y: 411}
+    - {x: 794, y: 392}
+    - {x: 796, y: 351}
+    - {x: 776, y: 327}
     affordances:
     - look_at
+    - talk_to
   door:
-    name: door
+    name: puerta
     area:
-    - x: 1259
-      y: 169
-    - x: 1260
-      y: 549
-    - x: 1400
-      y: 549
-    - x: 1405
-      y: 172
+    - {x: 1259, y: 169}
+    - {x: 1260, y: 549}
+    - {x: 1400, y: 549}
+    - {x: 1405, y: 172}
     affordances:
     - look_at
     - open
   mapa:
-    name: map
+    name: mapa
     area:
-    - x: 701
-      y: 83
-    - x: 702
-      y: 327
-    - x: 984
-      y: 329
-    - x: 990
-      y: 80
+    - {x: 701, y: 83}
+    - {x: 702, y: 327}
+    - {x: 984, y: 329}
+    - {x: 990, y: 80}
     affordances:
     - look_at
+  notebook:
+    name: el cuaderno
+    area:
+    - {x: 705, y: 492}
+    - {x: 790, y: 492}
+    - {x: 797, y: 462}
+    - {x: 717, y: 465}
+    affordances:
+    - look_at
+    - pick_up
 avatars:
 - id: julia
   start: player_start

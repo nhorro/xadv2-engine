@@ -84,6 +84,61 @@ background:
     CHECK(r.layers[2].origin.y == doctest::Approx(40.0f));
 }
 
+TEST_CASE("parse_room reads per-layer uniform scale (default 1.0)") {
+    const char* yaml = R"YAML(
+id: r
+background:
+  layers:
+    - { id: bg,    image: c/bg.png }
+    - { id: chair, image: c/chair.png, origin: { x: 400, y: 500 }, scale: 1.5 }
+)YAML";
+    const RoomData r = parse_room(yaml);
+    REQUIRE(r.layers.size() == 2);
+    CHECK(r.layers[0].scale == doctest::Approx(1.0f)); // omitted -> native size
+    CHECK(r.layers[1].scale == doctest::Approx(1.5f));
+}
+
+TEST_CASE("parse_room reads perspective and interpolates avatar scale by depth") {
+    const char* yaml = R"YAML(
+id: r
+perspective:
+  top:    { y: 380, scale: 0.70 }
+  bottom: { y: 700, scale: 1.15 }
+)YAML";
+    const RoomData r = parse_room(yaml);
+    REQUIRE(r.perspective.has_value());
+    CHECK(r.perspective->top_scale == doctest::Approx(0.70f));
+    CHECK(r.perspective->bottom_scale == doctest::Approx(1.15f));
+    CHECK(r.avatar_scale_at(380.0f) == doctest::Approx(0.70f));  // at top line
+    CHECK(r.avatar_scale_at(700.0f) == doctest::Approx(1.15f));  // at bottom line
+    CHECK(r.avatar_scale_at(540.0f) == doctest::Approx(0.925f)); // midway
+    CHECK(r.avatar_scale_at(100.0f) == doctest::Approx(0.70f));  // above top -> clamped
+    CHECK(r.avatar_scale_at(900.0f) == doctest::Approx(1.15f));  // below bottom -> clamped
+}
+
+TEST_CASE("avatar_scale_at returns the fallback when no perspective is defined") {
+    const RoomData r = parse_room("id: r\n");
+    CHECK_FALSE(r.perspective.has_value());
+    CHECK(r.avatar_scale_at(500.0f, 1.1f) == doctest::Approx(1.1f));
+}
+
+TEST_CASE("parse_room rejects malformed perspective") {
+    CHECK_THROWS_AS(parse_room("id: r\nperspective:\n  top: { y: 0, scale: 1 }\n"),
+                    DataError); // missing 'bottom'
+    CHECK_THROWS_AS(parse_room("id: r\nperspective:\n"
+                               "  top: { y: 0, scale: 0 }\n  bottom: { y: 9, scale: 1 }\n"),
+                    DataError); // non-positive scale
+}
+
+TEST_CASE("parse_room rejects non-positive layer scale") {
+    CHECK_THROWS_AS(parse_room("id: r\nbackground:\n  layers:\n"
+                               "    - { id: bg, image: a.png, scale: 0 }\n"),
+                    DataError);
+    CHECK_THROWS_AS(parse_room("id: r\nbackground:\n  layers:\n"
+                               "    - { id: bg, image: a.png, scale: -1 }\n"),
+                    DataError);
+}
+
 TEST_CASE("is_walkable respects the walkable area and obstacles") {
     const RoomData r = parse_room(kRoom);
     CHECK(r.is_walkable({200, 650}));       // on the floor
