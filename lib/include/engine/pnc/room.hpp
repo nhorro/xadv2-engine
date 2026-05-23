@@ -68,7 +68,13 @@ struct Region {
     std::string id;
     geom::Polygon area; // footprint (also a hit source)
     float z = 0.0f;
-    std::string over;                          // optional: draw at the z of this layer id
+    std::string over; // optional: draw at the z of this layer id
+    // Optional explicit sort line (world Y), in avatar-feet space, exactly like a
+    // RoomObject's `baseline`: the region occludes characters whose feet are above
+    // the line (smaller y) and is occluded by those below it. Set it for a
+    // perspective-drawn region (e.g. a swappable cart state) that the player must
+    // pass in front of / behind. Overrides `z` / `over` (design 04 §Z-order).
+    std::optional<float> baseline;
     std::map<std::string, std::string> states; // state id -> image logical path
     std::string initial;
 };

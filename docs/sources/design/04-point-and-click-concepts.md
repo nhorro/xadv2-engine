@@ -317,7 +317,7 @@ Default `z` values:
 |--------|-----------|
 | Background base | Behind all sorted drawables. |
 | Background layer | Explicit layer `z`. |
-| Region | Explicit `z`, or the `z` of the layer named by `over`. |
+| Region | `baseline` (a floor-line world-Y) if set; else the `z` of the layer named by `over`; else explicit `z`. |
 | Object | `baseline` (a floor-line world-Y) if set; else `z: auto` (the sprite's bottom edge); else numeric `z`. |
 | Walk-behind | Its `baseline` (a floor-line world-Y); the masked layer patch sorts there. |
 | Avatar | Its walking pivot y coordinate. |
@@ -358,6 +358,27 @@ objects:
 The rest of the cart (the part always behind the player) is just background — a
 layer or a `z: auto` object — so only the genuinely foreground piece needs a
 `baseline`. `baseline` overrides `z` / `z: auto` for that object.
+
+A **region** accepts the same `baseline`, in the same avatar-feet coordinate
+space, and it takes priority over the region's `over` / `z`. Use it when the
+foreground occluder is a *swappable* piece of scenery (a region with named
+states) rather than a static object — e.g. a cart whose open/closed state is a
+region, drawn with perspective, that the player must pass in front of and behind.
+
+#### Choosing between the options
+
+When perspective art breaks the default `z = pivot.y` sort, the foreground piece
+that must occlude the avatar needs an explicit sort line. Pick by what the piece
+already is:
+
+- a **static sprite** the player passes → an object with `baseline`;
+- a **swappable** piece with named states → a region with `baseline`;
+- a patch of an **existing background layer** (no separate art) → a walk-behind
+  area (it samples the layer's own pixels; see below).
+
+In every case the `baseline` is the world-Y where the piece meets the floor, so
+the engine flips occlusion at that line automatically regardless of how the art
+is drawn.
 
 ### Walk-behind areas
 

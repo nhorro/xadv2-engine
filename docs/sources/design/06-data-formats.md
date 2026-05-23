@@ -191,8 +191,9 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `area` | req | polygon | — | Region footprint. |
-| `z` | req unless `over` | number | — | Draw depth. |
+| `z` | req unless `over`/`baseline` | number | — | Draw depth. |
 | `over` | opt | layer id | — | Inherit the named layer's `z` instead of an explicit `z`. |
+| `baseline` | opt | number | — | Floor-line world-Y; the region sorts here against avatar feet (occludes feet above the line, is occluded by feet below), for a perspective region the player passes. Overrides `over` / `z`. |
 | `states` | req | map state id → path | — | Image per named state. |
 | `initial` | req | state id | — | Starting state. |
 
