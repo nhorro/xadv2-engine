@@ -478,7 +478,7 @@ function getCanvasPosition(evt) {
 
 function findVertexAt(point) {
   const polygon = getRoomPolygon();
-  if (!Array.isArray(polygon)) return null;
+  if (!Array.isArray(polygon)) return -1;
   return polygon.findIndex((vertex) => pointNear(vertex, point, 10));
 }
 
@@ -658,10 +658,11 @@ function handlePointerDown(evt) {
       updateUI();
     }
   }
-  // Only insert vertices for non-rectangle polygons
+  // Insert vertices for non-rectangle polygons. An empty polygon (e.g. a freshly
+  // added hotspot) must accept its first point, so don't gate on length.
   if (state.mode !== 'regions') {
     const polygon = getRoomPolygon();
-    if (Array.isArray(polygon) && polygon.length > 0) {
+    if (Array.isArray(polygon)) {
       const insertedIndex = insertVertexIntoPolygon({ x: Math.round(pos.x), y: Math.round(pos.y) }, polygon);
       setRoomPolygon(polygon);
       state.selectedVertex = insertedIndex;
