@@ -11,6 +11,14 @@ room.on_zone_enter = function(zone)
 end
 
 room.hotspots = {
+  skull = {
+    look_at = function()
+      return "Un cráneo humano."
+    end,
+    talk_to = function()
+      start_dialog("skull")
+    end,
+  },
   door = {
     look_at = function()
       return "La puerta da al pasillo del instituto."
