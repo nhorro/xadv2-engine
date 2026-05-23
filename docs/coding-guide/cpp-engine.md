@@ -214,6 +214,38 @@ Error categories (with dev vs release behavior) are tabulated in
 [Scripting API](../sources/design/05-scripting-api.md) §Error handling —
 that table is authoritative for what each category does.
 
+### Loader diagnostics envelope
+
+All YAML/asset loaders raise `pac::core::LoadError` (in
+`engine/core/load_error.hpp`), which carries the structured envelope
+`{ source, location, id, message }`:
+
+- **`source`** — the subsystem tag: `manifest-loader`, `room-loader`,
+  `cast-loader`, `inventory-loader`, `strings-loader`, `anim-loader`,
+  `spritesheet-loader`, `dialog-loader`.
+- **`location`** — `{ file, line, column }`. The text-only `parse_*` functions
+  fill `line`/`column` from the offending `YAML::Node` mark (see the private
+  `core/load_error_yaml.hpp` helpers `loc_of` / `fail_at`); the `load_*` /
+  call-site boundary attaches `file` via `LoadError::with_file(...)` and
+  rethrows. This keeps parsers path-agnostic and headless-testable.
+- **`id`** — a short, stable, dotted error **code** (e.g. `room.id-mismatch`,
+  `strings.defaults-missing-key`) so offline authoring tools and tests can match
+  on it instead of parsing free text. Tests assert `LoadError::code()`.
+- **`what()`** renders the whole envelope on one line:
+  `[source] file:line:col (id): message`.
+
+The per-layer typed exceptions (`ManifestError`, `pnc::DataError`,
+`gfx::AssetError`) are thin subclasses of `LoadError`, so both
+`catch (const LoadError&)` and `catch (const DataError&)` work and existing
+`CHECK_THROWS_AS(..., DataError)` tests keep matching. Loaders throw their typed
+subclass via `fail_at<DataError>("room-loader", "code", msg, node)`.
+
+Loaders **fail loud always** (`parse_*` throw unconditionally); the caller
+decides fatality — startup-required resources (manifest, strings) abort `run()`,
+while per-room/asset loads log and fall back. The dev-only downgrade of
+soft checks (e.g. unknown `strings.defaults` keys → warn in release) is
+design-for, pending a release/dev build-mode gate.
+
 ## 11. Logging
 
 - Single engine logger: `pac::log::info(...)`, `pac::log::warn(...)`,

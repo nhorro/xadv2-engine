@@ -71,6 +71,20 @@ runtime selector are design-for (R3).
 | `verbs` | req | map verb id → string | — | Display label per verb. Keys are the verb ids: `look_at`, `talk_to`, `pick_up`, `use`, `give`, `open`, `close`, `push`, `pull`. |
 | `connectors` | req | map verb id → string | — | Two-operand connector per verb: `use` (e.g. `con`), `give` (e.g. `a`). |
 | `ui` | req | map key → string | — | Built-in UI labels: menu (`new_game`, `continue`, `settings`, `quit`) and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
+| `defaults` | req | map key → string | — | Engine last-resort captions, spoken when no game handler produced text for a verb. The loader requires the exact key set below — no missing keys, and (in dev) no unknown keys. |
+
+The required `defaults` keys and when each fires:
+
+| Key | When fired |
+|-----|------------|
+| `cant_look_at` | No handler returned a string for `look_at`. |
+| `cant_pick_up` | No handler returned for `pick_up`. |
+| `wont_open` / `wont_close` | No handler for `open` / `close`. |
+| `wont_push` / `wont_pull` | No handler for `push` / `pull`. |
+| `cant_use_that_way` | No handler for one- or two-operand `use`. |
+| `no_one_to_give_to` | No handler for `give`. |
+| `nothing_to_say` | No handler for `talk_to`. |
+| `nothing_happens` | Generic fallback when a command performed no action and spoke nothing. |
 
 ```yaml
 version: 1
@@ -97,7 +111,23 @@ ui:
   continue: "Continuar"
   settings: "Opciones"
   quit:     "Salir"
+
+defaults:
+  cant_look_at:      "No veo nada interesante."
+  cant_pick_up:      "No puedo agarrar eso."
+  wont_open:         "No se abre."
+  wont_close:        "No se cierra."
+  wont_push:         "No puedo empujar eso."
+  wont_pull:         "No puedo tirar de eso."
+  cant_use_that_way: "No puedo usar eso así."
+  no_one_to_give_to: "No hay a quién dárselo."
+  nothing_to_say:    "No tengo nada que decir."
+  nothing_happens:   "No pasa nada."
 ```
+
+> **MVP note.** Of these, only `nothing_happens` is wired into a fire site today;
+> the per-verb captions are validated now (the contract is fixed) but their
+> dispatch wiring is tracked as a follow-up.
 
 ## Cast — `cast.yaml`
 

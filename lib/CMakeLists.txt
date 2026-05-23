@@ -42,6 +42,7 @@ endif()
 
 add_library(pac_engine STATIC
     src/core/diagnostics.cpp
+    src/core/load_error.cpp
     src/core/settings.cpp
     src/core/scene_params.cpp
     src/core/resource_source.cpp

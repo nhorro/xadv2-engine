@@ -20,7 +20,9 @@ endif()
 
 add_executable(pac_core_tests
     test_main.cpp
+    load_error_test.cpp
     manifest_test.cpp
+    strings_test.cpp
     scene_stack_test.cpp
     screen_fade_test.cpp
     resource_path_test.cpp
