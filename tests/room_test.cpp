@@ -62,7 +62,7 @@ TEST_CASE("parse_room reads layout, points, hotspots, and avatars") {
     REQUIRE(door.approach.has_value());
     CHECK(door.approach->x == doctest::Approx(170.0f)); // resolved from points
     CHECK(door.affordances.size() == 2);
-    CHECK_FALSE(door.requires_approach); // omitted -> distant interaction allowed
+    CHECK(door.requires_approach); // omitted -> defaults to walk-then-act
 
     REQUIRE(r.avatars.size() == 1);
     CHECK(r.avatars[0].player == true);
@@ -228,14 +228,14 @@ hotspots:
     name: "cofre"
     area: [ {x: 0, y: 0}, {x: 10, y: 0}, {x: 10, y: 10}, {x: 0, y: 10} ]
     approach: spot
-    requires_approach: true
   distant_ok:
     name: "loro"
     area: [ {x: 20, y: 0}, {x: 30, y: 0}, {x: 30, y: 10}, {x: 20, y: 10} ]
+    requires_approach: false
 )YAML";
     const RoomData r = parse_room(yaml);
-    CHECK(r.hotspots.at("near_only").requires_approach);
-    CHECK_FALSE(r.hotspots.at("distant_ok").requires_approach); // default
+    CHECK(r.hotspots.at("near_only").requires_approach);        // omitted -> default true
+    CHECK_FALSE(r.hotspots.at("distant_ok").requires_approach); // explicit opt-out
 }
 
 TEST_CASE("parse_room reads the optional object baseline (perspective sort line)") {
