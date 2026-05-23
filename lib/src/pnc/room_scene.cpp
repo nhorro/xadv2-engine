@@ -1,5 +1,6 @@
 #include "engine/pnc/room_scene.hpp"
 
+#include "engine/core/dev_flags.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
@@ -151,6 +152,14 @@ float RoomScene::scenery_height() const {
 }
 
 void RoomScene::enter() {
+    // Seed the debug overlay layers from the manifest dev flags (#37). They only
+    // render / respond to F1-F4 when ctx_.dev.edit_mode is set (gated in draw()
+    // and handle_event()).
+    debug_flags_.walkboxes = ctx_.dev.show_walkboxes;
+    debug_flags_.hotspots = ctx_.dev.show_hotspots;
+    debug_flags_.anchors = ctx_.dev.show_anchors;
+    debug_flags_.hud = ctx_.dev.show_state;
+
     if (!font_path_.empty()) {
         font_ = ctx_.resources.try_font(font_path_);
     }
@@ -578,6 +587,13 @@ void RoomScene::handle_event(const sf::Event& event) {
     // virtual space by the application's event rewrite.
     if (event.type == sf::Event::MouseMoved) {
         hover_vp_ = {static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y)};
+        return;
+    }
+    // Debug overlay toggles (#37): F1-F4 flip a layer. Only in dev (edit_mode);
+    // a shipped game never reacts to these keys. Handled before all view-state
+    // routing so overlays can be toggled during dialogs and the pause menu too.
+    if (ctx_.dev.edit_mode && event.type == sf::Event::KeyPressed &&
+        debug_flags_.toggle(event.key.code)) {
         return;
     }
     if (change_armed_) {
@@ -1019,6 +1035,109 @@ void RoomScene::check_zones() {
     }
 }
 
+std::string RoomScene::debug_hud_text() const {
+    const auto value_str = [](const pac::core::StateValue& v) -> std::string {
+        if (const auto* b = std::get_if<bool>(&v)) {
+            return *b ? "true" : "false";
+        }
+        if (const auto* d = std::get_if<double>(&v)) {
+            return std::to_string(*d);
+        }
+        if (const auto* s = std::get_if<std::string>(&v)) {
+            return *s;
+        }
+        return "?";
+    };
+    const char* view = "?";
+    switch (view_state_) {
+    case ViewState::COMMAND:
+        view = "COMMAND";
+        break;
+    case ViewState::DIALOG:
+        view = "DIALOG";
+        break;
+    case ViewState::BLOCKED:
+        view = "BLOCKED";
+        break;
+    case ViewState::MENU:
+        view = "MENU";
+        break;
+    }
+    const char* builder = "?";
+    switch (builder_.state()) {
+    case CommandBuilder::State::IDLE:
+        builder = "IDLE";
+        break;
+    case CommandBuilder::State::EXPECTING_PARAM1_ROOM_OBJECT:
+        builder = "WANT_P1_ROOM";
+        break;
+    case CommandBuilder::State::EXPECTING_PARAM1_INVENTORY_OBJECT:
+        builder = "WANT_P1_INV";
+        break;
+    case CommandBuilder::State::EXPECTING_PARAM1_ANY_OBJECT:
+        builder = "WANT_P1_ANY";
+        break;
+    case CommandBuilder::State::EXPECTING_PARAM2_ROOM_OBJECT:
+        builder = "WANT_P2_ROOM";
+        break;
+    case CommandBuilder::State::EXPECTING_PARAM2_INVENTORY_OBJECT:
+        builder = "WANT_P2_INV";
+        break;
+    case CommandBuilder::State::EXPECTING_PARAM2_ANY_OBJECT:
+        builder = "WANT_P2_ANY";
+        break;
+    case CommandBuilder::State::COMMAND_READY:
+        builder = "READY";
+        break;
+    case CommandBuilder::State::COMMAND_EXECUTING:
+        builder = "EXECUTING";
+        break;
+    }
+
+    std::string out = "ROOM: " + current_room_id_;
+    if (!current_zone_.empty()) {
+        out += "  ZONE: " + current_zone_;
+    }
+    out += "  VIEW: ";
+    out += view;
+    out += "\nCMD: ";
+    out += builder;
+    if (builder_.verb()) {
+        out += " verb=";
+        out += verb_id(*builder_.verb());
+    }
+    if (builder_.param1() && builder_.param1()->valid()) {
+        out += " p1=" + builder_.param1()->id;
+    }
+    if (builder_.param2() && builder_.param2()->valid()) {
+        out += " p2=" + builder_.param2()->id;
+    }
+
+    out += "\n-- world state --";
+    if (ctx_.state.entries().empty()) {
+        out += "\n  (empty)";
+    }
+    for (const auto& [key, value] : ctx_.state.entries()) {
+        out += "\n  " + key + " = " + value_str(value);
+    }
+
+    if (const auto it = room_state_.find(current_room_id_);
+        it != room_state_.end() && !it->second.empty()) {
+        out += "\n-- room state --";
+        for (const auto& [key, value] : it->second) {
+            out += "\n  " + key + " = " + value_str(value);
+        }
+    }
+
+    if (room_ && !room_->data().regions.empty()) {
+        out += "\n-- regions --";
+        for (const auto& [id, region] : room_->data().regions) {
+            out += "\n  " + id + " = " + room_->region_state(id);
+        }
+    }
+    return out;
+}
+
 void RoomScene::draw(sf::RenderTarget& target) const {
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
     if (room_ && camera_) {
@@ -1033,6 +1152,14 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                        player_ ? &*player_ : nullptr,
                        room_->npcs(),
                        ctx_.log);
+        if (ctx_.dev.edit_mode) {
+            debug_overlay_.draw_world(target,
+                                      debug_flags_,
+                                      room_->data(),
+                                      player_ ? &*player_ : nullptr,
+                                      room_->npcs(),
+                                      font_);
+        }
         speech_.draw(target, font_); // world coordinates, over the scenery
     }
 
@@ -1056,6 +1183,11 @@ void RoomScene::draw(sf::RenderTarget& target) const {
     }
     if (view_state_ == ViewState::MENU) {
         draw_menu(target);
+    }
+
+    if (ctx_.dev.edit_mode && debug_flags_.hud) {
+        target.setView(ctx_.display.view());
+        debug_overlay_.draw_hud(target, font_, debug_hud_text());
     }
 
     // change_room fade overlay: a black quad over the whole window (bars too),
