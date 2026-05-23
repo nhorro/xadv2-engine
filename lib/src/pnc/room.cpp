@@ -1,5 +1,6 @@
 #include "engine/pnc/room.hpp"
 
+#include "core/load_error_yaml.hpp"
 #include "engine/pnc/data_error.hpp"
 
 #include <yaml-cpp/yaml.h>
@@ -34,6 +35,13 @@ float RoomData::avatar_scale_at(float y, float fallback) const {
 
 namespace {
 
+constexpr const char* kSource = "room-loader";
+
+[[noreturn]] void
+room_fail(const std::string& code, const std::string& msg, const YAML::Node& at = YAML::Node()) {
+    pac::core::fail_at<DataError>(kSource, code, msg, at);
+}
+
 geom::Point parse_point(const YAML::Node& node) {
     return {node["x"].as<float>(), node["y"].as<float>()};
 }
@@ -48,23 +56,29 @@ geom::Polygon parse_polygon(const YAML::Node& node) {
 
 } // namespace
 
-RoomData parse_room(const std::string& yaml_text) {
+RoomData parse_room(const std::string& yaml_text, const std::string& expected_id) {
     YAML::Node root;
     try {
         root = YAML::Load(yaml_text);
     } catch (const YAML::Exception& e) {
-        throw DataError(std::string("room: invalid YAML: ") + e.what());
+        room_fail("room.invalid-yaml", std::string("invalid YAML: ") + e.what());
     }
     if (!root || !root.IsMap()) {
-        throw DataError("room: root must be a mapping");
+        room_fail("room.root-not-map", "root must be a mapping");
     }
 
     RoomData room;
     room.version = root["version"] ? root["version"].as<int>() : 1;
     if (!root["id"]) {
-        throw DataError("room: 'id' is required");
+        room_fail("room.id-missing", "'id' is required", root);
     }
     room.id = root["id"].as<std::string>();
+    if (!expected_id.empty() && room.id != expected_id) {
+        room_fail("room.id-mismatch",
+                  "'id: " + room.id + "' does not match the room filename '" + expected_id +
+                      "' (rooms are loaded by id from rooms/<id>.yaml)",
+                  root["id"]);
+    }
 
     if (const YAML::Node bg = root["background"]) {
         if (const YAML::Node color = bg["color"]) {
@@ -77,7 +91,9 @@ RoomData parse_room(const std::string& yaml_text) {
             BackgroundLayer layer;
             layer.id = ln["id"] ? ln["id"].as<std::string>() : std::string();
             if (!ln["image"]) {
-                throw DataError("room '" + room.id + "': a background layer is missing 'image'");
+                room_fail("room.layer-image-missing",
+                          "room '" + room.id + "': a background layer is missing 'image'",
+                          ln);
             }
             layer.image = ln["image"].as<std::string>();
             layer.z = ln["z"] ? ln["z"].as<float>() : 0.0f;
@@ -88,8 +104,10 @@ RoomData parse_room(const std::string& yaml_text) {
             }
             layer.scale = ln["scale"] ? ln["scale"].as<float>() : 1.0f;
             if (!(layer.scale > 0.0f)) {
-                throw DataError("room '" + room.id + "': layer '" + layer.id +
-                                "' has a non-positive scale (must be > 0)");
+                room_fail("room.layer-scale-invalid",
+                          "room '" + room.id + "': layer '" + layer.id +
+                              "' has a non-positive scale (must be > 0)",
+                          ln["scale"]);
             }
             room.layers.push_back(std::move(layer));
         }
@@ -111,7 +129,9 @@ RoomData parse_room(const std::string& yaml_text) {
     for (const YAML::Node& zn : root["zones"] ? root["zones"] : YAML::Node()) {
         Zone zone;
         if (!zn["id"] || !zn["polygon"]) {
-            throw DataError("room '" + room.id + "': a zone needs 'id' and 'polygon'");
+            room_fail("room.zone-incomplete",
+                      "room '" + room.id + "': a zone needs 'id' and 'polygon'",
+                      zn);
         }
         zone.id = zn["id"].as<std::string>();
         zone.polygon = parse_polygon(zn["polygon"]);
@@ -136,10 +156,18 @@ RoomData parse_room(const std::string& yaml_text) {
                 }
             }
             if (region.states.empty()) {
-                throw DataError("room '" + room.id + "': region '" + region.id + "' has no states");
+                room_fail("room.region-no-states",
+                          "room '" + room.id + "': region '" + region.id + "' has no states",
+                          node);
             }
             region.initial =
                 node["initial"] ? node["initial"].as<std::string>() : region.states.begin()->first;
+            if (!region.states.contains(region.initial)) {
+                room_fail("room.region-initial-not-in-states",
+                          "room '" + room.id + "': region '" + region.id + "' has initial state '" +
+                              region.initial + "' which is not one of its declared states",
+                          node["initial"]);
+            }
             room.regions.emplace(region.id, std::move(region));
         }
     }
@@ -171,8 +199,10 @@ RoomData parse_room(const std::string& yaml_text) {
             wb.id = kv.first.as<std::string>();
             const YAML::Node node = kv.second;
             if (!node["layer"] || !node["area"] || !node["baseline"]) {
-                throw DataError("room '" + room.id + "': walkbehind '" + wb.id +
-                                "' needs 'layer', 'area', and 'baseline'");
+                room_fail("room.walkbehind-incomplete",
+                          "room '" + room.id + "': walkbehind '" + wb.id +
+                              "' needs 'layer', 'area', and 'baseline'",
+                          node);
             }
             wb.layer = node["layer"].as<std::string>();
             const bool layer_exists =
@@ -180,8 +210,10 @@ RoomData parse_room(const std::string& yaml_text) {
                     return l.id == wb.layer;
                 });
             if (!layer_exists) {
-                throw DataError("room '" + room.id + "': walkbehind '" + wb.id +
-                                "' references unknown layer '" + wb.layer + "'");
+                room_fail("room.walkbehind-unknown-layer",
+                          "room '" + room.id + "': walkbehind '" + wb.id +
+                              "' references unknown layer '" + wb.layer + "'",
+                          node["layer"]);
             }
             wb.area = parse_polygon(node["area"]);
             wb.baseline = node["baseline"].as<float>();
@@ -202,8 +234,10 @@ RoomData parse_room(const std::string& yaml_text) {
                 hs.bind = node["bind"].as<std::string>();
             }
             if (hs.area.empty() && hs.bind.empty()) {
-                throw DataError("room '" + room.id + "': hotspot '" + hs.id +
-                                "' needs an 'area' or a 'bind'");
+                room_fail("room.hotspot-no-area-or-bind",
+                          "room '" + room.id + "': hotspot '" + hs.id +
+                              "' needs an 'area' or a 'bind'",
+                          node);
             }
             if (const YAML::Node approach = node["approach"]) {
                 if (approach.IsScalar()) {
@@ -220,6 +254,15 @@ RoomData parse_room(const std::string& yaml_text) {
             }
             hs.default_verb =
                 node["default_verb"] ? node["default_verb"].as<std::string>() : "look_at";
+            if (hs.default_verb != "look_at" &&
+                std::find(hs.affordances.begin(), hs.affordances.end(), hs.default_verb) ==
+                    hs.affordances.end()) {
+                room_fail("room.default-verb-not-in-affordances",
+                          "room '" + room.id + "': hotspot '" + hs.id + "' has default_verb '" +
+                              hs.default_verb +
+                              "' which is neither 'look_at' nor one of its affordances",
+                          node["default_verb"]);
+            }
             hs.enabled = node["enabled"] ? node["enabled"].as<bool>() : true;
             hs.requires_approach =
                 node["requires_approach"] ? node["requires_approach"].as<bool>() : false;
@@ -230,7 +273,9 @@ RoomData parse_room(const std::string& yaml_text) {
     for (const YAML::Node& av : root["avatars"] ? root["avatars"] : YAML::Node()) {
         RoomAvatarPlacement placement;
         if (!av["id"]) {
-            throw DataError("room '" + room.id + "': an avatar entry is missing 'id'");
+            room_fail("room.avatar-id-missing",
+                      "room '" + room.id + "': an avatar entry is missing 'id'",
+                      av);
         }
         placement.id = av["id"].as<std::string>();
         placement.start = av["start"] ? av["start"].as<std::string>() : std::string();
@@ -243,7 +288,9 @@ RoomData parse_room(const std::string& yaml_text) {
         const YAML::Node top = persp["top"];
         const YAML::Node bottom = persp["bottom"];
         if (!top || !bottom) {
-            throw DataError("room '" + room.id + "': perspective needs 'top' and 'bottom'");
+            room_fail("room.perspective-incomplete",
+                      "room '" + room.id + "': perspective needs 'top' and 'bottom'",
+                      persp);
         }
         Perspective p;
         p.top_y = top["y"].as<float>();
@@ -251,7 +298,9 @@ RoomData parse_room(const std::string& yaml_text) {
         p.bottom_y = bottom["y"].as<float>();
         p.bottom_scale = bottom["scale"].as<float>();
         if (!(p.top_scale > 0.0f) || !(p.bottom_scale > 0.0f)) {
-            throw DataError("room '" + room.id + "': perspective scales must be > 0");
+            room_fail("room.perspective-scale-invalid",
+                      "room '" + room.id + "': perspective scales must be > 0",
+                      persp);
         }
         room.perspective = p;
     }
