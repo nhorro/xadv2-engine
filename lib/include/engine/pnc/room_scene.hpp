@@ -175,6 +175,10 @@ private:
     std::optional<Avatar> player_;
     std::optional<Camera> camera_;
     SpeechManager speech_;
+    // Set whenever a line is shown via say()/say_at(); cleared before each command
+    // dispatch so execute_ready_command() can tell whether the verb handler already
+    // spoke (e.g. called talk()) and skip the "nothing happens" fallback caption.
+    bool spoke_during_command_ = false;
     RoomRenderer renderer_;
     CommandBuilder builder_;
     std::optional<ScummPanel> panel_;
