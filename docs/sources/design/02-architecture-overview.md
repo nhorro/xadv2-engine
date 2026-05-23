@@ -738,8 +738,20 @@ state; in a dev session they are toggled at runtime:
 | `F3` | avatar anchors (magenta cross) + z values — `show_anchors` |
 | `F4` | command-builder state + room/world/region state HUD — `show_state` |
 
-Room reload, room jump, and inventory add/remove (the action-style dev tools) are
-tracked separately under dev actions.
+The action-style dev tools (#38) are also `edit_mode`-gated and bound to function
+keys, but act only from the COMMAND view state (so they can't disrupt a running
+dialog or the pause menu):
+
+| Key | Action |
+|-----|--------|
+| `F5` | Reload the current room's behavior script — `on_unload`, cancel + reopen the room scope (reaping its tasks), re-evaluate `rooms/<id>.lua`, `on_load`. Keeps the room data, player pose, and persistent state; additionally gated by `allow_room_reload`. |
+| `F6` | Jump to the next room (cyclic) found in the rooms directory. |
+| `F7` | Add the first defined inventory item the player isn't holding. |
+| `F8` | Remove the most recently added held inventory item. |
+
+The reload follows the script-task-ownership rules: cancelling the room scope ends
+its coroutines without running Lua cleanup, so authored teardown belongs in
+`on_unload`.
 
 ### Keep layer boundaries strict
 

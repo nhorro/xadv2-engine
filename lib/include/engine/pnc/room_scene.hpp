@@ -158,6 +158,19 @@ private:
     /// Multi-line debug HUD text (#37): room/zone/view-state, command-builder
     /// state, and a dump of world/room/region state. Drawn by the F4 overlay.
     [[nodiscard]] std::string debug_hud_text() const;
+
+    // --- dev actions (#38): in-engine authoring helpers, edit_mode-gated, bound
+    // to F5-F8. Logic only (no UI); each logs what it did.
+    /// Hot-reload the current room's behavior script: on_unload, cancel + reopen
+    /// the room scope, reload rooms/<id>.lua, on_load. Keeps RoomData, the player
+    /// pose, and persistent state. Additionally gated by allow_room_reload.
+    void dev_reload_room();
+    /// change_room to the next room id found in the rooms directory (cyclic).
+    void dev_jump_to_next_room();
+    /// Add the first defined inventory item the player isn't holding.
+    void dev_give_next_item();
+    /// Remove the most recently added held inventory item.
+    void dev_remove_last_item();
     [[nodiscard]] geom::Point virtual_to_world(sf::Vector2f virtual_point) const;
     [[nodiscard]] float scenery_height() const;
     void check_zones();
