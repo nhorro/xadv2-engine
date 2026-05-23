@@ -36,6 +36,7 @@ namespace {
 constexpr float kScenerFraction = 0.85f;
 constexpr float kAvatarScale = 1.1f;
 constexpr float kSpeechRise = 250.0f;
+constexpr float kRoomFadeDefault = 0.3f; // change_room fade-out/in seconds
 
 /// Whether `verb` is offered for an operand with these affordances. `look_at` is
 /// always allowed; every other verb must be listed (design 04 §Affordances).
@@ -130,6 +131,14 @@ RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams
     inventory_path_ = params.get_or("inventory", "");
     inventory_logic_ = params.get_or("inventory_logic", "");
     logic_path_ = params.get_or("logic", "");
+    fade_duration_ = kRoomFadeDefault;
+    if (const auto v = params.get("fade_duration")) {
+        try {
+            fade_duration_ = std::stof(*v);
+        } catch (const std::exception&) {
+            // keep the default on a malformed value
+        }
+    }
 }
 
 RoomScene::~RoomScene() = default;
@@ -564,6 +573,9 @@ void RoomScene::handle_event(const sf::Event& event) {
         hover_vp_ = {static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y)};
         return;
     }
+    if (change_armed_) {
+        return; // a change_room is committing (fading out); ignore input
+    }
     if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
         // ESC toggles the in-game pause/save/load menu from COMMAND, and
         // closes it again from MENU. DIALOG / BLOCKED ignore ESC so the
@@ -878,6 +890,12 @@ std::string RoomScene::top_bar_text() const {
 }
 
 void RoomScene::update(float dt) {
+    // Advance the change_room fade; once fully black, commit the deferred load.
+    room_fade_.update(dt);
+    if (change_armed_ && room_fade_.opaque()) {
+        change_armed_ = false;
+        change_pending_ = true;
+    }
     if (change_pending_) {
         change_pending_ = false;
         const std::string id = pending_room_;
@@ -885,6 +903,11 @@ void RoomScene::update(float dt) {
         const bool was_restore = pending_restore_player_.has_value();
         unload_room();
         load_room(id, entry);
+        // If we got here via a faded change_room (screen is black), fade back in.
+        // A restore() path leaves the screen clear, so this is a no-op there.
+        if (room_fade_.opaque()) {
+            room_fade_.fade_in(fade_duration_);
+        }
         // Restore overrides the default seat from load_room when restoring a save.
         if (pending_restore_player_ && player_) {
             player_->set_position({pending_restore_player_->x, pending_restore_player_->y});
@@ -995,14 +1018,34 @@ void RoomScene::draw(sf::RenderTarget& target) const {
     if (view_state_ == ViewState::MENU) {
         draw_menu(target);
     }
+
+    // change_room fade overlay: a black quad over the whole window (bars too),
+    // drawn last so it covers the scenery and panel during the transition.
+    const sf::Uint8 fade_a = room_fade_.alpha255();
+    if (fade_a > 0) {
+        const sf::View prev = target.getView();
+        const sf::Vector2f size(static_cast<float>(target.getSize().x),
+                                static_cast<float>(target.getSize().y));
+        target.setView(sf::View(sf::FloatRect(0.0f, 0.0f, size.x, size.y)));
+        sf::RectangleShape quad(size);
+        quad.setFillColor(sf::Color(0, 0, 0, fade_a));
+        target.draw(quad);
+        target.setView(prev);
+    }
 }
 
 // --- genre Lua API targets ---
 
 void RoomScene::api_change_room(const std::string& id, const std::string& entry_point) {
-    change_pending_ = true;
     pending_room_ = id;
     pending_entry_ = entry_point;
+    if (fade_duration_ > 0.0f) {
+        // Fade the scenery to black; update() does the load once fully black.
+        room_fade_.fade_out(fade_duration_);
+        change_armed_ = true;
+    } else {
+        change_pending_ = true;
+    }
 }
 
 void RoomScene::api_set_region_state(const std::string& region_id, const std::string& state) {

@@ -419,6 +419,18 @@ The `SceneManager` owns a stack of scenes. The top scene is focused.
 By default, only the top scene receives input and updates. Scenes draw from bottom
 to top. A pushed overlay may be opaque or transparent.
 
+### Scene transitions (fade)
+
+A full-screen `goto_scene` can fade to black and back, configured by a transition
+duration on the `SceneManager` (0 = instant swap). When a duration is set, a queued
+GOTO fades the screen out, swaps the stack **at black** (so the old scene's
+`leave()` and the new scene's `enter()` run while nothing is visible), then fades
+back in; input is ignored while a swap is committed. Overlays (`push_scene` /
+`pop_scene`, e.g. the pause or settings menu) and quitting are **never** faded. The
+fade is a black quad drawn over the whole window (letterbox bars included) after
+the scenes; the timing lives in a small headless `ScreenFade` so it is
+unit-testable without a window.
+
 
 ## Implementation guidelines
 
