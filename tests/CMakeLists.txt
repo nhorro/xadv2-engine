@@ -39,6 +39,7 @@ add_executable(pac_core_tests
     inventory_test.cpp
     camera_test.cpp
     debug_overlay_test.cpp
+    dev_actions_test.cpp
     speech_test.cpp
     text_encoding_test.cpp
     dialog_test.cpp

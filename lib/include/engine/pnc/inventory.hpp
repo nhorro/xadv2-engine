@@ -26,6 +26,7 @@ std::map<std::string, InventoryItem> parse_inventory(const std::string& yaml_tex
 class InventoryModel {
 public:
     void set_definitions(std::map<std::string, InventoryItem> defs) { defs_ = std::move(defs); }
+    [[nodiscard]] const std::map<std::string, InventoryItem>& definitions() const { return defs_; }
     [[nodiscard]] const InventoryItem* item(const std::string& id) const;
 
     void add(const std::string& id);
