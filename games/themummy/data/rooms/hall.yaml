@@ -11,7 +11,9 @@ background:
     z: 0
   - id: cart
     image: b/background/01.png
-    z: 796
+    # z = the cart's floor-contact line (its front wheels), so an avatar sorts in
+    # front of it when its feet are below this and behind it when above.
+    z: 800
     origin: {x: 1093, y: 482}
     scale: 0.804
 walkable:
@@ -76,5 +78,9 @@ avatars:
   start: player_start
   orientation: down
   player: true
-obstacles: []
+obstacles:
+- - {x: 1128, y: 725}
+  - {x: 1615, y: 735}
+  - {x: 1610, y: 800}
+  - {x: 1135, y: 792}
 regions: {}

@@ -11,6 +11,8 @@ background:
     z: 0
   - id: table
     image: a/background/01.png
+    # z = the table's floor-contact line (front legs), so the avatar sorts in
+    # front of it when its feet are below this line and behind it when above.
     z: 737
     origin: {x: 657, y: 427}
     scale: 0.52
@@ -115,5 +117,9 @@ avatars:
   start: player_start
   orientation: down
   player: true
-obstacles: []
+obstacles:
+- - {x: 668, y: 612}
+  - {x: 1245, y: 612}
+  - {x: 1250, y: 738}
+  - {x: 662, y: 738}
 regions: {}
