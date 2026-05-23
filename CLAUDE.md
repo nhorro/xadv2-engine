@@ -13,9 +13,10 @@ architecture to preserve.
 
 **Status: M0–M5 are merged and fully closed. M6 (hardening) and M7 (presentation
 & authoring polish) are largely merged. Settings persistence (#66, M6),
-display-mode settings (#71, M7), and localization infrastructure (#72, M7) are in
-review on PR #94. Still open: M6 authoring templates (#39), packaging smoke path
-(#40), manual MVP regression checklist (#41), and the Windows build recipe (#68).**
+display-mode settings (#71, M7), and localization infrastructure (#72, M7) are
+closed and landing via PR #94 (not yet merged to `develop`). Still open: M6
+authoring templates (#39), packaging smoke path (#40), manual MVP regression
+checklist (#41), and the Windows build recipe (#68).**
 - **M0 Core Shell**: CMake build, `pac_engine` (`pac::core` harness + `pac::pnc`),
   `pac_themummy` sample, headless doctest+CTest.
 - **M1 Generic 2D**: `pac::geom`, `ResourceCache` + `AudioServices`, and `pac::gfx`
@@ -55,10 +56,9 @@ review on PR #94. Still open: M6 authoring templates (#39), packaging smoke path
 
 The remaining MVP-hardening work is in **M6**: authoring templates (#39), a
 packaging smoke path (#40), the manual MVP regression checklist (#41), and the
-Windows build recipe (#68). **M7** is otherwise merged save for the two settings
-issues in review on PR #94: display-mode settings (#71) and localization
-infrastructure (#72) — which also closes the M6 settings-persistence issue (#66).
-See the GitHub milestones.
+Windows build recipe (#68). The settings work — display-mode (#71) and
+localization (#72) for **M7**, plus settings-persistence (#66) for M6 — is closed
+and lands via PR #94 once it merges to `develop`. See the GitHub milestones.
 
 ## The design docs are the source of truth
 
