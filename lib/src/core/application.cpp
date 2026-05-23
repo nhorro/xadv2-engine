@@ -112,7 +112,12 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
 
     FilesystemResourceSource source(manifest.resources_src);
     ResourceCache resources(source, log);
-    Strings strings = load_strings(source, manifest.strings_path, log);
+    Strings strings;
+    try {
+        strings = load_strings(source, manifest.strings_path, log);
+    } catch (const std::exception&) {
+        return 1; // load_strings already logged the diagnostic
+    }
     AudioServices audio(resources, log, settings);
     Scripting scripting(log);
     StateStore state;

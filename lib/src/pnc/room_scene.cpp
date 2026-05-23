@@ -367,7 +367,10 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
 
     RoomData data;
     try {
-        data = parse_room(ctx_.resources.read_text(room_logical));
+        data = parse_room(ctx_.resources.read_text(room_logical), id);
+    } catch (pac::core::LoadError& e) {
+        ctx_.log.error(std::string("RoomScene: ") + e.with_file(room_logical).what());
+        return;
     } catch (const std::exception& e) {
         ctx_.log.error(std::string("RoomScene: room '" + id + "': ") + e.what());
         return;
@@ -757,7 +760,7 @@ void RoomScene::dispatch_and_feedback(const Command& cmd) {
     if (caption) {
         say(*caption, color);
     } else if (!spoke_during_command_) {
-        say("No pasa nada.", color);
+        say(ctx_.strings.caption("nothing_happens"), color);
     }
     builder_.finish_execution();
 }

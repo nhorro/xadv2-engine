@@ -31,3 +31,17 @@ ui:
   music:    "Música"
   "on":     "Sí"
   "off":    "No"
+
+# Engine last-resort captions, shown when no game handler produced text for a
+# verb. All keys are required (validated by the strings loader).
+defaults:
+  cant_look_at:      "No veo nada interesante."
+  cant_pick_up:      "No puedo agarrar eso."
+  wont_open:         "No se abre."
+  wont_close:        "No se cierra."
+  wont_push:         "No puedo empujar eso."
+  wont_pull:         "No puedo tirar de eso."
+  cant_use_that_way: "No puedo usar eso así."
+  no_one_to_give_to: "No hay a quién dárselo."
+  nothing_to_say:    "No tengo nada que decir."
+  nothing_happens:   "No pasa nada."
