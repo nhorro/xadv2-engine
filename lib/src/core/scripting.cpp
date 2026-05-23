@@ -95,48 +95,66 @@ struct Scripting::Impl {
         return tasks.back().id;
     }
 
-    void resume(Task& t) {
+    // Resumes by id, never by reference: t.co(arg) below can run Lua that calls
+    // spawn(), which push_back()s into `tasks` and may reallocate it. A held
+    // Task& would dangle for the rest of this function (use-after-free), so we
+    // copy the coroutine handle before the call and re-resolve the task after.
+    void resume(TaskId id) {
+        Task* t = find(id);
+        if (!t) {
+            return;
+        }
         const ScopeId previous = current_scope;
-        current_scope = t.scope; // spawn/emit inside the task inherit its scope
-        sol::object arg = t.resume_value;
-        t.resume_value = sol::object(); // nil
+        current_scope = t->scope; // spawn/emit inside the task inherit its scope
+        const sol::object arg = t->resume_value;
+        t->resume_value = sol::object(); // nil
 
-        const sol::protected_function_result r = t.co(arg);
+        // The handle copy keeps the coroutine alive independently of `t`; the
+        // underlying lua thread is owned by the Task and outlives this call
+        // (tasks are only erased after update()'s loop).
+        sol::coroutine co = t->co;
+        const sol::protected_function_result r = co(arg);
 
         current_scope = previous;
+
+        // The resume may have reallocated `tasks`; re-resolve before any write.
+        t = find(id);
+        if (!t) {
+            return;
+        }
 
         if (!r.valid()) {
             const sol::error err = r;
             log.error(std::string("script error: ") + err.what());
-            t.wait = Wait::DONE;
+            t->wait = Wait::DONE;
             return;
         }
-        if (t.co.status() != sol::call_status::yielded) {
-            t.wait = Wait::DONE; // coroutine returned
+        if (co.status() != sol::call_status::yielded) {
+            t->wait = Wait::DONE; // coroutine returned
             return;
         }
 
         sol::object req_obj =
             (r.return_count() > 0) ? sol::object(r[0]) : sol::object(sol::lua_nil);
         if (!req_obj.is<sol::table>()) {
-            t.wait = Wait::READY; // bare yield -> reschedule
+            t->wait = Wait::READY; // bare yield -> reschedule
             return;
         }
         const sol::table req = req_obj.as<sol::table>();
         const std::string kind = req.get_or("kind", std::string("ready"));
         if (kind == "timer") {
-            t.wait = Wait::TIMER;
-            t.timer = static_cast<float>(req.get_or("seconds", 0.0));
+            t->wait = Wait::TIMER;
+            t->timer = static_cast<float>(req.get_or("seconds", 0.0));
         } else if (kind == "event") {
-            t.wait = Wait::EVENT;
-            t.event_name = req.get_or("name", std::string());
+            t->wait = Wait::EVENT;
+            t->event_name = req.get_or("name", std::string());
         } else if (kind == "text") {
-            t.wait = Wait::TEXT;
-            t.timer = static_cast<float>(req.get_or("seconds", 0.0));
+            t->wait = Wait::TEXT;
+            t->timer = static_cast<float>(req.get_or("seconds", 0.0));
             current_text = req.get_or("text", std::string());
-            text_owner = t.id;
+            text_owner = t->id;
         } else {
-            t.wait = Wait::READY;
+            t->wait = Wait::READY;
         }
     }
 
@@ -167,7 +185,7 @@ struct Scripting::Impl {
                 current_text.clear(); // page finished
                 text_owner = 0;
             }
-            resume(*t);
+            resume(id);
         }
         tasks.erase(std::remove_if(tasks.begin(),
                                    tasks.end(),
