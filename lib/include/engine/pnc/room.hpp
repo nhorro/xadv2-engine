@@ -27,6 +27,10 @@ struct BackgroundLayer {
     // size. Mainly a development aid for sizing furniture-style occluder layers;
     // in production layers should ship at their correct native size.
     float scale = 1.0f;
+    // Initial visibility. Toggled at runtime via set_layer_visible (Lua), which
+    // requires the layer to carry an `id`. Persisted per room like object/region
+    // state. World bounds are still derived from all layers, hidden or not.
+    bool visible = true;
 };
 
 struct RoomHotspot {

@@ -24,6 +24,7 @@
 #include <SFML/Window/Event.hpp>
 
 #include <cmath>
+#include <optional>
 #include <string>
 
 namespace pac::core {
@@ -65,6 +66,26 @@ sf::Event to_virtual_event(const sf::Event& in, const Display& display) {
     return ev;
 }
 
+constexpr char kWindowTitle[] = "Extraordinary Adventures";
+
+// (Re)create the OS window for `mode`. Fullscreen picks the video mode that best
+// matches the game's virtual resolution (the "optimal" mode); windowed uses the
+// requested client size. The virtual resolution is unchanged, so the letterbox
+// keeps gameplay coordinates stable across the switch (R6).
+void apply_window_mode(sf::RenderWindow& window,
+                       const DisplayMode& mode,
+                       sf::Vector2u virtual_res) {
+    if (mode.fullscreen) {
+        const sf::VideoMode vm = best_fullscreen_mode(sf::VideoMode::getFullscreenModes(),
+                                                      virtual_res,
+                                                      sf::VideoMode::getDesktopMode());
+        window.create(vm, kWindowTitle, sf::Style::Fullscreen);
+    } else {
+        window.create(sf::VideoMode(mode.size.x, mode.size.y), kWindowTitle, sf::Style::Default);
+    }
+    window.setVerticalSyncEnabled(true);
+}
+
 } // namespace
 
 int run(const std::string& manifest_path, const SceneFactory& factory, const RunOptions& opts) {
@@ -84,6 +105,8 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
     settings.audio.music_volume = manifest.settings.music_volume;
     settings.audio.sfx_volume = manifest.settings.sfx_volume;
     settings.fullscreen = manifest.window.fullscreen;
+    settings.window_width = manifest.window.width;
+    settings.window_height = manifest.window.height;
     settings.clamp();
 
     FilesystemResourceSource source(manifest.resources_src);
@@ -92,7 +115,9 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
     AudioServices audio(resources, log, settings);
     Scripting scripting(log);
     StateStore state;
-    Display display(manifest.resolution, {manifest.window.width, manifest.window.height});
+    Display display(manifest.resolution,
+                    {settings.window_width, settings.window_height},
+                    settings.fullscreen);
     SceneManager scenes;
     SaveService saves(user_data_dir(manifest.id) / "saves", log);
 
@@ -137,12 +162,10 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
         return 1;
     }
 
-    const sf::Uint32 style =
-        manifest.window.fullscreen ? sf::Style::Fullscreen : sf::Style::Default;
-    sf::RenderWindow window(sf::VideoMode(manifest.window.width, manifest.window.height),
-                            "Extraordinary Adventures",
-                            style);
-    window.setVerticalSyncEnabled(true);
+    sf::RenderWindow window;
+    apply_window_mode(window,
+                      {{settings.window_width, settings.window_height}, settings.fullscreen},
+                      manifest.resolution);
     display.set_window_size(window.getSize());
 
     sf::Clock clock;
@@ -163,6 +186,14 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
         scenes.apply_pending();
         if (!scenes.running()) {
             break;
+        }
+
+        // A scene (e.g. the settings menu) may have requested a display-mode
+        // change; recreate the window before simulating/drawing this frame.
+        if (const std::optional<DisplayMode> mode = display.take_pending_mode()) {
+            apply_window_mode(window, *mode, manifest.resolution);
+            display.set_window_size(window.getSize());
+            display.set_fullscreen(mode->fullscreen);
         }
 
         accumulator += clock.restart().asSeconds();

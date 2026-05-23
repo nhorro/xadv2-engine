@@ -210,6 +210,8 @@ void RoomScene::enter() {
     L.set_function("get_region_state", [this](std::string id) { return api_get_region_state(id); });
     L.set_function("show_object", [this](std::string id) { api_show_object(id, true); });
     L.set_function("hide_object", [this](std::string id) { api_show_object(id, false); });
+    L.set_function("set_layer_visible",
+                   [this](std::string id, bool visible) { api_set_layer_visible(id, visible); });
     L.set_function("enable_hotspot", [this](std::string id) { api_set_hotspot_enabled(id, true); });
     L.set_function("disable_hotspot",
                    [this](std::string id) { api_set_hotspot_enabled(id, false); });
@@ -385,6 +387,11 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
             room_->set_object_visible(obj_id, visible);
         }
     }
+    if (const auto it = layer_visible_persist_.find(id); it != layer_visible_persist_.end()) {
+        for (const auto& [layer_id, visible] : it->second) {
+            room_->set_layer_visible(layer_id, visible);
+        }
+    }
 
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
     const sf::Vector2f viewport(static_cast<float>(vres.x), scenery_height());
@@ -503,6 +510,11 @@ void RoomScene::unload_room() {
         for (const auto& [obj_id, obj] : room_->data().objects) {
             object_visible_persist_[current_room_id_][obj_id] = room_->object_visible(obj_id);
         }
+        for (const BackgroundLayer& layer : room_->data().layers) {
+            if (!layer.id.empty()) {
+                layer_visible_persist_[current_room_id_][layer.id] = room_->layer_visible(layer.id);
+            }
+        }
     }
     ctx_.scripting.cancel_scope(room_scope_);
     // An in-progress dialog references the outgoing room's NPC avatars; the
@@ -533,6 +545,7 @@ void RoomScene::say_at(const std::string& text, sf::Color color, geom::Point wor
     float duration = 0.5f + 0.06f * static_cast<float>(text.size());
     duration = std::clamp(duration, 1.0f, 7.0f);
     speech_.show(text, world, color, duration);
+    spoke_during_command_ = true;
 }
 
 geom::Point RoomScene::virtual_to_world(sf::Vector2f vp) const {
@@ -682,6 +695,7 @@ void RoomScene::execute_ready_command() {
         }
     }
 
+    spoke_during_command_ = false;
     const std::optional<std::string> caption = dispatch(*cmd);
     // If dispatch flipped us into a non-command state (e.g. a `talk_to` handler
     // called `start_dialog`), the dialog's first NPC line is already on screen;
@@ -694,7 +708,14 @@ void RoomScene::execute_ready_command() {
     if (const Character* c = cast_.character(player_char_)) {
         color = c->speech_color;
     }
-    say(caption.value_or("No pasa nada."), color);
+    // A command that performs an action is valid even when its handler returns no
+    // text: if it returned a caption show it; otherwise only fall back to the
+    // "nothing happens" line when the handler did not already speak via talk().
+    if (caption) {
+        say(*caption, color);
+    } else if (!spoke_during_command_) {
+        say("No pasa nada.", color);
+    }
     builder_.finish_execution();
 }
 
@@ -998,6 +1019,12 @@ std::string RoomScene::api_get_region_state(const std::string& region_id) const 
 void RoomScene::api_show_object(const std::string& object_id, bool visible) {
     if (room_) {
         room_->set_object_visible(object_id, visible);
+    }
+}
+
+void RoomScene::api_set_layer_visible(const std::string& layer_id, bool visible) {
+    if (room_) {
+        room_->set_layer_visible(layer_id, visible);
     }
 }
 
@@ -1369,6 +1396,7 @@ pac::core::GameState RoomScene::snap() const {
     s.region_states = region_state_persist_;
     s.hotspot_enabled = hotspot_enabled_persist_;
     s.object_visible = object_visible_persist_;
+    s.layer_visible = layer_visible_persist_;
     if (room_) {
         auto& region_map = s.region_states[current_room_id_];
         for (const auto& [region_id, region] : room_->data().regions) {
@@ -1381,6 +1409,12 @@ pac::core::GameState RoomScene::snap() const {
         auto& obj_map = s.object_visible[current_room_id_];
         for (const auto& [obj_id, obj] : room_->data().objects) {
             obj_map[obj_id] = room_->object_visible(obj_id);
+        }
+        auto& layer_map = s.layer_visible[current_room_id_];
+        for (const BackgroundLayer& layer : room_->data().layers) {
+            if (!layer.id.empty()) {
+                layer_map[layer.id] = room_->layer_visible(layer.id);
+            }
         }
     }
     return s;
@@ -1411,6 +1445,7 @@ bool RoomScene::restore(const pac::core::GameState& state) {
     region_state_persist_ = state.region_states;
     hotspot_enabled_persist_ = state.hotspot_enabled;
     object_visible_persist_ = state.object_visible;
+    layer_visible_persist_ = state.layer_visible;
     inventory_.replace_all(state.inventory);
 
     // Kill transient runtime — none of it is part of GameState.

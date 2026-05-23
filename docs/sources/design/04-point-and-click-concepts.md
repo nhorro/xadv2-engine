@@ -225,6 +225,7 @@ composition, animation, foreground occlusion, and future shader effects.
 | `origin` | Optional `{x, y}` room-space top-left where the layer is drawn (default the world origin `(0,0)`), so layers may differ in size and be placed freely — a foreground occluder, a parallax-ready backdrop, a decal. |
 | `scale` | Optional uniform render scale about `origin` (default `1.0` = native pixel size). Aspect ratio is **always preserved** — layers are never distorted, only uniformly enlarged/shrunk. Mainly a development aid for sizing furniture-style occluder layers; in production layers should ship at their correct native size (`scale: 1`). |
 | `interactive` | Whether this layer can receive pointer interactions. Usually false. |
+| `visible` | Optional initial visibility (default `true`). Toggled at runtime with `set_layer_visible(id, bool)`; requires the layer to carry an `id`. World bounds are derived from **all** layers, hidden or not, so toggling never reshapes the room. |
 | `shader` | Optional shader resource or shader config. Design-for. |
 | `animation` | Optional animation description. Design-for. |
 
@@ -240,6 +241,15 @@ Use cases:
 
 A layer may use a solid `background.color` behind all images. This is useful for
 transparent layers, exported foregrounds, and authoring workflows.
+
+**Layer visibility vs. regions.** Toggling a whole layer with `set_layer_visible`
+is the right tool for show/hide of a piece of scenery that occupies its own image
+and depth — e.g. a foreground cart drawn with perspective, removed once it is taken
+away. Use a **region** instead when the *same* footprint swaps between named state
+images (drawer `shut`/`open`); use an **object** for an active sprite the player
+interacts with via a bound hotspot. Layer visibility is persisted per room (like
+region and object state), so a layer hidden by script stays hidden across room
+changes and save/load.
 
 #### World bounds
 
@@ -835,9 +845,9 @@ return {
 | `npc` | Node | NPC line or list of lines. |
 | `options` | Node | Player choices. |
 | `to` | Node or option | Next node id or `END`. |
-| `when` | Option | Visibility condition. |
+| `when` | Option | Visibility predicate, **re-evaluated every time the node's options are shown**. Return false to hide the option until its condition holds. |
 | `run` | Option | Code executed when selected. |
-| `once` | Option | Option disappears after being used. |
+| `once` | Option | Option is hidden permanently after it is used. Consumption is **persisted** (survives leaving and restarting the dialog, and save/load). |
 | `silent` | Option | Player line is not spoken aloud. |
 
 ### Dialog execution
@@ -850,6 +860,79 @@ return {
 6. Consume `once` options.
 7. Follow `to`.
 8. End when `to == END`.
+
+A node declares **either** `options` **or** a `to`, never both (the loader rejects
+a node that has both). When an options node's choices are all hidden — every one
+consumed by `once` or filtered out by a failing `when` — it has nothing left to
+offer and the dialog ends. This is what lets a conversation "run dry" gracefully
+once everything worth saying has been said; route the player somewhere instead by
+keeping a always-available fallback option (e.g. a "Chau." line `to = END` or back
+to a hub node).
+
+### Evolving dialogs
+
+A conversation is not a fixed menu: `once`, `when`, and the state stores together
+let the option list **prune and unlock as the player learns things and the world
+changes**. Three building blocks:
+
+- **Ask-once lines.** Mark an option `once = true` so a question like "¿Quién
+  sos?" appears the first time and never again. Consumption is persisted under an
+  engine-reserved `__dialog.<npc>.<node>.<index>` key in global state (it folds
+  into `GameState`), so it survives leaving the dialog, re-entering it, and
+  save/load — the player never re-asks a settled question.
+- **Conditional unlocking.** Gate an option with `when = function() ... end`. The
+  predicate is checked each time the node's options are displayed, so an option can
+  appear only once a fact is known or an item is held, and a path can be closed off
+  by the same mechanism. Read the engine state stores from `when` / `run`
+  (`get_state`, `get_room_state`, `has_item`) and write them from `run` / node
+  callbacks (`set_state`, …) — never from Lua locals, which are not persisted.
+- **Branch reshaping.** Combine the two: a `run` callback sets a state flag, and
+  other options' `when` predicates read it, so choosing one line enables or
+  disables others on the next pass through the node.
+
+```lua
+return {
+  start = "greet",
+
+  greet = {
+    npc = "¿Y vos quién sos?",
+    options = {
+      -- Asked at most once, ever (persisted across save/load).
+      { "Soy Julia.", to = "greet", once = true,
+        run = function() set_state("skull.met_julia", true) end },
+
+      -- Appears only after we've introduced ourselves.
+      { "¿Conociste a mi abuelo?", to = "grandfather",
+        when = function() return get_state("skull.met_julia") end },
+
+      -- Appears only once the lever puzzle is solved, then never repeats.
+      { "El mecanismo ya está abierto.", to = "reward", once = true,
+        when = function() return get_room_state("lab.lever_pulled") end },
+
+      { "Nada, me voy.", to = END },
+    },
+  },
+
+  grandfather = {
+    npc = "Lo recuerdo. Dejó algo para vos.",
+    run = function() set_state("skull.grandfather_topic", true) end,
+    to = "greet",
+  },
+
+  reward = {
+    npc = "Tomá esto.",
+    run = function() add_item("amulet") end,
+    to = "greet",
+  },
+}
+```
+
+On the first visit only "Soy Julia." and "Nada, me voy." are offered. After the
+introduction the grandfather line unlocks; once the lab lever is pulled the
+mechanism line appears (and disappears after use). Because "Nada, me voy." has no
+`when` or `once` it is always available, so `greet` never runs dry and the player
+can always leave — drop that fallback (or gate it) and the node would instead end
+the dialog on its own once every option is consumed or filtered out.
 
 ## Speech
 
