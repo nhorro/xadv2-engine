@@ -25,7 +25,7 @@ Worked example: [02 — Architecture overview](02-architecture-overview.md).
 | `version` | opt | int | 1 | Data-format version. |
 | `id` | req | string | — | Stable game id used as the per-game subdirectory under the per-user data path (e.g. `~/.local/share/<id>/saves/`). Must match `[a-z0-9_-]+`. Two games using this engine get separate save folders by choosing distinct ids. |
 | `resolution` | req | `{width, height}` | — | Virtual design resolution. |
-| `window` | req | `{fullscreen, width, height}` | — | Initial physical window mode and size. |
+| `window` | req | `{fullscreen, width, height}` | — | Initial display mode. `fullscreen: true` starts the game fullscreen at the **optimal mode for the resolution** (the video mode matching `resolution` when available, else the smallest larger mode, letterboxed). `width`/`height` are the initial **windowed** client size (default to `resolution`). Player settings override these at runtime via the settings scene. |
 | `resources` | req | `{src}` | — | Resource source root. `src` is a directory (MVP) or archive (design-for). |
 | `strings` | req | path | — | UI strings resource (engine-emitted text). One file in the MVP; a language→file map is design-for. See [UI strings](#ui-strings--stringslangyaml). |
 | `settings` | opt | map | — | Default player-facing settings (e.g. `audio.music_volume`, `audio.sfx_volume`). User settings override these. |
