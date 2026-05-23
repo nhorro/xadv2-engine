@@ -1,9 +1,8 @@
 # Hall / hub (scrolls: 1916 wide > scenery viewport). Doors: DIRECCION (right) ->
 # study, SALIDA (center) -> exterior (locked until the key is used). The cart is a
-# region (present/gone) hiding the key.
+# region (present/gone) hiding the key. World bounds derive from the 1916x821 plate.
 version: 1
 id: hall
-size: { width: 1916, height: 821 }
 
 background:
   color: { r: 0, g: 0, b: 0 }
