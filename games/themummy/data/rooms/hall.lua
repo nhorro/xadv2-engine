@@ -12,7 +12,10 @@ end
 room.hotspots = {
   mummy = {
     look_at = function()
-      return "Una momia en un carro con un sarcofago. Algo brilla detras."
+      -- Examine the sarcophagus up close (issue #76): opens an overlay close-up
+      -- with its own hotspots; Esc / right-click returns to the hall.
+      open_closeup("sarcophagus_closeup")
+      return "Me acerco a examinar el sarcofago."
     end,
     push = function()      
       set_room_state("mummy.moved", true)

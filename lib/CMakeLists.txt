@@ -84,7 +84,9 @@ add_library(pac_engine STATIC
     src/pnc/camera.cpp
     src/pnc/scumm_panel.cpp
     src/pnc/dialog.cpp
+    src/pnc/closeup.cpp
     src/pnc/room_scene.cpp
+    src/pnc/closeup_scene.cpp
     src/pnc/builtin_scenes.cpp
     src/pnc/game_app.cpp
 )

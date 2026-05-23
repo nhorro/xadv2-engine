@@ -240,6 +240,27 @@ source activates the hotspot.
 | `orientation` | opt | `up`/`right`/`down`/`left` | `down` | Initial facing. |
 | `player` | opt | bool | `false` | Marks the player's placement entry (does not create the player; see [player vs NPC avatars](04-point-and-click-concepts.md)). |
 
+## Close-up — `closeups/<id>.yaml`
+
+A full-screen examine view (the `CloseUp` scene; design 04 §Genre scenes). Top
+level:
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `version` | opt | int | `1` | Format version. |
+| `id` | req | string | — | Stable close-up id. |
+| `background` | req | path | — | Full-screen background image (scaled to the virtual resolution). |
+| `background_color` | opt | `{r, g, b, a?}` | black | Fill shown behind a transparent background. |
+| `hotspots` | opt | map | — | Examinable regions (see below). |
+
+**`hotspots`** — map of hotspot id → hotspot:
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `name` | opt | string | id | Localized label; shown as a caption on a look and as the hover label. |
+| `area` | req | polygon | — | Hit-test polygon, in the close-up's virtual-resolution space (≥ 3 points). |
+| `goto` | opt | scene id | — | If set, clicking switches to this scene; otherwise the click shows `name` as a look caption. |
+
 ## Spritesheet — `<name>.yaml`
 
 Worked example: [03 — 2D game concepts](03-2d-game-concepts.md).

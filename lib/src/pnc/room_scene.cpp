@@ -253,6 +253,10 @@ void RoomScene::enter() {
     L.set_function("talk",
                    [this](std::string speaker, std::string text) { api_talk(speaker, text); });
     L.set_function("start_dialog", [this](std::string npc_id) { api_start_dialog(npc_id); });
+    // Open a close-up / examine view (issue #76) as an overlay over the room; the
+    // close-up pops back here on Esc / right-click, so the room state is preserved.
+    L.set_function("open_closeup",
+                   [this](const std::string& scene_id) { ctx_.scenes.push_scene(scene_id); });
     // `to = END` is injected per-dialog by DialogRuntime::start as a unique
     // sentinel table — no engine-wide binding needed here.
 
