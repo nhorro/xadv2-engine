@@ -318,7 +318,8 @@ Default `z` values:
 | Background base | Behind all sorted drawables. |
 | Background layer | Explicit layer `z`. |
 | Region | Explicit `z`, or the `z` of the layer named by `over`. |
-| Object | `z: auto` (default): world-Y of the sprite pivot; numeric `z` overrides. |
+| Object | `baseline` (a floor-line world-Y) if set; else `z: auto` (the sprite's bottom edge); else numeric `z`. |
+| Walk-behind | Its `baseline` (a floor-line world-Y); the masked layer patch sorts there. |
 | Avatar | Its walking pivot y coordinate. |
 | Speech | Drawn above scenery, not sorted as world geometry. |
 | SCUMM panel | UI layer, not part of room z-order. |
@@ -326,6 +327,69 @@ Default `z` values:
 An object's `z: auto` and a region's `over: <layer_id>` let scenery be authored
 without hand-tuning depths: the object sorts by its pivot's world-Y like an
 avatar, and the region sorts with the background layer it changes.
+
+### Perspective objects and the object `baseline`
+
+An avatar already sorts by a *baseline*: its depth key is the world-Y of its
+walking pivot (its feet). The same idea makes a perspective object — one an avatar
+can pass in front of and behind, like a cart or a table — order correctly without
+arbitrary depths or splitting the art into "front/back" layers.
+
+Give the object's foreground piece an explicit **`baseline`**: the world-Y of the
+line where it meets the floor. The renderer then sorts that object at `z =
+baseline`, in the *same coordinate space* as avatar feet:
+
+- an avatar whose feet are **above** the line (smaller y → standing behind the
+  object's contact line) is drawn first, so the object occludes it;
+- an avatar whose feet are **below** the line (larger y → standing nearer) is
+  drawn over the object.
+
+So as the player walks past, the engine flips the occlusion at the baseline
+automatically — one number with a physical meaning, not a hand-tuned `z`.
+
+```yaml
+objects:
+  cart_front:                 # the near edge of the cart that should occlude feet
+    image: objects/cart_front.png
+    position: { x: 400, y: 360 }
+    baseline: 640             # floor-contact line; sorts against avatar feet
+```
+
+The rest of the cart (the part always behind the player) is just background — a
+layer or a `z: auto` object — so only the genuinely foreground piece needs a
+`baseline`. `baseline` overrides `z` / `z: auto` for that object.
+
+### Walk-behind areas
+
+`baseline` on an object needs a separate foreground sprite. A **walk-behind area**
+removes even that: it occludes using pixels sampled from an existing background
+**layer**, so the perspective art lives in a single image and is never duplicated.
+
+A walk-behind is a polygon mask over part of a layer plus a `baseline`. The engine
+redraws that patch of the layer on top of the scene at `z = baseline`, sorted
+against avatars exactly like a baseline object — but the pixels come straight from
+the layer, so they always match the background.
+
+```yaml
+background:
+  layers:
+    - { id: bg, image: rooms/hall/bg.png, z: 0 }   # the whole cart is painted here
+walkbehinds:
+  cart:
+    layer: bg                 # sample pixels from this layer
+    area: [ {x: 360, y: 470}, {x: 720, y: 470}, {x: 720, y: 640}, {x: 360, y: 640} ]
+    baseline: 640             # floor-contact line; sorts against avatar feet
+```
+
+The avatar walks behind the cart when its feet are above `baseline` (the patch is
+drawn over it) and in front when below it. Because the patch is the same pixels
+already in `bg`, the double-draw is invisible.
+
+MVP constraint: the `area` polygon must be **convex** (it is filled as a triangle
+fan). Model a concave occluder as several convex walk-behind areas sharing a
+`baseline`. True per-pixel perspective (an avatar standing amid an object at many
+depths at once) remains out of scope; the design-for answer would be a per-sprite
+depth map, also reducible to this baseline model.
 
 ## Perspective scaling
 
@@ -418,7 +482,8 @@ A hotspot has:
 | `name` | Localized display noun shown in the command bar. |
 | `area` | Optional explicit hit-test polygon. |
 | `bind` | Optional binding to a visual object or region. |
-| `approach` | Point the player walks to before executing a command. |
+| `approach` | Point the player walks toward when a command targets this hotspot. |
+| `requires_approach` | Optional bool (default `false`). When `true`, the command does not run until the player reaches `approach`; until then input is blocked. When `false`, the player still walks toward `approach`, but the command fires immediately — allowing interactions from a distance. |
 | `affordances` | Verbs that the UI may offer for this hotspot. |
 | `default_verb` | Optional verb used on a plain click. Must be `look_at` or in `affordances`. Defaults to `look_at`. |
 
@@ -840,6 +905,7 @@ return {
 | Field | Applies to | Meaning |
 |-------|------------|---------|
 | `start` | Dialog | Entry node id. |
+| `text_anchor` | Dialog | Optional room point name. NPC speech for this dialog is drawn at that fixed point instead of following the NPC avatar. Useful for off-screen or static speakers (e.g. a talking skull). |
 | `on_enter` | Dialog | Optional setup callback. |
 | `on_exit` | Dialog | Optional cleanup callback. |
 | `npc` | Node | NPC line or list of lines. |

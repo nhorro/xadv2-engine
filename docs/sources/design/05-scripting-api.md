@@ -203,7 +203,11 @@ A handler may:
 - spawn longer scripted tasks.
 
 If a handler returns a string, the engine displays it as speech or as configured
-for command feedback.
+for command feedback. A handler need not return a string to be valid: one that
+acts and speaks via `talk(...)` without returning text still shows that line. The
+"nothing happens" fallback caption appears only when the handler returns no string
+**and** did not speak during the command. (So `talk("julia", "...")` with no
+`return` shows the line, not the fallback.)
 
 ## Global game logic
 
