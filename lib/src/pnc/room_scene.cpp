@@ -714,7 +714,21 @@ void RoomScene::handle_event(const sf::Event& event) {
         return;
     }
     if (view_state_ == ViewState::BLOCKED) {
-        return;
+        // A cutscene-style block ignores input. But a block that is only the
+        // walk-to-approach wait (a queued command in pending_approach_) is
+        // redirectable: a fresh click drops the queued command and re-routes to
+        // the new target (classic SCUMM redirect, issue #70). Stop the current
+        // walk and fall through to the normal click handling below, which issues
+        // the new movement/command.
+        if (!pending_approach_) {
+            return;
+        }
+        pending_approach_.reset();
+        builder_.cancel();
+        if (player_) {
+            player_->stop();
+        }
+        view_state_ = ViewState::COMMAND;
     }
     if (view_state_ == ViewState::DIALOG && dialog_) {
         if (panel_ && panel_->contains(vp)) {
