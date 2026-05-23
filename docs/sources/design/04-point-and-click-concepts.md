@@ -841,6 +841,12 @@ When a command becomes ready:
    room, or return a caption.
 6. When the command finishes, the command builder returns to `IDLE`.
 
+While a `requires_approach` command is waiting for the avatar to reach its
+approach point (input blocked), a fresh click **redirects**: the queued command is
+dropped, the current walk stops, and the click is handled as a new command or
+movement (classic SCUMM redirect, issue #70). A cutscene-style block is not
+redirectable — it ignores input until the script unblocks.
+
 For two-operand verbs, inventory-item behavior has priority when the first
 operand is an inventory item and `inventory.lua` defines a matching handler.
 Otherwise the handler is invoked on the second operand.
