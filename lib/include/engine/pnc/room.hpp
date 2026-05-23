@@ -42,11 +42,11 @@ struct RoomHotspot {
     std::string default_verb = "look_at";
     std::string bind; // "object:<id>" / "region:<id>" (unused in M3)
     bool enabled = true;
-    // When true, a command on this hotspot only fires once the player has walked
-    // to `approach`; until then input is blocked. When false (the default) the
-    // action fires immediately even if the player is far (allows distant
-    // interactions, e.g. talking to something across the room).
-    bool requires_approach = false;
+    // When true (the default), a command on this hotspot only fires once the
+    // player has walked to `approach`; until then input is blocked. Set false for
+    // the rare act-from-a-distance interaction (e.g. talking to something across
+    // the room), where the action fires immediately even if the player is far.
+    bool requires_approach = true;
 };
 
 struct RoomAvatarPlacement {

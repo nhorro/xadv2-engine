@@ -222,7 +222,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `area` | req if no `bind` | polygon | — | Explicit hit-test polygon. |
 | `bind` | req if no `area` | `object:<id>` / `region:<id>` | — | Hit test using the bound visual. |
 | `approach` | opt | point id \| `{x, y}` | — | Point the player walks toward when a command targets this hotspot. |
-| `requires_approach` | opt | bool | `false` | If `true`, the command waits until the player reaches `approach` (input blocked meanwhile). If `false`, the player still walks toward `approach` but the command fires immediately, allowing distant interactions. |
+| `requires_approach` | opt | bool | `true` | If `true` (the default), the command waits until the player reaches `approach` (input blocked meanwhile) — walk-then-act. Set `false` for the rare act-from-a-distance interaction: the player still walks toward `approach` but the command fires immediately. |
 | `affordances` | req | `[verb]` | — | Verbs the UI may offer. |
 | `default_verb` | opt | verb | `look_at` | Verb used on a plain click; must be `look_at` or in `affordances`. |
 | `enabled` | opt | bool | `true` | Initial interactivity; `enable_hotspot`/`disable_hotspot` change it at runtime. |

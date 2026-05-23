@@ -264,8 +264,11 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                           node["default_verb"]);
             }
             hs.enabled = node["enabled"] ? node["enabled"].as<bool>() : true;
+            // Default true: walk to the approach point and act on arrival (SCUMM
+            // convention). Authors set `requires_approach: false` for the rare
+            // act-from-a-distance interaction (e.g. shouting at a parrot in a tree).
             hs.requires_approach =
-                node["requires_approach"] ? node["requires_approach"].as<bool>() : false;
+                node["requires_approach"] ? node["requires_approach"].as<bool>() : true;
             room.hotspots.emplace(hs.id, std::move(hs));
         }
     }
