@@ -1,9 +1,11 @@
 #include "engine/pnc/cast.hpp"
 #include "engine/pnc/data_error.hpp"
+#include "loader_diag.hpp"
 
 #include <doctest/doctest.h>
 
 using namespace pac::pnc;
+using pac::test::error_code;
 
 namespace {
 
@@ -39,4 +41,8 @@ TEST_CASE("parse_cast reads appearances and characters") {
 
 TEST_CASE("parse_cast rejects a character without an appearance") {
     CHECK_THROWS_AS(parse_cast("characters:\n  x: { name: n }\n"), DataError);
+    CHECK(error_code([] { parse_cast("characters:\n  x: { name: n }\n"); }) ==
+          "cast.character-appearance-missing");
+    CHECK(error_code([] { parse_cast("appearances:\n  a: { sprite: s }\n"); }) ==
+          "cast.appearance-type-missing");
 }

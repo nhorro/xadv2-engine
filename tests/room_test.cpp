@@ -1,6 +1,7 @@
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"
 #include "engine/pnc/room_runtime.hpp"
+#include "loader_diag.hpp"
 
 #include <doctest/doctest.h>
 
@@ -8,6 +9,7 @@
 #include <string>
 
 using namespace pac::pnc;
+using pac::test::error_code;
 
 namespace {
 
@@ -184,6 +186,36 @@ TEST_CASE("parse_room rejects malformed rooms") {
     CHECK_THROWS_AS(parse_room("version: 1\n"), DataError); // no id
     CHECK_THROWS_AS(parse_room("id: x\nhotspots:\n  h: { name: n }\n"),
                     DataError); // hotspot without area or bind
+    CHECK(error_code([] { parse_room("id: x\nhotspots:\n  h: { name: n }\n"); }) ==
+          "room.hotspot-no-area-or-bind");
+}
+
+TEST_CASE("parse_room enforces the M6 tightened validations with stable codes") {
+    // The YAML `id` must match the filename id, when one is supplied.
+    CHECK_THROWS_AS(parse_room("id: study\n", "hall"), DataError);
+    CHECK(error_code([] { parse_room("id: study\n", "hall"); }) == "room.id-mismatch");
+    CHECK_NOTHROW(parse_room("id: study\n", "study")); // matches
+    CHECK_NOTHROW(parse_room("id: study\n"));          // empty expected -> check skipped
+
+    // default_verb must be `look_at` or one of the hotspot's affordances.
+    CHECK(error_code([] {
+              parse_room("id: r\nhotspots:\n  h:\n"
+                         "    area: [ {x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: 1} ]\n"
+                         "    affordances: [ look_at ]\n"
+                         "    default_verb: open\n");
+          }) == "room.default-verb-not-in-affordances");
+    CHECK_NOTHROW(parse_room("id: r\nhotspots:\n  h:\n"
+                             "    area: [ {x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: 1} ]\n"
+                             "    affordances: [ look_at, open ]\n"
+                             "    default_verb: open\n"));
+
+    // A region's `initial` must be one of its declared states.
+    CHECK(error_code([] {
+              parse_room("id: r\nregions:\n  d:\n"
+                         "    area: [ {x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: 1} ]\n"
+                         "    states: { shut: a/shut.png }\n"
+                         "    initial: open\n");
+          }) == "room.region-initial-not-in-states");
 }
 
 TEST_CASE("parse_room reads the per-hotspot requires_approach flag") {
