@@ -3,7 +3,9 @@
 #include "engine/geom/geometry.hpp"
 #include "engine/gfx/animated_sprite.hpp"
 
+#include <cstddef>
 #include <string>
+#include <vector>
 
 namespace sf {
 class RenderTarget;
@@ -42,7 +44,11 @@ public:
     void face(Direction direction);
     std::string facing() const { return to_string(facing_); }
 
+    /// Walk straight to a single point, gated by the walkable area.
     void move_to(geom::Point target);
+    /// Walk an ordered list of waypoints (e.g. a `geom::find_path` result),
+    /// turning at each corner. An empty path stops the avatar.
+    void follow_path(std::vector<geom::Point> path);
     void stop();
     bool moving() const { return moving_; }
 
@@ -58,10 +64,15 @@ private:
     /// Play the sequence for the current action + facing, falling back from
     /// `<action>_<direction>` to the bare `<action>` and finally to `stand`.
     void apply_animation();
+    /// Aim at the next not-yet-reached waypoint, starting a walk. Returns false
+    /// when the path is exhausted (caller should stop).
+    bool start_leg();
 
     gfx::AnimatedSprite sprite_;
     geom::Point pos_{0.0f, 0.0f};
     geom::Point target_{0.0f, 0.0f};
+    std::vector<geom::Point> path_;
+    std::size_t path_pos_ = 0;
     bool moving_ = false;
     float speed_ = 240.0f; // world px/s
     float scale_ = 1.0f;

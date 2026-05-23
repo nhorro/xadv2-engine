@@ -88,22 +88,39 @@ void Avatar::face(Direction direction) {
 }
 
 void Avatar::move_to(geom::Point target) {
-    target_ = target;
-    const geom::Point delta{target.x - pos_.x, target.y - pos_.y};
-    // Already on the spot: don't flash a one-frame walk or spin to face it.
-    if (delta.x * delta.x + delta.y * delta.y < 1.0f) {
+    follow_path({target});
+}
+
+void Avatar::follow_path(std::vector<geom::Point> path) {
+    path_ = std::move(path);
+    path_pos_ = 0;
+    if (!start_leg()) {
         stop();
-        return;
     }
-    facing_ = nearest_direction(delta);
-    moving_ = true;
-    action_ = Action::Walk;
-    apply_animation();
+}
+
+bool Avatar::start_leg() {
+    while (path_pos_ < path_.size()) {
+        target_ = path_[path_pos_];
+        const geom::Point delta{target_.x - pos_.x, target_.y - pos_.y};
+        // Skip a waypoint we are already on rather than flashing a null walk.
+        if (delta.x * delta.x + delta.y * delta.y >= 1.0f) {
+            facing_ = nearest_direction(delta);
+            moving_ = true;
+            action_ = Action::Walk;
+            apply_animation();
+            return true;
+        }
+        ++path_pos_;
+    }
+    return false;
 }
 
 void Avatar::stop() {
     moving_ = false;
     action_ = Action::Stand;
+    path_.clear();
+    path_pos_ = 0;
     apply_animation();
 }
 
@@ -116,8 +133,11 @@ void Avatar::update(float dt, const RoomData& room) {
     const float dist = std::sqrt(delta.x * delta.x + delta.y * delta.y);
     if (dist < 1.0f) {
         pos_ = target_;
-        stop();
         apply_position();
+        ++path_pos_;
+        if (!start_leg()) {
+            stop();
+        }
         return;
     }
     const float step = speed_ * dt;
@@ -127,12 +147,16 @@ void Avatar::update(float dt, const RoomData& room) {
     } else {
         next = {pos_.x + delta.x / dist * step, pos_.y + delta.y / dist * step};
     }
-    // Straight-line stand-in: refuse a step that leaves the walkable area.
+    // Refuse a step that leaves the walkable area; a blocked step abandons the
+    // rest of the path rather than burrowing into a wall.
     if (room.walkable.empty() || room.is_walkable(next)) {
         pos_ = next;
         apply_position();
         if (step >= dist) {
-            stop();
+            ++path_pos_;
+            if (!start_leg()) {
+                stop();
+            }
         }
     } else {
         stop();
