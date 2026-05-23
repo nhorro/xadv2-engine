@@ -11,8 +11,11 @@ scripted in Lua and configured with YAML. It is a remake of
 material only (reusable assets, behavior ideas, comparison targets) — never
 architecture to preserve.
 
-**Status: M0–M5 merged to `develop`; all M0–M5 milestone issues are closed. M6
-(hardening) is next.**
+**Status: M0–M5 are merged and fully closed. M6 (hardening) and M7 (presentation
+& authoring polish) are largely merged. Settings persistence (#66, M6),
+display-mode settings (#71, M7), and localization infrastructure (#72, M7) are in
+review on PR #94. Still open: M6 authoring templates (#39), packaging smoke path
+(#40), manual MVP regression checklist (#41), and the Windows build recipe (#68).**
 - **M0 Core Shell**: CMake build, `pac_engine` (`pac::core` harness + `pac::pnc`),
   `pac_themummy` sample, headless doctest+CTest.
 - **M1 Generic 2D**: `pac::geom`, `ResourceCache` + `AudioServices`, and `pac::gfx`
@@ -40,11 +43,22 @@ architecture to preserve.
   options in the SCUMM panel + the `start_dialog` Lua API, full `GameState` +
   `SaveService` (3 manual slots + 1 autosave), and Title/Settings/Continue plus the
   in-game pause/save/load menu.
+- **M6 Hardening**: loader validation diagnostics (#36), in-room debug overlays
+  (#37) + dev actions (#38), background-layer visibility (`set_layer_visible`, #64)
+  + z-order guidance (#65), edge-aware speech containment (#62), and the settings
+  UI's music/SFX volume controls (#67).
+- **M7 Presentation & authoring polish**: custom mouse cursor + hover affordance
+  (#73), scene/room fade transitions (#74), avatar shadows (#75), the
+  close-up/examine scene type (#76), the restyled SCUMM panel (#77), approach
+  points with command queueing (#70), and dialog text placement via `talk_spot`
+  (#69).
 
-All M0–M5 milestone issues are closed. The remaining work lives in **M6
-(hardening)**: loader validation diagnostics, debug overlays, dev actions,
-authoring templates, a packaging smoke path, and the manual MVP regression
-checklist (issues #36–#41). See the GitHub milestones.
+The remaining MVP-hardening work is in **M6**: authoring templates (#39), a
+packaging smoke path (#40), the manual MVP regression checklist (#41), and the
+Windows build recipe (#68). **M7** is otherwise merged save for the two settings
+issues in review on PR #94: display-mode settings (#71) and localization
+infrastructure (#72) — which also closes the M6 settings-persistence issue (#66).
+See the GitHub milestones.
 
 ## The design docs are the source of truth
 
