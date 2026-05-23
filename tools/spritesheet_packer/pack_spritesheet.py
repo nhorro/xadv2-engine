@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,6 +57,16 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Starting numeric index for generated sprite IDs",
+    )
+    parser.add_argument(
+        "--names-file",
+        type=Path,
+        default=None,
+        help=(
+            "Optional text file with sprite IDs in source traversal order. "
+            "Whitespace-separated names are accepted; blank lines and text after # are ignored. "
+            "When provided, the number of names must match the number of detected sprites."
+        ),
     )
     parser.add_argument(
         "--max-width",
@@ -249,7 +260,7 @@ def render_yaml(
         f"  height: {atlas_h}",
         "sprites:",
     ]
-    for sprite in sorted(sprites, key=lambda item: item.id):
+    for sprite in sprites:
         if sprite.packed_rect is None:
             raise RuntimeError(f"Sprite was not packed: {sprite.id}")
         rect = sprite.packed_rect
@@ -292,6 +303,58 @@ def quote_yaml_key(value: str) -> str:
     if value.replace("_", "").replace("-", "").isalnum() and value:
         return value
     return quote_yaml(value)
+
+
+
+def parse_names_file(path: Path) -> list[str]:
+    """Read sprite IDs from a text file.
+
+    Format:
+      - Names are whitespace-separated.
+      - Blank lines are ignored.
+      - Text after '#' is treated as a comment.
+
+    Example:
+        sf wf0 wf1 wf2 wf3
+        sr wr0 wr1 wr2 wr3
+    """
+    names: list[str] = []
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        for name in line.split():
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+                raise RuntimeError(
+                    f"Invalid sprite id {name!r} at {path}:{line_number}. "
+                    "Use only letters, numbers, underscore, dash, or dot."
+                )
+            names.append(name)
+
+    duplicated = sorted({name for name in names if names.count(name) > 1})
+    if duplicated:
+        raise RuntimeError(
+            "Duplicated sprite ids in --names-file: " + ", ".join(duplicated)
+        )
+    return names
+
+
+def make_sprites(
+    boxes: list[Box], prefix: str, start_index: int, names_file: Path | None
+) -> list[Sprite]:
+    if names_file is None:
+        return [
+            Sprite(f"{prefix}_{start_index + index:03d}", box)
+            for index, box in enumerate(boxes)
+        ]
+
+    names = parse_names_file(names_file)
+    if len(names) != len(boxes):
+        raise RuntimeError(
+            f"--names-file contains {len(names)} names, but {len(boxes)} sprites were detected. "
+            "The names file must contain exactly one name per detected sprite, in traversal order."
+        )
+    return [Sprite(name, box) for name, box in zip(names, boxes)]
 
 
 def parse_anchor_specs(specs: list[list[str]]) -> list[tuple[str, float, float]]:
@@ -341,10 +404,12 @@ def main() -> int:
     if not boxes:
         raise RuntimeError("No sprites detected")
 
-    sprites = [
-        Sprite(f"{args.prefix}_{args.start_index + index:03d}", box)
-        for index, box in enumerate(boxes)
-    ]
+    sprites = make_sprites(
+        boxes=boxes,
+        prefix=args.prefix,
+        start_index=args.start_index,
+        names_file=args.names_file,
+    )
     apply_anchors(sprites, anchor_specs)
     atlas_size = pack_sprites(sprites, args.max_width, args.padding)
     yaml_image_path = args.yaml_image_path or args.out_image.name
