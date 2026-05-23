@@ -12,9 +12,9 @@ material only (reusable assets, behavior ideas, comparison targets) — never
 architecture to preserve.
 
 **Status: M0–M5 are merged and fully closed. M6 (hardening) and M7 (presentation
-& authoring polish) are largely merged. Settings persistence (#66, M6),
-display-mode settings (#71, M7), and localization infrastructure (#72, M7) are in
-review on PR #94. Still open: M6 authoring templates (#39), packaging smoke path
+& authoring polish) are largely merged — latest in: settings persistence (#66,
+M6), display-mode settings (#71, M7), and localization infrastructure (#72, M7),
+merged via PR #94. Still open: M6 authoring templates (#39), packaging smoke path
 (#40), manual MVP regression checklist (#41), and the Windows build recipe (#68).**
 - **M0 Core Shell**: CMake build, `pac_engine` (`pac::core` harness + `pac::pnc`),
   `pac_themummy` sample, headless doctest+CTest.
@@ -45,20 +45,21 @@ review on PR #94. Still open: M6 authoring templates (#39), packaging smoke path
   in-game pause/save/load menu.
 - **M6 Hardening**: loader validation diagnostics (#36), in-room debug overlays
   (#37) + dev actions (#38), background-layer visibility (`set_layer_visible`, #64)
-  + z-order guidance (#65), edge-aware speech containment (#62), and the settings
-  UI's music/SFX volume controls (#67).
+  + z-order guidance (#65), edge-aware speech containment (#62), the settings UI's
+  music/SFX volume controls (#67), and settings persistence to the per-user config
+  location (`SettingsStore`, #66).
 - **M7 Presentation & authoring polish**: custom mouse cursor + hover affordance
   (#73), scene/room fade transitions (#74), avatar shadows (#75), the
   close-up/examine scene type (#76), the restyled SCUMM panel (#77), approach
-  points with command queueing (#70), and dialog text placement via `talk_spot`
-  (#69).
+  points with command queueing (#70), dialog text placement via `talk_spot` (#69),
+  display-mode settings (windowed/fullscreen with an APPLY/BACK flow, #71), and the
+  localization infrastructure (`Localization`, manifest `languages` map + selector,
+  Spanish default, #72).
 
 The remaining MVP-hardening work is in **M6**: authoring templates (#39), a
 packaging smoke path (#40), the manual MVP regression checklist (#41), and the
-Windows build recipe (#68). **M7** is otherwise merged save for the two settings
-issues in review on PR #94: display-mode settings (#71) and localization
-infrastructure (#72) — which also closes the M6 settings-persistence issue (#66).
-See the GitHub milestones.
+Windows build recipe (#68). **M7** is otherwise fully merged. See the GitHub
+milestones.
 
 ## The design docs are the source of truth
 
