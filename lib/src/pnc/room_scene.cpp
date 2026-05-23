@@ -338,7 +338,10 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     }
 
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
-    camera_.emplace(sf::Vector2f(static_cast<float>(vres.x), scenery_height()), room_->data().size);
+    const sf::Vector2f viewport(static_cast<float>(vres.x), scenery_height());
+    const sf::Vector2u room_size =
+        compute_room_bounds(room_->data(), room_dir_, ctx_.resources, viewport, ctx_.log);
+    camera_.emplace(viewport, room_size);
     // The player can only reach the walkable area, so map that span onto the
     // full scroll range — otherwise the parts of the background above/around the
     // walkable polygon would never come into view (issue #28).
