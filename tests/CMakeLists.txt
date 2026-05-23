@@ -35,6 +35,7 @@ add_executable(pac_core_tests
     avatar_test.cpp
     inventory_test.cpp
     camera_test.cpp
+    speech_test.cpp
     dialog_test.cpp
     save_service_test.cpp
     user_data_test.cpp

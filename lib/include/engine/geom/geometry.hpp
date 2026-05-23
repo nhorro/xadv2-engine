@@ -40,4 +40,16 @@ Point closest_point_on_segment(Point p, Point a, Point b);
 /// clamp a click outside the walkable area to the nearest reachable spot.
 Point closest_point_in_polygon(Point p, const Polygon& poly);
 
+/// The stable pathfinding seam (design 03 §Pathfinding): returns the waypoints an
+/// avatar walks from `start` toward `dest`, gated by the `walkable` area minus
+/// `obstacles`. The MVP body is a straight-line stand-in — it clamps an
+/// out-of-bounds `dest` to the nearest reachable point and truncates the segment
+/// at the walkable boundary, so the result is a single reachable waypoint. Grid A*
+/// replaces the body later without changing the `[Point]` contract. An empty/
+/// degenerate `walkable` is treated as ungated and yields `{dest}`.
+std::vector<Point> find_path(Point start,
+                             Point dest,
+                             const Polygon& walkable,
+                             const std::vector<Polygon>& obstacles = {});
+
 } // namespace pac::geom

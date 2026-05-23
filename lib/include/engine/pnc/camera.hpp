@@ -49,7 +49,22 @@ public:
     void snap_to(sf::Vector2f target);    // position for the target immediately
 
     /// Position the camera for `target` using the proportional scroll mapping.
+    /// Only meaningful while `following()`; callers gate on that so a scripted
+    /// override is not fought by automatic follow.
     void follow(sf::Vector2f target);
+
+    // --- scripted overrides (issue #25) ---
+    /// Center on `world` immediately (clamped) and suspend follow.
+    void look_at(sf::Vector2f world);
+    /// Tween the center to `world` (clamped) over `duration` seconds and suspend
+    /// follow; a non-positive duration snaps. Advance the tween with update(dt).
+    void go_to(sf::Vector2f world, float duration);
+    /// Resume automatic follow (cancels any in-progress tween).
+    void follow_player();
+    /// Advance an in-progress go_to tween. No-op when not tweening.
+    void update(float dt);
+    [[nodiscard]] bool following() const { return following_; }
+    [[nodiscard]] bool tweening() const { return tweening_; }
 
     [[nodiscard]] sf::FloatRect view_rect() const; // world rect shown
     [[nodiscard]] sf::Vector2f top_left() const;   // world coord of the viewport's top-left
@@ -65,6 +80,13 @@ private:
     sf::Vector2f center_;
     sf::FloatRect follow_bounds_;
     float follow_margin_ = 0.15f; // keep the player within the central 70% of the view
+
+    bool following_ = true; // false while a scripted override holds the camera
+    bool tweening_ = false;
+    float tween_elapsed_ = 0.0f;
+    float tween_duration_ = 0.0f;
+    sf::Vector2f tween_from_;
+    sf::Vector2f tween_to_;
 };
 
 } // namespace pac::pnc
