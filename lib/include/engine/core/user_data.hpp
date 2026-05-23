@@ -18,4 +18,18 @@ namespace pac::core {
 /// be a stable, filesystem-friendly id: no slashes, no `..`, no leading `.`.
 std::filesystem::path user_data_dir(const std::string& app_name);
 
+/// Per-user writable directory for *configuration* (player settings). Distinct
+/// from `user_data_dir` on Linux, where config conventionally lives apart from
+/// data. Resolves to:
+///
+/// - `$XDG_CONFIG_HOME/<app_name>` if set (Linux/XDG hosts);
+/// - `$HOME/.config/<app_name>` on Linux/macOS with HOME but no XDG_CONFIG_HOME;
+/// - `$HOME/Library/Application Support/<app_name>` on macOS;
+/// - `%APPDATA%/<app_name>` on Windows;
+/// - `./<app_name>` as a last-resort fallback when none of the above resolve.
+///
+/// Creates the directory (with parents) if it does not exist. Same `app_name`
+/// constraints as `user_data_dir`.
+std::filesystem::path user_config_dir(const std::string& app_name);
+
 } // namespace pac::core

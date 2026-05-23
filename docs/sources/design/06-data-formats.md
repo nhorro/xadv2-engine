@@ -25,14 +25,33 @@ Worked example: [02 — Architecture overview](02-architecture-overview.md).
 | `version` | opt | int | 1 | Data-format version. |
 | `id` | req | string | — | Stable game id used as the per-game subdirectory under the per-user data path (e.g. `~/.local/share/<id>/saves/`). Must match `[a-z0-9_-]+`. Two games using this engine get separate save folders by choosing distinct ids. |
 | `resolution` | req | `{width, height}` | — | Virtual design resolution. |
-| `window` | req | `{fullscreen, width, height}` | — | Initial display mode. `fullscreen: true` starts the game fullscreen at the **optimal mode for the resolution** (the video mode matching `resolution` when available, else the smallest larger mode, letterboxed). `width`/`height` are the initial **windowed** client size (default to `resolution`). Player settings override these at runtime via the settings scene. |
+| `window` | req | `{fullscreen, width, height}` | — | Initial display mode. `fullscreen: true` starts the game fullscreen at the **desktop's native video mode**, with the virtual `resolution` letterboxed within it (no mode switch — this keeps input mapping correct). `width`/`height` are the initial **windowed** client size (default to `resolution`). Player settings override these at runtime via the settings scene. |
 | `resources` | req | `{src}` | — | Resource source root. `src` is a directory (MVP) or archive (design-for). |
-| `strings` | req | path | — | UI strings resource (engine-emitted text). One file in the MVP; a language→file map is design-for. See [UI strings](#ui-strings--stringslangyaml). |
+| `strings` | req* | path | — | Single-language shorthand: the UI strings resource (engine-emitted text). Mutually exclusive with `languages`; exactly one is required. See [UI strings](#ui-strings--stringslangyaml). |
+| `languages` | req* | `[{id, name?, strings}]` | — | UI-strings languages (R3). Each entry: `id` (stable ASCII id stored in settings), `name` (opt display label in its own language, defaults to `id`), `strings` (path to that language's file). The MVP ships one entry (Spanish); the list is design-ready for more. |
+| `default_language` | opt | language id | first entry | Which `languages` entry is active when no player preference is stored. Must name an entry in `languages`. |
 | `settings` | opt | map | — | Default player-facing settings (e.g. `audio.music_volume`, `audio.sfx_volume`). User settings override these. |
 | `cursor` | opt | `{image, interact?, hotspot?}` | OS cursor | Custom point-and-click cursor. `image` is the resting cursor; `interact` (opt) shows over an interactive hotspot; `hotspot` (opt `{x, y}`, default `0,0`) is the active click pixel within both images. Omitted ⇒ the OS cursor is used. |
 | `development` | opt | map | — | Dev-only flags: `edit_mode` (master gate for the debug overlays), `show_walkboxes`, `show_hotspots`, `show_anchors`, `show_state` (seed the overlay layers), `allow_room_reload`. Not persisted as player settings. |
 | `entry` | req | scene id | — | Initial scene. |
 | `scenes` | req | `[scene]` | — | Scene list and outcome wiring. |
+
+`*` — `strings` and `languages` are alternatives: provide exactly one. The
+single-language form
+
+```yaml
+strings: strings/es.yaml
+```
+
+is equivalent to a one-entry list whose id is `default`. The explicit form names
+each language and is what the settings language selector lists:
+
+```yaml
+languages:
+  - { id: es, name: "Español", strings: strings/es.yaml }
+  - { id: en, name: "English", strings: strings/en.yaml }
+default_language: es   # optional; defaults to the first entry
+```
 
 **`scene`** entry:
 
@@ -62,8 +81,10 @@ cast file, not the scene `font`.
 The strings resource holds every user-facing string the engine itself generates:
 verb labels, command connectors, and built-in menu labels. It does **not** hold
 game content strings — hotspot/item `name`s, speech, and dialog lines stay inline
-in their own files. The MVP ships one file (Spanish); a language→file map and a
-runtime selector are design-for (R3).
+in their own files. The MVP ships one file (Spanish). The manifest `languages` map
+and a runtime selector in the settings scene make additional UI-strings languages
+selectable (R3); per-language *game-content* files remain design-for. The active
+language is persisted in the player settings file (see below).
 
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
@@ -366,6 +387,33 @@ handlers using the same handler naming as room hotspots.
 
 For two-operand commands whose first operand is an inventory item, inventory
 handlers are checked before the second operand's hotspot handler.
+
+## Player settings — `settings.yaml`
+
+Player-facing preferences, persisted in the per-user **config** location (not the
+resource root): `$XDG_CONFIG_HOME/<id>/settings.yaml` (or `~/.config/<id>/…`) on
+Linux, `%APPDATA%\<id>\settings.yaml` on Windows, `Application Support/<id>` on
+macOS. Written by the settings scene when the player applies a change. On startup
+the file is overlaid on the manifest defaults: manifest defaults < user settings,
+and a missing file (first run) or a corrupt one falls back to the defaults.
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `version` | opt | int | 1 | Data-format version. |
+| `audio.music_volume` | opt | float `0..1` | manifest | Music volume. |
+| `audio.sfx_volume` | opt | float `0..1` | manifest | SFX volume. |
+| `display.fullscreen` | opt | bool | manifest | Fullscreen vs windowed. |
+| `display.width` / `display.height` | opt | int | manifest | Windowed client size. |
+| `language` | opt | language id | manifest default | Active UI-strings language (a `languages` id). An unknown id falls back to the default. |
+
+Only keys present in the file are applied, so a partial file still loads. Example:
+
+```yaml
+version: 1
+audio: { music_volume: 0.8, sfx_volume: 0.8 }
+display: { fullscreen: false, width: 1280, height: 720 }
+language: es
+```
 
 ## Save file — `GameState`
 

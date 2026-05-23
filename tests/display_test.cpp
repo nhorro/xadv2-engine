@@ -78,33 +78,6 @@ TEST_CASE("windowed_size_options returns aspect-matching multiples that fit") {
     CHECK(has_size(headless, 3840, 2160));
 }
 
-TEST_CASE("best_fullscreen_mode prefers an exact match to the game resolution") {
-    std::vector<sf::VideoMode> modes = {{1920, 1080, 32}, {1280, 720, 32}, {800, 600, 32}};
-    const sf::VideoMode m = best_fullscreen_mode(modes, {1280, 720}, sf::VideoMode(1920, 1080));
-    CHECK(m.width == 1280);
-    CHECK(m.height == 720);
-}
-
-TEST_CASE("best_fullscreen_mode picks the smallest mode large enough when no exact match") {
-    std::vector<sf::VideoMode> modes = {{2560, 1440, 32}, {1600, 900, 32}, {1024, 768, 32}};
-    const sf::VideoMode m = best_fullscreen_mode(modes, {1280, 720}, sf::VideoMode(2560, 1440));
-    CHECK(m.width == 1600); // smallest that contains 1280x720
-    CHECK(m.height == 900);
-}
-
-TEST_CASE("best_fullscreen_mode falls back to the desktop mode when none qualify") {
-    // Empty list -> desktop.
-    const sf::VideoMode none = best_fullscreen_mode({}, {1280, 720}, sf::VideoMode(1366, 768));
-    CHECK(none.width == 1366);
-    CHECK(none.height == 768);
-
-    // No mode is large enough -> the largest available (SFML sorts descending).
-    std::vector<sf::VideoMode> small = {{1024, 768, 32}, {800, 600, 32}};
-    const sf::VideoMode big = best_fullscreen_mode(small, {1280, 720}, sf::VideoMode(640, 480));
-    CHECK(big.width == 1024);
-    CHECK(big.height == 768);
-}
-
 TEST_CASE("Display pending-mode request round-trips and tracks fullscreen") {
     Display d({1280, 720}, {1280, 720}, /*fullscreen=*/false);
     CHECK_FALSE(d.fullscreen());
