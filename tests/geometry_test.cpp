@@ -123,3 +123,18 @@ TEST_CASE("find_path is a straight-line walk gated by the walkable area") {
         CHECK(path.back().x == doctest::Approx(500.0f));
     }
 }
+
+TEST_CASE("find_path detours around an obstacle that does not seal the room") {
+    const Polygon room{{0, 0}, {100, 0}, {100, 100}, {0, 100}};
+    // A bar rising from the floor with a gap above it (y > 60 is clear).
+    const std::vector<Polygon> obstacles{{{40, 0}, {60, 0}, {60, 60}, {40, 60}}};
+
+    const auto path = find_path({10, 30}, {90, 30}, room, obstacles);
+
+    REQUIRE(path.size() >= 2); // detoured over the top, not a straight shot
+    CHECK(path.back().x == doctest::Approx(90.0f));
+    CHECK(path.back().y == doctest::Approx(30.0f));
+    for (const Point& wp : path) {
+        CHECK_FALSE(point_in_polygon(wp, obstacles[0])); // no waypoint inside the bar
+    }
+}

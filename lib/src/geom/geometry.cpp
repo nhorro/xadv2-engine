@@ -2,7 +2,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <functional>
 #include <limits>
+#include <queue>
+#include <utility>
 
 namespace pac::geom {
 
@@ -108,26 +112,180 @@ Point closest_point_in_polygon(Point p, const Polygon& poly) {
     return best;
 }
 
+namespace {
+
+float orient(Point o, Point a, Point b) {
+    return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+}
+
+// Strict crossing only: segments meeting at a shared endpoint (two graph edges
+// touching at a corner node) are not crossings, so corner nodes stay connectable.
+bool segments_properly_cross(Point a1, Point a2, Point b1, Point b2) {
+    const float d1 = orient(b1, b2, a1);
+    const float d2 = orient(b1, b2, a2);
+    const float d3 = orient(a1, a2, b1);
+    const float d4 = orient(a1, a2, b2);
+    return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+bool segment_crosses_polygon(Point a, Point b, const Polygon& poly) {
+    const std::size_t n = poly.size();
+    if (n < 2) {
+        return false;
+    }
+    for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
+        if (segments_properly_cross(a, b, poly[j], poly[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// A chord is travelable when its midpoint stays in free space and it neither
+// leaves the walkable area nor pierces an obstacle. Exact for convex obstacles.
+bool chord_clear(Point a, Point b, const Polygon& walkable, const std::vector<Polygon>& obstacles) {
+    const Point mid{(a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f};
+    if (!point_in_polygon(mid, walkable) || point_in_any_polygon(mid, obstacles)) {
+        return false;
+    }
+    if (segment_crosses_polygon(a, b, walkable)) {
+        return false;
+    }
+    for (const Polygon& ob : obstacles) {
+        if (segment_crosses_polygon(a, b, ob)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Routing nodes sit a few px off each corner, on the free-space side, so edges
+// between them clear the boundary instead of grazing it (where the midpoint test
+// is ambiguous). Trying the bisector both ways handles obstacle corners (push
+// out) and concave walkable corners (push in) without tracking winding.
+void push_corner_nodes(const Polygon& poly,
+                       const Polygon& walkable,
+                       const std::vector<Polygon>& obstacles,
+                       std::vector<Point>& out) {
+    const std::size_t n = poly.size();
+    if (n < 3) {
+        return;
+    }
+    constexpr float kInset = 4.0f;
+    for (std::size_t i = 0; i < n; ++i) {
+        const Point v = poly[i];
+        const Point prev = poly[(i + n - 1) % n];
+        const Point next = poly[(i + 1) % n];
+        const Point d1{prev.x - v.x, prev.y - v.y};
+        const Point d2{next.x - v.x, next.y - v.y};
+        const float l1 = std::hypot(d1.x, d1.y);
+        const float l2 = std::hypot(d2.x, d2.y);
+        if (l1 < 1e-6f || l2 < 1e-6f) {
+            continue;
+        }
+        Point bis{d1.x / l1 + d2.x / l2, d1.y / l1 + d2.y / l2};
+        const float bl = std::hypot(bis.x, bis.y);
+        if (bl < 1e-6f) {
+            continue; // collinear corner: nothing to round
+        }
+        bis = {bis.x / bl * kInset, bis.y / bl * kInset};
+        for (const float s : {1.0f, -1.0f}) {
+            const Point cand{v.x + s * bis.x, v.y + s * bis.y};
+            if (point_in_polygon(cand, walkable) && !point_in_any_polygon(cand, obstacles)) {
+                out.push_back(cand);
+            }
+        }
+    }
+}
+
+} // namespace
+
 std::vector<Point>
 find_path(Point start, Point dest, const Polygon& walkable, const std::vector<Polygon>& obstacles) {
     if (walkable.size() < 3) {
-        return {dest}; // ungated: no walkable polygon to honor
+        return {dest}; // ungated: no walkable area to honor
     }
     const auto reachable_at = [&](Point p) {
         return point_in_polygon(p, walkable) && !point_in_any_polygon(p, obstacles);
     };
-    // Clamp an out-of-bounds destination to the nearest reachable spot.
+    // Clamp endpoints onto the walkable area so a click just outside it, or float
+    // drift at the avatar's feet, still routes.
+    const Point from = reachable_at(start) ? start : closest_point_in_polygon(start, walkable);
     const Point goal = reachable_at(dest) ? dest : closest_point_in_polygon(dest, walkable);
-    // Sample start->goal and stop at the last reachable sample, so a straight walk
-    // refuses to cross the boundary or an obstacle. ~4px sampling matches the
-    // avatar's per-step granularity.
+
+    if (chord_clear(from, goal, walkable, obstacles)) {
+        return {goal};
+    }
+
+    std::vector<Point> nodes{from, goal};
+    push_corner_nodes(walkable, walkable, obstacles, nodes);
+    for (const Polygon& ob : obstacles) {
+        push_corner_nodes(ob, walkable, obstacles, nodes);
+    }
+
+    const std::size_t n = nodes.size();
+    std::vector<std::vector<std::pair<std::size_t, float>>> adjacency(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t j = i + 1; j < n; ++j) {
+            if (chord_clear(nodes[i], nodes[j], walkable, obstacles)) {
+                const float c = distance(nodes[i], nodes[j]);
+                adjacency[i].push_back({j, c});
+                adjacency[j].push_back({i, c});
+            }
+        }
+    }
+
+    constexpr std::size_t kStart = 0;
+    constexpr std::size_t kGoal = 1;
+    std::vector<float> g(n, std::numeric_limits<float>::infinity());
+    std::vector<std::size_t> prev(n, n);
+    g[kStart] = 0.0f;
+
+    struct Open {
+        float f;
+        std::size_t id;
+        bool operator>(const Open& o) const { return f > o.f; }
+    };
+    std::priority_queue<Open, std::vector<Open>, std::greater<Open>> open;
+    open.push({distance(from, goal), kStart});
+
+    while (!open.empty()) {
+        const Open top = open.top();
+        open.pop();
+        if (top.f > g[top.id] + distance(nodes[top.id], goal) + 1e-4f) {
+            continue; // stale queue entry, superseded by a cheaper path
+        }
+        if (top.id == kGoal) {
+            std::vector<Point> path;
+            for (std::size_t at = kGoal; at != n; at = prev[at]) {
+                path.push_back(nodes[at]);
+                if (at == kStart) {
+                    break;
+                }
+            }
+            std::reverse(path.begin(), path.end());
+            path.erase(path.begin()); // drop start: callers walk toward the waypoints
+            return path;
+        }
+        for (const auto& [to, cost] : adjacency[top.id]) {
+            const float tentative = g[top.id] + cost;
+            if (tentative < g[to]) {
+                g[to] = tentative;
+                prev[to] = top.id;
+                open.push({tentative + distance(nodes[to], goal), to});
+            }
+        }
+    }
+
+    // No corner route exists: walk straight until the boundary or an obstacle
+    // stops us, so the caller still gets a reachable waypoint (never empty).
     constexpr float kStep = 4.0f;
-    const float dist = distance(start, goal);
+    const float dist = distance(from, goal);
     const int steps = std::max(1, static_cast<int>(std::ceil(dist / kStep)));
-    Point furthest = reachable_at(start) ? start : closest_point_in_polygon(start, walkable);
+    Point furthest = from;
     for (int i = 1; i <= steps; ++i) {
         const float t = static_cast<float>(i) / static_cast<float>(steps);
-        const Point p{start.x + (goal.x - start.x) * t, start.y + (goal.y - start.y) * t};
+        const Point p{from.x + (goal.x - from.x) * t, from.y + (goal.y - from.y) * t};
         if (!reachable_at(p)) {
             break;
         }

@@ -94,19 +94,18 @@ If a feature seems to require crossing a boundary, stop and revisit the design.
 - **Scripting:** Lua 5.4 embedded via [sol2](https://github.com/ThePhD/sol2) (header-only).
 - **Data:** YAML via `yaml-cpp`.
 - **Tests:** doctest (single-header), registered with CTest; enable ASan/UBSan in dev.
-- **Pathfinding:** micropather, **vendored** under `third_party/` (not packaged for apt/vcpkg).
+- **Pathfinding:** built-in **visibility-graph** A* in `pac::geom`, behind the `find_path` seam. A grid A* (micropather) or navmesh smoother are design-for and not currently vendored.
 - **Tools:** Python for asset/authoring tooling; prefer web-based *offline* authoring tools (the runtime is a native SFML app).
 - **Dev OS:** Ubuntu 24.04. **Primary target:** Windows 10/11 x64. Linux is a possible later target.
 - **Display:** fixed virtual resolution per game (from the manifest `resolution:`), uniformly scaled to the window with aspect-preserving letterbox/pillarbox bars.
 
 Dependency acquisition: compiled libs from the system package manager (apt on Linux,
-vcpkg on Windows); header-only libs (sol2, doctest) via CMake `FetchContent` pinned;
-micropather vendored. See [02 § Dependencies](docs/sources/design/02-architecture-overview.md).
+vcpkg on Windows); header-only libs (sol2, doctest) via CMake `FetchContent` pinned.
+See [02 § Dependencies](docs/sources/design/02-architecture-overview.md).
 
 ## Build layout (target)
 
 ```
-third_party/micropather/   vendored A*
 lib/include/engine/{core,geom,gfx,pnc}/   public headers
 lib/src/                                  engine implementation  -> pac_engine
 games/themummy/{CMakeLists.txt,main.cpp,data/}   example game     -> pac_themummy

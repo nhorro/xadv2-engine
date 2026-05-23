@@ -611,12 +611,12 @@ void RoomScene::handle_event(const sf::Event& event) {
         // returns to IDLE (issue #28).
         builder_.cancel();
     } else if (player_) {
-        // IDLE: walk there. Route through the find_path seam, which clamps a click
-        // outside the walkable area to the nearest reachable point (issue #28) and
-        // stops a straight walk at the boundary / an obstacle (issue #21).
+        // IDLE: walk there. find_path clamps a click outside the walkable area to
+        // the nearest reachable point (issue #28) and routes around obstacles; the
+        // avatar walks the returned waypoints in order.
         const RoomData& d = room_->data();
         const auto path = geom::find_path(player_->position(), world, d.walkable, d.obstacles);
-        player_->move_to(path.back());
+        player_->follow_path(path);
     }
 }
 
@@ -745,7 +745,7 @@ void RoomScene::walk_to_approach(geom::Point approach, const std::string& hotspo
         return;
     }
     const auto path = geom::find_path(player_->position(), ap, d.walkable, d.obstacles);
-    player_->move_to(path.back());
+    player_->follow_path(path);
 }
 
 std::optional<std::string> RoomScene::dispatch(const Command& cmd) {
