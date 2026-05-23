@@ -29,6 +29,7 @@ ui:
   resolution: "Resolución"
   fullscreen: "Pantalla completa"
   music:    "Música"
+  sfx:      "Efectos"
   "on":     "Sí"
   "off":    "No"
 

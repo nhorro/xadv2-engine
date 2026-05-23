@@ -302,6 +302,23 @@ regions:
     CHECK(d.over == "fg");
     CHECK(d.states.size() == 2);
     CHECK(d.initial == "shut");
+    CHECK_FALSE(d.baseline.has_value()); // omitted -> over/z
+}
+
+TEST_CASE("parse_room reads the optional region baseline (perspective sort line)") {
+    const char* yaml = R"YAML(
+id: r
+regions:
+  cart:
+    area: [ {x: 0, y: 0}, {x: 10, y: 0}, {x: 10, y: 10}, {x: 0, y: 10} ]
+    baseline: 512
+    states: { shut: a/shut.png, open: a/open.png }
+    initial: shut
+)YAML";
+    const RoomData r = parse_room(yaml);
+    REQUIRE(r.regions.count("cart") == 1);
+    REQUIRE(r.regions.at("cart").baseline.has_value());
+    CHECK(r.regions.at("cart").baseline.value() == doctest::Approx(512.0f));
 }
 
 TEST_CASE("hotspot_at hits a bind:region hotspot via the region polygon") {

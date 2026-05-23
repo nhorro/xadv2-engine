@@ -70,9 +70,10 @@ void RoomRenderer::draw(sf::RenderTarget& target,
         });
     }
 
-    // Regions: the current state's image at the area's top-left. A region may
-    // pin its depth to a named layer via `over: <layer>` (design 04 §Z-order);
-    // otherwise it uses its explicit `z`.
+    // Regions: the current state's image at the area's top-left. Depth, in order
+    // of priority: an explicit `baseline` (a world-Y ground line that sorts
+    // against avatar feet, for a perspective region), else `over: <layer>` (pin to
+    // a named layer's z), else the explicit `z` (design 04 §Z-order).
     const auto layer_z = [&data](const std::string& layer_id) -> std::optional<float> {
         for (const BackgroundLayer& l : data.layers) {
             if (l.id == layer_id) {
@@ -87,7 +88,9 @@ void RoomRenderer::draw(sf::RenderTarget& target,
             continue;
         }
         float z = region.z;
-        if (!region.over.empty()) {
+        if (region.baseline) {
+            z = *region.baseline;
+        } else if (!region.over.empty()) {
             if (const auto lz = layer_z(region.over)) {
                 z = *lz;
             } else {

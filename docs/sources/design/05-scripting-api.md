@@ -382,6 +382,7 @@ each call yielding until the page finishes or is skipped.
 |----------|------------|---------|---------|
 | `change_room(id, entry_point?)` | room id, optional point id | — | Load another room inside `RoomScene`. |
 | `current_room()` | — | room id | Return current room id. |
+| `open_closeup(scene_id)` | `CloseUp` scene id | — | Open an examine view as an overlay over the room; it pops back here on Esc / right-click (design 04 §CloseUp). |
 | `camera_look_at(target)` | target | — | Snap camera to target and suspend follow. |
 | `camera_go_to(target)` | target | — | Tween camera to target, yield until done, and suspend follow. |
 | `camera_follow_player()` | — | — | Resume following the player. |

@@ -1,5 +1,6 @@
 #include "engine/pnc/settings_scene.hpp"
 
+#include "engine/core/audio.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
 #include "engine/core/resource_cache.hpp"
@@ -81,6 +82,12 @@ void SettingsScene::adjust(int dir) {
     case ROW_MUSIC:
         ctx_.settings.audio.music_volume += static_cast<float>(dir) * kVolumeStep;
         ctx_.settings.clamp();
+        ctx_.audio.apply_settings(ctx_.settings); // live preview
+        break;
+    case ROW_SFX:
+        ctx_.settings.audio.sfx_volume += static_cast<float>(dir) * kVolumeStep;
+        ctx_.settings.clamp();
+        ctx_.audio.apply_settings(ctx_.settings); // live preview
         break;
     default:
         break;
@@ -151,16 +158,19 @@ void SettingsScene::draw(sf::RenderTarget& target) const {
     }
     const std::string fs_value = strings.ui_label(ctx_.settings.fullscreen ? "on" : "off");
     const int music_pct = static_cast<int>(ctx_.settings.audio.music_volume * 100.0f + 0.5f);
+    const int sfx_pct = static_cast<int>(ctx_.settings.audio.sfx_volume * 100.0f + 0.5f);
 
     const std::string labels[ROW_COUNT] = {
         strings.ui_label("resolution"),
         strings.ui_label("fullscreen"),
         strings.ui_label("music"),
+        strings.ui_label("sfx"),
     };
     const std::string values[ROW_COUNT] = {
         res_value,
         fs_value,
         std::to_string(music_pct) + "%",
+        std::to_string(sfx_pct) + "%",
     };
 
     const float row_y0 = static_cast<float>(vres.y) * 0.40f;

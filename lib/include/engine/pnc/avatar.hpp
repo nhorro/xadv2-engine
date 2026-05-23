@@ -2,8 +2,10 @@
 
 #include "engine/geom/geometry.hpp"
 #include "engine/gfx/animated_sprite.hpp"
+#include "engine/pnc/cast.hpp" // Shadow
 #include "engine/pnc/mover.hpp"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,7 +23,9 @@ struct RoomData;
 /// movement stays testable without a graphics context.
 class Avatar {
 public:
-    explicit Avatar(gfx::AnimatedSprite sprite, float scale = 1.0f);
+    explicit Avatar(gfx::AnimatedSprite sprite,
+                    float scale = 1.0f,
+                    std::optional<Shadow> shadow = std::nullopt);
 
     void set_position(geom::Point p);
     geom::Point position() const { return mover_.position(); }
@@ -49,9 +53,15 @@ private:
     /// `<action>_<direction>` to the bare `<action>` and finally to `stand`.
     void apply_animation();
 
+    /// Draw the ground shadow blob (if any) centered on the walking pivot, sized
+    /// by the shadow's unit size times the avatar's current render scale.
+    void draw_shadow(sf::RenderTarget& target) const;
+
     gfx::AnimatedSprite sprite_;
     Mover mover_;
-    float scale_ = 1.0f; // base scale; the fallback when the room has no perspective
+    float scale_ = 1.0f;      // base scale; the fallback when the room has no perspective
+    float draw_scale_ = 1.0f; // last applied render scale (perspective), for the shadow
+    std::optional<Shadow> shadow_;
 };
 
 } // namespace pac::pnc

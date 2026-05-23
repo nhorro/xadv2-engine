@@ -191,8 +191,9 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `area` | req | polygon | — | Region footprint. |
-| `z` | req unless `over` | number | — | Draw depth. |
+| `z` | req unless `over`/`baseline` | number | — | Draw depth. |
 | `over` | opt | layer id | — | Inherit the named layer's `z` instead of an explicit `z`. |
+| `baseline` | opt | number | — | Floor-line world-Y; the region sorts here against avatar feet (occludes feet above the line, is occluded by feet below), for a perspective region the player passes. Overrides `over` / `z`. |
 | `states` | req | map state id → path | — | Image per named state. |
 | `initial` | req | state id | — | Starting state. |
 
@@ -238,6 +239,27 @@ source activates the hotspot.
 | `start` | req | point id | — | Placement point. |
 | `orientation` | opt | `up`/`right`/`down`/`left` | `down` | Initial facing. |
 | `player` | opt | bool | `false` | Marks the player's placement entry (does not create the player; see [player vs NPC avatars](04-point-and-click-concepts.md)). |
+
+## Close-up — `closeups/<id>.yaml`
+
+A full-screen examine view (the `CloseUp` scene; design 04 §Genre scenes). Top
+level:
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `version` | opt | int | `1` | Format version. |
+| `id` | req | string | — | Stable close-up id. |
+| `background` | req | path | — | Full-screen background image (scaled to the virtual resolution). |
+| `background_color` | opt | `{r, g, b, a?}` | black | Fill shown behind a transparent background. |
+| `hotspots` | opt | map | — | Examinable regions (see below). |
+
+**`hotspots`** — map of hotspot id → hotspot:
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `name` | opt | string | id | Localized label; shown as a caption on a look and as the hover label. |
+| `area` | req | polygon | — | Hit-test polygon, in the close-up's virtual-resolution space (≥ 3 points). |
+| `goto` | opt | scene id | — | If set, clicking switches to this scene; otherwise the click shows `name` as a look caption. |
 
 ## Spritesheet — `<name>.yaml`
 

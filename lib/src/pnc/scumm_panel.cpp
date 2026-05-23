@@ -16,7 +16,7 @@ namespace pac::pnc {
 
 namespace {
 
-// Verb grid: 3 columns x 3 rows.
+// Verb grid: 3 columns x 3 rows. This is command-model structure, not theme.
 constexpr int kCols = 3;
 constexpr int kRows = 3;
 constexpr std::array<Verb, 9> kVerbGrid{Verb::LOOK_AT,
@@ -28,28 +28,11 @@ constexpr std::array<Verb, 9> kVerbGrid{Verb::LOOK_AT,
                                         Verb::PICK_UP,
                                         Verb::USE,
                                         Verb::GIVE};
-constexpr float kCommandBarHeight = 30.0f;
-constexpr float kPad = 8.0f;
-constexpr float kInventorySplit = 0.46f; // verbs left, inventory right
-
-// Dialog-options layout: rows fill the panel below the command bar, clamped
-// so they stay readable even when only one option is shown.
-constexpr float kOptionRowMin = 22.0f;
-constexpr float kOptionRowMax = 40.0f;
-
-// Shared button palette. Hover matches the TitleScreen menu so every clickable
-// element highlights the same way; the active verb is brighter than hover so a
-// selection still reads distinctly from a passing cursor.
-const sf::Color kBtnDefault(34, 38, 54);
-const sf::Color kBtnHover(70, 90, 140);
-const sf::Color kBtnSelected(92, 120, 182);
-const sf::Color kBtnOutline(70, 78, 104);
-const sf::Color kTextDefault(220, 224, 235);
-const sf::Color kTextInv(210, 215, 230);
 
 } // namespace
 
-ScummPanel::ScummPanel(sf::FloatRect region, const sf::Font* font) : region_(region), font_(font) {}
+ScummPanel::ScummPanel(sf::FloatRect region, const sf::Font* font, ScummPanelTheme theme)
+    : region_(region), font_(font), theme_(theme) {}
 
 bool ScummPanel::contains(sf::Vector2f p) const {
     return region_.contains(p);
@@ -57,10 +40,12 @@ bool ScummPanel::contains(sf::Vector2f p) const {
 
 std::vector<ScummPanel::VerbCell> ScummPanel::verb_cells() const {
     std::vector<VerbCell> cells;
-    const float grid_x = region_.left + kPad;
-    const float grid_y = region_.top + kCommandBarHeight + kPad;
-    const float grid_w = region_.width * kInventorySplit - 2.0f * kPad;
-    const float grid_h = region_.height - kCommandBarHeight - 2.0f * kPad;
+    const float pad = theme_.pad;
+    const float bar = theme_.command_bar_height;
+    const float grid_x = region_.left + pad;
+    const float grid_y = region_.top + bar + pad;
+    const float grid_w = region_.width * theme_.inventory_split - 2.0f * pad;
+    const float grid_h = region_.height - bar - 2.0f * pad;
     const float cell_w = grid_w / kCols;
     const float cell_h = grid_h / kRows;
     for (std::size_t i = 0; i < kVerbGrid.size(); ++i) {
@@ -74,12 +59,11 @@ std::vector<ScummPanel::VerbCell> ScummPanel::verb_cells() const {
 }
 
 sf::FloatRect ScummPanel::inventory_area() const {
-    const float x = region_.left + region_.width * kInventorySplit + kPad;
-    const float y = region_.top + kCommandBarHeight + kPad;
-    return {x,
-            y,
-            region_.left + region_.width - kPad - x,
-            region_.height - kCommandBarHeight - 2.0f * kPad};
+    const float pad = theme_.pad;
+    const float bar = theme_.command_bar_height;
+    const float x = region_.left + region_.width * theme_.inventory_split + pad;
+    const float y = region_.top + bar + pad;
+    return {x, y, region_.left + region_.width - pad - x, region_.height - bar - 2.0f * pad};
 }
 
 PanelIntent ScummPanel::click(sf::Vector2f p, const InventoryModel& inventory) const {
@@ -90,7 +74,7 @@ PanelIntent ScummPanel::click(sf::Vector2f p, const InventoryModel& inventory) c
     }
     const sf::FloatRect inv = inventory_area();
     if (inv.contains(p)) {
-        const float row_h = 26.0f;
+        const float row_h = theme_.inventory_row_height;
         const auto index = static_cast<std::size_t>((p.y - inv.top) / row_h);
         if (index < inventory.list().size()) {
             return {PanelIntent::Kind::CLICK_INVENTORY, Verb::LOOK_AT, inventory.list()[index]};
@@ -105,19 +89,18 @@ void ScummPanel::draw(sf::RenderTarget& target,
                       const std::string& command_preview,
                       std::optional<Verb> selected_verb,
                       sf::Vector2f cursor) const {
-    sf::RectangleShape bg(sf::Vector2f(region_.width, region_.height));
-    bg.setPosition(region_.left, region_.top);
-    bg.setFillColor(sf::Color(18, 20, 30));
-    target.draw(bg);
+    draw_backdrop(target);
 
     if (!font_) {
         return;
     }
 
-    // Command bar.
-    sf::Text bar(pac::core::utf8(command_preview), *font_, 20);
-    bar.setFillColor(sf::Color(255, 240, 180));
-    bar.setPosition(region_.left + kPad, region_.top + 4.0f);
+    // Command bar text, vertically centered in the bar strip.
+    sf::Text bar(pac::core::utf8(command_preview), *font_, theme_.command_text_size);
+    bar.setFillColor(theme_.command_text);
+    const sf::FloatRect bb = bar.getLocalBounds();
+    bar.setPosition(region_.left + theme_.pad,
+                    region_.top + (theme_.command_bar_height - bb.height) / 2.0f - bb.top);
     target.draw(bar);
 
     // Verb grid. Selected wins over hover so the active verb stays distinct.
@@ -126,25 +109,27 @@ void ScummPanel::draw(sf::RenderTarget& target,
         const bool hot = cell.rect.contains(cursor);
         sf::RectangleShape box(sf::Vector2f(cell.rect.width, cell.rect.height));
         box.setPosition(cell.rect.left, cell.rect.top);
-        box.setFillColor(selected ? kBtnSelected : (hot ? kBtnHover : kBtnDefault));
+        box.setFillColor(selected ? theme_.verb_selected
+                                  : (hot ? theme_.verb_hover : theme_.verb_default));
         box.setOutlineThickness(1.0f);
-        box.setOutlineColor(kBtnOutline);
+        box.setOutlineColor(theme_.verb_outline);
         target.draw(box);
 
         sf::Text label(pac::core::utf8(strings.verb_label(std::string(verb_id(cell.verb)))),
                        *font_,
-                       16);
-        label.setFillColor((selected || hot) ? sf::Color::White : kTextDefault);
+                       theme_.verb_text_size);
+        label.setFillColor(selected ? theme_.verb_text_active
+                                    : (hot ? theme_.verb_text_hover : theme_.verb_text));
         const sf::FloatRect b = label.getLocalBounds();
         label.setPosition(cell.rect.left + (cell.rect.width - b.width) / 2.0f - b.left,
                           cell.rect.top + (cell.rect.height - b.height) / 2.0f - b.top);
         target.draw(label);
     }
 
-    // Inventory list (text rows; the hovered row gets a highlight + white text).
+    // Inventory list (text rows; the hovered row gets a highlight + brighter text).
     // Hovered row is computed the same way click() maps a click, so they agree.
     const sf::FloatRect inv = inventory_area();
-    const float row_h = 26.0f;
+    const float row_h = theme_.inventory_row_height;
     int hot_row = -1;
     if (inv.contains(cursor)) {
         const auto idx = static_cast<std::size_t>((cursor.y - inv.top) / row_h);
@@ -159,37 +144,58 @@ void ScummPanel::draw(sf::RenderTarget& target,
         if (hot) {
             sf::RectangleShape hl(sf::Vector2f(inv.width, row_h - 2.0f));
             hl.setPosition(inv.left, y);
-            hl.setFillColor(kBtnHover);
+            hl.setFillColor(theme_.inventory_hover_bg);
             target.draw(hl);
         }
         const InventoryItem* item = inventory.item(id);
-        sf::Text text(pac::core::utf8(item ? item->name : id), *font_, 18);
-        text.setFillColor(hot ? sf::Color::White : kTextInv);
-        text.setPosition(inv.left, y);
+        sf::Text text(pac::core::utf8(item ? item->name : id), *font_, theme_.inventory_text_size);
+        text.setFillColor(hot ? theme_.verb_text_hover : theme_.inventory_text);
+        text.setPosition(inv.left + 2.0f, y);
         target.draw(text);
         y += row_h;
         ++row;
     }
 }
 
+void ScummPanel::draw_backdrop(sf::RenderTarget& target) const {
+    sf::RectangleShape bg(sf::Vector2f(region_.width, region_.height));
+    bg.setPosition(region_.left, region_.top);
+    bg.setFillColor(theme_.panel_bg);
+    target.draw(bg);
+
+    // Command-bar strip + a thin accent separator beneath it, so the command
+    // preview reads as its own band above the verb/inventory area.
+    sf::RectangleShape strip(sf::Vector2f(region_.width, theme_.command_bar_height));
+    strip.setPosition(region_.left, region_.top);
+    strip.setFillColor(theme_.command_bar_bg);
+    target.draw(strip);
+
+    sf::RectangleShape rule(sf::Vector2f(region_.width, 2.0f));
+    rule.setPosition(region_.left, region_.top + theme_.command_bar_height - 1.0f);
+    rule.setFillColor(theme_.separator);
+    target.draw(rule);
+}
+
 sf::FloatRect ScummPanel::options_area() const {
-    return {region_.left + kPad,
-            region_.top + kCommandBarHeight + kPad,
-            region_.width - 2.0f * kPad,
-            region_.height - kCommandBarHeight - 2.0f * kPad};
+    const float pad = theme_.pad;
+    const float bar = theme_.command_bar_height;
+    return {region_.left + pad,
+            region_.top + bar + pad,
+            region_.width - 2.0f * pad,
+            region_.height - bar - 2.0f * pad};
 }
 
 float ScummPanel::option_row_height(std::size_t option_count) const {
     if (option_count == 0) {
-        return kOptionRowMax;
+        return theme_.option_row_max;
     }
     const float available = options_area().height;
     const float h = available / static_cast<float>(option_count);
-    if (h < kOptionRowMin) {
-        return kOptionRowMin;
+    if (h < theme_.option_row_min) {
+        return theme_.option_row_min;
     }
-    if (h > kOptionRowMax) {
-        return kOptionRowMax;
+    if (h > theme_.option_row_max) {
+        return theme_.option_row_max;
     }
     return h;
 }
@@ -197,10 +203,7 @@ float ScummPanel::option_row_height(std::size_t option_count) const {
 void ScummPanel::draw_options(sf::RenderTarget& target,
                               const std::vector<std::string>& options,
                               sf::Vector2f cursor) const {
-    sf::RectangleShape bg(sf::Vector2f(region_.width, region_.height));
-    bg.setPosition(region_.left, region_.top);
-    bg.setFillColor(sf::Color(18, 20, 30));
-    target.draw(bg);
+    draw_backdrop(target);
 
     if (!font_) {
         return;
@@ -215,15 +218,15 @@ void ScummPanel::draw_options(sf::RenderTarget& target,
         const bool hot = (static_cast<int>(i) == hot_idx);
         sf::RectangleShape box(sf::Vector2f(area.width, row - 2.0f));
         box.setPosition(area.left, y);
-        box.setFillColor(hot ? kBtnHover : kBtnDefault);
+        box.setFillColor(hot ? theme_.verb_hover : theme_.verb_default);
         box.setOutlineThickness(1.0f);
-        box.setOutlineColor(kBtnOutline);
+        box.setOutlineColor(theme_.verb_outline);
         target.draw(box);
 
-        sf::Text label(pac::core::utf8(options[i]), *font_, 18);
-        label.setFillColor(hot ? sf::Color::White : kTextDefault);
+        sf::Text label(pac::core::utf8(options[i]), *font_, theme_.option_text_size);
+        label.setFillColor(hot ? theme_.verb_text_hover : theme_.verb_text);
         const sf::FloatRect b = label.getLocalBounds();
-        label.setPosition(area.left + kPad, y + (row - b.height) / 2.0f - b.top - 1.0f);
+        label.setPosition(area.left + theme_.pad, y + (row - b.height) / 2.0f - b.top - 1.0f);
         target.draw(label);
     }
 }

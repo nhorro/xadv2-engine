@@ -4,6 +4,9 @@ appearances:
   julia_body:
     type: animated_sprite
     sprite: characters/julia/julia.anim.yml
+    shadow:
+      size: { x: 60, y: 16 }
+      color: { r: 0, g: 0, b: 0, a: 80 }
 
 characters:
   julia:

@@ -73,3 +73,9 @@ scenes:
       inventory: inventory.yaml
       inventory_logic: inventory.lua
       logic: game.lua
+
+  - id: sarcophagus_closeup
+    type: CloseUp
+    parameters:
+      data: closeups/sarcophagus.yaml
+      font: fonts/DepartureMono-Regular.otf
