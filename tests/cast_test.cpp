@@ -39,6 +39,39 @@ TEST_CASE("parse_cast reads appearances and characters") {
     CHECK(c.character("nope") == nullptr);
 }
 
+TEST_CASE("parse_cast reads an optional shadow appearance") {
+    const char* yaml = R"YAML(
+appearances:
+  with_shadow:
+    type: animated_sprite
+    sprite: a.anim.yml
+    shadow:
+      size: { x: 70, y: 18 }
+      color: { r: 10, g: 20, b: 30, a: 90 }
+  no_shadow:
+    type: animated_sprite
+    sprite: b.anim.yml
+)YAML";
+    const Cast c = parse_cast(yaml);
+
+    REQUIRE(c.appearance("with_shadow") != nullptr);
+    REQUIRE(c.appearance("with_shadow")->shadow.has_value());
+    const Shadow& sh = *c.appearance("with_shadow")->shadow;
+    CHECK(sh.size.x == doctest::Approx(70.0f));
+    CHECK(sh.size.y == doctest::Approx(18.0f));
+    CHECK(static_cast<int>(sh.color.a) == 90);
+
+    REQUIRE(c.appearance("no_shadow") != nullptr);
+    CHECK_FALSE(c.appearance("no_shadow")->shadow.has_value());
+}
+
+TEST_CASE("parse_cast rejects a shadow without a size") {
+    CHECK(error_code([] {
+              parse_cast("appearances:\n  a: { type: animated_sprite, sprite: s, shadow: { color: "
+                         "{ r: 0, g: 0, b: 0 } } }\n");
+          }) == "cast.shadow-size-missing");
+}
+
 TEST_CASE("parse_cast rejects a character without an appearance") {
     CHECK_THROWS_AS(parse_cast("characters:\n  x: { name: n }\n"), DataError);
     CHECK(error_code([] { parse_cast("characters:\n  x: { name: n }\n"); }) ==

@@ -1,18 +1,29 @@
 #pragma once
 
 #include <SFML/Graphics/Color.hpp>
+#include <SFML/System/Vector2.hpp>
 
 #include <map>
+#include <optional>
 #include <string>
 
 namespace pac::pnc {
 
+/// A cheap ground shadow drawn under an avatar (a filled ellipse blob). `size` is
+/// the full width/height of the ellipse in room pixels at unit scale; it scales
+/// with the avatar's perspective scale at render time. See design 05/06 §appearance.
+struct Shadow {
+    sf::Vector2f size{0.0f, 0.0f};
+    sf::Color color = sf::Color(0, 0, 0, 70);
+};
+
 /// A reusable visual definition. M3 supports `animated_sprite`; `composite` is
-/// parsed but realized later. `shadow` is omitted for the M3 slice.
+/// parsed but realized later. `shadow` is an optional ground blob (issue #75).
 struct Appearance {
     std::string type;      // "animated_sprite" | "composite"
     std::string sprite;    // *.anim.yaml (animated_sprite)
     std::string composite; // *.composite.yaml (composite)
+    std::optional<Shadow> shadow;
 };
 
 struct Character {

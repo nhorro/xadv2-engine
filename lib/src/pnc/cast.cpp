@@ -55,6 +55,24 @@ Cast parse_cast(const std::string& yaml_text) {
             }
             app.sprite = node["sprite"] ? node["sprite"].as<std::string>() : std::string();
             app.composite = node["composite"] ? node["composite"].as<std::string>() : std::string();
+            if (const YAML::Node shadow = node["shadow"]) {
+                Shadow sh;
+                const YAML::Node size = shadow["size"];
+                if (!size || !size["x"] || !size["y"]) {
+                    cast_fail("cast.shadow-size-missing",
+                              "appearance '" + kv.first.as<std::string>() +
+                                  "': shadow needs 'size: {x, y}'",
+                              shadow);
+                }
+                sh.size = {size["x"].as<float>(), size["y"].as<float>()};
+                if (const YAML::Node color = shadow["color"]) {
+                    sh.color = sf::Color(color["r"].as<unsigned>(),
+                                         color["g"].as<unsigned>(),
+                                         color["b"].as<unsigned>(),
+                                         color["a"] ? color["a"].as<unsigned>() : 255);
+                }
+                app.shadow = sh;
+            }
             cast.appearances.emplace(kv.first.as<std::string>(), std::move(app));
         }
     }

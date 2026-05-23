@@ -522,7 +522,9 @@ std::optional<Avatar> RoomScene::make_avatar(const std::string& character_id) {
         return std::nullopt;
     }
     try {
-        return Avatar(gfx::load_animated_sprite(ctx_.resources, app->sprite), kAvatarScale);
+        return Avatar(gfx::load_animated_sprite(ctx_.resources, app->sprite),
+                      kAvatarScale,
+                      app->shadow);
     } catch (const std::exception& e) {
         ctx_.log.error(std::string("RoomScene: appearance for '" + character_id + "': ") +
                        e.what());
