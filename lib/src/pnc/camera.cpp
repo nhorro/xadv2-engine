@@ -103,6 +103,47 @@ void Camera::follow(sf::Vector2f target) {
     center_ = scroll_center(target);
 }
 
+void Camera::look_at(sf::Vector2f world) {
+    following_ = false;
+    tweening_ = false;
+    center_ = clamp_center(world);
+}
+
+void Camera::go_to(sf::Vector2f world, float duration) {
+    following_ = false;
+    const sf::Vector2f to = clamp_center(world);
+    if (duration <= 0.0f) {
+        tweening_ = false;
+        center_ = to;
+        return;
+    }
+    tween_from_ = center_;
+    tween_to_ = to;
+    tween_elapsed_ = 0.0f;
+    tween_duration_ = duration;
+    tweening_ = true;
+}
+
+void Camera::follow_player() {
+    following_ = true;
+    tweening_ = false;
+}
+
+void Camera::update(float dt) {
+    if (!tweening_) {
+        return;
+    }
+    tween_elapsed_ += dt;
+    const float t = std::clamp(tween_elapsed_ / tween_duration_, 0.0f, 1.0f);
+    const float e = t * t * (3.0f - 2.0f * t); // smoothstep easing
+    center_ = clamp_center({tween_from_.x + (tween_to_.x - tween_from_.x) * e,
+                            tween_from_.y + (tween_to_.y - tween_from_.y) * e});
+    if (t >= 1.0f) {
+        tweening_ = false;
+        center_ = tween_to_;
+    }
+}
+
 sf::FloatRect Camera::view_rect() const {
     return {center_.x - viewport_.x / 2.0f,
             center_.y - viewport_.y / 2.0f,

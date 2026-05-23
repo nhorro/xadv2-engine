@@ -4,7 +4,9 @@
 
 #include <SFML/Graphics/Color.hpp>
 
+#include <functional>
 #include <string>
+#include <vector>
 
 namespace sf {
 class Font;
@@ -12,6 +14,14 @@ class RenderTarget;
 } // namespace sf
 
 namespace pac::pnc {
+
+/// Greedy word-wrap of `text` into lines no wider than `max_width`, using
+/// `measure` to size a candidate string. Words longer than `max_width` are left
+/// whole (no mid-word splitting); explicit '\n' forces a break. Pure logic, so it
+/// is headless-testable with a fake measurer. Always returns at least one line.
+std::vector<std::string> wrap_text(const std::string& text,
+                                   float max_width,
+                                   const std::function<float(const std::string&)>& measure);
 
 /// Shows one spoken/caption line over the scenery near the speaker, for a computed
 /// duration, always skippable. (Voice-over hookup is design-for; see R4.)
