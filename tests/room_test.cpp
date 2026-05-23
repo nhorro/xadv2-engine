@@ -1,7 +1,11 @@
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"
+#include "engine/pnc/room_runtime.hpp"
 
 #include <doctest/doctest.h>
+
+#include <optional>
+#include <string>
 
 using namespace pac::pnc;
 
@@ -91,4 +95,65 @@ TEST_CASE("parse_room rejects malformed rooms") {
     CHECK_THROWS_AS(parse_room("version: 1\n"), DataError); // no id
     CHECK_THROWS_AS(parse_room("id: x\nhotspots:\n  h: { name: n }\n"),
                     DataError); // hotspot without area or bind
+}
+
+TEST_CASE("parse_room reads region states and the optional 'over' layer pin") {
+    const char* yaml = R"YAML(
+id: r
+background:
+  layers:
+    - { id: bg, image: a/bg.png, z: 0 }
+    - { id: fg, image: a/fg.png, z: 50 }
+regions:
+  drawer:
+    area: [ {x: 0, y: 0}, {x: 10, y: 0}, {x: 10, y: 10}, {x: 0, y: 10} ]
+    over: fg
+    states: { shut: a/shut.png, open: a/open.png }
+    initial: shut
+)YAML";
+    const RoomData r = parse_room(yaml);
+    REQUIRE(r.regions.count("drawer") == 1);
+    const Region& d = r.regions.at("drawer");
+    CHECK(d.over == "fg");
+    CHECK(d.states.size() == 2);
+    CHECK(d.initial == "shut");
+}
+
+TEST_CASE("hotspot_at hits a bind:region hotspot via the region polygon") {
+    const char* yaml = R"YAML(
+id: r
+regions:
+  shelf:
+    area: [ {x: 100, y: 100}, {x: 200, y: 100}, {x: 200, y: 200}, {x: 100, y: 200} ]
+    states: { only: a/shelf.png }
+hotspots:
+  shelf_hs: { name: "estante", bind: "region:shelf" }
+)YAML";
+    RoomRuntime room(parse_room(yaml));
+    const RoomHotspot* hit = room.hotspot_at({150, 150});
+    REQUIRE(hit != nullptr);
+    CHECK(hit->id == "shelf_hs");
+    CHECK(room.hotspot_at({10, 10}) == nullptr); // outside the bound region
+}
+
+TEST_CASE("hotspot_at hits a bind:object hotspot via supplied frame bounds") {
+    const char* yaml = R"YAML(
+id: r
+objects:
+  vase: { image: a/vase.png, position: { x: 300, y: 300 } }
+hotspots:
+  vase_hs: { name: "jarron", bind: "object:vase" }
+)YAML";
+    RoomRuntime room(parse_room(yaml));
+    const auto bounds = [](const std::string& id) -> std::optional<sf::FloatRect> {
+        if (id == "vase") {
+            return sf::FloatRect(300.0f, 300.0f, 50.0f, 80.0f);
+        }
+        return std::nullopt;
+    };
+    const RoomHotspot* hit = room.hotspot_at({320, 350}, bounds);
+    REQUIRE(hit != nullptr);
+    CHECK(hit->id == "vase_hs");
+    CHECK(room.hotspot_at({100, 100}, bounds) == nullptr); // outside the frame
+    CHECK(room.hotspot_at({320, 350}) == nullptr);         // headless overload skips object bind
 }

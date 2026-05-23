@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -59,15 +60,33 @@ void RoomRenderer::draw(sf::RenderTarget& target,
         });
     }
 
-    // Regions: the current state's image at the area's top-left.
+    // Regions: the current state's image at the area's top-left. A region may
+    // pin its depth to a named layer via `over: <layer>` (design 04 §Z-order);
+    // otherwise it uses its explicit `z`.
+    const auto layer_z = [&data](const std::string& layer_id) -> std::optional<float> {
+        for (const BackgroundLayer& l : data.layers) {
+            if (l.id == layer_id) {
+                return l.z;
+            }
+        }
+        return std::nullopt;
+    };
     for (const auto& [id, region] : data.regions) {
         const auto state_it = region.states.find(room.region_state(id));
         if (state_it == region.states.end() || state_it->second.empty()) {
             continue;
         }
+        float z = region.z;
+        if (!region.over.empty()) {
+            if (const auto lz = layer_z(region.over)) {
+                z = *lz;
+            } else {
+                log.error("region '" + id + "': over names unknown layer '" + region.over + "'");
+            }
+        }
         const std::string image = pac::core::logical_join(room_dir, state_it->second);
         const sf::FloatRect bounds = geom::polygon_bounds(region.area);
-        items.emplace_back(region.z, [&resources, &log, image, bounds](sf::RenderTarget& t) {
+        items.emplace_back(z, [&resources, &log, image, bounds](sf::RenderTarget& t) {
             try {
                 sf::Sprite sprite(resources.texture(image));
                 sprite.setPosition(bounds.left, bounds.top);

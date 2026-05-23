@@ -108,4 +108,32 @@ Point closest_point_in_polygon(Point p, const Polygon& poly) {
     return best;
 }
 
+std::vector<Point>
+find_path(Point start, Point dest, const Polygon& walkable, const std::vector<Polygon>& obstacles) {
+    if (walkable.size() < 3) {
+        return {dest}; // ungated: no walkable polygon to honor
+    }
+    const auto reachable_at = [&](Point p) {
+        return point_in_polygon(p, walkable) && !point_in_any_polygon(p, obstacles);
+    };
+    // Clamp an out-of-bounds destination to the nearest reachable spot.
+    const Point goal = reachable_at(dest) ? dest : closest_point_in_polygon(dest, walkable);
+    // Sample start->goal and stop at the last reachable sample, so a straight walk
+    // refuses to cross the boundary or an obstacle. ~4px sampling matches the
+    // avatar's per-step granularity.
+    constexpr float kStep = 4.0f;
+    const float dist = distance(start, goal);
+    const int steps = std::max(1, static_cast<int>(std::ceil(dist / kStep)));
+    Point furthest = reachable_at(start) ? start : closest_point_in_polygon(start, walkable);
+    for (int i = 1; i <= steps; ++i) {
+        const float t = static_cast<float>(i) / static_cast<float>(steps);
+        const Point p{start.x + (goal.x - start.x) * t, start.y + (goal.y - start.y) * t};
+        if (!reachable_at(p)) {
+            break;
+        }
+        furthest = p;
+    }
+    return {furthest};
+}
+
 } // namespace pac::geom

@@ -36,10 +36,48 @@ void RoomRuntime::seed_runtime_state() {
     }
 }
 
+namespace {
+// Split a hotspot bind ("object:<id>" / "region:<id>") into {kind, ref}.
+std::pair<std::string, std::string> split_bind(const std::string& bind) {
+    const auto pos = bind.find(':');
+    if (pos == std::string::npos) {
+        return {bind, std::string()};
+    }
+    return {bind.substr(0, pos), bind.substr(pos + 1)};
+}
+} // namespace
+
 const RoomHotspot* RoomRuntime::hotspot_at(geom::Point world) const {
+    return hotspot_at(world, {});
+}
+
+const RoomHotspot* RoomRuntime::hotspot_at(
+    geom::Point world,
+    const std::function<std::optional<sf::FloatRect>(const std::string&)>& object_bounds) const {
     for (const auto& [id, hs] : data_.hotspots) {
-        if (hotspot_enabled(id) && !hs.area.empty() && geom::point_in_polygon(world, hs.area)) {
+        if (!hotspot_enabled(id)) {
+            continue;
+        }
+        // (1) explicit area polygon
+        if (!hs.area.empty() && geom::point_in_polygon(world, hs.area)) {
             return &hs;
+        }
+        if (hs.bind.empty()) {
+            continue;
+        }
+        const auto [kind, ref] = split_bind(hs.bind);
+        if (kind == "object" && object_bounds) {
+            // (2) object frame bounds (render-side; absent in the headless overload)
+            if (const auto rect = object_bounds(ref); rect && rect->contains(world)) {
+                return &hs;
+            }
+        } else if (kind == "region") {
+            // (3) the bound region's area polygon — constant, independent of the
+            // current state image (design 04 §Hotspot hit-test rule 3).
+            const auto it = data_.regions.find(ref);
+            if (it != data_.regions.end() && geom::point_in_polygon(world, it->second.area)) {
+                return &hs;
+            }
         }
     }
     return nullptr;

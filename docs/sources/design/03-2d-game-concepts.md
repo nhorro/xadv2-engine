@@ -69,7 +69,7 @@ Examples:
 backgrounds/study.png
 rooms/study.yaml
 scripts/intro.lua
-fonts/scumm.ttf
+fonts/DepartureMono-Regular.otf
 ```
 
 ### Resource source interface

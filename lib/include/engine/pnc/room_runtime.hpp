@@ -4,6 +4,9 @@
 #include "engine/pnc/avatar.hpp"
 #include "engine/pnc/room.hpp"
 
+#include <SFML/Graphics/Rect.hpp>
+
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -33,8 +36,15 @@ public:
 
     const RoomData& data() const { return data_; }
 
-    /// First enabled hotspot whose area contains `world`, or nullptr.
+    /// First enabled hotspot that hits `world`, by the design 04 hit-test rule:
+    /// per hotspot, in priority order — (1) explicit `area` polygon, (2)
+    /// `bind: object:<id>` frame bounds (via `object_bounds`, render-side: needs
+    /// the texture size), (3) `bind: region:<id>` area polygon (state-independent).
+    /// The no-arg overload omits object-frame testing so it stays headless.
     const RoomHotspot* hotspot_at(geom::Point world) const;
+    const RoomHotspot* hotspot_at(
+        geom::Point world,
+        const std::function<std::optional<sf::FloatRect>(const std::string&)>& object_bounds) const;
 
     /// First zone whose polygon contains `world`, or nullptr.
     const Zone* zone_at(geom::Point world) const;

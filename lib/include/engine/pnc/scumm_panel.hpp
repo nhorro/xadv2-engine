@@ -41,15 +41,20 @@ public:
     [[nodiscard]] PanelIntent click(sf::Vector2f virtual_point,
                                     const InventoryModel& inventory) const;
 
+    /// `cursor` is the pointer position (panel/virtual coords) used to highlight
+    /// the hovered verb cell and inventory row; pass an off-panel point for none.
     void draw(sf::RenderTarget& target,
               const pac::core::Strings& strings,
               const InventoryModel& inventory,
               const std::string& command_preview,
-              std::optional<Verb> selected_verb) const;
+              std::optional<Verb> selected_verb,
+              sf::Vector2f cursor) const;
 
     /// Draw dialog options in place of the verb/inventory layout. Used while
-    /// the room view is in ViewState::DIALOG.
-    void draw_options(sf::RenderTarget& target, const std::vector<std::string>& options) const;
+    /// the room view is in ViewState::DIALOG. `cursor` highlights the hovered row.
+    void draw_options(sf::RenderTarget& target,
+                      const std::vector<std::string>& options,
+                      sf::Vector2f cursor) const;
 
     /// Map a click in the panel to a dialog option index, or -1 on miss.
     [[nodiscard]] int click_option(sf::Vector2f virtual_point, std::size_t option_count) const;

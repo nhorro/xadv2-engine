@@ -10,6 +10,7 @@
 #include "engine/core/scene_params.hpp"
 #include "engine/core/scripting.hpp"
 #include "engine/core/strings.hpp"
+#include "engine/core/text_encoding.hpp"
 #include "engine/gfx/animated_sprite.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"
@@ -19,6 +20,7 @@
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/Text.hpp>
+#include <SFML/Graphics/Texture.hpp>
 #include <SFML/Graphics/View.hpp>
 #include <SFML/Window/Event.hpp>
 #include <sol/sol.hpp>
@@ -228,6 +230,53 @@ void RoomScene::enter() {
     L.set_function("start_dialog", [this](std::string npc_id) { api_start_dialog(npc_id); });
     // `to = END` is injected per-dialog by DialogRuntime::start as a unique
     // sentinel table — no engine-wide binding needed here.
+
+    // Scripted camera overrides (issue #25). A target is a named point, an avatar
+    // id, or `{ x = .., y = .. }` (design 05 §Camera). camera_go_to yields the
+    // task for the engine-chosen tween duration via the core `wait` primitive, so
+    // it reuses the scheduler rather than introducing a second blocking mechanism.
+    auto resolve_target = [this](const sol::object& t) -> std::optional<geom::Point> {
+        if (t.is<sol::table>()) {
+            const sol::table tbl = t.as<sol::table>();
+            if (tbl["x"].valid() && tbl["y"].valid()) {
+                return geom::Point{tbl["x"].get<float>(), tbl["y"].get<float>()};
+            }
+            return std::nullopt;
+        }
+        if (t.is<std::string>()) {
+            const std::string name = t.as<std::string>();
+            if (room_) {
+                if (const geom::Point* p = room_->data().point(name)) {
+                    return *p;
+                }
+                if (const Avatar* npc = room_->npc(name)) {
+                    return npc->position();
+                }
+            }
+            if (player_ && name == player_char_) {
+                return player_->position();
+            }
+            ctx_.log.warn("camera target '" + name + "' is not a known point or avatar");
+        }
+        return std::nullopt;
+    };
+    L.set_function("camera_look_at", [this, resolve_target](const sol::object& t) {
+        if (const auto p = resolve_target(t)) {
+            api_camera_look_at(*p);
+        }
+    });
+    L.set_function("_camera_go_to_start", [this, resolve_target](const sol::object& t) -> double {
+        if (const auto p = resolve_target(t)) {
+            return api_camera_go_to(*p);
+        }
+        return 0.0;
+    });
+    L.set_function("camera_follow_player", [this]() { api_camera_follow_player(); });
+    // camera_go_to(target): start the tween, then yield for its duration so the
+    // calling task blocks until the pan finishes (design 05: "yield until done").
+    ctx_.scripting.run_string(
+        "function camera_go_to(target) return wait(_camera_go_to_start(target)) end",
+        "=camera_go_to");
 
     // Room-view-state controls (issue #32). `block_input` gates clicks during
     // cutscene-like sections; `unblock_input` restores normal play.
@@ -555,19 +604,19 @@ void RoomScene::handle_event(const sf::Event& event) {
         return;
     }
     const geom::Point world = virtual_to_world(vp);
-    if (const RoomHotspot* hs = room_->hotspot_at(world)) {
+    if (const RoomHotspot* hs = hotspot_under(world)) {
         object_clicked({ObjectKind::ROOM_OBJECT, hs->id});
     } else if (builder_.state() != CommandBuilder::State::IDLE) {
         // Clicking empty scenery while a command is being built cancels it and
         // returns to IDLE (issue #28).
         builder_.cancel();
     } else if (player_) {
-        // IDLE: walk there. A click outside the walkable area routes to the
-        // nearest reachable point instead of doing nothing (issue #28).
-        const geom::Polygon& walk = room_->data().walkable;
-        const geom::Point target =
-            walk.empty() ? world : geom::closest_point_in_polygon(world, walk);
-        player_->move_to(target);
+        // IDLE: walk there. Route through the find_path seam, which clamps a click
+        // outside the walkable area to the nearest reachable point (issue #28) and
+        // stops a straight walk at the boundary / an obstacle (issue #21).
+        const RoomData& d = room_->data();
+        const auto path = geom::find_path(player_->position(), world, d.walkable, d.obstacles);
+        player_->move_to(path.back());
     }
 }
 
@@ -629,7 +678,7 @@ void RoomScene::execute_ready_command() {
     if (room_target && room_ && player_) {
         const auto it = room_->data().hotspots.find(room_target->id);
         if (it != room_->data().hotspots.end() && it->second.approach) {
-            player_->move_to(*it->second.approach);
+            walk_to_approach(*it->second.approach, room_target->id);
         }
     }
 
@@ -647,6 +696,56 @@ void RoomScene::execute_ready_command() {
     }
     say(caption.value_or("No pasa nada."), color);
     builder_.finish_execution();
+}
+
+std::optional<sf::FloatRect> RoomScene::object_frame_bounds(const std::string& object_id) const {
+    if (!room_ || !room_->object_visible(object_id)) {
+        return std::nullopt;
+    }
+    const auto it = room_->data().objects.find(object_id);
+    if (it == room_->data().objects.end() || it->second.image.empty()) {
+        return std::nullopt;
+    }
+    try {
+        const sf::Texture& tex =
+            ctx_.resources.texture(pac::core::logical_join(room_dir_, it->second.image));
+        const sf::Vector2u sz = tex.getSize();
+        return sf::FloatRect(it->second.position.x,
+                             it->second.position.y,
+                             static_cast<float>(sz.x),
+                             static_cast<float>(sz.y));
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+const RoomHotspot* RoomScene::hotspot_under(geom::Point world) const {
+    if (!room_) {
+        return nullptr;
+    }
+    return room_->hotspot_at(world,
+                             [this](const std::string& id) { return object_frame_bounds(id); });
+}
+
+void RoomScene::walk_to_approach(geom::Point approach, const std::string& hotspot_id) {
+    if (!player_ || !room_) {
+        return;
+    }
+    const RoomData& d = room_->data();
+    geom::Point ap = approach;
+    if (!d.walkable.empty() && !d.is_walkable(ap)) {
+        ap = geom::closest_point_in_polygon(ap, d.walkable);
+        ctx_.log.warn(
+            "hotspot '" + hotspot_id +
+            "': approach point outside walkable area; routing to nearest reachable point");
+    }
+    // Near-enough short-circuit: don't shuffle in place when already there.
+    constexpr float kApproachReached = 8.0f;
+    if (geom::distance(player_->position(), ap) <= kApproachReached) {
+        return;
+    }
+    const auto path = geom::find_path(player_->position(), ap, d.walkable, d.obstacles);
+    player_->move_to(path.back());
 }
 
 std::optional<std::string> RoomScene::dispatch(const Command& cmd) {
@@ -721,7 +820,7 @@ std::string RoomScene::top_bar_text() const {
         }
     } else if (room_) {
         const geom::Point world = virtual_to_world(hover_vp_);
-        if (const RoomHotspot* hs = room_->hotspot_at(world)) {
+        if (const RoomHotspot* hs = hotspot_under(world)) {
             hover = Hover::OPERAND;
             hover_obj = {ObjectKind::ROOM_OBJECT, hs->id};
         } else if (room_->data().is_walkable(world)) {
@@ -786,10 +885,19 @@ void RoomScene::update(float dt) {
         player_->update(dt, room_->data());
         room_->update_npcs(dt);
         if (camera_) {
-            camera_->follow(player_->position());
+            camera_->update(dt); // advance a scripted go_to tween, if any
+            if (camera_->following()) {
+                camera_->follow(player_->position());
+            }
         }
         check_zones();
     }
+    // Returning to COMMAND (e.g. a cutscene unblocking) resumes camera follow
+    // after a scripted override (issue #25).
+    if (camera_ && view_state_ == ViewState::COMMAND && prev_view_state_ != ViewState::COMMAND) {
+        camera_->follow_player();
+    }
+    prev_view_state_ = view_state_;
     speech_.update(dt);
     if (dialog_) {
         dialog_->update();
@@ -853,9 +961,14 @@ void RoomScene::draw(sf::RenderTarget& target) const {
             for (const DialogOption& opt : dialog_->options()) {
                 labels.push_back(opt.text);
             }
-            panel_->draw_options(target, labels);
+            panel_->draw_options(target, labels, hover_vp_);
         } else {
-            panel_->draw(target, ctx_.strings, inventory_, top_bar_text(), builder_.verb());
+            panel_->draw(target,
+                         ctx_.strings,
+                         inventory_,
+                         top_bar_text(),
+                         builder_.verb(),
+                         hover_vp_);
         }
     }
     if (view_state_ == ViewState::MENU) {
@@ -916,6 +1029,36 @@ void RoomScene::api_talk(const std::string& speaker_id, const std::string& text)
         color = c->speech_color;
     }
     say(text, color);
+}
+
+void RoomScene::api_camera_look_at(geom::Point target) {
+    if (camera_) {
+        camera_->look_at(target);
+    }
+}
+
+float RoomScene::api_camera_go_to(geom::Point target) {
+    if (!camera_) {
+        return 0.0f;
+    }
+    // Engine-chosen pan duration: distance / pan speed, clamped to a comfortable
+    // range (the API takes no explicit duration).
+    constexpr float kPanSpeed = 700.0f; // world px/s
+    constexpr float kMinDuration = 0.2f;
+    constexpr float kMaxDuration = 2.0f;
+    const float dist = geom::distance(camera_->center(), target);
+    const float duration = std::clamp(dist / kPanSpeed, kMinDuration, kMaxDuration);
+    camera_->go_to(target, duration);
+    return duration;
+}
+
+void RoomScene::api_camera_follow_player() {
+    if (camera_) {
+        camera_->follow_player();
+        if (player_) {
+            camera_->follow(player_->position());
+        }
+    }
 }
 
 void RoomScene::api_start_dialog(const std::string& npc_id) {
@@ -1117,7 +1260,7 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
     }
 
     // Heading.
-    sf::Text title(ctx_.strings.ui_label("pause"), *font_, 36);
+    sf::Text title(pac::core::utf8(ctx_.strings.ui_label("pause")), *font_, 36);
     title.setFillColor(sf::Color(255, 240, 180));
     const sf::FloatRect tb = title.getLocalBounds();
     title.setPosition((static_cast<float>(vres.x) - tb.width) / 2.0f - tb.left,
@@ -1138,7 +1281,7 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
 
         const std::string label = "Slot " + std::to_string(slot) +
                                   (ctx_.saves.slot_exists(slot) ? " — Guardado" : " — Vacío");
-        sf::Text txt(label, *font_, 22);
+        sf::Text txt(pac::core::utf8(label), *font_, 22);
         txt.setFillColor(sf::Color(220, 224, 235));
         const sf::FloatRect b = txt.getLocalBounds();
         txt.setPosition(row_left - 200.0f + label_pad,
@@ -1146,15 +1289,17 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
         target.draw(txt);
     }
 
-    // Buttons themselves.
+    // Buttons themselves. An enabled button under the cursor highlights like the
+    // title menu / SCUMM panel (issue: consistent hover on all buttons).
     for (const MenuButton& bt : buttons) {
+        const bool hot = bt.enabled && bt.rect.contains(hover_vp_);
         sf::RectangleShape box(sf::Vector2f(bt.rect.width, bt.rect.height));
         box.setPosition(bt.rect.left, bt.rect.top);
         if (!bt.enabled) {
             box.setFillColor(sf::Color(24, 26, 36));
             box.setOutlineColor(sf::Color(50, 54, 70));
         } else {
-            box.setFillColor(sf::Color(34, 38, 54));
+            box.setFillColor(hot ? sf::Color(70, 90, 140) : sf::Color(34, 38, 54));
             box.setOutlineColor(sf::Color(90, 100, 130));
         }
         box.setOutlineThickness(1.5f);
@@ -1179,8 +1324,9 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
             label = ctx_.strings.ui_label("quit_to_title");
             break;
         }
-        sf::Text txt(label, *font_, 20);
-        txt.setFillColor(bt.enabled ? sf::Color(220, 224, 235) : sf::Color(120, 128, 145));
+        sf::Text txt(pac::core::utf8(label), *font_, 20);
+        txt.setFillColor(!bt.enabled ? sf::Color(120, 128, 145)
+                                     : (hot ? sf::Color::White : sf::Color(220, 224, 235)));
         const sf::FloatRect b = txt.getLocalBounds();
         txt.setPosition(bt.rect.left + (bt.rect.width - b.width) / 2.0f - b.left,
                         bt.rect.top + (bt.rect.height - b.height) / 2.0f - b.top);

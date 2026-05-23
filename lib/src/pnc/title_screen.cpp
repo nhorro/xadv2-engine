@@ -8,6 +8,7 @@
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
 #include "engine/core/strings.hpp"
+#include "engine/core/text_encoding.hpp"
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
@@ -150,7 +151,9 @@ void TitleScreen::draw(sf::RenderTarget& target) const {
         target.draw(box);
 
         if (font_) {
-            sf::Text text(entries_[static_cast<std::size_t>(i)].label, *font_, kTextSize);
+            sf::Text text(pac::core::utf8(entries_[static_cast<std::size_t>(i)].label),
+                          *font_,
+                          kTextSize);
             text.setFillColor(hot ? sf::Color::White : sf::Color(210, 215, 230));
             const sf::FloatRect b = text.getLocalBounds();
             text.setPosition(tl.x + (kEntryWidth - b.width) / 2.0f - b.left,

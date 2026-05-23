@@ -106,3 +106,55 @@ TEST_CASE("view_rect reflects center and viewport") {
     CHECK(r.width == doctest::Approx(1280.0f));
     CHECK(r.height == doctest::Approx(612.0f));
 }
+
+TEST_CASE("camera_look_at snaps the center (clamped) and suspends follow") {
+    Camera cam({1280.0f, 612.0f}, {3000u, 1000u});
+    CHECK(cam.following());
+    cam.look_at({1500.0f, 500.0f});
+    CHECK_FALSE(cam.following());
+    CHECK(cam.center().x == doctest::Approx(1500.0f));
+    CHECK(cam.center().y == doctest::Approx(500.0f));
+
+    // While suspended, follow() still computes a center if called, but the scene
+    // gates on following(); the override target stays put until follow resumes.
+    cam.look_at({0.0f, 0.0f}); // clamps to the top-left edge
+    CHECK(cam.center().x == doctest::Approx(640.0f));
+    CHECK(cam.center().y == doctest::Approx(306.0f));
+}
+
+TEST_CASE("camera_go_to tweens to the target over its duration and suspends follow") {
+    Camera cam({1280.0f, 612.0f}, {3000u, 1000u});
+    cam.set_center({640.0f, 306.0f}); // deterministic start (direct, not the reveal map)
+    cam.go_to({2360.0f, 694.0f}, 1.0f);
+    CHECK_FALSE(cam.following());
+    CHECK(cam.tweening());
+
+    cam.update(0.5f); // halfway: smoothstep(0.5) = 0.5, so exactly the midpoint
+    CHECK(cam.center().x == doctest::Approx(1500.0f));
+    CHECK(cam.center().y == doctest::Approx(500.0f));
+    CHECK(cam.tweening());
+
+    cam.update(0.5f); // reaches the target and the tween ends
+    CHECK_FALSE(cam.tweening());
+    CHECK(cam.center().x == doctest::Approx(2360.0f));
+    CHECK(cam.center().y == doctest::Approx(694.0f));
+}
+
+TEST_CASE("a non-positive go_to duration snaps immediately") {
+    Camera cam({1280.0f, 612.0f}, {3000u, 1000u});
+    cam.go_to({1500.0f, 500.0f}, 0.0f);
+    CHECK_FALSE(cam.tweening());
+    CHECK(cam.center().x == doctest::Approx(1500.0f));
+}
+
+TEST_CASE("camera_follow_player resumes follow and cancels a tween") {
+    Camera cam({1280.0f, 612.0f}, {3000u, 1000u});
+    cam.go_to({2360.0f, 694.0f}, 1.0f);
+    cam.update(0.25f);
+    cam.follow_player();
+    CHECK(cam.following());
+    CHECK_FALSE(cam.tweening());
+    cam.update(1.0f); // tween was cancelled: no further movement from update
+    cam.follow({1500.0f, 500.0f});
+    CHECK(cam.center().x == doctest::Approx(1500.0f)); // ordinary follow again
+}

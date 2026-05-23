@@ -36,19 +36,19 @@ scenes:
       new_game: intro
       continue: room_view
       exit: QUIT
-      font: fonts/scumm.ttf
+      font: fonts/DepartureMono-Regular.otf
 
   - id: settings
     type: SettingsScene
     parameters:
-      font: fonts/scumm.ttf
+      font: fonts/DepartureMono-Regular.otf
 
   - id: intro
     type: StoryText
     parameters:
       script: scripts/intro.lua
       on_finish: room_view
-      font: fonts/scumm.ttf
+      font: fonts/DepartureMono-Regular.otf
 
   - id: room_view
     type: RoomScene
@@ -57,7 +57,7 @@ scenes:
       rooms: rooms
       start_room: study
       player: julia
-      font: fonts/scumm.ttf
+      font: fonts/DepartureMono-Regular.otf
       inventory: inventory.yaml
       inventory_logic: inventory.lua
       logic: game.lua
