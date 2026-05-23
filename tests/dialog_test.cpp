@@ -254,6 +254,52 @@ TEST_CASE("`when` filters options and `once` removes them after first use") {
     CHECK(d.options()[0].text == "stay");
 }
 
+TEST_CASE("a node whose options all become hidden ends the dialog (runs dry)") {
+    // Backs design 04 §Evolving dialogs: an options node has no `to`, so once
+    // every option is consumed/filtered the conversation ends on its own.
+    Diagnostics log = quiet();
+    Scripting s(log);
+    TestHost host;
+    LoadedTree tree = load_tree(s, log, R"lua(
+        return {
+            start = "n",
+            n = {
+                npc = "X",
+                options = {
+                    { "a", to = "n", once = true },
+                    { "b", to = "n", once = true },
+                },
+            },
+        }
+    )lua");
+    DialogRuntime d = build(s, log, host, tree);
+
+    // npc spoken -> options.
+    host.speaking = false;
+    d.update();
+    REQUIRE(d.state() == DialogRuntime::State::AWAITING_CHOICE);
+    REQUIRE(d.options().size() == 2);
+
+    // Consume "a": player line, then back to node 'n', npc spoken again.
+    d.choose(0);
+    host.speaking = false;
+    d.update(); // run/consume, follow to 'n', SPEAKING_NPC
+    host.speaking = false;
+    d.update(); // AWAITING_CHOICE with only "b" left
+    REQUIRE(d.state() == DialogRuntime::State::AWAITING_CHOICE);
+    REQUIRE(d.options().size() == 1);
+    CHECK(d.options()[0].text == "b");
+
+    // Consume "b": node 'n' now has no visible options and no `to`.
+    d.choose(0);
+    host.speaking = false;
+    d.update(); // run/consume, follow to 'n', SPEAKING_NPC ("X")
+    CHECK_FALSE(d.ended());
+    host.speaking = false;
+    d.update(); // after_npc: no options, no `to` -> end
+    CHECK(d.ended());
+}
+
 TEST_CASE("silent option skips the player bubble but still runs and follows") {
     Diagnostics log = quiet();
     Scripting s(log);
