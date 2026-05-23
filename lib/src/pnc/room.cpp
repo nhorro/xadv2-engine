@@ -51,12 +51,6 @@ RoomData parse_room(const std::string& yaml_text) {
     }
     room.id = root["id"].as<std::string>();
 
-    const YAML::Node size = root["size"];
-    if (!size || !size["width"] || !size["height"]) {
-        throw DataError("room '" + room.id + "': 'size.width/height' is required");
-    }
-    room.size = {size["width"].as<unsigned>(), size["height"].as<unsigned>()};
-
     if (const YAML::Node bg = root["background"]) {
         if (const YAML::Node color = bg["color"]) {
             room.background_color = sf::Color(color["r"].as<unsigned>(),
@@ -73,6 +67,9 @@ RoomData parse_room(const std::string& yaml_text) {
             layer.image = ln["image"].as<std::string>();
             layer.z = ln["z"] ? ln["z"].as<float>() : 0.0f;
             layer.interactive = ln["interactive"] ? ln["interactive"].as<bool>() : false;
+            if (const YAML::Node origin = ln["origin"]) {
+                layer.origin = parse_point(origin);
+            }
             room.layers.push_back(std::move(layer));
         }
     }

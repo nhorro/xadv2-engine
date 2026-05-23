@@ -1,14 +1,27 @@
-# Exterior reached through SALIDA. M4 placeholder (sky background).
+# Exterior reached through SALIDA. Multilayer: a sky plate behind the building
+# plate (issue #28). Every layer draws at native size; the world bounds derive
+# from the union of the layer rects (here 1916x780, set by the building).
 version: 1
 id: exterior
-size: { width: 1916, height: 780 }
 
 background:
   color: { r: 120, g: 170, b: 210 }
   layers:
+    # Sky (1916x821): native, tucked behind the building with a negative y origin
+    # so its bottom aligns with the building's (the top 41px spill above the world
+    # and are never scrolled to). No stretching, so the sky keeps its aspect.
     - id: sky
       image: c/background/00.png
       z: 0
+      origin: { x: 0, y: -41 }
+    # Building + ground (1916x780, transparent sky region) at the world origin;
+    # being the tallest in-bounds layer, it sets the room's 780px world height. A
+    # higher-z layer with a different origin/size (e.g. c/background/02.png as a
+    # foreground occluder) would compose the same way.
+    - id: building
+      image: c/background/01.png
+      z: 1
+      origin: { x: 0, y: 0 }
 
 walkable:
   - { x: 60,   y: 600 }

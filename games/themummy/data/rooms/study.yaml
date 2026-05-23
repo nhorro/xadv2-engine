@@ -1,7 +1,7 @@
-# Study/lab room (native size; the camera scrolls). Exit right (to the hall).
+# Study/lab room (the camera scrolls). Exit right (to the hall). World bounds are
+# derived from the background layers (here a single 1692x930 plate).
 version: 1
 id: study
-size: { width: 1692, height: 930 }
 
 background:
   color: { r: 0, g: 0, b: 0 }

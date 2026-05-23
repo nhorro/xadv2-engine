@@ -35,6 +35,19 @@ constexpr float kScenerFraction = 0.85f;
 constexpr float kAvatarScale = 1.1f;
 constexpr float kSpeechRise = 250.0f;
 
+/// Whether `verb` is offered for an operand with these affordances. `look_at` is
+/// always allowed; every other verb must be listed (design 04 §Affordances).
+bool affordance_ok(const std::vector<std::string>* affordances, Verb verb) {
+    if (verb == Verb::LOOK_AT) {
+        return true;
+    }
+    if (!affordances) {
+        return false;
+    }
+    const std::string vid(verb_id(verb));
+    return std::find(affordances->begin(), affordances->end(), vid) != affordances->end();
+}
+
 std::optional<pac::core::StateValue> to_state_value(const sol::object& v) {
     if (v.is<bool>()) {
         return pac::core::StateValue{v.as<bool>()};
@@ -325,7 +338,16 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     }
 
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
-    camera_.emplace(sf::Vector2f(static_cast<float>(vres.x), scenery_height()), room_->data().size);
+    const sf::Vector2f viewport(static_cast<float>(vres.x), scenery_height());
+    const sf::Vector2u room_size =
+        compute_room_bounds(room_->data(), room_dir_, ctx_.resources, viewport, ctx_.log);
+    camera_.emplace(viewport, room_size);
+    // The player can only reach the walkable area, so map that span onto the
+    // full scroll range — otherwise the parts of the background above/around the
+    // walkable polygon would never come into view (issue #28).
+    if (!room_->data().walkable.empty()) {
+        camera_->set_follow_bounds(geom::polygon_bounds(room_->data().walkable));
+    }
 
     if (!player_) {
         if (auto avatar = make_avatar(player_char_)) {
@@ -473,6 +495,13 @@ geom::Point RoomScene::virtual_to_world(sf::Vector2f vp) const {
 }
 
 void RoomScene::handle_event(const sf::Event& event) {
+    // Track the pointer (virtual coords) so the top bar can preview the element
+    // under the cursor each frame (issue #28). Coordinates are already mapped to
+    // virtual space by the application's event rewrite.
+    if (event.type == sf::Event::MouseMoved) {
+        hover_vp_ = {static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y)};
+        return;
+    }
     if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
         // ESC toggles the in-game pause/save/load menu from COMMAND, and
         // closes it again from MENU. DIALOG / BLOCKED ignore ESC so the
@@ -528,51 +557,58 @@ void RoomScene::handle_event(const sf::Event& event) {
     const geom::Point world = virtual_to_world(vp);
     if (const RoomHotspot* hs = room_->hotspot_at(world)) {
         object_clicked({ObjectKind::ROOM_OBJECT, hs->id});
-    } else if (builder_.state() == CommandBuilder::State::IDLE && player_ &&
-               room_->data().is_walkable(world)) {
-        player_->move_to(world);
+    } else if (builder_.state() != CommandBuilder::State::IDLE) {
+        // Clicking empty scenery while a command is being built cancels it and
+        // returns to IDLE (issue #28).
+        builder_.cancel();
+    } else if (player_) {
+        // IDLE: walk there. A click outside the walkable area routes to the
+        // nearest reachable point instead of doing nothing (issue #28).
+        const geom::Polygon& walk = room_->data().walkable;
+        const geom::Point target =
+            walk.empty() ? world : geom::closest_point_in_polygon(world, walk);
+        player_->move_to(target);
     }
 }
 
 void RoomScene::object_clicked(const ObjectRef& object) {
-    // Resolve default verb, affordances, and combinable flag from the object's data.
-    Verb default_verb = Verb::LOOK_AT;
-    bool combinable = false;
-    const std::vector<std::string>* affordances = nullptr;
-    if (object.kind == ObjectKind::ROOM_OBJECT && room_) {
-        const auto it = room_->data().hotspots.find(object.id);
-        if (it != room_->data().hotspots.end()) {
-            affordances = &it->second.affordances;
-            if (auto v = verb_from_id(it->second.default_verb)) {
-                default_verb = *v;
-            }
-        }
-    } else if (object.kind == ObjectKind::INVENTORY_OBJECT) {
-        if (const InventoryItem* item = inventory_.item(object.id)) {
-            affordances = &item->affordances;
-            combinable = item->combinable;
-            if (auto v = verb_from_id(item->default_verb)) {
-                default_verb = *v;
-            }
-        }
-    }
-
+    const Operand info = resolve_operand(object);
     if (builder_.state() == CommandBuilder::State::IDLE) {
-        builder_.select_verb(default_verb);
+        builder_.select_verb(info.default_verb);
     }
     const std::optional<Verb> verb = builder_.verb();
     if (!verb) {
         return;
     }
-    // look_at is always allowed; otherwise the affordance must be listed.
-    const std::string vid(verb_id(*verb));
-    bool affordance_ok = (*verb == Verb::LOOK_AT);
-    if (!affordance_ok && affordances) {
-        affordance_ok =
-            std::find(affordances->begin(), affordances->end(), vid) != affordances->end();
-    }
-    builder_.provide_object(object, affordance_ok, combinable);
+    builder_.provide_object(object, affordance_ok(info.affordances, *verb), info.combinable);
     execute_ready_command();
+}
+
+RoomScene::Operand RoomScene::resolve_operand(const ObjectRef& object) const {
+    Operand info;
+    info.name = object.id; // fallback when the id is unknown
+    if (object.kind == ObjectKind::ROOM_OBJECT && room_) {
+        const auto it = room_->data().hotspots.find(object.id);
+        if (it != room_->data().hotspots.end()) {
+            info.found = true;
+            info.name = it->second.name;
+            info.affordances = &it->second.affordances;
+            if (auto v = verb_from_id(it->second.default_verb)) {
+                info.default_verb = *v;
+            }
+        }
+    } else if (object.kind == ObjectKind::INVENTORY_OBJECT) {
+        if (const InventoryItem* item = inventory_.item(object.id)) {
+            info.found = true;
+            info.name = item->name;
+            info.affordances = &item->affordances;
+            info.combinable = item->combinable;
+            if (auto v = verb_from_id(item->default_verb)) {
+                info.default_verb = *v;
+            }
+        }
+    }
+    return info;
 }
 
 void RoomScene::execute_ready_command() {
@@ -648,30 +684,77 @@ std::string RoomScene::command_preview() const {
         return {};
     }
     const pac::core::Strings& strings = ctx_.strings;
-    auto name_of = [this](const ObjectRef& o) -> std::string {
-        if (o.kind == ObjectKind::ROOM_OBJECT && room_) {
-            const auto it = room_->data().hotspots.find(o.id);
-            if (it != room_->data().hotspots.end()) {
-                return it->second.name;
-            }
-        } else if (o.kind == ObjectKind::INVENTORY_OBJECT) {
-            if (const InventoryItem* item = inventory_.item(o.id)) {
-                return item->name;
-            }
-        }
-        return o.id;
-    };
     std::string s = strings.verb_label(std::string(verb_id(*verb)));
     if (builder_.param1()) {
-        s += " " + name_of(*builder_.param1());
+        s += " " + resolve_operand(*builder_.param1()).name;
         if (*verb == Verb::USE || *verb == Verb::GIVE) {
             s += " " + strings.connector(std::string(verb_id(*verb)));
         }
     }
     if (builder_.param2()) {
-        s += " " + name_of(*builder_.param2());
+        s += " " + resolve_operand(*builder_.param2()).name;
     }
     return s;
+}
+
+std::string RoomScene::top_bar_text() const {
+    // Only the command view shows a command bar (dialog/menu/blocked don't).
+    if (view_state_ != ViewState::COMMAND) {
+        return {};
+    }
+    const pac::core::Strings& strings = ctx_.strings;
+
+    // Resolve what the pointer is over: a panel verb, an operand (room hotspot or
+    // inventory item), a walkable floor tile, or nothing.
+    enum class Hover { NONE, VERB, OPERAND, WALKABLE };
+    Hover hover = Hover::NONE;
+    Verb hover_verb = Verb::LOOK_AT;
+    ObjectRef hover_obj;
+    if (panel_ && panel_->contains(hover_vp_)) {
+        const PanelIntent in = panel_->click(hover_vp_, inventory_);
+        if (in.kind == PanelIntent::Kind::SELECT_VERB) {
+            hover = Hover::VERB;
+            hover_verb = in.verb;
+        } else if (in.kind == PanelIntent::Kind::CLICK_INVENTORY) {
+            hover = Hover::OPERAND;
+            hover_obj = {ObjectKind::INVENTORY_OBJECT, in.item_id};
+        }
+    } else if (room_) {
+        const geom::Point world = virtual_to_world(hover_vp_);
+        if (const RoomHotspot* hs = room_->hotspot_at(world)) {
+            hover = Hover::OPERAND;
+            hover_obj = {ObjectKind::ROOM_OBJECT, hs->id};
+        } else if (room_->data().is_walkable(world)) {
+            hover = Hover::WALKABLE;
+        }
+    }
+
+    // IDLE: the bar just names what's under the pointer (design 04 §Top bar).
+    if (builder_.state() == CommandBuilder::State::IDLE) {
+        switch (hover) {
+        case Hover::VERB:
+            return strings.verb_label(std::string(verb_id(hover_verb)));
+        case Hover::OPERAND:
+            return resolve_operand(hover_obj).name;
+        case Hover::WALKABLE:
+            return strings.ui_label("walk_to");
+        case Hover::NONE:
+            break;
+        }
+        return {};
+    }
+
+    // Building a command: show the committed preview, and append the hovered
+    // operand only when it would be a valid next argument.
+    std::string base = command_preview();
+    if (hover == Hover::OPERAND) {
+        const Operand info = resolve_operand(hover_obj);
+        const std::optional<Verb> verb = builder_.verb();
+        if (verb && builder_.would_accept(hover_obj, affordance_ok(info.affordances, *verb))) {
+            base += " " + info.name;
+        }
+    }
+    return base;
 }
 
 void RoomScene::update(float dt) {
@@ -703,10 +786,7 @@ void RoomScene::update(float dt) {
         player_->update(dt, room_->data());
         room_->update_npcs(dt);
         if (camera_) {
-            const sf::Vector2u vres = ctx_.display.virtual_resolution();
-            const sf::Vector2f dead_zone{static_cast<float>(vres.x) * 0.18f,
-                                         scenery_height() * 0.22f};
-            camera_->follow(player_->position(), dead_zone);
+            camera_->follow(player_->position());
         }
         check_zones();
     }
@@ -775,7 +855,7 @@ void RoomScene::draw(sf::RenderTarget& target) const {
             }
             panel_->draw_options(target, labels);
         } else {
-            panel_->draw(target, ctx_.strings, inventory_, command_preview(), builder_.verb());
+            panel_->draw(target, ctx_.strings, inventory_, top_bar_text(), builder_.verb());
         }
     }
     if (view_state_ == ViewState::MENU) {

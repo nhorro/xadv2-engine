@@ -12,8 +12,10 @@
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Texture.hpp>
+#include <SFML/Graphics/View.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -29,26 +31,27 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                         pac::core::Diagnostics& log) const {
     const RoomData& data = room.data();
 
-    sf::RectangleShape fill(
-        sf::Vector2f(static_cast<float>(data.size.x), static_cast<float>(data.size.y)));
+    // Solid backdrop behind every layer: fill the visible view so any world area
+    // a layer doesn't cover (within or beyond the layer bounds) shows the color.
+    const sf::View& view = target.getView();
+    sf::RectangleShape fill(view.getSize());
+    fill.setPosition(view.getCenter() - view.getSize() / 2.0f);
     fill.setFillColor(data.background_color);
     target.draw(fill);
 
     using DrawFn = std::function<void(sf::RenderTarget&)>;
     std::vector<std::pair<float, DrawFn>> items;
 
-    // Background layers fill the room (scaled to room size).
+    // Background layers draw at their native pixel size with the top-left at the
+    // layer's `origin` (default (0,0)), so layers may differ in size and be placed
+    // freely. The room's world bounds are the union of these rects.
     for (const BackgroundLayer& layer : data.layers) {
         const std::string image = pac::core::logical_join(room_dir, layer.image);
-        items.emplace_back(layer.z, [&resources, &log, image, &data](sf::RenderTarget& t) {
+        const geom::Point origin = layer.origin;
+        items.emplace_back(layer.z, [&resources, &log, image, origin](sf::RenderTarget& t) {
             try {
-                const sf::Texture& tex = resources.texture(image);
-                sf::Sprite sprite(tex);
-                const sf::Vector2u ts = tex.getSize();
-                if (ts.x > 0 && ts.y > 0) {
-                    sprite.setScale(static_cast<float>(data.size.x) / static_cast<float>(ts.x),
-                                    static_cast<float>(data.size.y) / static_cast<float>(ts.y));
-                }
+                sf::Sprite sprite(resources.texture(image));
+                sprite.setPosition(origin.x, origin.y);
                 t.draw(sprite);
             } catch (const std::exception& e) {
                 log.error(e.what());
@@ -119,6 +122,30 @@ void RoomRenderer::draw(sf::RenderTarget& target,
     for (const auto& [z, draw_fn] : items) {
         draw_fn(target);
     }
+}
+
+sf::Vector2u compute_room_bounds(const RoomData& data,
+                                 const std::string& room_dir,
+                                 pac::core::ResourceCache& resources,
+                                 sf::Vector2f viewport,
+                                 pac::core::Diagnostics& log) {
+    // World is anchored at (0,0); only the right/bottom extents grow it, and it is
+    // never smaller than the room view. A layer placed at a negative origin spills
+    // off the top-left and is never scrolled to, rather than shifting the origin.
+    float right = viewport.x;
+    float bottom = viewport.y;
+    for (const BackgroundLayer& layer : data.layers) {
+        try {
+            const sf::Texture& tex =
+                resources.texture(pac::core::logical_join(room_dir, layer.image));
+            const sf::Vector2u ts = tex.getSize();
+            right = std::max(right, layer.origin.x + static_cast<float>(ts.x));
+            bottom = std::max(bottom, layer.origin.y + static_cast<float>(ts.y));
+        } catch (const std::exception& e) {
+            log.error(e.what());
+        }
+    }
+    return {static_cast<unsigned>(std::ceil(right)), static_cast<unsigned>(std::ceil(bottom))};
 }
 
 } // namespace pac::pnc

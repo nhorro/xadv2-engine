@@ -17,6 +17,11 @@ struct BackgroundLayer {
     std::string image; // logical path, relative to the room file's directory
     float z = 0.0f;
     bool interactive = false;
+    // Room-space top-left where the layer's native-size image is drawn. Layers may
+    // differ in size and be placed freely (e.g. a foreground occluder); the room's
+    // world bounds are derived from the union of all layer rects (see
+    // compute_room_bounds). Defaults to the world origin (0,0).
+    geom::Point origin{0, 0};
 };
 
 struct RoomHotspot {
@@ -68,7 +73,6 @@ struct RoomObject {
 struct RoomData {
     int version = 1;
     std::string id;
-    sf::Vector2u size{0, 0};
     sf::Color background_color = sf::Color::Black;
     std::vector<BackgroundLayer> layers;
     geom::Polygon walkable;
