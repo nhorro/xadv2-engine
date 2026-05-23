@@ -136,6 +136,62 @@ TEST_CASE("cursor block is optional — defaults to no custom cursor") {
     CHECK(m.cursor.hotspot.y == 0u);
 }
 
+TEST_CASE("single-language shorthand yields one language entry") {
+    const Manifest m = parse_manifest(kValid);
+    REQUIRE(m.languages.size() == 1);
+    CHECK(m.languages[0].strings_path == "strings/es.yaml");
+    CHECK(m.default_language == m.languages[0].id);
+    CHECK(m.strings_path == "strings/es.yaml");
+}
+
+TEST_CASE("languages list is parsed; default is the first entry") {
+    const Manifest m =
+        parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                       "resources: { src: . }\nentry: a\nscenes: [{id: a, type: B}]\n"
+                       "languages:\n"
+                       "  - { id: es, name: \"Español\", strings: strings/es.yaml }\n"
+                       "  - { id: en, name: \"English\", strings: strings/en.yaml }\n");
+    REQUIRE(m.languages.size() == 2);
+    CHECK(m.languages[0].id == "es");
+    CHECK(m.languages[0].name == "Español");
+    CHECK(m.languages[1].id == "en");
+    CHECK(m.default_language == "es");          // first entry
+    CHECK(m.strings_path == "strings/es.yaml"); // default's strings
+}
+
+TEST_CASE("default_language overrides the first entry") {
+    const Manifest m =
+        parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                       "resources: { src: . }\nentry: a\nscenes: [{id: a, type: B}]\n"
+                       "default_language: en\n"
+                       "languages:\n"
+                       "  - { id: es, strings: strings/es.yaml }\n"
+                       "  - { id: en, strings: strings/en.yaml }\n");
+    CHECK(m.default_language == "en");
+    CHECK(m.strings_path == "strings/en.yaml");
+    CHECK(m.languages[1].name == "en"); // name defaults to id when omitted
+}
+
+TEST_CASE("invalid languages declarations are rejected") {
+    auto base = [](const char* tail) {
+        return std::string("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                           "resources: { src: . }\nentry: a\nscenes: [{id: a, type: B}]\n") +
+               tail;
+    };
+    // Neither strings nor languages.
+    CHECK_THROWS_AS(parse_manifest(base("")), ManifestError);
+    // Duplicate language id.
+    CHECK_THROWS_AS(parse_manifest(base("languages:\n  - { id: es, strings: a }\n"
+                                        "  - { id: es, strings: b }\n")),
+                    ManifestError);
+    // Language missing its strings path.
+    CHECK_THROWS_AS(parse_manifest(base("languages:\n  - { id: es }\n")), ManifestError);
+    // default_language not in the list.
+    CHECK_THROWS_AS(parse_manifest(base("default_language: fr\n"
+                                        "languages:\n  - { id: es, strings: a }\n")),
+                    ManifestError);
+}
+
 TEST_CASE("manifest diagnostics carry stable error codes") {
     const char* dup = "id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
                       "resources: { src: . }\nstrings: s\nentry: a\n"

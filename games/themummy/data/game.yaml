@@ -13,7 +13,13 @@ window:
 resources:
   src: "."
 
-strings: strings/es.yaml
+# UI-strings languages (#72). The MVP ships Spanish only; the list is design-ready
+# for more. The first entry is the default unless `default_language` overrides it.
+# A single-language game may instead use the shorthand `strings: strings/es.yaml`.
+languages:
+  - id: es
+    name: "Español"
+    strings: strings/es.yaml
 
 # Custom point-and-click cursor (#73). `interact` is shown over hotspots;
 # `hotspot` is the active click pixel within both images.

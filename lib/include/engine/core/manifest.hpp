@@ -30,6 +30,17 @@ struct SettingsDefaults {
     float sfx_volume = 1.0f;
 };
 
+/// One selectable UI-strings language (issue #72). `id` is the stable, ASCII id
+/// stored in settings and matched by the selector; `name` is the display label,
+/// written in its own language (e.g. "Español"); `strings_path` is the logical
+/// path to that language's UI-strings file. The MVP ships one entry (Spanish);
+/// the list is design-ready for more Western languages.
+struct LanguageEntry {
+    std::string id;
+    std::string name;
+    std::string strings_path;
+};
+
 /// Custom point-and-click cursor (issue #73). `image` is the resting cursor;
 /// `interact` (optional) is shown over an interactive hotspot. `hotspot` is the
 /// pointer's active pixel (the click point) within both images. When `image` is
@@ -57,7 +68,17 @@ struct Manifest {
     sf::Vector2u resolution{1280, 720};
     WindowConfig window;
     std::string resources_src; // resolved to a host root by load_manifest
-    std::string strings_path;  // logical path
+    // Logical path to the default language's UI-strings file. Always set: it
+    // mirrors `languages[default_language].strings_path` and is the resource the
+    // engine loads when no user language preference is stored.
+    std::string strings_path;
+    // Available UI-strings languages (issue #72). Always non-empty: a single
+    // `strings:` scalar yields one entry; a `languages:` list yields many.
+    std::vector<LanguageEntry> languages;
+    // Id of the default language (the first declared, unless `languages.default`
+    // overrides it). The active language is the stored user preference if valid,
+    // else this default.
+    std::string default_language;
     SettingsDefaults settings;
     CursorConfig cursor;
     DevFlags development;

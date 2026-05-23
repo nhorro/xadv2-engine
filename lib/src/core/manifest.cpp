@@ -45,6 +45,70 @@ void validate_id(const std::string& id, const YAML::Node& node) {
     }
 }
 
+// Parse the UI-strings language declaration (issue #72). Two accepted forms:
+//
+//   strings: strings/es.yaml            # single-language shorthand
+//
+//   languages:                          # explicit, design-ready map
+//     - { id: es, name: "Español", strings: strings/es.yaml }
+//   default_language: es                # optional; defaults to the first entry
+//
+// Always leaves `m.languages` non-empty and `m.default_language` / `m.strings_path`
+// pointing at the default entry.
+void parse_languages(const YAML::Node& root, Manifest& m) {
+    const YAML::Node langs = root["languages"];
+    if (langs && langs.IsSequence() && langs.size() > 0) {
+        std::set<std::string> seen;
+        for (const YAML::Node& ln : langs) {
+            LanguageEntry e;
+            if (!ln["id"] || ln["id"].as<std::string>().empty()) {
+                manifest_fail("manifest.language-id-missing",
+                              "a 'languages' entry is missing 'id'",
+                              ln);
+            }
+            e.id = ln["id"].as<std::string>();
+            if (!seen.insert(e.id).second) {
+                manifest_fail("manifest.duplicate-language-id",
+                              "duplicate language id '" + e.id + "'",
+                              ln);
+            }
+            if (!ln["strings"] || ln["strings"].as<std::string>().empty()) {
+                manifest_fail("manifest.language-strings-missing",
+                              "language '" + e.id + "' is missing 'strings'",
+                              ln);
+            }
+            e.strings_path = ln["strings"].as<std::string>();
+            e.name = ln["name"] ? ln["name"].as<std::string>() : e.id;
+            m.languages.push_back(std::move(e));
+        }
+        m.default_language = root["default_language"] ? root["default_language"].as<std::string>()
+                                                      : m.languages.front().id;
+        const LanguageEntry* def = nullptr;
+        for (const LanguageEntry& e : m.languages) {
+            if (e.id == m.default_language) {
+                def = &e;
+                break;
+            }
+        }
+        if (!def) {
+            manifest_fail("manifest.default-language-unknown",
+                          "default_language '" + m.default_language + "' is not in 'languages'",
+                          root);
+        }
+        m.strings_path = def->strings_path;
+        return;
+    }
+
+    if (!root["strings"] || root["strings"].as<std::string>().empty()) {
+        manifest_fail("manifest.strings-missing",
+                      "'strings' (or a 'languages' list) is required",
+                      root);
+    }
+    m.strings_path = root["strings"].as<std::string>();
+    m.default_language = "default";
+    m.languages.push_back({m.default_language, "", m.strings_path});
+}
+
 unsigned require_dimension(const YAML::Node& node, const char* what) {
     if (!node) {
         manifest_fail("manifest.dimension-missing", std::string(what) + " is required", node);
@@ -101,10 +165,7 @@ Manifest parse_manifest(const std::string& yaml_text) {
     }
     m.resources_src = resources["src"].as<std::string>();
 
-    if (!root["strings"] || root["strings"].as<std::string>().empty()) {
-        manifest_fail("manifest.strings-missing", "'strings' is required", root);
-    }
-    m.strings_path = root["strings"].as<std::string>();
+    parse_languages(root, m);
 
     if (const YAML::Node settings = root["settings"]) {
         if (const YAML::Node audio = settings["audio"]) {
