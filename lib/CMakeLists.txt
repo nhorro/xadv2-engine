@@ -44,10 +44,12 @@ add_library(pac_engine STATIC
     src/core/diagnostics.cpp
     src/core/load_error.cpp
     src/core/settings.cpp
+    src/core/settings_store.cpp
     src/core/scene_params.cpp
     src/core/resource_source.cpp
     src/core/resource_cache.cpp
     src/core/strings.cpp
+    src/core/localization.cpp
     src/core/manifest.cpp
     src/core/display.cpp
     src/core/audio.cpp

@@ -5,6 +5,7 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
+#include "engine/core/localization.hpp"
 #include "engine/core/lua_api.hpp"
 #include "engine/core/manifest.hpp"
 #include "engine/core/resource_cache.hpp"
@@ -15,6 +16,7 @@
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scripting.hpp"
 #include "engine/core/settings.hpp"
+#include "engine/core/settings_store.hpp"
 #include "engine/core/state_store.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/user_data.hpp"
@@ -73,18 +75,16 @@ sf::Event to_virtual_event(const sf::Event& in, const Display& display) {
 
 constexpr char kWindowTitle[] = "Extraordinary Adventures";
 
-// (Re)create the OS window for `mode`. Fullscreen picks the video mode that best
-// matches the game's virtual resolution (the "optimal" mode); windowed uses the
-// requested client size. The virtual resolution is unchanged, so the letterbox
-// keeps gameplay coordinates stable across the switch (R6).
-void apply_window_mode(sf::RenderWindow& window,
-                       const DisplayMode& mode,
-                       sf::Vector2u virtual_res) {
+// (Re)create the OS window for `mode`. Fullscreen uses the desktop's native video
+// mode (no mode switch) and letterboxes the virtual resolution within it; windowed
+// uses the requested client size. Keeping the framebuffer at the desktop size is
+// what makes input map correctly in fullscreen — a mode switch leaves SFML's mouse
+// coordinates in the old desktop space and the click/avatar mapping breaks (#71).
+// The virtual resolution is unchanged either way, so gameplay coordinates are
+// stable across the switch (R6).
+void apply_window_mode(sf::RenderWindow& window, const DisplayMode& mode) {
     if (mode.fullscreen) {
-        const sf::VideoMode vm = best_fullscreen_mode(sf::VideoMode::getFullscreenModes(),
-                                                      virtual_res,
-                                                      sf::VideoMode::getDesktopMode());
-        window.create(vm, kWindowTitle, sf::Style::Fullscreen);
+        window.create(sf::VideoMode::getDesktopMode(), kWindowTitle, sf::Style::Fullscreen);
     } else {
         window.create(sf::VideoMode(mode.size.x, mode.size.y), kWindowTitle, sf::Style::Default);
     }
@@ -141,16 +141,36 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
     settings.fullscreen = manifest.window.fullscreen;
     settings.window_width = manifest.window.width;
     settings.window_height = manifest.window.height;
+    settings.language = manifest.default_language;
+    settings.clamp();
+
+    // Player settings override manifest defaults (issue #66): a stored file
+    // (per-user config dir) is overlaid on top of the defaults above. A missing
+    // file is the normal first-run case; a corrupt one is warned and ignored.
+    SettingsStore settings_store(user_config_dir(manifest.id) / "settings.yaml", log);
+    settings_store.load(settings);
     settings.clamp();
 
     FilesystemResourceSource source(manifest.resources_src);
     ResourceCache resources(source, log);
-    Strings strings;
+
+    // Active UI-strings language (issue #72): the stored preference when it names
+    // a known language, else the manifest default. Construction loads the strings
+    // (a required resource) and throws if neither the preference nor the default
+    // resolves — startup then fails loudly.
+    std::optional<Localization> localization_opt;
     try {
-        strings = load_strings(source, manifest.strings_path, log);
+        localization_opt.emplace(source,
+                                 manifest.languages,
+                                 manifest.default_language,
+                                 settings.language,
+                                 log);
     } catch (const std::exception&) {
         return 1; // load_strings already logged the diagnostic
     }
+    Localization& localization = *localization_opt;
+    settings.language = localization.active(); // reflect any fallback
+
     AudioServices audio(resources, log, settings);
     Scripting scripting(log);
     StateStore state;
@@ -168,12 +188,14 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
                       state,
                       settings,
                       scenes,
-                      strings,
+                      localization.strings(),
                       log,
                       manifest.development,
                       manifest.id,
                       saves,
-                      cursor_state};
+                      cursor_state,
+                      localization,
+                      settings_store};
     bind_core_api(ctx);
 
     scenes.set_builder([&](const std::string& id) -> std::unique_ptr<Scene> {
@@ -205,8 +227,7 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
 
     sf::RenderWindow window;
     apply_window_mode(window,
-                      {{settings.window_width, settings.window_height}, settings.fullscreen},
-                      manifest.resolution);
+                      {{settings.window_width, settings.window_height}, settings.fullscreen});
     display.set_window_size(window.getSize());
 
     // Custom point-and-click cursor (#73). When the manifest declares one, swap
@@ -257,7 +278,7 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
         // A scene (e.g. the settings menu) may have requested a display-mode
         // change; recreate the window before simulating/drawing this frame.
         if (const std::optional<DisplayMode> mode = display.take_pending_mode()) {
-            apply_window_mode(window, *mode, manifest.resolution);
+            apply_window_mode(window, *mode);
             display.set_window_size(window.getSize());
             display.set_fullscreen(mode->fullscreen);
         }

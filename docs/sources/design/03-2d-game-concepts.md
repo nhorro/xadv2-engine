@@ -416,29 +416,42 @@ flags.
 | Display mode | MVP | Fullscreen/windowed and physical window size. |
 | Music volume | MVP | Applied to the music player. |
 | SFX volume | MVP | Applied to the sound player. |
-| Language | Design-for | MVP ships Spanish only. |
+| Language | MVP infra | UI-strings language, selected from the manifest `languages` map. MVP ships Spanish only; the selector and switch are in place for more. Per-language *game-content* files stay design-for. |
 | Text speed | Nice-to-have | Useful for subtitle pacing. |
 
 ### Defaults and precedence
 
 The manifest provides defaults. User settings override manifest defaults. On a
-first run with no user settings file, manifest defaults are used.
+first run with no user settings file, manifest defaults are used; a corrupt file
+also falls back to the defaults. Only keys present in the file are applied, so a
+partial file still loads.
 
-Settings are saved in a per-user writable location, not in the resource root.
-Examples:
+Settings are saved in a per-user **config** location (`settings.yaml`), not in the
+resource root:
 
-- `%APPDATA%` on Windows;
-- `$XDG_CONFIG_HOME` or `~/.config` on Linux.
+- `%APPDATA%\<id>\settings.yaml` on Windows;
+- `$XDG_CONFIG_HOME/<id>/settings.yaml` or `~/.config/<id>/settings.yaml` on Linux;
+- `Application Support/<id>` on macOS.
 
-Save files use the same general per-user storage policy.
+Save files use the same general per-user storage policy, under the per-user *data*
+location. The settings file format is specified in
+[06 — Data formats](06-data-formats.md#player-settings--settingsyaml).
 
 ### Settings scene
 
-The settings UI is a scene pushed over the current scene. It edits the settings
-service and then pops back to the previous scene. This makes the same settings
-available from the title screen or from an in-game pause menu.
+The settings UI is a scene pushed over the current scene, then popped back. This
+makes the same settings available from the title screen or an in-game pause menu.
 
-It offers a windowed-resolution selector, a fullscreen toggle, and music volume.
+It offers a windowed-resolution selector, a fullscreen toggle, a language selector
+(from the manifest `languages` map), and music/SFX volumes. Edits are made to a
+**working copy**: display and language changes are *staged* and only take effect on
+an explicit **APPLY** action (BACK / Esc discards them) — the window is never
+recreated mid-edit. Audio volume previews live while editing and is restored on
+BACK. APPLY commits the working copy to the settings service, swaps the active
+language, requests any display change, and **persists** everything to the settings
+file. This APPLY/BACK model matches player expectations and avoids recreating the
+window on every keypress.
+
 A display change does not happen in the scene: it is **requested** through the
 `Display` service (`request_mode`), and the main loop recreates the OS window
 between frames and reports the applied size/mode back to `Display`. This keeps the
@@ -448,10 +461,11 @@ the letterbox does — switching modes is transparent to the game (R6): gameplay
 coordinates, geometry, and input mapping are unaffected.
 
 The windowed sizes offered are aspect-matching multiples of the virtual resolution
-that fit the desktop, so windowed mode never shows bars. Fullscreen targets the
-**optimal mode for the game**: the video mode that matches the virtual resolution
-when the monitor supports it, otherwise the smallest mode large enough to contain
-it (letterboxed), falling back to the desktop mode.
+that fit the desktop, so windowed mode never shows bars. Fullscreen uses the
+**desktop's native video mode** (no mode switch) and letterboxes the virtual
+resolution within it. Keeping the framebuffer at the desktop size is what keeps
+input mapping correct in fullscreen: a video-mode switch can leave the OS pointer
+in a different coordinate space, so clicks and avatar movement break.
 
 ## Music and sound
 

@@ -6,11 +6,13 @@ namespace pac::core {
 
 class Diagnostics;
 class Display;
+class Localization;
 class ResourceCache;
 class SaveService;
 class SceneManager;
 class Scripting;
 class Settings;
+class SettingsStore;
 class StateStore;
 class Strings;
 struct AudioServices;
@@ -27,6 +29,9 @@ struct EngineContext {
     StateStore& state;
     Settings& settings;
     SceneManager& scenes;
+    /// Active UI strings. Bound to `localization`'s current resource: when the
+    /// player switches language the underlying object is reloaded in place, so
+    /// this reference transparently reflects the new language.
     const Strings& strings;
     Diagnostics& log;
     const DevFlags& dev;
@@ -41,6 +46,13 @@ struct EngineContext {
     /// Per-frame cursor appearance request channel (issue #73). Scenes call
     /// `cursor.want(...)`; the harness applies it and resets it each frame.
     CursorState& cursor;
+    /// Available languages + the live language switch (issue #72). The settings
+    /// scene reads `languages()` for the selector and calls `set_language()`,
+    /// which swaps the resource `strings` points at.
+    Localization& localization;
+    /// Player settings persistence (issue #66). The settings scene calls
+    /// `save()` when the player applies changes.
+    SettingsStore& settings_store;
 };
 
 } // namespace pac::core
