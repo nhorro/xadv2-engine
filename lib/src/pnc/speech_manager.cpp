@@ -1,5 +1,7 @@
 #include "engine/pnc/speech_manager.hpp"
 
+#include "engine/core/text_encoding.hpp"
+
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/Text.hpp>
@@ -79,7 +81,7 @@ void SpeechManager::draw(sf::RenderTarget& target, const sf::Font* font) const {
         return;
     }
     const auto measure = [&](const std::string& s) {
-        return sf::Text(s, *font, kFontSize).getLocalBounds().width;
+        return sf::Text(pac::core::utf8(s), *font, kFontSize).getLocalBounds().width;
     };
     const std::vector<std::string> lines = wrap_text(text_, kWrapWidth, measure);
     const float line_h = font->getLineSpacing(kFontSize);
@@ -87,7 +89,7 @@ void SpeechManager::draw(sf::RenderTarget& target, const sf::Font* font) const {
     // Stack lines centered horizontally on the speaker and vertically on pos_.
     float y = pos_.y - block_h / 2.0f;
     for (const std::string& ln : lines) {
-        sf::Text text(ln, *font, kFontSize);
+        sf::Text text(pac::core::utf8(ln), *font, kFontSize);
         text.setFillColor(color_);
         text.setOutlineColor(sf::Color(0, 0, 0, 200));
         text.setOutlineThickness(2.0f);

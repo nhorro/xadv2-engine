@@ -6,6 +6,7 @@
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
+#include "engine/core/text_encoding.hpp"
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
@@ -83,7 +84,7 @@ void StoryTextScene::draw(sf::RenderTarget& target) const {
 
     const std::string& page = ctx_.scripting.current_text();
     if (font_ && !page.empty()) {
-        sf::Text text(page, *font_, 30);
+        sf::Text text(pac::core::utf8(page), *font_, 30);
         text.setFillColor(sf::Color(225, 225, 230));
         const sf::FloatRect b = text.getLocalBounds();
         text.setPosition((static_cast<float>(vres.x) - b.width) / 2.0f - b.left,

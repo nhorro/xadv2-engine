@@ -10,6 +10,7 @@
 #include "engine/core/scene_params.hpp"
 #include "engine/core/scripting.hpp"
 #include "engine/core/strings.hpp"
+#include "engine/core/text_encoding.hpp"
 #include "engine/gfx/animated_sprite.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"
@@ -960,9 +961,14 @@ void RoomScene::draw(sf::RenderTarget& target) const {
             for (const DialogOption& opt : dialog_->options()) {
                 labels.push_back(opt.text);
             }
-            panel_->draw_options(target, labels);
+            panel_->draw_options(target, labels, hover_vp_);
         } else {
-            panel_->draw(target, ctx_.strings, inventory_, top_bar_text(), builder_.verb());
+            panel_->draw(target,
+                         ctx_.strings,
+                         inventory_,
+                         top_bar_text(),
+                         builder_.verb(),
+                         hover_vp_);
         }
     }
     if (view_state_ == ViewState::MENU) {
@@ -1254,7 +1260,7 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
     }
 
     // Heading.
-    sf::Text title(ctx_.strings.ui_label("pause"), *font_, 36);
+    sf::Text title(pac::core::utf8(ctx_.strings.ui_label("pause")), *font_, 36);
     title.setFillColor(sf::Color(255, 240, 180));
     const sf::FloatRect tb = title.getLocalBounds();
     title.setPosition((static_cast<float>(vres.x) - tb.width) / 2.0f - tb.left,
@@ -1275,7 +1281,7 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
 
         const std::string label = "Slot " + std::to_string(slot) +
                                   (ctx_.saves.slot_exists(slot) ? " — Guardado" : " — Vacío");
-        sf::Text txt(label, *font_, 22);
+        sf::Text txt(pac::core::utf8(label), *font_, 22);
         txt.setFillColor(sf::Color(220, 224, 235));
         const sf::FloatRect b = txt.getLocalBounds();
         txt.setPosition(row_left - 200.0f + label_pad,
@@ -1283,15 +1289,17 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
         target.draw(txt);
     }
 
-    // Buttons themselves.
+    // Buttons themselves. An enabled button under the cursor highlights like the
+    // title menu / SCUMM panel (issue: consistent hover on all buttons).
     for (const MenuButton& bt : buttons) {
+        const bool hot = bt.enabled && bt.rect.contains(hover_vp_);
         sf::RectangleShape box(sf::Vector2f(bt.rect.width, bt.rect.height));
         box.setPosition(bt.rect.left, bt.rect.top);
         if (!bt.enabled) {
             box.setFillColor(sf::Color(24, 26, 36));
             box.setOutlineColor(sf::Color(50, 54, 70));
         } else {
-            box.setFillColor(sf::Color(34, 38, 54));
+            box.setFillColor(hot ? sf::Color(70, 90, 140) : sf::Color(34, 38, 54));
             box.setOutlineColor(sf::Color(90, 100, 130));
         }
         box.setOutlineThickness(1.5f);
@@ -1316,8 +1324,9 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
             label = ctx_.strings.ui_label("quit_to_title");
             break;
         }
-        sf::Text txt(label, *font_, 20);
-        txt.setFillColor(bt.enabled ? sf::Color(220, 224, 235) : sf::Color(120, 128, 145));
+        sf::Text txt(pac::core::utf8(label), *font_, 20);
+        txt.setFillColor(!bt.enabled ? sf::Color(120, 128, 145)
+                                     : (hot ? sf::Color::White : sf::Color(220, 224, 235)));
         const sf::FloatRect b = txt.getLocalBounds();
         txt.setPosition(bt.rect.left + (bt.rect.width - b.width) / 2.0f - b.left,
                         bt.rect.top + (bt.rect.height - b.height) / 2.0f - b.top);
