@@ -64,6 +64,8 @@ GameState make_rich_state() {
     s.hotspot_enabled["hall"]["salida"] = true;
     s.object_visible["hall"]["cart"] = false; // pushed away
     s.object_visible["study"]["lamp"] = true;
+    s.layer_visible["hall"]["cart_layer"] = false; // perspective cart removed
+    s.layer_visible["study"]["blinds"] = true;
     return s;
 }
 
@@ -111,6 +113,8 @@ TEST_CASE("save -> load round-trip preserves every field") {
     CHECK(out.hotspot_enabled.at("hall").at("salida") == true);
     CHECK(out.object_visible.at("hall").at("cart") == false);
     CHECK(out.object_visible.at("study").at("lamp") == true);
+    CHECK(out.layer_visible.at("hall").at("cart_layer") == false);
+    CHECK(out.layer_visible.at("study").at("blinds") == true);
 }
 
 TEST_CASE("load() returns nullopt on missing slot") {
