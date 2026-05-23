@@ -83,3 +83,43 @@ TEST_CASE("segment_intersection") {
     // Parallel.
     CHECK_FALSE(segment_intersection({0, 0}, {10, 0}, {0, 1}, {10, 1}).has_value());
 }
+
+TEST_CASE("find_path is a straight-line walk gated by the walkable area") {
+    const Polygon room{{0, 0}, {100, 0}, {100, 100}, {0, 100}};
+
+    // Clear straight line: the single waypoint is the destination itself.
+    {
+        const auto path = find_path({10, 10}, {90, 90}, room);
+        REQUIRE(path.size() == 1);
+        CHECK(path.back().x == doctest::Approx(90.0f));
+        CHECK(path.back().y == doctest::Approx(90.0f));
+    }
+
+    // Destination outside the walkable area: clamped onto the boundary, and the
+    // straight walk reaches that clamped point.
+    {
+        const auto path = find_path({50, 50}, {150, 50}, room);
+        REQUIRE(path.size() == 1);
+        // Stops just inside the clamped boundary (the sampler is ~one step
+        // conservative at the very edge), never beyond it.
+        CHECK(path.back().x <= 100.0f);
+        CHECK(path.back().x >= 96.0f);
+        CHECK(path.back().y == doctest::Approx(50.0f));
+    }
+
+    // An obstacle across the path truncates the walk before it: the waypoint is
+    // short of the destination (does not enter the obstacle).
+    {
+        const std::vector<Polygon> obstacles{{{40, 0}, {60, 0}, {60, 100}, {40, 100}}};
+        const auto path = find_path({10, 50}, {90, 50}, room, obstacles);
+        REQUIRE(path.size() == 1);
+        CHECK(path.back().x < 40.0f);
+    }
+
+    // No walkable polygon: ungated, returns the destination unchanged.
+    {
+        const auto path = find_path({0, 0}, {500, 500}, Polygon{});
+        REQUIRE(path.size() == 1);
+        CHECK(path.back().x == doctest::Approx(500.0f));
+    }
+}

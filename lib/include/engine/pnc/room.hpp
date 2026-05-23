@@ -54,6 +54,7 @@ struct Region {
     std::string id;
     geom::Polygon area; // footprint (also a hit source)
     float z = 0.0f;
+    std::string over;                          // optional: draw at the z of this layer id
     std::map<std::string, std::string> states; // state id -> image logical path
     std::string initial;
 };

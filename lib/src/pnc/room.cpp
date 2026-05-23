@@ -106,6 +106,9 @@ RoomData parse_room(const std::string& yaml_text) {
                 region.area = parse_polygon(area);
             }
             region.z = node["z"] ? node["z"].as<float>() : 0.0f;
+            if (node["over"]) {
+                region.over = node["over"].as<std::string>();
+            }
             if (const YAML::Node states = node["states"]) {
                 for (const auto& sv : states) {
                     region.states[sv.first.as<std::string>()] = sv.second.as<std::string>();

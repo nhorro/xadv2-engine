@@ -65,6 +65,11 @@ public:
     api_get_room_state(const std::string& key) const;
     void api_talk(const std::string& speaker_id, const std::string& text);
     void api_start_dialog(const std::string& npc_id);
+    // Scripted camera overrides (issue #25). look_at snaps; go_to returns the
+    // tween duration (s) so the Lua wrapper can yield for it; both suspend follow.
+    void api_camera_look_at(geom::Point target);
+    float api_camera_go_to(geom::Point target);
+    void api_camera_follow_player();
     [[nodiscard]] std::string api_current_room() const { return current_room_id_; }
     [[nodiscard]] InventoryModel& inventory() { return inventory_; }
     [[nodiscard]] ViewState view_state() const { return view_state_; }
@@ -118,6 +123,10 @@ private:
     void draw_menu(sf::RenderTarget& target) const;
     void trigger_menu(MenuAction action);
     void object_clicked(const ObjectRef& object);
+    /// Route the player to a hotspot's approach point through the find_path seam:
+    /// clamps an approach outside the walkable area to the nearest reachable point
+    /// (dev warning) and short-circuits when already near it (issue #22).
+    void walk_to_approach(geom::Point approach, const std::string& hotspot_id);
     void execute_ready_command();
     std::optional<std::string> dispatch(const Command& cmd);
 
@@ -139,6 +148,13 @@ private:
     [[nodiscard]] geom::Point virtual_to_world(sf::Vector2f virtual_point) const;
     [[nodiscard]] float scenery_height() const;
     void check_zones();
+    /// Hit-test the scenery at `world` with full bind support: supplies object
+    /// frame bounds (from the loaded textures) to RoomRuntime::hotspot_at (#22).
+    [[nodiscard]] const RoomHotspot* hotspot_under(geom::Point world) const;
+    /// Frame bounds of a visible bound object (top-left + texture size), or
+    /// nullopt when hidden / imageless / the texture is unavailable.
+    [[nodiscard]] std::optional<sf::FloatRect>
+    object_frame_bounds(const std::string& object_id) const;
 
     pac::core::EngineContext& ctx_;
     std::string cast_path_;
@@ -185,6 +201,9 @@ private:
     std::string current_zone_;
 
     ViewState view_state_ = ViewState::COMMAND;
+    // Previous frame's view state: a transition back into COMMAND resumes camera
+    // follow after a scripted override (issue #25).
+    ViewState prev_view_state_ = ViewState::COMMAND;
     std::optional<DialogRuntime> dialog_;
     // SaveService now lives in EngineContext (ctx_.saves) so TitleScreen can
     // read it for Continue and stage a restore for us to consume in enter().
