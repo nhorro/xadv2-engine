@@ -9,9 +9,11 @@
 #include "engine/pnc/room_runtime.hpp"
 
 #include <SFML/Graphics/RectangleShape.hpp>
+#include <SFML/Graphics/RenderStates.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Texture.hpp>
+#include <SFML/Graphics/VertexArray.hpp>
 #include <SFML/Graphics/View.hpp>
 
 #include <algorithm>
@@ -43,19 +45,24 @@ void RoomRenderer::draw(sf::RenderTarget& target,
     using DrawFn = std::function<void(sf::RenderTarget&)>;
     std::vector<std::pair<float, DrawFn>> items;
 
-    // Background layers draw at their native pixel size with the top-left at the
-    // layer's `origin` (default (0,0)), so layers may differ in size and be placed
-    // freely. The room's world bounds are the union of these rects.
+    // Background layers draw at native pixel size × the layer's uniform `scale`
+    // (aspect-preserving) with the top-left at the layer's `origin` (default
+    // (0,0)), so layers may differ in size and be placed freely. The room's world
+    // bounds are the union of these rects.
     for (const BackgroundLayer& layer : data.layers) {
         if (!layer.id.empty() && !room.layer_visible(layer.id)) {
             continue;
         }
         const std::string image = pac::core::logical_join(room_dir, layer.image);
         const geom::Point origin = layer.origin;
-        items.emplace_back(layer.z, [&resources, &log, image, origin](sf::RenderTarget& t) {
+        const float scale = layer.scale;
+        items.emplace_back(layer.z, [&resources, &log, image, origin, scale](sf::RenderTarget& t) {
             try {
                 sf::Sprite sprite(resources.texture(image));
                 sprite.setPosition(origin.x, origin.y);
+                if (scale != 1.0f) {
+                    sprite.setScale(scale, scale);
+                }
                 t.draw(sprite);
             } catch (const std::exception& e) {
                 log.error(e.what());
@@ -100,17 +107,18 @@ void RoomRenderer::draw(sf::RenderTarget& target,
         });
     }
 
-    // Objects: visible ones at their position; z = explicit, or the sprite's
-    // bottom edge for auto (so it sorts with avatars).
+    // Objects: visible ones at their position. Sort depth, in order of priority:
+    // an explicit `baseline` (a world-Y ground line, sorts against avatar feet),
+    // else the sprite's bottom edge for `z: auto`, else the fixed `z`.
     for (const auto& [id, object] : data.objects) {
         if (!room.object_visible(id) || object.image.empty()) {
             continue;
         }
         const std::string image = pac::core::logical_join(room_dir, object.image);
-        float z = object.z;
+        float z = object.baseline ? *object.baseline : object.z;
         try {
             const sf::Texture& tex = resources.texture(image);
-            if (object.z_auto) {
+            if (!object.baseline && object.z_auto) {
                 z = object.position.y + static_cast<float>(tex.getSize().y);
             }
         } catch (const std::exception& e) {
@@ -127,6 +135,47 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                 log.error(e.what());
             }
         });
+    }
+
+    // Walk-behind masks: a convex patch of a source layer redrawn on top at its
+    // baseline (a world-Y line), so avatars sort in front of / behind it like any
+    // baseline object — without duplicating the art (design 04 §Walk-behind). The
+    // patch is a textured triangle fan whose texCoords map each world vertex back
+    // to the source layer's texel ((world - origin) / scale).
+    for (const WalkBehind& wb : data.walkbehinds) {
+        if (wb.area.size() < 3) {
+            continue;
+        }
+        const BackgroundLayer* src = nullptr;
+        for (const BackgroundLayer& l : data.layers) {
+            if (l.id == wb.layer) {
+                src = &l;
+                break;
+            }
+        }
+        if (!src) {
+            log.error("walkbehind '" + wb.id + "': unknown layer '" + wb.layer + "'");
+            continue;
+        }
+        const std::string image = pac::core::logical_join(room_dir, src->image);
+        const geom::Point origin = src->origin;
+        const float scale = src->scale;
+        sf::VertexArray fan(sf::TriangleFan, wb.area.size());
+        for (std::size_t i = 0; i < wb.area.size(); ++i) {
+            const geom::Point& p = wb.area[i];
+            fan[i].position = sf::Vector2f(p.x, p.y);
+            fan[i].texCoords = sf::Vector2f((p.x - origin.x) / scale, (p.y - origin.y) / scale);
+        }
+        items.emplace_back(wb.baseline,
+                           [&resources, &log, image, fan = std::move(fan)](sf::RenderTarget& t) {
+                               try {
+                                   sf::RenderStates states;
+                                   states.texture = &resources.texture(image);
+                                   t.draw(fan, states);
+                               } catch (const std::exception& e) {
+                                   log.error(e.what());
+                               }
+                           });
     }
 
     if (player) {
@@ -161,8 +210,8 @@ sf::Vector2u compute_room_bounds(const RoomData& data,
             const sf::Texture& tex =
                 resources.texture(pac::core::logical_join(room_dir, layer.image));
             const sf::Vector2u ts = tex.getSize();
-            right = std::max(right, layer.origin.x + static_cast<float>(ts.x));
-            bottom = std::max(bottom, layer.origin.y + static_cast<float>(ts.y));
+            right = std::max(right, layer.origin.x + static_cast<float>(ts.x) * layer.scale);
+            bottom = std::max(bottom, layer.origin.y + static_cast<float>(ts.y) * layer.scale);
         } catch (const std::exception& e) {
             log.error(e.what());
         }

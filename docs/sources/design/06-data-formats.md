@@ -129,7 +129,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `version` | opt | int | 1 | Data-format version. |
 | `id` | req | string | — | Room id (matches the file name). |
 | `background` | req | `{color?, layers}` | — | See below. |
-| `perspective` | opt | `{top: {y, scale}, bottom: {y, scale}}` | scale 1.0 | Avatar scale interpolation by pivot y. |
+| `perspective` | opt | `{top: {y, scale}, bottom: {y, scale}}` | base scale | Avatar render scale interpolated by walking-pivot y, clamped outside `[top.y, bottom.y]`. Omitted ⇒ each avatar keeps its base scale. See [04 § Perspective scaling](04-point-and-click-concepts.md). |
 | `walkable` | req | polygon | — | Navigable area. |
 | `obstacles` | opt | `[polygon]` | `[]` | Non-walkable polygons inside `walkable`. |
 | `points` | opt | map id → `{x, y}` | — | Named coordinates (starts, approach, camera targets). |
@@ -146,7 +146,8 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `id` | req | string | — | Layer id. |
 | `image` | req | path | — | Layer image. |
 | `z` | req | number | — | Draw depth; larger is nearer the camera. |
-| `origin` | opt | `{x, y}` | `{0, 0}` | Room-space top-left of the layer's **native-size** image (layers are never stretched, so they may differ in size and be placed freely). The room's world bounds are the union of all layer rects, floored to the room view; see [04 § World bounds](04-point-and-click-concepts.md). |
+| `origin` | opt | `{x, y}` | `{0, 0}` | Room-space top-left of the layer image (layers may differ in size and be placed freely). The room's world bounds are the union of all layer rects, floored to the room view; see [04 § World bounds](04-point-and-click-concepts.md). |
+| `scale` | opt | number | `1.0` | Uniform render scale about `origin`, **aspect always preserved** (never distorted). A development aid for sizing furniture-style occluders; production layers ship native (`1.0`). The room editor resizes about the layer's base (bottom-centre) and can set `z` to the scaled base line. |
 | `interactive` | opt | bool | `false` | Whether the layer receives pointer interaction. |
 | `visible` | opt | bool | `true` | Initial visibility. Toggle at runtime with `set_layer_visible(id, bool)` (needs an `id`); persisted per room. |
 | `shader` | opt | shader ref | — | Design-for. |
@@ -170,8 +171,17 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 |-------|-----|------|---------|---------|
 | `sprite` | req | path | — | Object animation/sprite. |
 | `position` | req | `{x, y}` | — | World position. |
-| `z` | opt | `auto` \| number | `auto` | `auto` = world-y of the sprite pivot; a number overrides. |
+| `z` | opt | `auto` \| number | `auto` | `auto` = the sprite's bottom edge; a number overrides. |
+| `baseline` | opt | number | — | Floor-line world-Y. When set, the object sorts at this depth against avatar feet (occludes feet above the line, is occluded by feet below) — for a perspective object's foreground piece. Overrides `z`. |
 | `visible` | opt | bool | `true` | Initial visibility; `show_object`/`hide_object` change it at runtime. |
+
+**`walkbehinds`** — map of walk-behind id → area (no art duplication: pixels are sampled from a layer):
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `layer` | req | layer id | — | Source background layer whose pixels are sampled. Must exist. |
+| `area` | req | polygon | — | Convex mask over the layer; the patch redrawn on top. Split a concave occluder into several areas. |
+| `baseline` | req | number | — | Floor-line world-Y; the patch sorts here against avatar feet (in front when feet are below, behind when above). |
 
 **`hotspots`** — map of hotspot id → hotspot:
 
@@ -180,7 +190,8 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `name` | req | string | — | Localized noun shown in the command bar. |
 | `area` | req if no `bind` | polygon | — | Explicit hit-test polygon. |
 | `bind` | req if no `area` | `object:<id>` / `region:<id>` | — | Hit test using the bound visual. |
-| `approach` | opt | point id \| `{x, y}` | — | Where the player walks before the command runs. |
+| `approach` | opt | point id \| `{x, y}` | — | Point the player walks toward when a command targets this hotspot. |
+| `requires_approach` | opt | bool | `false` | If `true`, the command waits until the player reaches `approach` (input blocked meanwhile). If `false`, the player still walks toward `approach` but the command fires immediately, allowing distant interactions. |
 | `affordances` | req | `[verb]` | — | Verbs the UI may offer. |
 | `default_verb` | opt | verb | `look_at` | Verb used on a plain click; must be `look_at` or in `affordances`. |
 | `enabled` | opt | bool | `true` | Initial interactivity; `enable_hotspot`/`disable_hotspot` change it at runtime. |
@@ -254,6 +265,7 @@ speaker field in the file.
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `start` | req | node id | — | Entry node. |
+| `text_anchor` | opt | point id | — | Room point where this dialog's NPC speech is drawn; defaults to following the NPC avatar. |
 | `on_enter` | opt | function | — | Setup callback. |
 | `on_exit` | opt | function | — | Cleanup callback. |
 | *(node id)* | — | node | — | Each remaining key is a node. |

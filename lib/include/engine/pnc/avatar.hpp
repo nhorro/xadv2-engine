@@ -51,7 +51,7 @@ private:
 
     gfx::AnimatedSprite sprite_;
     Mover mover_;
-    float scale_ = 1.0f;
+    float scale_ = 1.0f; // base scale; the fallback when the room has no perspective
 };
 
 } // namespace pac::pnc

@@ -21,8 +21,9 @@ class Avatar;
 struct RoomData;
 
 /// Derive a room's world bounds from its background layers: the bounding box of
-/// every layer rect — a layer occupies [origin, origin + native texture size),
-/// origin defaulting to the world origin (0,0) — anchored at (0,0) and floored to
+/// every layer rect — a layer occupies [origin, origin + native texture size ×
+/// scale), origin defaulting to the world origin (0,0) and scale to 1.0 — anchored
+/// at (0,0) and floored to
 /// `viewport` so the world is never smaller than the room view. Layers that fail
 /// to load contribute nothing; uncovered world area shows `background_color`.
 /// Texture sizes come from `resources`, so this is render-side, not headless.
