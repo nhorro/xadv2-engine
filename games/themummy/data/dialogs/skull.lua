@@ -13,6 +13,9 @@
 --   item: "dry_flower"
 
 return {
+  -- The skull is a fixed prop (not an avatar), so anchor its dialog lines at the
+  -- shelf where it sits instead of the screen centre.
+  text_anchor = "skull_talk_spot",
   start = "intro",
 
   intro = {
