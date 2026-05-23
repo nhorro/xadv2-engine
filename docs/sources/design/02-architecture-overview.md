@@ -726,6 +726,21 @@ The engine should support development flags for:
 
 These flags belong in development configuration, not in player-facing settings.
 
+The visualization overlays are implemented (#37) as in-room layers, gated by the
+manifest `development.edit_mode` flag (the master switch — when off, overlays never
+render and the toggle keys are inert). The `show_*` flags seed each layer's initial
+state; in a dev session they are toggled at runtime:
+
+| Key | Layer |
+|-----|-------|
+| `F1` | walkable area (green) + obstacles (red) — `show_walkboxes` |
+| `F2` | hotspot areas (cyan) + names + approach points (yellow) — `show_hotspots` |
+| `F3` | avatar anchors (magenta cross) + z values — `show_anchors` |
+| `F4` | command-builder state + room/world/region state HUD — `show_state` |
+
+Room reload, room jump, and inventory add/remove (the action-style dev tools) are
+tracked separately under dev actions.
+
 ### Keep layer boundaries strict
 
 The dependency rule is part of the design.
