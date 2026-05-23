@@ -90,6 +90,7 @@ hotspots:
     - {x: 1260, y: 549}
     - {x: 1400, y: 549}
     - {x: 1405, y: 172}
+    approach: at_door
     affordances:
     - look_at
     - open
