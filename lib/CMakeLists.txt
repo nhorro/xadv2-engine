@@ -76,6 +76,7 @@ add_library(pac_engine STATIC
     src/pnc/speech_manager.cpp
     src/pnc/room_runtime.cpp
     src/pnc/room_renderer.cpp
+    src/pnc/debug_overlay.cpp
     src/pnc/command.cpp
     src/pnc/command_builder.cpp
     src/pnc/inventory.cpp
