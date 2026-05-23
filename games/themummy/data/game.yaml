@@ -21,9 +21,14 @@ settings:
     sfx_volume: 0.8
 
 development:
-  edit_mode: false
-  show_walkboxes: false
+  # edit_mode is the master gate for the in-room debug overlays (#37). With it on,
+  # toggle layers at runtime: F1 walkboxes, F2 hotspots, F3 anchors/z, F4 state HUD.
+  # The show_* flags below seed each layer's initial on/off state.
+  edit_mode: true
+  show_walkboxes: true
   show_hotspots: false
+  show_anchors: false
+  show_state: false
   allow_room_reload: true
 
 #entry: title
