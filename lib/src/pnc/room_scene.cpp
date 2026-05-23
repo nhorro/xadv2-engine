@@ -14,6 +14,7 @@
 #include "engine/core/text_encoding.hpp"
 #include "engine/gfx/animated_sprite.hpp"
 #include "engine/pnc/data_error.hpp"
+#include "engine/pnc/dev_actions.hpp"
 #include "engine/pnc/room.hpp"
 #include "pnc/dialog_internal.hpp"
 
@@ -444,6 +445,69 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     ctx_.scripting.set_current_scope(ctx_.scripting.global_scope());
 }
 
+void RoomScene::dev_reload_room() {
+    if (!room_ || !ctx_.dev.allow_room_reload) {
+        return;
+    }
+    // Script-only hot reload (design 02 §Script task ownership): run on_unload,
+    // cancel the room scope (reaping its tasks), reopen it, re-evaluate the
+    // behavior table, then on_load. RoomData, the player, and persistent state
+    // are untouched — only the Lua behavior is refreshed.
+    room_->call_hook("on_unload");
+    ctx_.scripting.cancel_scope(room_scope_);
+    room_scope_ = ctx_.scripting.open_scope();
+    ctx_.scripting.set_current_scope(room_scope_);
+    const std::string lua_logical = rooms_dir_ + "/" + current_room_id_ + ".lua";
+    room_->load_behavior(ctx_.scripting, ctx_.resources, lua_logical, ctx_.log);
+    room_->call_hook("on_load");
+    ctx_.scripting.set_current_scope(ctx_.scripting.global_scope());
+    ctx_.log.info("dev: reloaded room script '" + current_room_id_ + "'");
+}
+
+void RoomScene::dev_jump_to_next_room() {
+    std::string host;
+    try {
+        host = ctx_.resources.host_path(rooms_dir_);
+    } catch (const std::exception& e) {
+        ctx_.log.warn(std::string("dev: cannot enumerate rooms: ") + e.what());
+        return;
+    }
+    const std::vector<std::string> ids = room_ids_in_dir(host);
+    if (ids.size() < 2) {
+        ctx_.log.info("dev: no other room to jump to");
+        return;
+    }
+    const auto it = std::find(ids.begin(), ids.end(), current_room_id_);
+    const std::size_t next =
+        (it == ids.end()) ? 0 : (static_cast<std::size_t>(it - ids.begin()) + 1) % ids.size();
+    pending_room_ = ids[next];
+    pending_entry_.clear();
+    change_pending_ = true; // update() commits the unload+load next frame
+    ctx_.log.info("dev: jump to room '" + ids[next] + "'");
+}
+
+void RoomScene::dev_give_next_item() {
+    for (const auto& [id, def] : inventory_.definitions()) {
+        if (!inventory_.has(id)) {
+            inventory_.add(id);
+            ctx_.log.info("dev: added item '" + id + "'");
+            return;
+        }
+    }
+    ctx_.log.info("dev: all defined items already held");
+}
+
+void RoomScene::dev_remove_last_item() {
+    const std::vector<std::string>& held = inventory_.list();
+    if (held.empty()) {
+        ctx_.log.info("dev: inventory is empty");
+        return;
+    }
+    const std::string id = held.back();
+    inventory_.remove(id);
+    ctx_.log.info("dev: removed item '" + id + "'");
+}
+
 std::optional<Avatar> RoomScene::make_avatar(const std::string& character_id) {
     const Character* character = cast_.character(character_id);
     if (!character) {
@@ -598,6 +662,27 @@ void RoomScene::handle_event(const sf::Event& event) {
     if (ctx_.dev.edit_mode && event.type == sf::Event::KeyPressed &&
         debug_flags_.toggle(event.key.code)) {
         return;
+    }
+    // Dev actions (#38): F5-F8 authoring helpers. Dev-only, and only from COMMAND
+    // so they can't disrupt a running dialog or the pause menu.
+    if (ctx_.dev.edit_mode && event.type == sf::Event::KeyPressed &&
+        view_state_ == ViewState::COMMAND) {
+        switch (event.key.code) {
+        case sf::Keyboard::F5:
+            dev_reload_room();
+            return;
+        case sf::Keyboard::F6:
+            dev_jump_to_next_room();
+            return;
+        case sf::Keyboard::F7:
+            dev_give_next_item();
+            return;
+        case sf::Keyboard::F8:
+            dev_remove_last_item();
+            return;
+        default:
+            break;
+        }
     }
     if (change_armed_) {
         return; // a change_room is committing (fading out); ignore input
