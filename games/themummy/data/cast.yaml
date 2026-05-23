@@ -3,7 +3,7 @@ version: 1
 appearances:
   julia_body:
     type: animated_sprite
-    sprite: characters/julia/body.anim.yml
+    sprite: characters/julia/julia.anim.yml
 
 characters:
   julia:

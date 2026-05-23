@@ -26,7 +26,8 @@ development:
   show_hotspots: false
   allow_room_reload: true
 
-entry: title
+#entry: title
+entry: room_view
 
 scenes:
   - id: title

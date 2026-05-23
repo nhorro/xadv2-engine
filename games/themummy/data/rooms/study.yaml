@@ -40,16 +40,16 @@ hotspots:
     area: [ {x: 1040, y: 430}, {x: 1260, y: 430}, {x: 1260, y: 540}, {x: 1040, y: 540} ]
     approach: at_desk
     affordances: [ look_at, pick_up ]
-  stan:
-    name: "Stan"
-    # Loose hit-box around the NPC's standing position. M5a uses an explicit
-    # polygon since avatar-bound hotspots (bind: "npc:<id>") aren't a runtime
-    # hit source yet.
-    area: [ {x: 830, y: 700}, {x: 940, y: 700}, {x: 940, y: 900}, {x: 830, y: 900} ]
-    approach: near_stan
-    default_verb: talk_to
-    affordances: [ look_at, talk_to ]
+  # stan:
+  #   name: "Stan"
+  #   # Loose hit-box around the NPC's standing position. M5a uses an explicit
+  #   # polygon since avatar-bound hotspots (bind: "npc:<id>") aren't a runtime
+  #   # hit source yet.
+  #   area: [ {x: 830, y: 700}, {x: 940, y: 700}, {x: 940, y: 900}, {x: 830, y: 900} ]
+  #   approach: near_stan
+  #   default_verb: talk_to
+  #   affordances: [ look_at, talk_to ]
 
 avatars:
   - { id: julia, start: player_start, orientation: down, player: true }
-  - { id: stan,  start: stan_spot,    orientation: down }
+  #- { id: stan,  start: stan_spot,    orientation: down }
