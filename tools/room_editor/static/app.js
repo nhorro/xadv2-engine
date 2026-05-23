@@ -33,7 +33,7 @@ const deletePointButton = document.getElementById('delete-point');
 const snapshotRegionButton = document.getElementById('snapshot-region');
 const snapshotSource = document.getElementById('snapshot-source');
 
-const modeOptions = ['walkable', 'zones', 'regions', 'hotspots', 'points', 'layers', 'preview'];
+const modeOptions = ['walkable', 'obstacles', 'zones', 'regions', 'hotspots', 'points', 'layers', 'preview'];
 const entityPrefix = {
   zones: 'zone',
   regions: 'region',
@@ -80,6 +80,8 @@ function updateModeOptions() {
 function getEntities() {
   if (!state.room) return [];
   if (state.mode === 'walkable') return [{ id: 'walkable', label: 'walkable' }];
+  // Obstacles are unnamed polygons; key each by its array index.
+  if (state.mode === 'obstacles') return (state.room.obstacles || []).map((_, i) => ({ id: String(i), label: `obstacle ${i}` }));
   if (state.mode === 'points') return Object.keys(state.room.points || {}).map((id) => ({ id, label: id }));
   if (state.mode === 'zones') return (state.room.zones || []).map((zone) => ({ id: zone.id, label: zone.id }));
   if (state.mode === 'regions') return Object.keys(state.room.regions || {}).map((id) => ({ id, label: id }));
@@ -243,6 +245,9 @@ function getRoomPolygon() {
   if (!state.room) return [];
   if (state.mode === 'walkable') return state.room.walkable || [];
   if (!state.selectedEntity) return [];
+  if (state.mode === 'obstacles') {
+    return (state.room.obstacles || [])[Number(state.selectedEntity)] || [];
+  }
   if (state.mode === 'zones') {
     return (state.room.zones || []).find((zone) => zone.id === state.selectedEntity)?.polygon || [];
   }
@@ -262,6 +267,10 @@ function setRoomPolygon(polygon) {
     return;
   }
   if (!state.selectedEntity) return;
+  if (state.mode === 'obstacles') {
+    const obstacles = state.room.obstacles || (state.room.obstacles = []);
+    obstacles[Number(state.selectedEntity)] = polygon;
+  }
   if (state.mode === 'zones') {
     const zone = (state.room.zones || []).find((zone) => zone.id === state.selectedEntity);
     if (zone) zone.polygon = polygon;
@@ -398,6 +407,7 @@ function polygonForMode() {
   if (state.mode === 'walkable') {
     return [{ id: 'walkable', polygon: state.room.walkable || [] }];
   }
+  if (state.mode === 'obstacles') return (state.room.obstacles || []).map((poly, i) => ({ id: String(i), polygon: poly }));
   if (state.mode === 'zones') return (state.room.zones || []).map((zone) => ({ id: zone.id, polygon: zone.polygon }));
   if (state.mode === 'regions') return Object.entries(state.room.regions || {}).map(([id, region]) => ({ id, polygon: region.area }));
   if (state.mode === 'hotspots') return Object.entries(state.room.hotspots || {}).map(([id, hotspot]) => ({ id, polygon: hotspot.area }));
@@ -407,12 +417,14 @@ function polygonForMode() {
 function drawPolygons() {
   const colors = {
     walkable: 'rgba(34, 197, 94, 0.25)',
+    obstacles: 'rgba(239, 68, 68, 0.28)',
     zones: 'rgba(96, 165, 250, 0.25)',
     regions: 'rgba(192, 132, 252, 0.25)',
     hotspots: 'rgba(251, 146, 60, 0.25)',
   };
   const outlines = {
     walkable: '#15803d',
+    obstacles: '#b91c1c',
     zones: '#1d4ed8',
     regions: '#7c3aed',
     hotspots: '#ea580c',
@@ -782,6 +794,11 @@ function addEntity() {
   } else if (mode === 'walkable') {
     alert('Walkable is a single polygon and cannot be added.');
     return;
+  } else if (mode === 'obstacles') {
+    // Obstacles are unnamed; add an empty polygon and select it by index.
+    state.room.obstacles = state.room.obstacles || [];
+    state.room.obstacles.push([]);
+    state.selectedEntity = String(state.room.obstacles.length - 1);
   } else {
     const id = prompt(`New ${mode.slice(0, -1)} id:`);
     if (!id) return;
@@ -827,6 +844,9 @@ function removeEntity() {
   } else if (mode === 'walkable') {
     alert('Walkable cannot be deleted.');
     return;
+  } else if (mode === 'obstacles') {
+    (state.room.obstacles || []).splice(Number(state.selectedEntity), 1);
+    state.selectedEntity = null;
   } else if (mode === 'zones') {
     state.room.zones = (state.room.zones || []).filter((zone) => zone.id !== state.selectedEntity);
     state.selectedEntity = null;
