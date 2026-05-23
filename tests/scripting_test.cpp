@@ -87,6 +87,30 @@ TEST_CASE("cancel_scope removes tasks and never resumes them") {
     CHECK(s.active_task_count() == 0);
 }
 
+TEST_CASE("a task spawning children mid-resume does not corrupt the scheduler") {
+    // Regression: resume() must not hold a Task& across the coroutine call.
+    // spawn() push_back()s into the tasks vector and can reallocate it; a held
+    // reference would dangle (heap-use-after-free under ASan). The parent spawns
+    // enough children in one body to force several reallocations before yielding.
+    Diagnostics log = quiet();
+    Scripting s(log);
+    CHECK(s.run_string(R"(
+        spawn(function()
+            for i = 1, 64 do
+                spawn(function() end)
+            end
+            wait(1.0)
+        end)
+    )"));
+    CHECK(s.active_task_count() == 1);
+
+    s.update(0.0f); // parent spawns 64 children (forces growth), then waits
+    CHECK(s.active_task_count() == 65);
+
+    s.update(2.0f); // parent timer elapses and all children run to completion
+    CHECK(s.active_task_count() == 0);
+}
+
 TEST_CASE("show_text exposes the current page and clears it when done") {
     Diagnostics log = quiet();
     Scripting s(log);
