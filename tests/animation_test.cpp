@@ -1,10 +1,12 @@
 #include "engine/gfx/animation.hpp"
 #include "engine/gfx/asset_error.hpp"
 #include "engine/gfx/sequence_player.hpp"
+#include "loader_diag.hpp"
 
 #include <doctest/doctest.h>
 
 using namespace pac::gfx;
+using pac::test::error_code;
 
 namespace {
 
@@ -44,6 +46,10 @@ TEST_CASE("parse_animation reads pivot, spritesheet, and sequences") {
 
 TEST_CASE("parse_animation rejects missing sequences") {
     CHECK_THROWS_AS(parse_animation("pivot: foot\n"), AssetError);
+    CHECK(error_code([] { parse_animation("pivot: foot\n"); }) == "anim.sequences-not-map");
+    CHECK(error_code([] {
+              parse_animation("sequences:\n  idle:\n    frames:\n      - { duration: 0.1 }\n");
+          }) == "anim.frame-sprite-missing");
 }
 
 TEST_CASE("SequencePlayer advances frames and loops") {
