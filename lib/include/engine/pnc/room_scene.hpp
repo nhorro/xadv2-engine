@@ -10,6 +10,7 @@
 #include "engine/pnc/cast.hpp"
 #include "engine/pnc/command.hpp"
 #include "engine/pnc/command_builder.hpp"
+#include "engine/pnc/debug_overlay.hpp"
 #include "engine/pnc/dialog.hpp"
 #include "engine/pnc/inventory.hpp"
 #include "engine/pnc/room_renderer.hpp"
@@ -154,6 +155,9 @@ private:
     /// The top-bar text: the command being built, plus a preview of the element
     /// under the cursor per the room-view command state (design 04 §Top bar).
     [[nodiscard]] std::string top_bar_text() const;
+    /// Multi-line debug HUD text (#37): room/zone/view-state, command-builder
+    /// state, and a dump of world/room/region state. Drawn by the F4 overlay.
+    [[nodiscard]] std::string debug_hud_text() const;
     [[nodiscard]] geom::Point virtual_to_world(sf::Vector2f virtual_point) const;
     [[nodiscard]] float scenery_height() const;
     void check_zones();
@@ -189,6 +193,10 @@ private:
     // spoke (e.g. called talk()) and skip the "nothing happens" fallback caption.
     bool spoke_during_command_ = false;
     RoomRenderer renderer_;
+    DebugOverlay debug_overlay_;
+    // Dev overlay layer toggles (#37). Seeded from ctx_.dev in enter(); flipped by
+    // F1-F4. Only rendered / responsive to keys when ctx_.dev.edit_mode is set.
+    DebugOverlayFlags debug_flags_;
     CommandBuilder builder_;
     std::optional<ScummPanel> panel_;
     // Last known pointer position in virtual coords; drives the top-bar hover

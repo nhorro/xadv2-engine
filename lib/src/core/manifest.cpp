@@ -123,6 +123,8 @@ Manifest parse_manifest(const std::string& yaml_text) {
             dev["show_walkboxes"] ? dev["show_walkboxes"].as<bool>() : false;
         m.development.show_hotspots =
             dev["show_hotspots"] ? dev["show_hotspots"].as<bool>() : false;
+        m.development.show_anchors = dev["show_anchors"] ? dev["show_anchors"].as<bool>() : false;
+        m.development.show_state = dev["show_state"] ? dev["show_state"].as<bool>() : false;
         m.development.allow_room_reload =
             dev["allow_room_reload"] ? dev["allow_room_reload"].as<bool>() : false;
     }
