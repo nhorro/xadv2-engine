@@ -1,8 +1,63 @@
 #include "engine/core/display.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace pac::core {
+
+std::vector<sf::Vector2u> windowed_size_options(sf::Vector2u desktop, sf::Vector2u virtual_res) {
+    std::vector<sf::Vector2u> out;
+    if (virtual_res.x == 0 || virtual_res.y == 0) {
+        return out;
+    }
+    const float factors[] = {1.0f, 1.5f, 2.0f, 3.0f};
+    for (const float f : factors) {
+        const sf::Vector2u s{static_cast<unsigned>(std::lround(virtual_res.x * f)),
+                             static_cast<unsigned>(std::lround(virtual_res.y * f))};
+        const bool fits =
+            desktop.x == 0 || desktop.y == 0 || (s.x <= desktop.x && s.y <= desktop.y);
+        if (!fits) {
+            continue;
+        }
+        if (std::find(out.begin(), out.end(), s) == out.end()) {
+            out.push_back(s);
+        }
+    }
+    if (out.empty()) {
+        out.push_back(virtual_res); // always offer at least the native size
+    }
+    return out;
+}
+
+sf::VideoMode best_fullscreen_mode(const std::vector<sf::VideoMode>& modes,
+                                   sf::Vector2u preferred,
+                                   sf::VideoMode desktop) {
+    if (modes.empty()) {
+        return desktop;
+    }
+    // Exact match to the game's resolution is ideal (pixel-perfect fullscreen).
+    for (const sf::VideoMode& m : modes) {
+        if (m.width == preferred.x && m.height == preferred.y) {
+            return m;
+        }
+    }
+    // Otherwise the smallest mode that still contains the virtual resolution, so
+    // the image only ever scales up (and is letterboxed) — never cropped.
+    const sf::VideoMode* best = nullptr;
+    for (const sf::VideoMode& m : modes) {
+        if (m.width >= preferred.x && m.height >= preferred.y) {
+            if (!best || (static_cast<unsigned long long>(m.width) * m.height <
+                          static_cast<unsigned long long>(best->width) * best->height)) {
+                best = &m;
+            }
+        }
+    }
+    if (best) {
+        return *best;
+    }
+    // No mode is large enough: take the largest available (SFML sorts desc).
+    return modes.front();
+}
 
 Viewport letterbox(sf::Vector2u window, sf::Vector2u virtual_res) {
     Viewport vp;
@@ -27,11 +82,17 @@ sf::Vector2f window_to_virtual(sf::Vector2i px, sf::Vector2u window, sf::Vector2
             (static_cast<float>(px.y) - vp.offset.y) / vp.scale};
 }
 
-Display::Display(sf::Vector2u virtual_res, sf::Vector2u window)
-    : virtual_res_(virtual_res), window_(window) {}
+Display::Display(sf::Vector2u virtual_res, sf::Vector2u window, bool fullscreen)
+    : virtual_res_(virtual_res), window_(window), fullscreen_(fullscreen) {}
 
 void Display::set_window_size(sf::Vector2u window) {
     window_ = window;
+}
+
+std::optional<DisplayMode> Display::take_pending_mode() {
+    std::optional<DisplayMode> m = pending_;
+    pending_.reset();
+    return m;
 }
 
 Viewport Display::viewport() const {

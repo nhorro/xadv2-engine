@@ -2,7 +2,15 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
+
 using namespace pac::core;
+
+namespace {
+bool has_size(const std::vector<sf::Vector2u>& v, unsigned x, unsigned y) {
+    return std::find(v.begin(), v.end(), sf::Vector2u{x, y}) != v.end();
+}
+} // namespace
 
 TEST_CASE("letterbox: exact 2x fit leaves no bars") {
     const Viewport vp = letterbox({2560, 1440}, {1280, 720});
@@ -43,4 +51,74 @@ TEST_CASE("window_to_virtual inverts the letterbox transform") {
     sf::Vector2f origin = window_to_virtual({440, 0}, {3440, 1440}, {1280, 720});
     CHECK(origin.x == doctest::Approx(0.0f));
     CHECK(origin.y == doctest::Approx(0.0f));
+}
+
+TEST_CASE("windowed_size_options returns aspect-matching multiples that fit") {
+    // On a 4K desktop, 1x/1.5x/2x/3x of 1280x720 all fit.
+    const auto opts = windowed_size_options({3840, 2160}, {1280, 720});
+    CHECK(has_size(opts, 1280, 720));
+    CHECK(has_size(opts, 1920, 1080));
+    CHECK(has_size(opts, 2560, 1440));
+    CHECK(has_size(opts, 3840, 2160));
+
+    // A 1080p desktop drops the 2x/3x options.
+    const auto small = windowed_size_options({1920, 1080}, {1280, 720});
+    CHECK(has_size(small, 1280, 720));
+    CHECK(has_size(small, 1920, 1080));
+    CHECK_FALSE(has_size(small, 2560, 1440));
+
+    // Tiny desktop still yields at least the native size (never empty).
+    const auto tiny = windowed_size_options({640, 480}, {1280, 720});
+    REQUIRE_FALSE(tiny.empty());
+    CHECK(has_size(tiny, 1280, 720));
+
+    // Zero desktop means "no limit" (headless): all multiples present.
+    const auto headless = windowed_size_options({0, 0}, {1280, 720});
+    CHECK(has_size(headless, 2560, 1440));
+    CHECK(has_size(headless, 3840, 2160));
+}
+
+TEST_CASE("best_fullscreen_mode prefers an exact match to the game resolution") {
+    std::vector<sf::VideoMode> modes = {{1920, 1080, 32}, {1280, 720, 32}, {800, 600, 32}};
+    const sf::VideoMode m = best_fullscreen_mode(modes, {1280, 720}, sf::VideoMode(1920, 1080));
+    CHECK(m.width == 1280);
+    CHECK(m.height == 720);
+}
+
+TEST_CASE("best_fullscreen_mode picks the smallest mode large enough when no exact match") {
+    std::vector<sf::VideoMode> modes = {{2560, 1440, 32}, {1600, 900, 32}, {1024, 768, 32}};
+    const sf::VideoMode m = best_fullscreen_mode(modes, {1280, 720}, sf::VideoMode(2560, 1440));
+    CHECK(m.width == 1600); // smallest that contains 1280x720
+    CHECK(m.height == 900);
+}
+
+TEST_CASE("best_fullscreen_mode falls back to the desktop mode when none qualify") {
+    // Empty list -> desktop.
+    const sf::VideoMode none = best_fullscreen_mode({}, {1280, 720}, sf::VideoMode(1366, 768));
+    CHECK(none.width == 1366);
+    CHECK(none.height == 768);
+
+    // No mode is large enough -> the largest available (SFML sorts descending).
+    std::vector<sf::VideoMode> small = {{1024, 768, 32}, {800, 600, 32}};
+    const sf::VideoMode big = best_fullscreen_mode(small, {1280, 720}, sf::VideoMode(640, 480));
+    CHECK(big.width == 1024);
+    CHECK(big.height == 768);
+}
+
+TEST_CASE("Display pending-mode request round-trips and tracks fullscreen") {
+    Display d({1280, 720}, {1280, 720}, /*fullscreen=*/false);
+    CHECK_FALSE(d.fullscreen());
+    CHECK_FALSE(d.take_pending_mode().has_value()); // nothing pending initially
+
+    d.request_mode({{1920, 1080}, true});
+    const auto pending = d.take_pending_mode();
+    REQUIRE(pending.has_value());
+    CHECK(pending->size == sf::Vector2u{1920, 1080});
+    CHECK(pending->fullscreen == true);
+    CHECK_FALSE(d.take_pending_mode().has_value()); // consumed once
+
+    // The main loop reports the applied mode back to Display.
+    d.set_window_size({1920, 1080});
+    d.set_fullscreen(true);
+    CHECK(d.current_mode() == DisplayMode{{1920, 1080}, true});
 }

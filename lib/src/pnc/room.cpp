@@ -82,6 +82,7 @@ RoomData parse_room(const std::string& yaml_text) {
             layer.image = ln["image"].as<std::string>();
             layer.z = ln["z"] ? ln["z"].as<float>() : 0.0f;
             layer.interactive = ln["interactive"] ? ln["interactive"].as<bool>() : false;
+            layer.visible = ln["visible"] ? ln["visible"].as<bool>() : true;
             if (const YAML::Node origin = ln["origin"]) {
                 layer.origin = parse_point(origin);
             }

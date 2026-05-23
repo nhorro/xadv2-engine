@@ -59,6 +59,7 @@ public:
     void api_set_region_state(const std::string& region_id, const std::string& state);
     [[nodiscard]] std::string api_get_region_state(const std::string& region_id) const;
     void api_show_object(const std::string& object_id, bool visible);
+    void api_set_layer_visible(const std::string& layer_id, bool visible);
     void api_set_hotspot_enabled(const std::string& hotspot_id, bool enabled);
     void api_set_room_state(const std::string& key, pac::core::StateValue value);
     [[nodiscard]] std::optional<pac::core::StateValue>
@@ -175,6 +176,10 @@ private:
     std::optional<Avatar> player_;
     std::optional<Camera> camera_;
     SpeechManager speech_;
+    // Set whenever a line is shown via say()/say_at(); cleared before each command
+    // dispatch so execute_ready_command() can tell whether the verb handler already
+    // spoke (e.g. called talk()) and skip the "nothing happens" fallback caption.
+    bool spoke_during_command_ = false;
     RoomRenderer renderer_;
     CommandBuilder builder_;
     std::optional<ScummPanel> panel_;
@@ -190,6 +195,7 @@ private:
     std::map<std::string, std::map<std::string, std::string>> region_state_persist_;
     std::map<std::string, std::map<std::string, bool>> hotspot_enabled_persist_;
     std::map<std::string, std::map<std::string, bool>> object_visible_persist_;
+    std::map<std::string, std::map<std::string, bool>> layer_visible_persist_;
 
     bool change_pending_ = false;
     std::string pending_room_;

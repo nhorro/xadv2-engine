@@ -31,6 +31,11 @@ void RoomRuntime::seed_runtime_state() {
     for (const auto& [id, object] : data_.objects) {
         object_visible_[id] = object.visible;
     }
+    for (const BackgroundLayer& layer : data_.layers) {
+        if (!layer.id.empty()) {
+            layer_visible_[layer.id] = layer.visible;
+        }
+    }
     for (const auto& [id, hs] : data_.hotspots) {
         hotspot_enabled_[id] = hs.enabled;
     }
@@ -103,6 +108,15 @@ std::string RoomRuntime::region_state(const std::string& region_id) const {
 
 void RoomRuntime::set_object_visible(const std::string& object_id, bool visible) {
     object_visible_[object_id] = visible;
+}
+
+void RoomRuntime::set_layer_visible(const std::string& layer_id, bool visible) {
+    layer_visible_[layer_id] = visible;
+}
+
+bool RoomRuntime::layer_visible(const std::string& layer_id) const {
+    const auto it = layer_visible_.find(layer_id);
+    return it != layer_visible_.end() ? it->second : true;
 }
 
 bool RoomRuntime::object_visible(const std::string& object_id) const {

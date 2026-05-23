@@ -449,6 +449,7 @@ builds. Region states are not stored here — they are managed by `set_region_st
 | `get_region_state(id)` | region id | state id | Read a region's current state. |
 | `show_object(id)` | object id | — | Make room object visible/enabled. |
 | `hide_object(id)` | object id | — | Hide room object and disable interaction if bound. |
+| `set_layer_visible(id, visible)` | layer id, bool | — | Show/hide a background layer (the layer must have an `id`). Persisted per room. |
 | `enable_hotspot(id)` | hotspot id | — | Allow hotspot interaction. |
 | `disable_hotspot(id)` | hotspot id | — | Prevent hotspot interaction. |
 
