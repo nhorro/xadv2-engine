@@ -1,9 +1,11 @@
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/inventory.hpp"
+#include "loader_diag.hpp"
 
 #include <doctest/doctest.h>
 
 using namespace pac::pnc;
+using pac::test::error_code;
 
 namespace {
 const char* kInventory = R"YAML(
@@ -31,6 +33,7 @@ TEST_CASE("parse_inventory reads item definitions") {
 
 TEST_CASE("parse_inventory rejects a missing items map") {
     CHECK_THROWS_AS(parse_inventory("nope: 1\n"), DataError);
+    CHECK(error_code([] { parse_inventory("nope: 1\n"); }) == "inventory.items-not-map");
 }
 
 TEST_CASE("InventoryModel add / remove / has / list / item") {
