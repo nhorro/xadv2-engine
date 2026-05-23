@@ -1,5 +1,6 @@
 #include "engine/gfx/spritesheet.hpp"
 
+#include "core/load_error_yaml.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
 #include "engine/gfx/asset_error.hpp"
@@ -9,6 +10,17 @@
 #include <utility>
 
 namespace pac::gfx {
+
+namespace {
+
+constexpr const char* kSource = "spritesheet-loader";
+
+[[noreturn]] void
+sheet_fail(const std::string& code, const std::string& msg, const YAML::Node& at = YAML::Node()) {
+    pac::core::fail_at<AssetError>(kSource, code, msg, at);
+}
+
+} // namespace
 
 const sf::Vector2f* Frame::anchor(const std::string& name) const {
     const auto it = anchors.find(name);
@@ -25,7 +37,7 @@ SpritesheetData parse_spritesheet(const std::string& yaml_text) {
     try {
         root = YAML::Load(yaml_text);
     } catch (const YAML::Exception& e) {
-        throw AssetError(std::string("spritesheet: invalid YAML: ") + e.what());
+        sheet_fail("spritesheet.invalid-yaml", std::string("invalid YAML: ") + e.what());
     }
 
     SpritesheetData data;
@@ -38,16 +50,16 @@ SpritesheetData parse_spritesheet(const std::string& yaml_text) {
 
     const YAML::Node sprites = root["sprites"];
     if (!sprites || !sprites.IsSequence()) {
-        throw AssetError("spritesheet: 'sprites' must be a sequence");
+        sheet_fail("spritesheet.sprites-not-seq", "'sprites' must be a sequence", root);
     }
     for (const YAML::Node& sn : sprites) {
         if (!sn["id"]) {
-            throw AssetError("spritesheet: a sprite is missing 'id'");
+            sheet_fail("spritesheet.sprite-id-missing", "a sprite is missing 'id'", sn);
         }
         const std::string id = sn["id"].as<std::string>();
         const YAML::Node r = sn["rect"];
         if (!r) {
-            throw AssetError("spritesheet: sprite '" + id + "' is missing 'rect'");
+            sheet_fail("spritesheet.rect-missing", "sprite '" + id + "' is missing 'rect'", sn);
         }
         Frame frame;
         frame.rect = sf::IntRect(r["x"].as<int>(),

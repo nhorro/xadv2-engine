@@ -1,5 +1,6 @@
 #include "engine/pnc/inventory.hpp"
 
+#include "core/load_error_yaml.hpp"
 #include "engine/pnc/data_error.hpp"
 
 #include <yaml-cpp/yaml.h>
@@ -9,18 +10,30 @@
 
 namespace pac::pnc {
 
+namespace {
+
+constexpr const char* kSource = "inventory-loader";
+
+[[noreturn]] void inventory_fail(const std::string& code,
+                                 const std::string& msg,
+                                 const YAML::Node& at = YAML::Node()) {
+    pac::core::fail_at<DataError>(kSource, code, msg, at);
+}
+
+} // namespace
+
 std::map<std::string, InventoryItem> parse_inventory(const std::string& yaml_text) {
     YAML::Node root;
     try {
         root = YAML::Load(yaml_text);
     } catch (const YAML::Exception& e) {
-        throw DataError(std::string("inventory: invalid YAML: ") + e.what());
+        inventory_fail("inventory.invalid-yaml", std::string("invalid YAML: ") + e.what());
     }
 
     std::map<std::string, InventoryItem> items;
     const YAML::Node node = root["items"];
     if (!node || !node.IsMap()) {
-        throw DataError("inventory: 'items' must be a mapping");
+        inventory_fail("inventory.items-not-map", "'items' must be a mapping", root);
     }
     for (const auto& kv : node) {
         InventoryItem item;

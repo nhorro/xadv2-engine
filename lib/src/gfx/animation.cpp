@@ -1,5 +1,6 @@
 #include "engine/gfx/animation.hpp"
 
+#include "core/load_error_yaml.hpp"
 #include "engine/gfx/asset_error.hpp"
 
 #include <yaml-cpp/yaml.h>
@@ -7,6 +8,17 @@
 #include <utility>
 
 namespace pac::gfx {
+
+namespace {
+
+constexpr const char* kSource = "anim-loader";
+
+[[noreturn]] void
+anim_fail(const std::string& code, const std::string& msg, const YAML::Node& at = YAML::Node()) {
+    pac::core::fail_at<AssetError>(kSource, code, msg, at);
+}
+
+} // namespace
 
 const Sequence* Animation::sequence(const std::string& name) const {
     const auto it = sequences.find(name);
@@ -18,7 +30,7 @@ Animation parse_animation(const std::string& yaml_text) {
     try {
         root = YAML::Load(yaml_text);
     } catch (const YAML::Exception& e) {
-        throw AssetError(std::string("animation: invalid YAML: ") + e.what());
+        anim_fail("anim.invalid-yaml", std::string("invalid YAML: ") + e.what());
     }
 
     Animation anim;
@@ -31,7 +43,7 @@ Animation parse_animation(const std::string& yaml_text) {
 
     const YAML::Node sequences = root["sequences"];
     if (!sequences || !sequences.IsMap()) {
-        throw AssetError("animation: 'sequences' must be a mapping");
+        anim_fail("anim.sequences-not-map", "'sequences' must be a mapping", root);
     }
     for (const auto& kv : sequences) {
         Sequence seq;
@@ -40,7 +52,7 @@ Animation parse_animation(const std::string& yaml_text) {
         if (const YAML::Node frames = node["frames"]) {
             for (const YAML::Node& fn : frames) {
                 if (!fn["sprite"]) {
-                    throw AssetError("animation: a frame is missing 'sprite'");
+                    anim_fail("anim.frame-sprite-missing", "a frame is missing 'sprite'", fn);
                 }
                 FrameRef ref;
                 ref.sprite = fn["sprite"].as<std::string>();
