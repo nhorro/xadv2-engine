@@ -68,6 +68,10 @@ struct GameState {
     /// Same shape, same reasoning as `hotspot_enabled`, for `show_object` /
     /// `hide_object`.
     std::map<std::string, std::map<std::string, bool>> object_visible;
+
+    /// Per-room background-layer visibility: `layer_visible[room_id][layer_id] = bool`.
+    /// Same shape and reasoning as `object_visible`, for `set_layer_visible`.
+    std::map<std::string, std::map<std::string, bool>> layer_visible;
 };
 
 } // namespace pac::core

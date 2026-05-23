@@ -224,6 +224,7 @@ composition, animation, foreground occlusion, and future shader effects.
 | `z` | Draw depth. Larger values are nearer the camera. |
 | `origin` | Optional `{x, y}` room-space top-left. Every layer draws at its **native pixel size**; `origin` is just where its top-left sits (default the world origin `(0,0)`), so layers may differ in size and be placed freely — a foreground occluder, a parallax-ready backdrop, a decal. Layers are **never stretched**. |
 | `interactive` | Whether this layer can receive pointer interactions. Usually false. |
+| `visible` | Optional initial visibility (default `true`). Toggled at runtime with `set_layer_visible(id, bool)`; requires the layer to carry an `id`. World bounds are derived from **all** layers, hidden or not, so toggling never reshapes the room. |
 | `shader` | Optional shader resource or shader config. Design-for. |
 | `animation` | Optional animation description. Design-for. |
 
@@ -239,6 +240,15 @@ Use cases:
 
 A layer may use a solid `background.color` behind all images. This is useful for
 transparent layers, exported foregrounds, and authoring workflows.
+
+**Layer visibility vs. regions.** Toggling a whole layer with `set_layer_visible`
+is the right tool for show/hide of a piece of scenery that occupies its own image
+and depth — e.g. a foreground cart drawn with perspective, removed once it is taken
+away. Use a **region** instead when the *same* footprint swaps between named state
+images (drawer `shut`/`open`); use an **object** for an active sprite the player
+interacts with via a bound hotspot. Layer visibility is persisted per room (like
+region and object state), so a layer hidden by script stays hidden across room
+changes and save/load.
 
 #### World bounds
 
