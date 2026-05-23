@@ -148,6 +148,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `z` | req | number | — | Draw depth; larger is nearer the camera. |
 | `origin` | opt | `{x, y}` | `{0, 0}` | Room-space top-left of the layer's **native-size** image (layers are never stretched, so they may differ in size and be placed freely). The room's world bounds are the union of all layer rects, floored to the room view; see [04 § World bounds](04-point-and-click-concepts.md). |
 | `interactive` | opt | bool | `false` | Whether the layer receives pointer interaction. |
+| `visible` | opt | bool | `true` | Initial visibility. Toggle at runtime with `set_layer_visible(id, bool)` (needs an `id`); persisted per room. |
 | `shader` | opt | shader ref | — | Design-for. |
 | `animation` | opt | anim ref | — | Design-for. |
 

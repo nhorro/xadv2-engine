@@ -84,6 +84,39 @@ background:
     CHECK(r.layers[2].origin.y == doctest::Approx(40.0f));
 }
 
+TEST_CASE("parse_room reads per-layer visibility (default true)") {
+    const char* yaml = R"YAML(
+id: r
+background:
+  layers:
+    - { id: sky,  image: c/sky.png,  z: 0 }
+    - { id: cart, image: c/cart.png, z: 9, visible: false }
+)YAML";
+    const RoomData r = parse_room(yaml);
+    REQUIRE(r.layers.size() == 2);
+    CHECK(r.layers[0].visible == true); // omitted -> visible
+    CHECK(r.layers[1].visible == false);
+}
+
+TEST_CASE("RoomRuntime seeds and toggles layer visibility") {
+    const char* yaml = R"YAML(
+id: r
+background:
+  layers:
+    - { id: sky,  image: c/sky.png,  z: 0 }
+    - { id: cart, image: c/cart.png, z: 9, visible: false }
+)YAML";
+    RoomRuntime room(parse_room(yaml));
+    CHECK(room.layer_visible("sky") == true);     // seeded from YAML default
+    CHECK(room.layer_visible("cart") == false);   // seeded from YAML
+    CHECK(room.layer_visible("unknown") == true); // unknown id defaults visible
+
+    room.set_layer_visible("cart", true);
+    CHECK(room.layer_visible("cart") == true);
+    room.set_layer_visible("sky", false);
+    CHECK(room.layer_visible("sky") == false);
+}
+
 TEST_CASE("is_walkable respects the walkable area and obstacles") {
     const RoomData r = parse_room(kRoom);
     CHECK(r.is_walkable({200, 650}));       // on the floor

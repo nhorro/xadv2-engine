@@ -47,6 +47,9 @@ void RoomRenderer::draw(sf::RenderTarget& target,
     // layer's `origin` (default (0,0)), so layers may differ in size and be placed
     // freely. The room's world bounds are the union of these rects.
     for (const BackgroundLayer& layer : data.layers) {
+        if (!layer.id.empty() && !room.layer_visible(layer.id)) {
+            continue;
+        }
         const std::string image = pac::core::logical_join(room_dir, layer.image);
         const geom::Point origin = layer.origin;
         items.emplace_back(layer.z, [&resources, &log, image, origin](sf::RenderTarget& t) {
