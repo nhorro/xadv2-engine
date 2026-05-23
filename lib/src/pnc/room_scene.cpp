@@ -862,8 +862,57 @@ void RoomScene::execute_ready_command() {
     dispatch_and_feedback(*cmd);
 }
 
+void RoomScene::face_target(const Command& cmd) {
+    if (!player_ || !room_) {
+        return;
+    }
+    const ObjectRef* target = nullptr;
+    if (cmd.param2 && cmd.param2->kind == ObjectKind::ROOM_OBJECT) {
+        target = &*cmd.param2;
+    } else if (cmd.param1.kind == ObjectKind::ROOM_OBJECT) {
+        target = &cmd.param1;
+    }
+    if (target == nullptr) {
+        return;
+    }
+    const auto it = room_->data().hotspots.find(target->id);
+    if (it == room_->data().hotspots.end()) {
+        return;
+    }
+    if (const std::optional<geom::Point> focus = hotspot_focus(it->second)) {
+        player_->face(nearest_direction(*focus - player_->position()));
+    }
+}
+
+std::optional<geom::Point> RoomScene::hotspot_focus(const RoomHotspot& hs) const {
+    const auto centre = [](const sf::FloatRect& b) {
+        return geom::Point{b.left + (b.width / 2.0f), b.top + (b.height / 2.0f)};
+    };
+    if (!hs.area.empty()) {
+        return centre(geom::polygon_bounds(hs.area));
+    }
+    if (!room_) {
+        return std::nullopt;
+    }
+    if (hs.bind.starts_with("region:")) {
+        const auto it = room_->data().regions.find(hs.bind.substr(std::string("region:").size()));
+        if (it != room_->data().regions.end() && !it->second.area.empty()) {
+            return centre(geom::polygon_bounds(it->second.area));
+        }
+    } else if (hs.bind.starts_with("object:")) {
+        if (const auto bounds =
+                object_frame_bounds(hs.bind.substr(std::string("object:").size()))) {
+            return centre(*bounds);
+        }
+    }
+    return std::nullopt;
+}
+
 void RoomScene::dispatch_and_feedback(const Command& cmd) {
     spoke_during_command_ = false;
+    // Turn to face what we're about to act on / talk to, before dispatch (so the
+    // avatar already looks at an NPC when its dialog opens).
+    face_target(cmd);
     const std::optional<std::string> caption = dispatch(cmd);
     // If dispatch flipped us into a non-command state (e.g. a `talk_to` handler
     // called `start_dialog`), the dialog's first NPC line is already on screen;
@@ -1384,6 +1433,15 @@ void RoomScene::api_talk(const std::string& speaker_id, const std::string& text)
     sf::Color color(230, 230, 230);
     if (const Character* c = cast_.character(speaker_id)) {
         color = c->speech_color;
+    }
+    // Anchor at the speaking NPC's avatar when there is one, so `talk("npc", ...)`
+    // appears over that NPC instead of the player. Player speech and speakers
+    // without an in-room avatar fall back to the player position.
+    if (room_) {
+        if (const Avatar* npc = room_->npc(speaker_id)) {
+            say_at(text, color, npc->position());
+            return;
+        }
     }
     say(text, color);
 }

@@ -1083,6 +1083,12 @@ Speech is rendered over the scenery near the speaker. The speech font is the
 `RoomScene` `font` parameter (a logical path; an engine default applies when
 omitted); per-character speech color and style come from the cast file.
 
+Anchoring follows the speaker: the player's lines sit over the player; an NPC's
+lines via `talk(npc, ...)` sit over that NPC's avatar. A fixed prop that is not
+an avatar (e.g. a talking skull on a shelf) anchors its dialog lines at a named
+room point via the dialog's `text_anchor` (the "talk spot"), so the text lands on
+the prop instead of the screen centre.
+
 Every spoken line shall have a stable id or be representable by one. This enables
 future voice-over attachment.
 
