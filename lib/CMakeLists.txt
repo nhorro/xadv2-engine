@@ -69,6 +69,7 @@ add_library(pac_engine STATIC
     src/pnc/story_text_scene.cpp
     src/pnc/room.cpp
     src/pnc/cast.cpp
+    src/pnc/mover.cpp
     src/pnc/avatar.cpp
     src/pnc/speech_manager.cpp
     src/pnc/room_runtime.cpp
