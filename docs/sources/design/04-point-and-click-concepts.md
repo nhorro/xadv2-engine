@@ -530,6 +530,21 @@ The first implementation shall use direct verb names as affordances. A future
 version may introduce higher-level categories such as `open_closeable`, but the
 runtime dispatch still resolves to concrete verbs.
 
+## Cursor
+
+The engine can replace the OS cursor with a game cursor authored as a resource
+(manifest `cursor:` — see [06 § Game manifest](06-data-formats.md)). It is a
+hardware cursor: `image` is the resting pointer and the optional `interact` image
+is shown while the pointer is over an interactive hotspot, giving affordance
+feedback. `hotspot` is the active click pixel within both images. When no `cursor`
+is configured the OS cursor is kept.
+
+The harness owns the cursor and applies it once per frame from a request channel
+(`EngineContext::cursor`): a scene calls `cursor.want(INTERACT)` each frame the
+pointer is over a hotspot, and the request resets to `DEFAULT` automatically, so
+the cursor falls back the moment the scene stops asking. An animated/blinking
+cursor is a possible later iteration.
+
 ## Avatars
 
 An avatar is the visual and spatial representation of a player character or NPC.

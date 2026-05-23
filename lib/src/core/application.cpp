@@ -1,6 +1,7 @@
 #include "engine/core/application.hpp"
 
 #include "engine/core/audio.hpp"
+#include "engine/core/cursor.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
@@ -18,12 +19,15 @@
 #include "engine/core/strings.hpp"
 #include "engine/core/user_data.hpp"
 
+#include <SFML/Graphics/Image.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Texture.hpp>
 #include <SFML/System/Clock.hpp>
+#include <SFML/Window/Cursor.hpp>
 #include <SFML/Window/Event.hpp>
 
 #include <cmath>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -87,6 +91,35 @@ void apply_window_mode(sf::RenderWindow& window,
     window.setVerticalSyncEnabled(true);
 }
 
+// Load a hardware cursor from a logical image path. Returns nullptr on any
+// failure (no path, missing/undecodable image, or a platform that can't host a
+// pixel cursor) so the caller keeps the OS cursor.
+std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
+                                        const std::string& logical,
+                                        sf::Vector2u hotspot,
+                                        Diagnostics& log) {
+    if (logical.empty()) {
+        return nullptr;
+    }
+    try {
+        const std::vector<std::byte> bytes = source.read_bytes(logical);
+        sf::Image image;
+        if (!image.loadFromMemory(bytes.data(), bytes.size())) {
+            log.warn("cursor: could not decode image '" + logical + "'");
+            return nullptr;
+        }
+        auto cursor = std::make_unique<sf::Cursor>();
+        if (!cursor->loadFromPixels(image.getPixelsPtr(), image.getSize(), hotspot)) {
+            log.warn("cursor: hardware cursor unsupported for '" + logical + "'");
+            return nullptr;
+        }
+        return cursor;
+    } catch (const std::exception& e) {
+        log.warn(std::string("cursor: failed to load '") + logical + "': " + e.what());
+        return nullptr;
+    }
+}
+
 } // namespace
 
 int run(const std::string& manifest_path, const SceneFactory& factory, const RunOptions& opts) {
@@ -126,6 +159,7 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
                     settings.fullscreen);
     SceneManager scenes;
     SaveService saves(user_data_dir(manifest.id) / "saves", log);
+    CursorState cursor_state;
 
     EngineContext ctx{display,
                       resources,
@@ -138,7 +172,8 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
                       log,
                       manifest.development,
                       manifest.id,
-                      saves};
+                      saves,
+                      cursor_state};
     bind_core_api(ctx);
 
     scenes.set_builder([&](const std::string& id) -> std::unique_ptr<Scene> {
@@ -173,6 +208,25 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
                       {{settings.window_width, settings.window_height}, settings.fullscreen},
                       manifest.resolution);
     display.set_window_size(window.getSize());
+
+    // Custom point-and-click cursor (#73). When the manifest declares one, swap
+    // the OS cursor for it; an interact variant (optional) is shown over hotspots
+    // via cursor_state. Both keep the OS cursor on any load failure.
+    //
+    // Skipped in the headless smoke (--frames): setMouseCursor is an X11/Win call,
+    // and a minimal/virtual display (no ARGB-cursor support) raises an
+    // unrecoverable BadCursor that would abort the smoke. The cursors are still
+    // loaded above, so that path is exercised.
+    const bool apply_cursor = opts.max_frames == 0;
+    const std::unique_ptr<sf::Cursor> cursor_default =
+        load_cursor(source, manifest.cursor.image, manifest.cursor.hotspot, log);
+    const std::unique_ptr<sf::Cursor> cursor_interact =
+        cursor_default ? load_cursor(source, manifest.cursor.interact, manifest.cursor.hotspot, log)
+                       : nullptr;
+    if (apply_cursor && cursor_default) {
+        window.setMouseCursor(*cursor_default);
+    }
+    CursorKind applied_cursor = CursorKind::DEFAULT;
 
     // Enable fade-to-black between full-screen scene swaps, and fade the first
     // scene in from black at startup. (Set after the entry scene is already in
@@ -226,6 +280,16 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
         if (!scenes.running()) {
             break;
         }
+
+        // Apply the cursor a scene requested this frame (only when an interact
+        // variant exists to swap to), then reset so INTERACT must be re-asserted.
+        if (apply_cursor && cursor_default && cursor_interact &&
+            cursor_state.requested != applied_cursor) {
+            window.setMouseCursor(cursor_state.requested == CursorKind::INTERACT ? *cursor_interact
+                                                                                 : *cursor_default);
+            applied_cursor = cursor_state.requested;
+        }
+        cursor_state.reset();
 
         window.clear(sf::Color::Black); // letterbox bars
         window.setView(display.view());

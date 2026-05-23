@@ -1,5 +1,6 @@
 #include "engine/pnc/room_scene.hpp"
 
+#include "engine/core/cursor.hpp"
 #include "engine/core/dev_flags.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
@@ -1097,6 +1098,13 @@ void RoomScene::update(float dt) {
     // after a scripted override (issue #25).
     if (camera_ && view_state_ == ViewState::COMMAND && prev_view_state_ != ViewState::COMMAND) {
         camera_->follow_player();
+    }
+    // Cursor affordance (#73): request the INTERACT cursor when an interactive
+    // hotspot is under the pointer in COMMAND. hover_vp_ is offscreen (-1,-1)
+    // until the first MouseMoved, so this stays DEFAULT until the mouse moves.
+    if (view_state_ == ViewState::COMMAND && room_ && hover_vp_.y >= 0.0f &&
+        hover_vp_.y < scenery_height() && hotspot_under(virtual_to_world(hover_vp_)) != nullptr) {
+        ctx_.cursor.want(pac::core::CursorKind::INTERACT);
     }
     prev_view_state_ = view_state_;
     speech_.update(dt);
