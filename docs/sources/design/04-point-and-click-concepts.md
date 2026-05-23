@@ -483,7 +483,7 @@ A hotspot has:
 | `area` | Optional explicit hit-test polygon. |
 | `bind` | Optional binding to a visual object or region. |
 | `approach` | Point the player walks toward when a command targets this hotspot. |
-| `requires_approach` | Optional bool (default `false`). When `true`, the command does not run until the player reaches `approach`; until then input is blocked. When `false`, the player still walks toward `approach`, but the command fires immediately — allowing interactions from a distance. |
+| `requires_approach` | Optional bool (default `true`). When `true`, the command does not run until the player reaches `approach`; until then input is blocked (walk-then-act, the SCUMM norm). Set `false` for the rare act-from-a-distance interaction: the player still walks toward `approach`, but the command fires immediately. |
 | `affordances` | Verbs that the UI may offer for this hotspot. |
 | `default_verb` | Optional verb used on a plain click. Must be `look_at` or in `affordances`. Defaults to `look_at`. |
 
