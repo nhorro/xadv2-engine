@@ -70,7 +70,7 @@ runtime selector are design-for (R3).
 | `language` | req | string | — | Language tag, e.g. `es`. |
 | `verbs` | req | map verb id → string | — | Display label per verb. Keys are the verb ids: `look_at`, `talk_to`, `pick_up`, `use`, `give`, `open`, `close`, `push`, `pull`. |
 | `connectors` | req | map verb id → string | — | Two-operand connector per verb: `use` (e.g. `con`), `give` (e.g. `a`). |
-| `ui` | req | map key → string | — | Built-in menu labels: `new_game`, `continue`, `settings`, `quit`. |
+| `ui` | req | map key → string | — | Built-in UI labels: menu (`new_game`, `continue`, `settings`, `quit`) and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
 
 ```yaml
 version: 1
@@ -92,6 +92,7 @@ connectors:
   give: "a"
 
 ui:
+  walk_to:  "Ir a"
   new_game: "Nuevo juego"
   continue: "Continuar"
   settings: "Opciones"
@@ -127,7 +128,6 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 |-------|-----|------|---------|---------|
 | `version` | opt | int | 1 | Data-format version. |
 | `id` | req | string | — | Room id (matches the file name). |
-| `size` | req | `{width, height}` | — | World size; may exceed the virtual resolution. |
 | `background` | req | `{color?, layers}` | — | See below. |
 | `perspective` | opt | `{top: {y, scale}, bottom: {y, scale}}` | scale 1.0 | Avatar scale interpolation by pivot y. |
 | `walkable` | req | polygon | — | Navigable area. |
@@ -146,6 +146,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `id` | req | string | — | Layer id. |
 | `image` | req | path | — | Layer image. |
 | `z` | req | number | — | Draw depth; larger is nearer the camera. |
+| `origin` | opt | `{x, y}` | `{0, 0}` | Room-space top-left of the layer's **native-size** image (layers are never stretched, so they may differ in size and be placed freely). The room's world bounds are the union of all layer rects, floored to the room view; see [04 § World bounds](04-point-and-click-concepts.md). |
 | `interactive` | opt | bool | `false` | Whether the layer receives pointer interaction. |
 | `shader` | opt | shader ref | — | Design-for. |
 | `animation` | opt | anim ref | — | Design-for. |

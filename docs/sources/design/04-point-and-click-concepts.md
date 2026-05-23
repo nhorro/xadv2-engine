@@ -69,7 +69,8 @@ The YAML file defines what exists. The Lua file defines what happens.
 ```yaml
 version: 1
 id: study
-size: { width: 1600, height: 720 }
+# No explicit size: the room's world bounds are derived from the background
+# layers (the union of their rects, floored to the room view). See below.
 
 background:
   color: { r: 0, g: 0, b: 0, a: 255 }
@@ -87,6 +88,7 @@ background:
     - id: table_front
       image: backgrounds/study/table_front.png
       z: 640
+      origin: { x: 980, y: 300 }   # foreground occluder, placed at native size
       interactive: false
 
 perspective:
@@ -220,6 +222,7 @@ composition, animation, foreground occlusion, and future shader effects.
 | `id` | Stable layer id. |
 | `image` | Logical resource path. |
 | `z` | Draw depth. Larger values are nearer the camera. |
+| `origin` | Optional `{x, y}` room-space top-left. Every layer draws at its **native pixel size**; `origin` is just where its top-left sits (default the world origin `(0,0)`), so layers may differ in size and be placed freely — a foreground occluder, a parallax-ready backdrop, a decal. Layers are **never stretched**. |
 | `interactive` | Whether this layer can receive pointer interactions. Usually false. |
 | `shader` | Optional shader resource or shader config. Design-for. |
 | `animation` | Optional animation description. Design-for. |
@@ -236,6 +239,21 @@ Use cases:
 
 A layer may use a solid `background.color` behind all images. This is useful for
 transparent layers, exported foregrounds, and authoring workflows.
+
+#### World bounds
+
+A room has no authored `size`. Its world bounds are **derived** from the layers:
+each layer occupies `[origin, origin + native image size)`, the world is the union
+of those rects anchored at `(0,0)`, and it is floored to the room-view size so the
+world is never smaller than the visible scenery viewport. Only the right/bottom
+extents grow the world; a layer at a negative `origin` spills off the top-left and
+is simply never scrolled to. Anything not covered by a layer shows
+`background.color` — leaving a gap is an authoring mistake, not a format error.
+This keeps the world coordinate system a consequence of the art rather than a
+number to keep in sync with it. Because the derivation needs image pixel
+dimensions, it happens render-side when textures load (`compute_room_bounds`); the
+headless room loader and geometry/camera logic never depend on it (the `Camera`
+takes explicit bounds).
 
 ## Room view screen layout
 
@@ -322,14 +340,30 @@ never shows space outside the room.
 
 ### Follow behavior
 
-- The camera keeps the player inside a central dead-zone band and scrolls only
-  when the player crosses it.
+- The camera follows the player by mapping the player's **reachable range** — the
+  bounding box of the walkable area — onto the camera's full clamped scroll range,
+  per axis. The leftmost/topmost reachable point shows the start of the
+  background; the rightmost/bottommost shows the end. This aims to cover the whole
+  background across a traversal, even though the player can never reach the room's
+  literal edges (the walkable area is usually a strip inside the room).
+- That reveal is bounded by an **on-screen clamp**: the scroll never moves so far
+  that the player's pivot leaves the viewport. A margin (default 15% of the
+  viewport per axis) keeps clickable floor around the player. When the walkable
+  area is a thin slice of a much larger room, the raw reveal would scroll the
+  player off screen — or into an unclickable sliver — and trap them; the clamp
+  caps the scroll so the player stays visible, sacrificing edge coverage only as
+  much as needed. Well-proportioned rooms (a walkable strip that is not tiny
+  relative to the room) reach full coverage before the clamp engages. The room
+  bounds remain the hard limit, so near a literal room edge the player may sit at
+  the viewport edge (there is nothing further to reveal).
 - The camera is always clamped to the room bounds. A room no larger than the
   scenery viewport is centered and does not scroll.
-- Both axes use the same dead-zone and clamp. A room wider than the scenery
-  viewport scrolls horizontally; a taller room scrolls vertically by the same
-  mechanism. Vertical scrolling is therefore not a separate feature — it falls out
-  of the clamp for tall rooms, which are uncommon.
+- Both axes use the same mapping. A room wider than the scenery viewport scrolls
+  horizontally; a taller room scrolls vertically by the same mechanism. Vertical
+  scrolling is therefore not a separate feature — it falls out of the clamp for
+  tall rooms, which are uncommon.
+- When no walkable area is defined, the reachable range defaults to the whole
+  room, degenerating to ordinary clamped follow.
 
 ### Scripted overrides
 
@@ -520,8 +554,14 @@ Close      Push       Pull
 ```
 
 `Walk to` is not a verb button. Clicking a walkable floor point moves the player
-there. The target uses click-to-move only; keyboard-driven avatar movement from
-the prototype is not part of the design.
+there. Clicking a point **outside** the walkable area (that is not a hotspot)
+routes the player to the nearest reachable point on the walkable boundary rather
+than doing nothing. The target uses click-to-move only; keyboard-driven avatar
+movement from the prototype is not part of the design.
+
+Clicking empty scenery (no hotspot) while a command is being built **cancels**
+the command and returns the builder to `IDLE`; the same click while already
+`IDLE` walks the player as above.
 
 ### Default verb on click
 
@@ -613,6 +653,9 @@ The command builder exists only in the room-view `Command` state.
 | `COMMAND_READY` | Internal | — | `COMMAND_EXECUTING` | Dispatch command. |
 | `COMMAND_EXECUTING` | Command finished | — | `IDLE` | Clear command and restore UI. |
 
+The **Cancel** input is the player clicking empty scenery (a point that is
+neither a hotspot nor the panel) while a command is being built.
+
 ### Verb-to-state mapping
 
 | Verb | After verb selected | After param 1 |
@@ -680,6 +723,7 @@ The command bar previews the command currently being built.
 | `IDLE` | Verb | `Use` |
 | `IDLE` | Room object | `drawer` / localized name. |
 | `IDLE` | Inventory item | `key` / localized name. |
+| `IDLE` | Walkable floor | The walk label (`Ir a` / localized), from the [UI strings resource](06-data-formats.md#ui-strings--stringslangyaml). |
 | `EXPECTING_PARAM1_*` | Nothing | `Use` |
 | `EXPECTING_PARAM1_*` | Valid object | `Use key` |
 | `EXPECTING_PARAM1_*` | Invalid object | `Use` |
