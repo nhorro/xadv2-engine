@@ -16,7 +16,6 @@ room.hotspots = {
       return "La puerta de ingreso al instituto."
     end,
     open = function()
-      -- Note: we should be close
       change_room("hall", "from_exterior")
       return "Abro la puerta y entro al pasillo."
     end,

@@ -64,6 +64,7 @@ hotspots:
     - {x: 751, y: 768}
     - {x: 887, y: 768}
     - {x: 885, y: 581}
+    approach: from_hall
     affordances:
     - look_at
     - open
