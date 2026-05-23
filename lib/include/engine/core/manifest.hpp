@@ -30,6 +30,16 @@ struct SettingsDefaults {
     float sfx_volume = 1.0f;
 };
 
+/// Custom point-and-click cursor (issue #73). `image` is the resting cursor;
+/// `interact` (optional) is shown over an interactive hotspot. `hotspot` is the
+/// pointer's active pixel (the click point) within both images. When `image` is
+/// empty the OS cursor is kept.
+struct CursorConfig {
+    std::string image;
+    std::string interact;
+    sf::Vector2u hotspot{0, 0};
+};
+
 struct SceneDesc {
     std::string id;
     std::string type;
@@ -49,6 +59,7 @@ struct Manifest {
     std::string resources_src; // resolved to a host root by load_manifest
     std::string strings_path;  // logical path
     SettingsDefaults settings;
+    CursorConfig cursor;
     DevFlags development;
     std::string entry;
     std::vector<SceneDesc> scenes;

@@ -117,6 +117,16 @@ Manifest parse_manifest(const std::string& yaml_text) {
         }
     }
 
+    if (const YAML::Node cursor = root["cursor"]) {
+        m.cursor.image = cursor["image"] ? cursor["image"].as<std::string>() : std::string();
+        m.cursor.interact =
+            cursor["interact"] ? cursor["interact"].as<std::string>() : std::string();
+        if (const YAML::Node hot = cursor["hotspot"]) {
+            m.cursor.hotspot = {hot["x"] ? hot["x"].as<unsigned>() : 0u,
+                                hot["y"] ? hot["y"].as<unsigned>() : 0u};
+        }
+    }
+
     if (const YAML::Node dev = root["development"]) {
         m.development.edit_mode = dev["edit_mode"] ? dev["edit_mode"].as<bool>() : false;
         m.development.show_walkboxes =
