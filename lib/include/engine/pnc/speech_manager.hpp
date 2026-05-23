@@ -23,6 +23,14 @@ std::vector<std::string> wrap_text(const std::string& text,
                                    float max_width,
                                    const std::function<float(const std::string&)>& measure);
 
+/// Top-left for a `size`-sized text block centered on `anchor`, clamped to stay
+/// inside `bounds` shrunk by `margin` on every side ("balloon without the
+/// balloon"). If the block is larger than the available span on an axis it is
+/// pinned to the low (left/top) edge so the start of the text stays visible.
+/// Pure geometry; headless-testable.
+geom::Point
+contain_block(geom::Point anchor, sf::Vector2f size, const sf::FloatRect& bounds, float margin);
+
 /// Shows one spoken/caption line over the scenery near the speaker, for a computed
 /// duration, always skippable. (Voice-over hookup is design-for; see R4.)
 class SpeechManager {
