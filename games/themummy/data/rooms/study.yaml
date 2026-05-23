@@ -1,55 +1,107 @@
-# Study/lab room (the camera scrolls). Exit right (to the hall). World bounds are
-# derived from the background layers (here a single 1692x930 plate).
 version: 1
 id: study
-
 background:
-  color: { r: 0, g: 0, b: 0 }
+  color:
+    r: 0
+    g: 0
+    b: 0
   layers:
-    - id: room
-      image: a/background/00.png   # relative to rooms/
-      z: 0
-
-# Navigable floor (lower part of the scene).
+  - id: room
+    image: a/background/00.png
+    z: 0
 walkable:
-  - { x: 90,   y: 640 }
-  - { x: 1600, y: 640 }
-  - { x: 1600, y: 900 }
-  - { x: 90,   y: 900 }
-
+- x: 535
+  y: 559
+- x: 1416
+  y: 552
+- x: 1432
+  y: 657
+- x: 1549
+  y: 653
+- x: 1620
+  y: 697
+- x: 1634
+  y: 737
+- x: 1750
+  y: 799
+- x: 1856
+  y: 772
+- x: 1921
+  y: 816
+- x: -2
+  y: 828
+- x: 17
+  y: 735
+- x: 146
+  y: 699
+- x: 251
+  y: 690
+- x: 353
+  y: 652
 points:
-  player_start: { x: 600, y: 830 }
-  from_hall:    { x: 1480, y: 830 }
-  at_door:      { x: 300, y: 720 }
-  at_desk:      { x: 1150, y: 740 }
-  stan_spot:    { x: 880, y: 830 }
-  near_stan:    { x: 780, y: 830 }
-
+  player_start:
+    x: 600
+    y: 830
+  from_hall:
+    x: 1480
+    y: 830
+  at_door:
+    x: 300
+    y: 720
+  at_desk:
+    x: 1150
+    y: 740
+  stan_spot:
+    x: 880
+    y: 830
+  near_stan:
+    x: 780
+    y: 830
 zones:
-  - id: to_hall
-    polygon: [ {x: 1560, y: 640}, {x: 1692, y: 640}, {x: 1692, y: 900}, {x: 1560, y: 900} ]
-
+- id: to_hall
+  polygon:
+  - x: 1560
+    y: 640
+  - x: 1692
+    y: 640
+  - x: 1692
+    y: 900
+  - x: 1560
+    y: 900
 hotspots:
   door:
-    name: "la puerta"
-    area: [ {x: 70, y: 90}, {x: 200, y: 90}, {x: 200, y: 600}, {x: 70, y: 600} ]
+    name: la puerta
+    area:
+    - x: 70
+      y: 90
+    - x: 200
+      y: 90
+    - x: 200
+      y: 600
+    - x: 70
+      y: 600
     approach: at_door
-    affordances: [ look_at ]
+    affordances:
+    - look_at
   notebook:
-    name: "el cuaderno"
-    area: [ {x: 1040, y: 430}, {x: 1260, y: 430}, {x: 1260, y: 540}, {x: 1040, y: 540} ]
+    name: el cuaderno
+    area:
+    - x: 1040
+      y: 430
+    - x: 1260
+      y: 430
+    - x: 1260
+      y: 540
+    - x: 1040
+      y: 540
     approach: at_desk
-    affordances: [ look_at, pick_up ]
-  # stan:
-  #   name: "Stan"
-  #   # Loose hit-box around the NPC's standing position. M5a uses an explicit
-  #   # polygon since avatar-bound hotspots (bind: "npc:<id>") aren't a runtime
-  #   # hit source yet.
-  #   area: [ {x: 830, y: 700}, {x: 940, y: 700}, {x: 940, y: 900}, {x: 830, y: 900} ]
-  #   approach: near_stan
-  #   default_verb: talk_to
-  #   affordances: [ look_at, talk_to ]
-
+    affordances:
+    - look_at
+    - pick_up
 avatars:
-  - { id: julia, start: player_start, orientation: down, player: true }
-  #- { id: stan,  start: stan_spot,    orientation: down }
+- id: julia
+  start: player_start
+  orientation: down
+  player: true
+obstacles: []
+regions: {}

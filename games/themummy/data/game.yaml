@@ -36,19 +36,19 @@ scenes:
       new_game: intro
       continue: room_view
       exit: QUIT
-      font: fonts/scumm.ttf
+      font: fonts/Bamburgh.ttf
 
   - id: settings
     type: SettingsScene
     parameters:
-      font: fonts/scumm.ttf
+      font: fonts/Bamburgh.ttf
 
   - id: intro
     type: StoryText
     parameters:
       script: scripts/intro.lua
       on_finish: room_view
-      font: fonts/scumm.ttf
+      font: fonts/Bamburgh.ttf
 
   - id: room_view
     type: RoomScene
