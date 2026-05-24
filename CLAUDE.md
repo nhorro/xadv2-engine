@@ -171,7 +171,10 @@ ctest --preset windows-msvc-release
 ```
 
 Both OSes are covered by CI (`.github/workflows/ci.yml`): Ubuntu on every branch,
-Windows on PRs and develop/main pushes.
+Windows on PRs and develop/main pushes. The Windows job builds Release only, so it
+uses a release-only overlay triplet (`.github/vcpkg-triplets/x64-windows-rel.cmake`)
+and persists vcpkg's binary cache across runs — local dev still uses the plain
+`x64-windows` triplet via the preset.
 
 Format before committing: `clang-format -i` on changed `*.hpp`/`*.cpp` (never
 `tests/_vendor/` or `third_party/`).
