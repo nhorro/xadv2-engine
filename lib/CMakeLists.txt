@@ -2,17 +2,35 @@
 # pac::pnc (genre).
 find_package(SFML 2.6 COMPONENTS graphics window audio system REQUIRED)
 find_package(yaml-cpp REQUIRED)
-find_package(PkgConfig REQUIRED)
-# Distros disagree on the pkg-config name for Lua 5.4: Debian/Ubuntu ship
-# `lua5.4`, Arch ships `lua-5.4`, Fedora/RHEL ship plain `lua` with Version: 5.4.x.
-# GLOBAL on the IMPORTED_TARGET so `tests/` (a sibling of `lib/`) can also link
-# `PkgConfig::LUA` via pac_sol2's transitive INTERFACE dependency below.
-pkg_check_modules(LUA IMPORTED_TARGET GLOBAL lua5.4)
-if(NOT LUA_FOUND)
-    pkg_check_modules(LUA IMPORTED_TARGET GLOBAL lua-5.4)
+
+# Lua 5.4, behind a single `pac_lua` INTERFACE seam so the rest of the build never
+# names a discovery-specific target. Two discovery paths:
+#  - Unix package managers: pkg-config. Distros disagree on the module name
+#    (Debian/Ubuntu `lua5.4`, Arch `lua-5.4`, Fedora/RHEL plain `lua` at 5.4.x), so
+#    we probe in order. GLOBAL on the IMPORTED_TARGET so `tests/` (a sibling of
+#    `lib/`) can link it transitively via pac_sol2 below.
+#  - vcpkg / Windows-MSVC: no pkg-config, so fall back to CMake's FindLua module,
+#    which locates vcpkg's lua (lua.lib + lua.h) and yields LUA_INCLUDE_DIR /
+#    LUA_LIBRARIES variables (it exports no imported target).
+add_library(pac_lua INTERFACE)
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(LUA IMPORTED_TARGET GLOBAL lua5.4)
+    if(NOT LUA_FOUND)
+        pkg_check_modules(LUA IMPORTED_TARGET GLOBAL lua-5.4)
+    endif()
+    if(NOT LUA_FOUND)
+        pkg_check_modules(LUA IMPORTED_TARGET GLOBAL lua>=5.4)
+    endif()
 endif()
-if(NOT LUA_FOUND)
-    pkg_check_modules(LUA REQUIRED IMPORTED_TARGET GLOBAL lua>=5.4)
+if(TARGET PkgConfig::LUA)
+    target_link_libraries(pac_lua INTERFACE PkgConfig::LUA)
+    message(STATUS "lib: Lua via pkg-config (${LUA_LIBRARIES})")
+else()
+    find_package(Lua 5.4 REQUIRED)
+    target_include_directories(pac_lua INTERFACE ${LUA_INCLUDE_DIR})
+    target_link_libraries(pac_lua INTERFACE ${LUA_LIBRARIES})
+    message(STATUS "lib: Lua via FindLua (${LUA_LIBRARIES})")
 endif()
 
 # sol2 (header-only). The vendored single header is preferred (github.com git is
@@ -29,7 +47,7 @@ if(EXISTS ${PAC_SOL2_LOCAL})
     # /usr/include/lua5.4 (Debian/Ubuntu). Fedora has lua.h directly in
     # /usr/include, which is in the default search path — hence the local build
     # passed but CI on Ubuntu didn't.
-    target_link_libraries(pac_sol2 INTERFACE PkgConfig::LUA)
+    target_link_libraries(pac_sol2 INTERFACE pac_lua)
     set(PAC_SOL2 pac_sol2)
     message(STATUS "lib: using vendored sol2 single header (third_party/sol2)")
 else()
@@ -111,4 +129,4 @@ endif()
 # (sol2 never appears in a public engine header).
 target_link_libraries(pac_engine
     PUBLIC sfml-graphics sfml-window sfml-audio sfml-system pac_project_options
-    PRIVATE ${PAC_YAMLCPP} ${PAC_SOL2} PkgConfig::LUA)
+    PRIVATE ${PAC_YAMLCPP} ${PAC_SOL2} pac_lua)

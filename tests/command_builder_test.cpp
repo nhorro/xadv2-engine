@@ -3,6 +3,11 @@
 
 #include <doctest/doctest.h>
 
+// verb_id() returns std::string_view; doctest stringifies CHECK operands via
+// operator<<, and MSVC's <string_view> only forward-declares std::ostream. Pull
+// in the full definition so that operator instantiates (libstdc++ does so transitively).
+#include <ostream>
+
 using namespace pac::pnc;
 using State = CommandBuilder::State;
 
@@ -121,15 +126,15 @@ TEST_CASE("would_accept previews validity without mutating") {
     CommandBuilder b;
     CHECK_FALSE(b.would_accept(room("door"), true)); // IDLE: nothing accepted
 
-    b.select_verb(Verb::GIVE); // EXPECTING_PARAM1_INVENTORY_OBJECT
+    b.select_verb(Verb::GIVE);                       // EXPECTING_PARAM1_INVENTORY_OBJECT
     CHECK_FALSE(b.would_accept(room("stan"), true)); // wrong kind
     CHECK_FALSE(b.would_accept(inv("map"), false));  // affordance fails
     CHECK(b.would_accept(inv("map"), true));         // valid
     CHECK(b.state() == State::EXPECTING_PARAM1_INVENTORY_OBJECT); // unchanged
 
-    b.provide_object(inv("map"), true); // EXPECTING_PARAM2_ROOM_OBJECT
-    CHECK_FALSE(b.would_accept(inv("coin"), true));  // recipient must be a room object
-    CHECK(b.would_accept(room("stan"), true));       // valid
+    b.provide_object(inv("map"), true);                      // EXPECTING_PARAM2_ROOM_OBJECT
+    CHECK_FALSE(b.would_accept(inv("coin"), true));          // recipient must be a room object
+    CHECK(b.would_accept(room("stan"), true));               // valid
     CHECK(b.state() == State::EXPECTING_PARAM2_ROOM_OBJECT); // unchanged
 }
 
