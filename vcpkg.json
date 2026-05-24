@@ -13,6 +13,10 @@
     {
       "name": "sfml",
       "version": "2.6.1"
+    },
+    {
+      "name": "lua",
+      "version": "5.4.7"
     }
   ]
 }

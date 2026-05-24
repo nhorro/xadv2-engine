@@ -152,9 +152,12 @@ then `cmake --build --preset linux-debug` and `ctest --preset linux-debug`
 (`linux-release` for an optimized build).
 
 **Windows (primary release target, MSVC + vcpkg).** Compiled deps come from the
-vcpkg manifest (`vcpkg.json`); sol2/doctest stay header-only. SFML is pinned to
-**2.6.1** via a manifest `overrides` entry (the engine uses the SFML 2.x API, not
-SFML 3). Lua is discovered with CMake's `FindLua` (no pkg-config on MSVC).
+vcpkg manifest (`vcpkg.json`); sol2/doctest stay header-only. Two `overrides`
+pin the API-sensitive deps: SFML to **2.6.1** (the engine uses the SFML 2.x API,
+not SFML 3) and Lua to **5.4.7** (R6 fixes Lua 5.4; the vendored sol2 rejects 5.5,
+which is the current vcpkg default — and `find_package(Lua 5.4)` is a *minimum*, so
+it would otherwise accept it). Lua is discovered with CMake's `FindLua` (no
+pkg-config on MSVC).
 
 ```powershell
 $env:VCPKG_ROOT = "C:\path\to\vcpkg"             # a vcpkg checkout
