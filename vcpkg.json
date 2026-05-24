@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "xadv2-engine",
+  "version": "0.1.0",
+  "description": "Extraordinary Adventures Engine: a C++ / SFML SCUMM-style point-and-click engine. Compiled dependencies acquired via vcpkg; sol2 and doctest stay header-only (FetchContent / vendored).",
+  "homepage": "https://github.com/nhorro/xadv2-engine",
+  "dependencies": [
+    "sfml",
+    "yaml-cpp",
+    "lua"
+  ],
+  "overrides": [
+    {
+      "name": "sfml",
+      "version": "2.6.1"
+    },
+    {
+      "name": "lua",
+      "version": "5.4.7"
+    }
+  ]
+}
