@@ -1,0 +1,216 @@
+/* ------------------------------------------------------------------ *
+ *  xkcd / pencil-sketch theme for the Extraordinary Adventures docs.
+ *  Black & white, hand-drawn fonts, wobbly "sketch" boxes, wide layout.
+ *  Fonts are bundled locally (docs/stylesheets/fonts/) so it works offline.
+ * ------------------------------------------------------------------ */
+
+/* --- bundled hand-drawn fonts ------------------------------------- */
+@font-face {
+  font-family: "Comic Neue";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/ComicNeue-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Comic Neue";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/ComicNeue-Bold.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Caveat";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/Caveat-SemiBold.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Caveat";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/Caveat-Bold.ttf") format("truetype");
+}
+
+/* --- grayscale palette (light = paper) ---------------------------- */
+[data-md-color-scheme="default"] {
+  --xkcd-ink: #1f1f1f;
+  --xkcd-ink-soft: #555;
+  --xkcd-paper: #faf8f2;
+  --xkcd-panel: #ffffff;
+
+  --md-primary-fg-color: #1f1f1f;
+  --md-primary-fg-color--light: #3a3a3a;
+  --md-primary-fg-color--dark: #000000;
+  --md-primary-bg-color: #faf8f2;
+  --md-accent-fg-color: #000000;
+
+  --md-default-fg-color: #1f1f1f;
+  --md-default-bg-color: #faf8f2;
+  --md-typeset-color: #1f1f1f;
+  --md-typeset-a-color: #1f1f1f;
+
+  --md-code-bg-color: #f1efe8;
+  --md-code-fg-color: #1f1f1f;
+}
+
+/* --- grayscale palette (dark = chalkboard) ------------------------ */
+[data-md-color-scheme="slate"] {
+  --xkcd-ink: #ececec;
+  --xkcd-ink-soft: #b8b8b8;
+  --xkcd-paper: #1b1b1b;
+  --xkcd-panel: #232323;
+
+  --md-primary-fg-color: #ececec;
+  --md-primary-fg-color--light: #cfcfcf;
+  --md-primary-fg-color--dark: #ffffff;
+  --md-primary-bg-color: #1b1b1b;
+  --md-accent-fg-color: #ffffff;
+
+  --md-default-fg-color: #ececec;
+  --md-default-bg-color: #1b1b1b;
+  --md-typeset-color: #ececec;
+  --md-typeset-a-color: #ffffff;
+
+  --md-code-bg-color: #2a2a2a;
+  --md-code-fg-color: #ececec;
+}
+
+/* --- wide layout -------------------------------------------------- */
+.md-grid {
+  max-width: 84rem; /* default is 61rem */
+}
+
+/* --- typography: hand-drawn --------------------------------------- */
+body,
+input,
+.md-typeset {
+  font-family: "Comic Neue", "Comic Sans MS", "Segoe Print", cursive, sans-serif;
+  font-size: 0.78rem;
+}
+.md-typeset {
+  line-height: 1.65;
+}
+
+/* Headings use the more handwritten Caveat (bumped in size — small x-height). */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4,
+.md-typeset h5,
+.md-typeset h6,
+.md-header__title,
+.md-nav__title,
+.md-tabs__link {
+  font-family: "Caveat", "Comic Neue", cursive;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.md-typeset h1 { font-size: 2.4rem; line-height: 1.1; }
+.md-typeset h2 { font-size: 1.9rem; }
+.md-typeset h3 { font-size: 1.5rem; }
+.md-typeset h4 { font-size: 1.25rem; }
+
+/* The site title and section tabs, slightly larger to read as headings. */
+.md-header__title { font-size: 1.35rem; }
+.md-tabs__link { font-size: 0.95rem; opacity: 0.95; }
+
+/* --- the xkcd "wobbly box" --------------------------------------- *
+ * Asymmetric border-radius gives the classic hand-drawn rectangle.   */
+.md-typeset pre > code,
+.md-typeset > .highlight,
+.md-typeset table:not([class]),
+.md-typeset .admonition,
+.md-typeset details,
+.md-typeset blockquote,
+.md-typeset .grid.cards > ul > li,
+.md-typeset img {
+  border: 2px solid var(--xkcd-ink) !important;
+  border-radius: 255px 12px 225px 15px / 15px 225px 12px 255px;
+  box-shadow: none !important;
+  background-color: var(--xkcd-panel);
+}
+
+/* Alternate the wobble direction so adjacent boxes don't look identical. */
+.md-typeset table:not([class]),
+.md-typeset details,
+.md-typeset .grid.cards > ul > li:nth-child(even) {
+  border-radius: 15px 225px 15px 255px / 255px 15px 225px 15px;
+}
+
+.md-typeset blockquote {
+  color: var(--xkcd-ink-soft);
+  padding: 0.4rem 0.9rem;
+}
+
+.md-typeset table:not([class]) {
+  border-collapse: separate;
+}
+.md-typeset table:not([class]) th {
+  background-color: var(--md-code-bg-color);
+  border-bottom: 2px solid var(--xkcd-ink);
+}
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  border: 1px solid var(--xkcd-ink-soft);
+}
+
+/* Admonitions: keep them flat and inky rather than colourful. */
+.md-typeset .admonition,
+.md-typeset details {
+  font-size: 0.74rem;
+}
+.md-typeset .admonition-title,
+.md-typeset summary {
+  background-color: var(--md-code-bg-color) !important;
+}
+.md-typeset .admonition-title::before,
+.md-typeset summary::before {
+  filter: grayscale(100%);
+}
+
+/* --- links: sketchy underline ------------------------------------ */
+.md-typeset a {
+  text-decoration: underline;
+  text-decoration-style: wavy;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.md-typeset a:hover {
+  text-decoration-style: solid;
+}
+
+/* --- flatten Material's shadows / chrome ------------------------- */
+.md-header,
+.md-tabs {
+  box-shadow: none;
+  border-bottom: 2px solid var(--xkcd-ink);
+}
+.md-header {
+  background-color: var(--md-default-bg-color);
+  color: var(--xkcd-ink);
+}
+.md-tabs {
+  background-color: var(--md-default-bg-color);
+  color: var(--xkcd-ink);
+}
+
+/* --- images: pencil-sketch by default, true colour on hover ------ *
+ * Reference art reads as B&W with the rest of the page, but artists   *
+ * can hover any image to inspect the real colours.                    */
+.md-typeset img {
+  filter: grayscale(100%) contrast(1.04);
+  transition: filter 0.25s ease;
+  background-color: transparent;
+}
+.md-typeset img:hover {
+  filter: none;
+}
+
+/* Search and form controls inherit the inky look. */
+.md-search__input {
+  border: 2px solid var(--xkcd-ink);
+  border-radius: 255px 12px 225px 15px / 15px 225px 12px 255px;
+}
