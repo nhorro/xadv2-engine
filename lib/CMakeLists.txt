@@ -85,6 +85,7 @@ add_library(pac_engine STATIC
     src/gfx/animation.cpp
     src/gfx/sequence_player.cpp
     src/gfx/animated_sprite.cpp
+    src/gfx/shader_effect.cpp
     src/pnc/blank_scene.cpp
     src/pnc/title_screen.cpp
     src/pnc/settings_scene.cpp

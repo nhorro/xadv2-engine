@@ -242,6 +242,112 @@ while the head talks or turns.
 Composite sprites shall expose the same high-level rendering operations as
 animated sprites where meaningful: position, scale, opacity, and draw.
 
+## Shaders
+
+A shader is an optional GLSL fragment program applied when a drawable is rendered,
+for effects the static art can't carry (colour grade, lighting, distortion, CRT,
+etc. — see the taxonomy in issue #56). Shaders are **declared in data, not C++**:
+the common case (uniform parameters from YAML, plus a small set of engine-provided
+uniforms) needs no engine code per shader.
+
+This is a generic 2D concept (`pac::gfx`): the data types live there, loading is a
+`ResourceCache` resource, and each genre layer wires them onto its drawables. The
+point-and-click slice applies them to room **background layers, regions, and
+objects** (design 04). Avatars / animated sprites are a planned target behind the
+same seam.
+
+### Loading
+
+Fragment source is a logical resource (e.g. `shaders/water.frag`), compiled and
+cached by the resource layer like a texture. Shader source paths are resolved
+**relative to the resources root** — shaders are shared across rooms — unlike the
+room-relative image paths of layers/regions/objects.
+
+A shader that fails to compile, is missing, or runs on a GPU without shader support
+is reported **once** and the drawable renders unshaded; the game never crashes for
+a bad shader. (Development builds make the failure prominent in the log.)
+
+### Parameters
+
+Each shader carries a set of named uniform `params` from YAML. The engine binds
+the primitive GLSL types generically, so most shaders need no C++:
+
+| YAML value | Uniform type |
+|------------|--------------|
+| `true` / `false` | `bool` |
+| a number (e.g. `0.5`, `4`) | `float` |
+| `{type: int, value: 8}` | `int` |
+| a 2 / 3 / 4-number sequence (e.g. `[0.5, 0.3]`) | `vec2` / `vec3` / `vec4` |
+| `{type: <bool\|int\|float\|vec2\|vec3\|vec4>, value: ...}` | explicit override |
+
+A bare integer literal becomes a `float` (the overwhelmingly common uniform type);
+use the explicit `{type: int, ...}` form for a true integer uniform.
+
+### Reserved uniforms
+
+The engine sets these automatically each frame when drawing a shaded item; declare
+only the ones a shader uses (SFML ignores any it doesn't declare, logging a single
+benign "uniform not found" line per shader in dev):
+
+| Uniform | Type | Meaning |
+|---------|------|---------|
+| `texture` | `sampler2D` | the drawable's own texture (SFML's current texture) |
+| `u_time` | `float` | seconds since the scene began — for animated effects |
+| `u_resolution` | `vec2` | the drawable's texture size in pixels |
+
+Author params must not use the `u_` prefix or the name `texture`, which are reserved
+for this convention.
+
+### Shaders that need C++ (design-for)
+
+Some effects need uniforms the declarative path can't express — a light that tracks
+the avatar, a value derived from game state. These opt in via a **controller**: a
+named C++ hook, registered by the game, that sets custom uniforms each frame. The
+drawable references it by id:
+
+```yaml
+shader: { source: shaders/spot.frag, controller: avatar_light }
+```
+
+The `controller` field parses today and is **reserved**; the registry that runs it
+is design-for and not yet implemented (a referenced controller is logged once and
+the drawable draws unshaded until then). The declarative path stays untouched by it.
+
+### Multiple shaders (design-for)
+
+A drawable may declare an ordered `shaders:` list as well as / instead of a single
+`shader:`. Running several in order is a multi-pass pipeline (render the drawable to
+an off-screen target, then apply each pass), which needs render-to-texture support.
+Until that lands, **only the first shader is applied** and a warning is logged at
+room load. The data model already carries the full list so authoring is
+forward-compatible.
+
+### Worked example
+
+A subtle warm colour grade over a background layer — parameters only, no time:
+
+```glsl
+// shaders/ambient_grade.frag
+uniform sampler2D texture; // engine-bound
+uniform vec3 tint;         // per-channel multiplier
+uniform float strength;    // 0 = original, 1 = fully graded
+void main() {
+    vec4 px = texture2D(texture, gl_TexCoord[0].xy);
+    gl_FragColor = vec4(mix(px.rgb, px.rgb * tint, strength), px.a) * gl_Color;
+}
+```
+
+```yaml
+# in a room's background layer
+shader:
+  source: shaders/ambient_grade.frag
+  params: { tint: [1.06, 1.0, 0.9], strength: 0.35 }
+```
+
+See `games/themummy/data/shaders/` for this and a `u_time`-driven flicker example.
+A dedicated shader-showcase game (per issue #56) is a planned second iteration; this
+section plus those examples are its reference.
+
 ## Lua integration
 
 The engine embeds a single Lua state and runs game logic as cooperative

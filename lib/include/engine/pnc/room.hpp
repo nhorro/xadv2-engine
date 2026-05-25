@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/geom/geometry.hpp"
+#include "engine/gfx/shader_effect.hpp"
 
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/System/Vector2.hpp>
@@ -31,6 +32,10 @@ struct BackgroundLayer {
     // requires the layer to carry an `id`. Persisted per room like object/region
     // state. World bounds are still derived from all layers, hidden or not.
     bool visible = true;
+    // Shaders applied when drawing this layer (design 03 §Shaders). MVP applies
+    // the first; the vector is a design-for ordered stack (multi-pass needs
+    // render-to-texture, not yet built).
+    std::vector<gfx::ShaderEffect> shaders;
 };
 
 struct RoomHotspot {
@@ -77,6 +82,7 @@ struct Region {
     std::optional<float> baseline;
     std::map<std::string, std::string> states; // state id -> image logical path
     std::string initial;
+    std::vector<gfx::ShaderEffect> shaders; // applied when drawing (design 03 §Shaders)
 };
 
 /// An active sprite placed in the room (visual only; interactivity via a hotspot).
@@ -94,6 +100,7 @@ struct RoomObject {
     // `z` / `z_auto`. Use it for a perspective object's foreground piece so the
     // character passes correctly in front of / behind it (design 04 §Z-order).
     std::optional<float> baseline;
+    std::vector<gfx::ShaderEffect> shaders; // applied when drawing (design 03 §Shaders)
 };
 
 /// A "walk-behind" mask: a polygon patch of a background `layer`, redrawn on top

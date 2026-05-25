@@ -395,6 +395,7 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     current_room_id_ = id;
     current_zone_.clear();
     builder_.cancel();
+    warn_unsupported_shader_features(room_->data(), ctx_.log);
 
     room_scope_ = ctx_.scripting.open_scope();
     ctx_.scripting.set_current_scope(room_scope_);
@@ -1094,6 +1095,7 @@ std::string RoomScene::top_bar_text() const {
 }
 
 void RoomScene::update(float dt) {
+    shader_time_ += dt; // drives shaders' u_time uniform
     // Advance the change_room fade; once fully black, commit the deferred load.
     room_fade_.update(dt);
     if (change_armed_ && room_fade_.opaque()) {
@@ -1316,7 +1318,8 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                        ctx_.resources,
                        player_ ? &*player_ : nullptr,
                        room_->npcs(),
-                       ctx_.log);
+                       ctx_.log,
+                       ShaderEnv{shader_time_});
         if (ctx_.dev.edit_mode) {
             debug_overlay_.draw_world(target,
                                       debug_flags_,
