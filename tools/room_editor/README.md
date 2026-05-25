@@ -7,7 +7,7 @@ A minimal Python-based room YAML editor for the xadv2-engine room format.
 - Load and save room YAML files.
 - Edit background layers and geometry sections only.
 - Preserve other room fields intact.
-- Visual GUI editor for room geometry and points.
+- Visual web-based editor for room geometry and points (runs in the browser).
 - Move, resize, and depth-sort background layers (handy for placing furniture
   occluders). In **layers** mode, select a layer then drag its corner handles to
   resize — scaling is aspect-locked and keeps the layer's base (bottom-centre)
@@ -46,12 +46,6 @@ PYTHONPATH=tools python3 -m tools.room_editor serve --room games/themummy/data/r
 
 ```bash
 PYTHONPATH=tools python3 -m tools.room_editor serve --room games/themummy/data/rooms/hall.yaml --host 0.0.0.0 --port 9000
-```
-
-`gui` is still supported as an alias for legacy compatibility:
-
-```bash
-PYTHONPATH=tools python3 -m tools.room_editor gui --room games/themummy/data/rooms/hall.yaml
 ```
 
 Apply a patch from a YAML or JSON patch file:
