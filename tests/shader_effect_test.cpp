@@ -2,6 +2,7 @@
 // of shaders needs a GL context and is exercised by the sample, not here; this
 // covers the headless data: YAML -> gfx::ShaderEffect / ShaderParam off parse_room.
 
+#include "engine/core/resource_cache.hpp"
 #include "engine/gfx/shader_effect.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"
@@ -136,6 +137,29 @@ objects:
     CHECK(r.objects.at("crt").shaders[0].source == "shaders/crt.frag");
     CHECK(std::get<float>(param(r.objects.at("crt").shaders[0], "curvature").value) ==
           doctest::Approx(0.2f));
+}
+
+TEST_CASE("shader_source_uses matches whole words only") {
+    using pac::core::shader_source_uses;
+
+    // The reserved `texture` sampler is declared and used; `texture2D` must not
+    // be mistaken for it (that false positive would set an absent uniform).
+    const std::string grade =
+        "uniform sampler2D texture;\nuniform vec3 tint;\n"
+        "void main(){ gl_FragColor = texture2D(texture, gl_TexCoord[0].xy) * tint; }";
+    CHECK(shader_source_uses(grade, "texture"));            // the declared sampler
+    CHECK(shader_source_uses(grade, "tint"));               // an author param
+    CHECK_FALSE(shader_source_uses(grade, "u_time"));       // not declared
+    CHECK_FALSE(shader_source_uses(grade, "u_resolution")); // not declared
+
+    // A time-driven shader does declare the reserved time uniform.
+    const std::string flicker =
+        "uniform float u_time;\nvoid main(){ gl_FragColor = vec4(u_time); }";
+    CHECK(shader_source_uses(flicker, "u_time"));
+    CHECK_FALSE(shader_source_uses(flicker, "u_resolution"));
+
+    // A substring that is part of a longer identifier is not a match.
+    CHECK_FALSE(shader_source_uses("uniform float u_time_scale;", "u_time"));
 }
 
 TEST_CASE("shader parse errors carry stable codes") {

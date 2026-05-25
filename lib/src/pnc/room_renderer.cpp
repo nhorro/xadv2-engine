@@ -45,17 +45,27 @@ sf::Shader* prepare_shader(pac::core::ResourceCache& resources,
     if (!fx.enabled || !fx.controller.empty()) {
         return nullptr;
     }
-    sf::Shader* shader = resources.shader(fx.source);
-    if (!shader) {
+    pac::core::ShaderProgram* program = resources.shader(fx.source);
+    if (!program) {
         return nullptr;
     }
-    shader->setUniform("u_time", time);
-    shader->setUniform("u_resolution",
-                       sf::Glsl::Vec2(static_cast<float>(texture.getSize().x),
-                                      static_cast<float>(texture.getSize().y)));
-    shader->setUniform("texture", sf::Shader::CurrentTexture);
-    gfx::apply_shader_params(*shader, fx.params);
-    return shader;
+    sf::Shader& shader = program->shader;
+    // Only set a reserved uniform the program actually declares — SFML logs an
+    // error for setUniform on an absent/unused uniform (e.g. a static grade has
+    // no u_time / u_resolution).
+    if (program->uses_time) {
+        shader.setUniform("u_time", time);
+    }
+    if (program->uses_resolution) {
+        shader.setUniform("u_resolution",
+                          sf::Glsl::Vec2(static_cast<float>(texture.getSize().x),
+                                         static_cast<float>(texture.getSize().y)));
+    }
+    if (program->uses_texture) {
+        shader.setUniform("texture", sf::Shader::CurrentTexture);
+    }
+    gfx::apply_shader_params(shader, fx.params);
+    return &shader;
 }
 
 } // namespace
