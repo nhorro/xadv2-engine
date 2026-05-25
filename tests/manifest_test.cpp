@@ -117,6 +117,28 @@ TEST_CASE("manifest id is required and validated") {
     CHECK_NOTHROW(parse_manifest(with_id("the_mummy-2")));
 }
 
+TEST_CASE("nested scene parameters flatten into dotted keys") {
+    const Manifest m = parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                                      "resources: { src: . }\nstrings: s\nentry: a\n"
+                                      "scenes:\n"
+                                      "  - id: a\n"
+                                      "    type: TitleScreen\n"
+                                      "    parameters:\n"
+                                      "      font_size: 12\n"
+                                      "      menu:\n"
+                                      "        position: { x: 0.5, y: 0.7 }\n"
+                                      "        options:\n"
+                                      "          new_game: intro\n"
+                                      "          exit: QUIT\n");
+    const SceneDesc* a = m.find_scene("a");
+    REQUIRE(a != nullptr);
+    CHECK(a->parameters.get_or("font_size", "") == "12");
+    CHECK(a->parameters.get_or("menu.position.x", "") == "0.5");
+    CHECK(a->parameters.get_or("menu.position.y", "") == "0.7");
+    CHECK(a->parameters.get_or("menu.options.new_game", "") == "intro");
+    CHECK(a->parameters.get_or("menu.options.exit", "") == "QUIT");
+}
+
 TEST_CASE("optional cursor block is parsed") {
     const Manifest m = parse_manifest(
         "id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
