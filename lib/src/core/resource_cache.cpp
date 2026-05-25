@@ -59,7 +59,28 @@ const sf::Font* ResourceCache::try_font(const std::string& logical) {
     }
 }
 
-sf::Shader* ResourceCache::shader(const std::string& logical) {
+// Whole-word search for an identifier in shader source, so a reserved uniform is
+// only set when the program actually declares/uses it (`texture` must not match
+// the `texture2D` builtin). A char is part of an identifier if alphanumeric or _.
+bool shader_source_uses(const std::string& source, const std::string& ident) {
+    const auto is_ident = [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+               c == '_';
+    };
+    std::size_t pos = source.find(ident);
+    while (pos != std::string::npos) {
+        const bool left_ok = (pos == 0) || !is_ident(source[pos - 1]);
+        const std::size_t end = pos + ident.size();
+        const bool right_ok = (end >= source.size()) || !is_ident(source[end]);
+        if (left_ok && right_ok) {
+            return true;
+        }
+        pos = source.find(ident, pos + 1);
+    }
+    return false;
+}
+
+ShaderProgram* ResourceCache::shader(const std::string& logical) {
     const auto it = shaders_.find(logical);
     if (it != shaders_.end()) {
         return it->second.get(); // may be null: a previously cached failure
@@ -78,14 +99,17 @@ sf::Shader* ResourceCache::shader(const std::string& logical) {
         shaders_.emplace(logical, nullptr);
         return nullptr;
     }
-    auto compiled = std::make_unique<sf::Shader>();
-    if (!compiled->loadFromMemory(source, sf::Shader::Fragment)) {
+    auto program = std::make_unique<ShaderProgram>();
+    if (!program->shader.loadFromMemory(source, sf::Shader::Fragment)) {
         log_.error("shader: '" + logical + "' failed to compile");
         shaders_.emplace(logical, nullptr);
         return nullptr;
     }
-    sf::Shader* ptr = compiled.get();
-    shaders_.emplace(logical, std::move(compiled));
+    program->uses_time = shader_source_uses(source, "u_time");
+    program->uses_resolution = shader_source_uses(source, "u_resolution");
+    program->uses_texture = shader_source_uses(source, "texture");
+    ShaderProgram* ptr = program.get();
+    shaders_.emplace(logical, std::move(program));
     return ptr;
 }
 
