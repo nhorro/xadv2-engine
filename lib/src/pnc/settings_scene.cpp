@@ -1,6 +1,8 @@
 #include "engine/pnc/settings_scene.hpp"
 
 #include "engine/core/audio.hpp"
+#include "engine/core/cursor.hpp"
+#include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
 #include "engine/core/localization.hpp"
@@ -15,17 +17,24 @@
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
+#include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Text.hpp>
+#include <SFML/Graphics/Texture.hpp>
 #include <SFML/Window/Event.hpp>
 #include <SFML/Window/VideoMode.hpp>
 
 #include <algorithm>
+#include <exception>
 #include <string>
 
 namespace pac::pnc {
 
 namespace {
 constexpr float kVolumeStep = 0.05f;
+
+// Menu layout as fractions of the virtual height, shared by draw + hit-testing.
+constexpr float kRowsTopFrac = 0.34f;  // top (y) of the first row's text
+constexpr float kRowStepFrac = 0.085f; // vertical pitch between rows
 
 pac::core::DisplayMode mode_of(const pac::core::Settings& s) {
     return {{s.window_width, s.window_height}, s.fullscreen};
@@ -34,9 +43,18 @@ pac::core::DisplayMode mode_of(const pac::core::Settings& s) {
 
 SettingsScene::SettingsScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
     : ctx_(ctx), working_(ctx.settings) {
+    background_path_ = params.get_or("background", "");
+
     const std::string font_path = params.get_or("font", "");
     if (!font_path.empty()) {
         font_ = ctx_.resources.try_font(font_path);
+    }
+    if (const auto fs = params.get("font_size")) {
+        try {
+            font_size_ = static_cast<unsigned>(std::stoul(*fs));
+        } catch (const std::exception&) {
+            ctx_.log.warn("settings: invalid font_size '" + *fs + "'; using default");
+        }
     }
 
     const sf::VideoMode desktop = sf::VideoMode::getDesktopMode();
@@ -145,7 +163,57 @@ void SettingsScene::cancel() {
     ctx_.scenes.pop_scene();
 }
 
+float SettingsScene::row_center_y(int i, const sf::Vector2u& vres) const {
+    const float vh = static_cast<float>(vres.y);
+    const float row_top = vh * kRowsTopFrac + vh * kRowStepFrac * static_cast<float>(i);
+    return row_top + static_cast<float>(font_size_) * 0.5f;
+}
+
+int SettingsScene::row_at(float vx, float vy) const {
+    const sf::Vector2u vres = ctx_.display.virtual_resolution();
+    const float cx = static_cast<float>(vres.x) / 2.0f;
+    const float half_w = static_cast<float>(vres.x) * 0.45f; // generous centered band
+    const float half_h = static_cast<float>(vres.y) * kRowStepFrac * 0.5f;
+    if (vx < cx - half_w || vx > cx + half_w) {
+        return -1;
+    }
+    for (int i = 0; i < ROW_COUNT; ++i) {
+        const float cy = row_center_y(i, vres);
+        if (vy >= cy - half_h && vy <= cy + half_h) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 void SettingsScene::handle_event(const sf::Event& event) {
+    if (event.type == sf::Event::MouseMoved) {
+        const int r =
+            row_at(static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y));
+        hovered_ = (r >= 0);
+        if (r >= 0) {
+            row_ = r; // hover selects the row, mirroring keyboard navigation
+        }
+        return;
+    }
+    if (event.type == sf::Event::MouseButtonReleased &&
+        event.mouseButton.button == sf::Mouse::Left) {
+        const auto x = static_cast<float>(event.mouseButton.x);
+        const int r = row_at(x, static_cast<float>(event.mouseButton.y));
+        if (r < 0) {
+            return;
+        }
+        row_ = r;
+        if (r == ROW_APPLY || r == ROW_BACK) {
+            activate();
+        } else {
+            // The "< value >" chooser: clicking left of center decrements, right
+            // increments — matching the on-screen affordance.
+            const float cx = static_cast<float>(ctx_.display.virtual_resolution().x) / 2.0f;
+            adjust(x < cx ? -1 : +1);
+        }
+        return;
+    }
     if (event.type != sf::Event::KeyPressed) {
         return;
     }
@@ -174,12 +242,38 @@ void SettingsScene::handle_event(const sf::Event& event) {
     }
 }
 
+void SettingsScene::update(float dt) {
+    (void) dt;
+    // Same hover affordance as the rest of the game: the custom cursor switches
+    // to its interact variant while pointing at a settings row.
+    if (hovered_) {
+        ctx_.cursor.want(pac::core::CursorKind::INTERACT);
+    }
+}
+
 void SettingsScene::draw(sf::RenderTarget& target) const {
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
 
-    sf::RectangleShape bg(sf::Vector2f(static_cast<float>(vres.x), static_cast<float>(vres.y)));
+    const auto vw = static_cast<float>(vres.x);
+    const auto vh = static_cast<float>(vres.y);
+
+    sf::RectangleShape bg(sf::Vector2f(vw, vh));
     bg.setFillColor(sf::Color(12, 14, 22));
     target.draw(bg);
+
+    if (!background_path_.empty()) {
+        try {
+            const sf::Texture& tex = ctx_.resources.texture(background_path_);
+            sf::Sprite sprite(tex);
+            const sf::Vector2u ts = tex.getSize();
+            if (ts.x > 0 && ts.y > 0) {
+                sprite.setScale(vw / static_cast<float>(ts.x), vh / static_cast<float>(ts.y));
+            }
+            target.draw(sprite);
+        } catch (const std::exception& e) {
+            ctx_.log.error(e.what());
+        }
+    }
 
     if (!font_) {
         return;
@@ -191,15 +285,14 @@ void SettingsScene::draw(sf::RenderTarget& target) const {
     auto centered = [&](const std::string& s, float y, unsigned size, sf::Color color) {
         sf::Text text(pac::core::utf8(s), *font_, size);
         text.setFillColor(color);
+        text.setOutlineColor(sf::Color(0, 0, 0, 200)); // legible over a background image
+        text.setOutlineThickness(2.0f);
         const sf::FloatRect b = text.getLocalBounds();
         text.setPosition(cx - b.width / 2.0f - b.left, y);
         target.draw(text);
     };
 
-    centered(strings.ui_label("settings"),
-             static_cast<float>(vres.y) * 0.14f,
-             40,
-             sf::Color::White);
+    centered(strings.ui_label("settings"), vh * 0.14f, font_size_ + 12u, sf::Color::White);
 
     std::string res_value = "-";
     if (!sizes_.empty()) {
@@ -233,8 +326,8 @@ void SettingsScene::draw(sf::RenderTarget& target) const {
         {strings.ui_label("back"), "", false},
     };
 
-    const float row_y0 = static_cast<float>(vres.y) * 0.34f;
-    const float row_dy = static_cast<float>(vres.y) * 0.085f;
+    const float row_y0 = vh * kRowsTopFrac;
+    const float row_dy = vh * kRowStepFrac;
     for (int i = 0; i < ROW_COUNT; ++i) {
         const bool selected = (i == row_);
         const sf::Color color = selected ? sf::Color(255, 240, 180) : sf::Color(180, 185, 200);
@@ -245,7 +338,7 @@ void SettingsScene::draw(sf::RenderTarget& target) const {
         } else {
             text = marker + rows[i].label;
         }
-        centered(text, row_y0 + row_dy * static_cast<float>(i), 28, color);
+        centered(text, row_y0 + row_dy * static_cast<float>(i), font_size_, color);
     }
 }
 

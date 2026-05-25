@@ -77,6 +77,12 @@ default_language: es   # optional; defaults to the first entry
   `inventory_logic` (path), `rooms` (directory path), `start_room` (room id),
   `player` (req, cast character id — the persistent player avatar; appearance comes
   from this character's cast entry), `font` (opt path — speech and panel font).
+- `SettingsScene` — `background` (opt path — full-screen image scaled to the virtual
+  resolution; a dark fill when omitted), `font` (opt path), `font_size` (opt int —
+  menu-row text size; the title derives from it). Rows are navigable by keyboard
+  (arrows / Enter / Esc) **and** mouse (hover selects, left-click a value's left/right
+  half decrements/increments, click APPLY/BACK to confirm/cancel), using the same
+  custom cursor and hover affordance as the rest of the game.
 
 Scenes that render text take their `font` as a logical-path parameter; an engine
 default is used when omitted. Per-character speech color and style come from the
