@@ -31,7 +31,12 @@ void bind_core_api(EngineContext& ctx) {
         ctx.audio.music.play(path, loop.value_or(true));
     });
     lua.set_function("stop_music", [&ctx]() { ctx.audio.music.stop(); });
-    lua.set_function("play_sound", [&ctx](const std::string& path) { ctx.audio.sfx.play(path); });
+    lua.set_function("play_sound",
+                     [&ctx](const std::string& path,
+                            sol::optional<float> volume,
+                            sol::optional<float> pan) {
+                         ctx.audio.sfx.play(path, volume.value_or(1.0f), pan.value_or(0.0f));
+                     });
     lua.set_function("stop_sounds", [&ctx]() { ctx.audio.sfx.stop_all(); });
 
     // --- global state (scalars only) ---
