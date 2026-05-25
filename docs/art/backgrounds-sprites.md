@@ -21,8 +21,21 @@ técnicas y prompts útiles.
 
 ## Diseñar un fondo
 
-> **TODO:** proporciones, zona caminable vs. decorado, dónde dejar espacio para
-> hotspots y para el avatar, perspectiva y línea de horizonte.
+La resolución de diseño recomendada y establecida por defecto es 1280x720 píxels, de los cuáles un 15% se destina al panel de verbos + inventario.
+
+El motor admite scrolling, y es recomendado usar esta capacidad, especialmente en el modo horizontal.
+
+Para el diseño vertical, se recomienda que todo lo que es de interés en una escena esté dentro de los 612 píxeles (85%).
+
+![Estructura de escena jugable](./assets/background-01.png)
+
+### Lineamientos para composición de escenas interiores
+
+![Composición de interiores](./assets/background-02.png)
+
+### Lineamientos para composición de escenas exteriores
+
+![Composición de exteriores](./assets/background-03.png)
 
 ## Diseñar sprites y animaciones
 
