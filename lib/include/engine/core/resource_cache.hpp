@@ -2,9 +2,11 @@
 
 #include <SFML/Audio/SoundBuffer.hpp>
 #include <SFML/Graphics/Font.hpp>
+#include <SFML/Graphics/Shader.hpp>
 #include <SFML/Graphics/Texture.hpp>
 
 #include <map>
+#include <memory>
 #include <string>
 
 namespace pac::core {
@@ -29,6 +31,14 @@ public:
     /// throwing, so a missing font degrades gracefully.
     const sf::Font* try_font(const std::string& logical);
 
+    /// Loads & caches a compiled fragment shader by logical path (resources-root
+    /// relative). Returns nullptr — caching the failure so it is attempted, and
+    /// logged, only once — when shaders are unsupported on this GPU or the source
+    /// is missing / fails to compile, so callers draw unshaded. The program is
+    /// reused across draws; set uniforms per draw. Render-side (needs a GL
+    /// context), like texture().
+    sf::Shader* shader(const std::string& logical);
+
     /// Pass-throughs to the source for the loaders (parsed once, not cached here).
     std::string read_text(const std::string& logical) const;
 
@@ -42,6 +52,9 @@ private:
     std::map<std::string, sf::Texture> textures_;
     std::map<std::string, sf::Font> fonts_;
     std::map<std::string, sf::SoundBuffer> sounds_;
+    // A present key with a null pointer records a load that already failed, so a
+    // missing / uncompilable shader is reported once, not every frame.
+    std::map<std::string, std::unique_ptr<sf::Shader>> shaders_;
 };
 
 } // namespace pac::core

@@ -59,6 +59,36 @@ const sf::Font* ResourceCache::try_font(const std::string& logical) {
     }
 }
 
+sf::Shader* ResourceCache::shader(const std::string& logical) {
+    const auto it = shaders_.find(logical);
+    if (it != shaders_.end()) {
+        return it->second.get(); // may be null: a previously cached failure
+    }
+    if (!sf::Shader::isAvailable()) {
+        log_.error("shader: shaders are unavailable on this GPU; '" + logical +
+                   "' will draw unshaded");
+        shaders_.emplace(logical, nullptr);
+        return nullptr;
+    }
+    std::string source;
+    try {
+        source = source_.read_text(logical);
+    } catch (const std::exception& e) {
+        log_.error(std::string("shader: ") + e.what());
+        shaders_.emplace(logical, nullptr);
+        return nullptr;
+    }
+    auto compiled = std::make_unique<sf::Shader>();
+    if (!compiled->loadFromMemory(source, sf::Shader::Fragment)) {
+        log_.error("shader: '" + logical + "' failed to compile");
+        shaders_.emplace(logical, nullptr);
+        return nullptr;
+    }
+    sf::Shader* ptr = compiled.get();
+    shaders_.emplace(logical, std::move(compiled));
+    return ptr;
+}
+
 std::string ResourceCache::read_text(const std::string& logical) const {
     return source_.read_text(logical);
 }

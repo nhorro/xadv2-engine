@@ -4,13 +4,16 @@
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
 #include "engine/geom/geometry.hpp"
+#include "engine/gfx/shader_effect.hpp"
 #include "engine/pnc/avatar.hpp"
 #include "engine/pnc/room.hpp"
 #include "engine/pnc/room_runtime.hpp"
 
+#include <SFML/Graphics/Glsl.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderStates.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
+#include <SFML/Graphics/Shader.hpp>
 #include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Texture.hpp>
 #include <SFML/Graphics/VertexArray.hpp>
@@ -25,14 +28,48 @@
 
 namespace pac::pnc {
 
+namespace {
+
+// Resolve the shader to draw a textured item with, with its uniforms set, or null
+// to draw unshaded. MVP applies the first effect only; a `controller` effect is
+// declarative-only for now and skipped (warned once at load). The reserved
+// uniforms u_time / u_resolution / texture are set here; author params follow.
+sf::Shader* prepare_shader(pac::core::ResourceCache& resources,
+                           const std::vector<gfx::ShaderEffect>& effects,
+                           const sf::Texture& texture,
+                           float time) {
+    if (effects.empty()) {
+        return nullptr;
+    }
+    const gfx::ShaderEffect& fx = effects.front();
+    if (!fx.enabled || !fx.controller.empty()) {
+        return nullptr;
+    }
+    sf::Shader* shader = resources.shader(fx.source);
+    if (!shader) {
+        return nullptr;
+    }
+    shader->setUniform("u_time", time);
+    shader->setUniform("u_resolution",
+                       sf::Glsl::Vec2(static_cast<float>(texture.getSize().x),
+                                      static_cast<float>(texture.getSize().y)));
+    shader->setUniform("texture", sf::Shader::CurrentTexture);
+    gfx::apply_shader_params(*shader, fx.params);
+    return shader;
+}
+
+} // namespace
+
 void RoomRenderer::draw(sf::RenderTarget& target,
                         const RoomRuntime& room,
                         const std::string& room_dir,
                         pac::core::ResourceCache& resources,
                         const Avatar* player,
                         const std::vector<const Avatar*>& npcs,
-                        pac::core::Diagnostics& log) const {
+                        pac::core::Diagnostics& log,
+                        const ShaderEnv& shaders) const {
     const RoomData& data = room.data();
+    const float shader_time = shaders.time;
 
     // Solid backdrop behind every layer: fill the visible view so any world area
     // a layer doesn't cover (within or beyond the layer bounds) shows the color.
@@ -56,18 +93,24 @@ void RoomRenderer::draw(sf::RenderTarget& target,
         const std::string image = pac::core::logical_join(room_dir, layer.image);
         const geom::Point origin = layer.origin;
         const float scale = layer.scale;
-        items.emplace_back(layer.z, [&resources, &log, image, origin, scale](sf::RenderTarget& t) {
-            try {
-                sf::Sprite sprite(resources.texture(image));
-                sprite.setPosition(origin.x, origin.y);
-                if (scale != 1.0f) {
-                    sprite.setScale(scale, scale);
+        const std::vector<gfx::ShaderEffect>* fx = &layer.shaders;
+        items.emplace_back(
+            layer.z,
+            [&resources, &log, image, origin, scale, fx, shader_time](sf::RenderTarget& t) {
+                try {
+                    const sf::Texture& tex = resources.texture(image);
+                    sf::Sprite sprite(tex);
+                    sprite.setPosition(origin.x, origin.y);
+                    if (scale != 1.0f) {
+                        sprite.setScale(scale, scale);
+                    }
+                    sf::RenderStates states;
+                    states.shader = prepare_shader(resources, *fx, tex, shader_time);
+                    t.draw(sprite, states);
+                } catch (const std::exception& e) {
+                    log.error(e.what());
                 }
-                t.draw(sprite);
-            } catch (const std::exception& e) {
-                log.error(e.what());
-            }
-        });
+            });
     }
 
     // Regions: the current state's image at the area's top-left. Depth, in order
@@ -99,15 +142,20 @@ void RoomRenderer::draw(sf::RenderTarget& target,
         }
         const std::string image = pac::core::logical_join(room_dir, state_it->second);
         const sf::FloatRect bounds = geom::polygon_bounds(region.area);
-        items.emplace_back(z, [&resources, &log, image, bounds](sf::RenderTarget& t) {
-            try {
-                sf::Sprite sprite(resources.texture(image));
-                sprite.setPosition(bounds.left, bounds.top);
-                t.draw(sprite);
-            } catch (const std::exception& e) {
-                log.error(e.what());
-            }
-        });
+        const std::vector<gfx::ShaderEffect>* fx = &region.shaders;
+        items.emplace_back(z,
+                           [&resources, &log, image, bounds, fx, shader_time](sf::RenderTarget& t) {
+                               try {
+                                   const sf::Texture& tex = resources.texture(image);
+                                   sf::Sprite sprite(tex);
+                                   sprite.setPosition(bounds.left, bounds.top);
+                                   sf::RenderStates states;
+                                   states.shader = prepare_shader(resources, *fx, tex, shader_time);
+                                   t.draw(sprite, states);
+                               } catch (const std::exception& e) {
+                                   log.error(e.what());
+                               }
+                           });
     }
 
     // Objects: visible ones at their position. Sort depth, in order of priority:
@@ -129,11 +177,15 @@ void RoomRenderer::draw(sf::RenderTarget& target,
             continue;
         }
         const geom::Point pos = object.position;
-        items.emplace_back(z, [&resources, &log, image, pos](sf::RenderTarget& t) {
+        const std::vector<gfx::ShaderEffect>* fx = &object.shaders;
+        items.emplace_back(z, [&resources, &log, image, pos, fx, shader_time](sf::RenderTarget& t) {
             try {
-                sf::Sprite sprite(resources.texture(image));
+                const sf::Texture& tex = resources.texture(image);
+                sf::Sprite sprite(tex);
                 sprite.setPosition(pos.x, pos.y);
-                t.draw(sprite);
+                sf::RenderStates states;
+                states.shader = prepare_shader(resources, *fx, tex, shader_time);
+                t.draw(sprite, states);
             } catch (const std::exception& e) {
                 log.error(e.what());
             }
@@ -220,6 +272,31 @@ sf::Vector2u compute_room_bounds(const RoomData& data,
         }
     }
     return {static_cast<unsigned>(std::ceil(right)), static_cast<unsigned>(std::ceil(bottom))};
+}
+
+void warn_unsupported_shader_features(const RoomData& data, pac::core::Diagnostics& log) {
+    const auto check = [&](const std::string& owner, const std::vector<gfx::ShaderEffect>& fx) {
+        if (fx.size() > 1) {
+            log.warn("room '" + data.id + "': " + owner +
+                     " declares a multi-shader stack; only the first is applied (multi-pass is "
+                     "design-for)");
+        }
+        for (const gfx::ShaderEffect& e : fx) {
+            if (!e.controller.empty()) {
+                log.warn("room '" + data.id + "': " + owner + " shader references controller '" +
+                         e.controller + "', which is design-for and not yet applied");
+            }
+        }
+    };
+    for (const BackgroundLayer& l : data.layers) {
+        check("layer '" + l.id + "'", l.shaders);
+    }
+    for (const auto& [id, region] : data.regions) {
+        check("region '" + id + "'", region.shaders);
+    }
+    for (const auto& [id, object] : data.objects) {
+        check("object '" + id + "'", object.shaders);
+    }
 }
 
 } // namespace pac::pnc

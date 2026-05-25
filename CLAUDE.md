@@ -87,7 +87,8 @@ markdown files by `build-pdf.sh` — edit the markdown, not the PDF.
 Game           Lua scripts + assets + game manifest          (no C++)
 Point & Click  room view, title, cutscenes, rooms,           pac::pnc
                hotspots, avatars, SCUMM panel, dialog
-Generic 2D     spritesheets, animated/composite sprites      pac::gfx
+Generic 2D     spritesheets, animated/composite sprites,     pac::gfx
+               shader effects (ShaderEffect/params)
 Core           window, loop, input, resources, audio,        pac::core
                settings, Scene, SceneManager, geometry       pac::geom
 ```
