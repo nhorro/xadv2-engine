@@ -202,7 +202,8 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `scale` | opt | number | `1.0` | Uniform render scale about `origin`, **aspect always preserved** (never distorted). A development aid for sizing furniture-style occluders; production layers ship native (`1.0`). The room editor resizes about the layer's base (bottom-centre) and can set `z` to the scaled base line. |
 | `interactive` | opt | bool | `false` | Whether the layer receives pointer interaction. |
 | `visible` | opt | bool | `true` | Initial visibility. Toggle at runtime with `set_layer_visible(id, bool)` (needs an `id`); persisted per room. |
-| `shader` | opt | shader ref | — | Design-for. |
+| `shader` | opt | shader ref | — | A shader applied when drawing the layer. See **Shaders** below. |
+| `shaders` | opt | `[shader ref]` | — | Ordered shader stack (design-for; only the first applies for now). See **Shaders** below. |
 | `animation` | opt | anim ref | — | Design-for. |
 
 `background.color` (`{r, g, b, a}`) is an optional solid fill behind all layers.
@@ -217,6 +218,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `baseline` | opt | number | — | Floor-line world-Y; the region sorts here against avatar feet (occludes feet above the line, is occluded by feet below), for a perspective region the player passes. Overrides `over` / `z`. |
 | `states` | req | map state id → path | — | Image per named state. |
 | `initial` | req | state id | — | Starting state. |
+| `shader` / `shaders` | opt | shader ref / `[shader ref]` | — | Shader(s) applied when drawing the region. See **Shaders** below. |
 
 **`objects`** — map of object id → object:
 
@@ -227,6 +229,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `z` | opt | `auto` \| number | `auto` | `auto` = the sprite's bottom edge; a number overrides. |
 | `baseline` | opt | number | — | Floor-line world-Y. When set, the object sorts at this depth against avatar feet (occludes feet above the line, is occluded by feet below) — for a perspective object's foreground piece. Overrides `z`. |
 | `visible` | opt | bool | `true` | Initial visibility; `show_object`/`hide_object` change it at runtime. |
+| `shader` / `shaders` | opt | shader ref / `[shader ref]` | — | Shader(s) applied when drawing the object. See **Shaders** below. |
 
 **`walkbehinds`** — map of walk-behind id → area (no art duplication: pixels are sampled from a layer):
 
@@ -260,6 +263,28 @@ source activates the hotspot.
 | `start` | req | point id | — | Placement point. |
 | `orientation` | opt | `up`/`right`/`down`/`left` | `down` | Initial facing. |
 | `player` | opt | bool | `false` | Marks the player's placement entry (does not create the player; see [player vs NPC avatars](04-point-and-click-concepts.md)). |
+
+**Shaders** (on a layer, region, or object) — see [03 § Shaders](03-2d-game-concepts.md) for the model. A **shader ref** is either a string (shorthand for `{source: <string>}`) or a mapping:
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `source` | req | path | — | Fragment-shader logical path, **relative to the resources root** (not the room dir — shaders are shared). |
+| `params` | opt | map name → value | — | Uniform values (see types below). |
+| `enabled` | opt | bool | `true` | Skips the shader when `false`. |
+| `controller` | opt | string | — | Id of a C++ controller hook (design-for; reserved — drawable draws unshaded until the registry lands). |
+
+**`params`** value forms: `true`/`false` → `bool`; a number → `float` (a bare integer included — use `{type: int, value: N}` for an `int`); a 2/3/4-number sequence → `vec2`/`vec3`/`vec4`; `{type: <bool|int|float|vec2|vec3|vec4>, value: …}` to force a type. Names starting with `u_`, and `texture`, are reserved for engine-set uniforms (`u_time`, `u_resolution`, `texture`).
+
+```yaml
+# layer/region/object shader, full form
+shader:
+  source: shaders/water.frag
+  params:
+    wind_speed: 0.5            # float
+    samples: {type: int, value: 8}
+    center: [0.5, 0.3]         # vec2
+    tint:   [0.2, 0.4, 0.8, 1.0]   # vec4
+```
 
 ## Close-up — `closeups/<id>.yaml`
 

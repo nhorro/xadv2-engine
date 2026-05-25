@@ -9,6 +9,14 @@ background:
   - id: room
     image: a/background/00.png
     z: 0
+    # Worked example of the declarative shader path (design 03 §Shaders): a subtle
+    # warm grade over the study background. Remove this block to restore the
+    # original art untouched.
+    shader:
+      source: shaders/ambient_grade.frag
+      params:
+        tint: [1.06, 1.0, 0.9]
+        strength: 0.35
   - id: table
     image: a/background/01.png
     # z = the table's floor-contact line (front legs), so the avatar sorts in

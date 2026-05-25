@@ -242,6 +242,8 @@ private:
     pac::core::ScreenFade room_fade_;
     bool change_armed_ = false;
     float fade_duration_ = 0.0f;
+    // Monotonic seconds since the scene began, fed to shaders' `u_time` uniform.
+    float shader_time_ = 0.0f;
     // When set, the next room load overrides the default seat with this pose
     // (used by restore() to put the player back at the saved position rather
     // than the room's entry point).
