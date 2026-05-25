@@ -43,18 +43,20 @@ sequences:
       - { sprite: wb2, duration: 0.10 }
       - { sprite: wb3, duration: 0.10 }
 
+  # FIXME
   walk_left:
     loop: true
     frames:
-      - { sprite: wl0, duration: 0.10 }
-      - { sprite: wl1, duration: 0.10 }
-      - { sprite: wl2, duration: 0.10 }
       - { sprite: wl3, duration: 0.10 }
+      - { sprite: wl1, duration: 0.10 }
+      - { sprite: wl3, duration: 0.10 }
+      - { sprite: sl, duration: 0.10 }
 
+  # FIXME
   walk_right:
     loop: true
     frames:
-      - { sprite: wr0, duration: 0.10 }
-      - { sprite: wr1, duration: 0.10 }
-      - { sprite: wr2, duration: 0.10 }
       - { sprite: wr3, duration: 0.10 }
+      - { sprite: wr1, duration: 0.10 }
+      - { sprite: wr3, duration: 0.10 }
+      - { sprite: sr, duration: 0.10 }
