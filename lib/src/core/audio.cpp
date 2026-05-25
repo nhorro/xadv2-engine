@@ -6,6 +6,9 @@
 
 #include <SFML/Audio/SoundBuffer.hpp>
 
+#include <algorithm>
+#include <cmath>
+
 namespace pac::core {
 
 MusicPlayer::MusicPlayer(ResourceCache& resources, Diagnostics& log)
@@ -38,7 +41,7 @@ void MusicPlayer::set_volume(float volume01) {
 SoundPlayer::SoundPlayer(ResourceCache& resources, Diagnostics& log)
     : resources_(resources), log_(log) {}
 
-void SoundPlayer::play(const std::string& logical) {
+void SoundPlayer::play(const std::string& logical, float volume01, float pan) {
     const sf::SoundBuffer* buffer = nullptr;
     try {
         buffer = &resources_.sound_buffer(logical);
@@ -61,7 +64,18 @@ void SoundPlayer::play(const std::string& logical) {
         voice = &voices_.emplace_back();
     }
     voice->setBuffer(*buffer);
-    voice->setVolume(volume_ * 100.0f);
+    voice->setVolume(std::clamp(volume_ * volume01, 0.0f, 1.0f) * 100.0f);
+
+    // Stereo balance: place the (mono) source on a forward arc around the
+    // listener so `pan` maps proportionally to L/R, with distance attenuation off
+    // so only direction matters. pan=0 sits dead ahead (centered, full volume).
+    pan = std::clamp(pan, -1.0f, 1.0f);
+    const float theta = pan * 1.5707963f; // ±90° at the extremes
+    voice->setRelativeToListener(true);
+    voice->setMinDistance(1.0f);
+    voice->setAttenuation(0.0f);
+    voice->setPosition(std::sin(theta), 0.0f, -std::cos(theta));
+
     voice->play();
 }
 

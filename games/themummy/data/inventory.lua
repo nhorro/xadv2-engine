@@ -13,6 +13,7 @@ inventory.key = {
       end
       remove_item("key")
       set_room_state("salida.open", true)
+      play_sound("sfx/door_unlock.ogg")
       return "La llave gira. La puerta de SALIDA se abre."
     end
     return "No funciona ahi."

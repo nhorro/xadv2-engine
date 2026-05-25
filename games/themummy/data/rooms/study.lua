@@ -26,6 +26,7 @@ room.hotspots = {
       return "La puerta da al pasillo del instituto."
     end,
     open = function()
+      play_sound("sfx/door_open.ogg")
       change_room("hall", "from_study")
       return "Abro la puerta y entro al pasillo."
     end,
