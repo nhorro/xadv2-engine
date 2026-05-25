@@ -51,10 +51,16 @@ scenes:
   - id: title
     type: TitleScreen
     parameters:
-      new_game: intro
-      continue: room_view
-      exit: QUIT
+      background: title/title_screen.png   # full-screen image; solid black if omitted
       font: fonts/DepartureMono-Regular.otf
+      font_size: 12
+      music: title/title.mp3               # played in a loop
+      menu:
+        position: {x: 0.5, y: 0.7}         # menu anchor as a fraction of the screen
+        options:
+          new_game: intro
+          continue: room_view
+          exit: QUIT
 
   - id: settings
     type: SettingsScene

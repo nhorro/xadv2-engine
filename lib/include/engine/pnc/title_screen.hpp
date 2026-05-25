@@ -2,6 +2,8 @@
 
 #include "engine/core/scene.hpp"
 
+#include <SFML/System/Vector2.hpp>
+
 #include <string>
 #include <vector>
 
@@ -16,17 +18,30 @@ class SceneParams;
 
 namespace pac::pnc {
 
-/// Main menu. Renders a vertical list of menu entries (mouse hover + click,
-/// Escape to exit). Outcomes `new_game`, `continue`, and `exit` are wired by
-/// the manifest; `settings` is engine-handled (pushes the SettingsScene). The
-/// `Continue` entry only appears when a save exists (loaded via the engine's
-/// SaveService.latest_slot()).
+/// Main menu. Renders a vertical list of borderless text entries over an optional
+/// full-screen background image (solid black when none), with optional looping
+/// music. Mouse hover highlights an entry; click triggers it; Escape exits. The
+/// menu block is anchored at a configurable screen-fraction position.
+///
+/// Configured entirely from the manifest scene `parameters`:
+///   background  (opt path)   full-screen image; solid black if omitted
+///   font        (opt path)   menu label font
+///   font_size   (opt int)    menu label size in virtual pixels
+///   music       (opt path)   background track, played in a loop
+///   menu.position.{x,y}      menu anchor as a 0..1 screen fraction
+///   menu.options.{new_game,continue,exit}   outcome scene ids
+///
+/// Outcomes `new_game`, `continue`, and `exit` are wired by the manifest;
+/// `settings` is engine-handled (pushes the SettingsScene). The `Continue` entry
+/// only appears when a save exists (via the engine's SaveService.latest_slot()).
 class TitleScreen : public pac::core::Scene {
 public:
     TitleScreen(pac::core::EngineContext& ctx, const pac::core::SceneParams& params);
 
     void enter() override;
+    void leave() override;
     void handle_event(const sf::Event& event) override;
+    void update(float dt) override;
     void draw(sf::RenderTarget& target) const override;
 
 private:
@@ -34,16 +49,22 @@ private:
     struct Entry {
         std::string label;
         Action action;
+        float width = 0.0f; // cached text width in virtual px (0 when no font)
     };
 
     void rebuild_entries();
     void trigger(Action action);
+    sf::Vector2f entry_center(int index, int count) const;
     int entry_at(float virtual_x, float virtual_y) const;
 
     pac::core::EngineContext& ctx_;
+    std::string background_path_;
+    std::string music_path_;
     std::string new_game_target_;
     std::string continue_target_;
     std::string exit_target_;
+    sf::Vector2f menu_anchor_{0.5f, 0.5f}; // screen-fraction position of the menu block
+    unsigned font_size_ = 28;
     std::vector<Entry> entries_;
     const sf::Font* font_ = nullptr; // owned by ResourceCache; null if unavailable
     int hovered_ = -1;

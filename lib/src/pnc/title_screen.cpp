@@ -1,5 +1,7 @@
 #include "engine/pnc/title_screen.hpp"
 
+#include "engine/core/audio.hpp"
+#include "engine/core/cursor.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
@@ -13,43 +15,66 @@
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
+#include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Text.hpp>
+#include <SFML/Graphics/Texture.hpp>
 #include <SFML/Window/Event.hpp>
+
+#include <exception>
 
 namespace pac::pnc {
 
 namespace {
 
-// Menu entry geometry in virtual space.
-constexpr float kEntryWidth = 360.0f;
-constexpr float kEntryHeight = 56.0f;
-constexpr float kEntryGap = 16.0f;
-constexpr unsigned kTextSize = 28;
+// Vertical spacing between menu entries as a multiple of the font size.
+constexpr float kLineSpacing = 1.6f;
+// Horizontal padding added around an entry's text for mouse hit-testing.
+constexpr float kHitPadX = 16.0f;
+// Hit width used for entries when no font is available to measure labels.
+constexpr float kNoFontHitWidth = 240.0f;
 
-sf::Vector2f entry_top_left(const sf::Vector2u& vres, int index, int count) {
-    const float block_h = count * kEntryHeight + (count - 1) * kEntryGap;
-    const float x = (static_cast<float>(vres.x) - kEntryWidth) / 2.0f;
-    const float y0 = (static_cast<float>(vres.y) - block_h) / 2.0f;
-    return {x, y0 + index * (kEntryHeight + kEntryGap)};
+float parse_fraction(const pac::core::SceneParams& params, const std::string& key, float fallback) {
+    const auto v = params.get(key);
+    if (!v) {
+        return fallback;
+    }
+    try {
+        return std::stof(*v);
+    } catch (const std::exception&) {
+        return fallback;
+    }
 }
 
 } // namespace
 
 TitleScreen::TitleScreen(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
     : ctx_(ctx) {
-    new_game_target_ = params.get_or("new_game", "");
-    continue_target_ = params.get_or("continue", "");
-    exit_target_ = params.get_or("exit", "QUIT");
+    background_path_ = params.get_or("background", "");
+    music_path_ = params.get_or("music", "");
+    new_game_target_ = params.get_or("menu.options.new_game", "");
+    continue_target_ = params.get_or("menu.options.continue", "");
+    exit_target_ = params.get_or("menu.options.exit", "QUIT");
 
-    rebuild_entries();
+    menu_anchor_.x = parse_fraction(params, "menu.position.x", 0.5f);
+    menu_anchor_.y = parse_fraction(params, "menu.position.y", 0.5f);
+
+    if (const auto fs = params.get("font_size")) {
+        try {
+            font_size_ = static_cast<unsigned>(std::stoul(*fs));
+        } catch (const std::exception&) {
+            ctx_.log.warn("title: invalid font_size '" + *fs + "'; using default");
+        }
+    }
 
     const std::string font_path = params.get_or("font", "");
     if (!font_path.empty()) {
         font_ = ctx_.resources.try_font(font_path);
         if (!font_) {
-            ctx_.log.warn("title: no font '" + font_path + "'; drawing labels as bars");
+            ctx_.log.warn("title: no font '" + font_path + "'; menu labels will not be drawn");
         }
     }
+
+    rebuild_entries();
 }
 
 void TitleScreen::enter() {
@@ -57,24 +82,53 @@ void TitleScreen::enter() {
     // a save exists so Continue shows/hides accordingly.
     rebuild_entries();
     hovered_ = -1;
+    if (!music_path_.empty()) {
+        ctx_.audio.music.play(music_path_, /*loop=*/true);
+    }
+}
+
+void TitleScreen::leave() {
+    if (!music_path_.empty()) {
+        ctx_.audio.music.stop();
+    }
 }
 
 void TitleScreen::rebuild_entries() {
     entries_.clear();
-    entries_.push_back({ctx_.strings.ui_label("new_game"), Action::NEW_GAME});
+    entries_.push_back({ctx_.strings.ui_label("new_game"), Action::NEW_GAME, 0.0f});
     if (!continue_target_.empty() && ctx_.saves.latest_slot().has_value()) {
-        entries_.push_back({ctx_.strings.ui_label("continue"), Action::CONTINUE});
+        entries_.push_back({ctx_.strings.ui_label("continue"), Action::CONTINUE, 0.0f});
     }
-    entries_.push_back({ctx_.strings.ui_label("settings"), Action::SETTINGS});
-    entries_.push_back({ctx_.strings.ui_label("quit"), Action::EXIT});
+    entries_.push_back({ctx_.strings.ui_label("settings"), Action::SETTINGS, 0.0f});
+    entries_.push_back({ctx_.strings.ui_label("quit"), Action::EXIT, 0.0f});
+
+    if (font_ != nullptr) {
+        for (Entry& e : entries_) {
+            sf::Text text(pac::core::utf8(e.label), *font_, font_size_);
+            e.width = text.getLocalBounds().width;
+        }
+    }
+}
+
+sf::Vector2f TitleScreen::entry_center(int index, int count) const {
+    const sf::Vector2u vres = ctx_.display.virtual_resolution();
+    const float line_h = static_cast<float>(font_size_) * kLineSpacing;
+    const float block_h = static_cast<float>(count) * line_h;
+    const float anchor_x = menu_anchor_.x * static_cast<float>(vres.x);
+    const float anchor_y = menu_anchor_.y * static_cast<float>(vres.y);
+    const float top = anchor_y - block_h / 2.0f;
+    return {anchor_x, top + (static_cast<float>(index) + 0.5f) * line_h};
 }
 
 int TitleScreen::entry_at(float vx, float vy) const {
-    const sf::Vector2u vres = ctx_.display.virtual_resolution();
     const int count = static_cast<int>(entries_.size());
+    const float line_h = static_cast<float>(font_size_) * kLineSpacing;
     for (int i = 0; i < count; ++i) {
-        const sf::Vector2f tl = entry_top_left(vres, i, count);
-        if (vx >= tl.x && vx <= tl.x + kEntryWidth && vy >= tl.y && vy <= tl.y + kEntryHeight) {
+        const sf::Vector2f c = entry_center(i, count);
+        const Entry& e = entries_[static_cast<std::size_t>(i)];
+        const float half_w = (e.width > 0.0f ? e.width / 2.0f + kHitPadX : kNoFontHitWidth / 2.0f);
+        const float half_h = line_h / 2.0f;
+        if (vx >= c.x - half_w && vx <= c.x + half_w && vy >= c.y - half_h && vy <= c.y + half_h) {
             return i;
         }
     }
@@ -131,35 +185,57 @@ void TitleScreen::handle_event(const sf::Event& event) {
     }
 }
 
+void TitleScreen::update(float dt) {
+    (void) dt;
+    // Use the same hover affordance as the rest of the game: the custom game
+    // cursor switches to its INTERACT variant over a clickable menu entry.
+    if (hovered_ >= 0) {
+        ctx_.cursor.want(pac::core::CursorKind::INTERACT);
+    }
+}
+
 void TitleScreen::draw(sf::RenderTarget& target) const {
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
+    const auto vw = static_cast<float>(vres.x);
+    const auto vh = static_cast<float>(vres.y);
 
-    sf::RectangleShape bg(sf::Vector2f(static_cast<float>(vres.x), static_cast<float>(vres.y)));
-    bg.setFillColor(sf::Color(16, 18, 28));
+    // Background: scaled full-screen image, or solid black when none is set.
+    sf::RectangleShape bg(sf::Vector2f(vw, vh));
+    bg.setFillColor(sf::Color::Black);
     target.draw(bg);
+
+    if (!background_path_.empty()) {
+        try {
+            const sf::Texture& tex = ctx_.resources.texture(background_path_);
+            sf::Sprite sprite(tex);
+            const sf::Vector2u ts = tex.getSize();
+            if (ts.x > 0 && ts.y > 0) {
+                sprite.setScale(vw / static_cast<float>(ts.x), vh / static_cast<float>(ts.y));
+            }
+            target.draw(sprite);
+        } catch (const std::exception& e) {
+            ctx_.log.error(e.what());
+        }
+    }
+
+    if (font_ == nullptr) {
+        return;
+    }
 
     const int count = static_cast<int>(entries_.size());
     for (int i = 0; i < count; ++i) {
-        const sf::Vector2f tl = entry_top_left(vres, i, count);
         const bool hot = (i == hovered_);
+        const sf::Vector2f c = entry_center(i, count);
 
-        sf::RectangleShape box(sf::Vector2f(kEntryWidth, kEntryHeight));
-        box.setPosition(tl);
-        box.setFillColor(hot ? sf::Color(70, 90, 140) : sf::Color(40, 46, 66));
-        box.setOutlineThickness(2.0f);
-        box.setOutlineColor(sf::Color(90, 100, 130));
-        target.draw(box);
-
-        if (font_) {
-            sf::Text text(pac::core::utf8(entries_[static_cast<std::size_t>(i)].label),
-                          *font_,
-                          kTextSize);
-            text.setFillColor(hot ? sf::Color::White : sf::Color(210, 215, 230));
-            const sf::FloatRect b = text.getLocalBounds();
-            text.setPosition(tl.x + (kEntryWidth - b.width) / 2.0f - b.left,
-                             tl.y + (kEntryHeight - b.height) / 2.0f - b.top);
-            target.draw(text);
-        }
+        sf::Text text(pac::core::utf8(entries_[static_cast<std::size_t>(i)].label),
+                      *font_,
+                      font_size_);
+        text.setFillColor(hot ? sf::Color::White : sf::Color(200, 205, 220));
+        text.setOutlineColor(sf::Color(0, 0, 0, 200));
+        text.setOutlineThickness(2.0f);
+        const sf::FloatRect b = text.getLocalBounds();
+        text.setPosition(c.x - b.width / 2.0f - b.left, c.y - b.height / 2.0f - b.top);
+        target.draw(text);
     }
 }
 
