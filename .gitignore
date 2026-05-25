@@ -2,3 +2,7 @@
 build*
 .doc
 vcpkg_installed/
+
+# MkDocs documentation site
+/site/
+.venv/
