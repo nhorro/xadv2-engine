@@ -20,6 +20,18 @@ class RoomRuntime;
 class Avatar;
 struct RoomData;
 
+/// Per-frame inputs the renderer feeds to a shader's reserved uniforms (design 03
+/// §Shaders). `time` (seconds since the scene began) drives `u_time`;
+/// `u_resolution` is set per drawable from its texture size, so it is not here.
+struct ShaderEnv {
+    float time = 0.0f;
+};
+
+/// Log a one-time warning (at room load) for shader features that parse but are
+/// not yet applied: a multi-shader stack (only the first runs) and a `controller`
+/// reference (declarative-only for now). Keeps the per-frame render path quiet.
+void warn_unsupported_shader_features(const RoomData& data, pac::core::Diagnostics& log);
+
 /// Derive a room's world bounds from its background layers: the bounding box of
 /// every layer rect — a layer occupies [origin, origin + native texture size ×
 /// scale), origin defaulting to the world origin (0,0) and scale to 1.0 — anchored
@@ -46,7 +58,8 @@ public:
               pac::core::ResourceCache& resources,
               const Avatar* player,
               const std::vector<const Avatar*>& npcs,
-              pac::core::Diagnostics& log) const;
+              pac::core::Diagnostics& log,
+              const ShaderEnv& shaders = {}) const;
 };
 
 } // namespace pac::pnc
