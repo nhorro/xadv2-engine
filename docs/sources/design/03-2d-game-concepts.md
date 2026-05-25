@@ -286,8 +286,9 @@ use the explicit `{type: int, ...}` form for a true integer uniform.
 ### Reserved uniforms
 
 The engine sets these automatically each frame when drawing a shaded item; declare
-only the ones a shader uses (SFML ignores any it doesn't declare, logging a single
-benign "uniform not found" line per shader in dev):
+only the ones a shader uses. The engine inspects each shader's source on load and
+sets a reserved uniform only when the shader actually declares it, so an effect that
+needs none of them (e.g. a static colour grade) costs nothing and logs nothing:
 
 | Uniform | Type | Meaning |
 |---------|------|---------|
