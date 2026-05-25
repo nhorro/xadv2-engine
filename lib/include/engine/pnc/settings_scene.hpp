@@ -5,6 +5,7 @@
 
 #include <SFML/System/Vector2.hpp>
 
+#include <string>
 #include <vector>
 
 namespace sf {
@@ -33,6 +34,7 @@ public:
     SettingsScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params);
 
     void handle_event(const sf::Event& event) override;
+    void update(float dt) override;
     void draw(sf::RenderTarget& target) const override;
 
 private:
@@ -52,9 +54,17 @@ private:
     void apply();         // commit the working copy + persist + request display
     void cancel();        // discard staged changes (restore audio preview) + pop
 
+    // Vertical center (virtual px) of menu row `i`, shared by draw + hit-testing.
+    float row_center_y(int i, const sf::Vector2u& vres) const;
+    // Row index under a virtual-space point, or -1 if none.
+    int row_at(float virtual_x, float virtual_y) const;
+
     pac::core::EngineContext& ctx_;
     const sf::Font* font_ = nullptr; // owned by ResourceCache; null if unavailable
+    std::string background_path_;    // full-screen image; dark fill when empty
+    unsigned font_size_ = 28;        // menu-row text size; title derives from it
     int row_ = 0;
+    bool hovered_ = false; // cursor is over a row this frame (interact affordance)
 
     // Editable draft of the settings; committed to the engine only on APPLY.
     pac::core::Settings working_;
