@@ -25,19 +25,13 @@ def parse_args() -> argparse.Namespace:
     serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind the web server to.")
     serve_parser.add_argument("--port", type=int, default=8000, help="Port to bind the web server to.")
 
-    gui_parser = subparsers.add_parser("gui", help="Start the web-based room editor in a browser. Alias for serve.")
-    gui_parser.add_argument("--room", help="Optional room YAML to open at startup. Omit to pick one in the UI.")
-    gui_parser.add_argument("--base-path", help="Base directory for logical asset paths and the room list. Defaults to the room YAML directory, or the current directory when --room is omitted.")
-    gui_parser.add_argument("--host", default="127.0.0.1", help="Host to bind the web server to.")
-    gui_parser.add_argument("--port", type=int, default=8000, help="Port to bind the web server to.")
-
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
 
-    if args.command in {"serve", "gui"}:
+    if args.command == "serve":
         room_path = Path(args.room) if args.room else None
         if args.base_path:
             base_path = Path(args.base_path)
