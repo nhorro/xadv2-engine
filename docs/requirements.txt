@@ -1,0 +1,10 @@
+# Documentation site (MkDocs + Material theme).
+#   python3 -m venv .venv && source .venv/bin/activate
+#   pip install -r docs/requirements.txt
+#   mkdocs serve   # preview    |   mkdocs build   # static site into ./site/
+mkdocs>=1.6,<2
+mkdocs-material>=9.5,<10
+
+# Optional: export the site to a single PDF (run as `mkdocs build` with the
+# plugin enabled in mkdocs.yml). Left commented to keep the base install light.
+# mkdocs-with-pdf>=0.9

@@ -1,0 +1,119 @@
+site_name: Extraordinary Adventures Engine
+site_description: >-
+  Documentation for xadv2-engine — a C++17 / SFML engine for third-person
+  SCUMM-style point-and-click adventure games, scripted in Lua and configured
+  with YAML.
+site_author: Nicolás Horro
+repo_url: https://github.com/nhorro/xadv2-engine
+repo_name: nhorro/xadv2-engine
+edit_uri: edit/develop/docs/
+
+# The existing markdown lives under docs/; MkDocs renders it in place so the
+# canonical design docs (docs/sources/design/) stay the source of truth and the
+# build-pdf.sh pipeline keeps working unchanged.
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  language: en
+  # Typography is fully controlled by the bundled xkcd/pencil fonts in
+  # docs/stylesheets/extra.css; don't pull Material's Google web fonts.
+  font: false
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - navigation.tracking
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+
+# Files kept under docs/ that are not site content (build inputs / scripts).
+exclude_docs: |
+  requirements.txt
+  sources/design/build-pdf.sh
+
+# Working documents that are pages but should not appear as standalone nav entries.
+not_in_nav: |
+  README.md
+  sources/design/README.md
+
+# The three audiences (see docs/index.md). Technical + Content Creators are in
+# English; Arte y Narrativa is authored in Spanish.
+nav:
+  - Home: index.md
+  - Technical:
+      - technical/index.md
+      - Design:
+          - Index: sources/design/00-index.md
+          - Engine requirements: sources/design/01-engine-requirements.md
+          - Architecture overview: sources/design/02-architecture-overview.md
+          - Generic 2D concepts: sources/design/03-2d-game-concepts.md
+          - Point & click concepts: sources/design/04-point-and-click-concepts.md
+          - Scripting API: sources/design/05-scripting-api.md
+          - Data formats: sources/design/06-data-formats.md
+          - Implementation plan: sources/design/implementation-plan.md
+      - Coding guides:
+          - Conventions & formatting: coding-conventions.md
+          - C++ engine guide: coding-guide/cpp-engine.md
+          - Lua & content guide: coding-guide/lua-game.md
+  - Content Creators:
+      - authoring/index.md
+      - Lua API reference: authoring/lua-api.md
+      - Data formats: authoring/data-formats.md
+      - Tools:
+          - authoring/tools/index.md
+          - Transparentizer: authoring/tools/transparentizer.md
+          - Spritesheet packer: authoring/tools/spritesheet-packer.md
+          - Room editor: authoring/tools/room-editor.md
+          - Avatar maker: authoring/tools/avatar-maker.md
+  - Arte y Narrativa:
+      - art/index.md
+      - Fondos y sprites: art/backgrounds-sprites.md
+      - Narrativa y puzzles: art/storytelling-puzzles.md
