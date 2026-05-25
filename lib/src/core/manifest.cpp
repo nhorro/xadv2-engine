@@ -109,6 +109,25 @@ void parse_languages(const YAML::Node& root, Manifest& m) {
     m.languages.push_back({m.default_language, "", m.strings_path});
 }
 
+// Flatten a scene `parameters` mapping into the flat string store, joining nested
+// map keys with dots (e.g. `menu.position.x`, `menu.options.new_game`). This keeps
+// SceneParams a flat scalar map while letting authors group related parameters in
+// the manifest. Sequences are not used by any scene type and are skipped.
+void flatten_params(const YAML::Node& node, const std::string& prefix, SceneParams& out) {
+    if (!node.IsMap()) {
+        return;
+    }
+    for (const auto& kv : node) {
+        const std::string key =
+            prefix.empty() ? kv.first.as<std::string>() : prefix + "." + kv.first.as<std::string>();
+        if (kv.second.IsScalar()) {
+            out.set(key, kv.second.as<std::string>());
+        } else if (kv.second.IsMap()) {
+            flatten_params(kv.second, key, out);
+        }
+    }
+}
+
 unsigned require_dimension(const YAML::Node& node, const char* what) {
     if (!node) {
         manifest_fail("manifest.dimension-missing", std::string(what) + " is required", node);
@@ -230,13 +249,9 @@ Manifest parse_manifest(const std::string& yaml_text) {
         desc.type = sn["type"].as<std::string>();
 
         if (const YAML::Node params = sn["parameters"]) {
-            for (const auto& kv : params) {
-                if (kv.second.IsScalar()) {
-                    desc.parameters.set(kv.first.as<std::string>(), kv.second.as<std::string>());
-                }
-                // Nested/structured parameters (e.g. RoomScene) are parsed in
-                // their owning milestone; M0 scenes use scalar parameters only.
-            }
+            // Scalar parameters store directly; nested maps flatten into dotted
+            // keys (e.g. `menu.position.x`) so scenes can read structured config.
+            flatten_params(params, "", desc.parameters);
         }
         m.scenes.push_back(std::move(desc));
     }
