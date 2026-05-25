@@ -63,14 +63,26 @@ default_language: es   # optional; defaults to the first entry
 
 **Scene parameters by type:**
 
-- `TitleScreen` — `background` (opt path), `music` (opt path), `new_game`
-  (outcome scene id), `exit` (outcome, often `QUIT`), `font` (opt path).
+- `TitleScreen` — `background` (opt path — full-screen image scaled to the virtual
+  resolution; solid black when omitted), `music` (opt path — played in a loop),
+  `font` (opt path), `font_size` (opt int — menu label size in virtual pixels),
+  and a `menu` map: `menu.position` `{x, y}` (anchor as a 0..1 screen fraction;
+  `{0.5, 0.5}` centers the menu block) and `menu.options` with the outcome scene
+  ids `new_game`, `continue` (the entry shows only when a save exists), and `exit`
+  (often `QUIT`). Menu entries are borderless text; hover highlights the entry and
+  switches the cursor to its interact variant.
 - `StoryText` / `Cutscene` — `script` (path), `on_finish` (outcome scene id),
   `font` (opt path).
 - `RoomScene` — `cast` (path), `logic` (path), `inventory` (path),
   `inventory_logic` (path), `rooms` (directory path), `start_room` (room id),
   `player` (req, cast character id — the persistent player avatar; appearance comes
   from this character's cast entry), `font` (opt path — speech and panel font).
+- `SettingsScene` — `background` (opt path — full-screen image scaled to the virtual
+  resolution; a dark fill when omitted), `font` (opt path), `font_size` (opt int —
+  menu-row text size; the title derives from it). Rows are navigable by keyboard
+  (arrows / Enter / Esc) **and** mouse (hover selects, left-click a value's left/right
+  half decrements/increments, click APPLY/BACK to confirm/cancel), using the same
+  custom cursor and hover affordance as the rest of the game.
 
 Scenes that render text take their `font` as a logical-path parameter; an engine
 default is used when omitted. Per-character speech color and style come from the

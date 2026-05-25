@@ -44,22 +44,30 @@ development:
   show_state: false
   allow_room_reload: true
 
-#entry: title
-entry: room_view
+entry: title
+#entry: room_view
 
 scenes:
   - id: title
     type: TitleScreen
     parameters:
-      new_game: intro
-      continue: room_view
-      exit: QUIT
+      background: title/title_screen.png   # full-screen image; solid black if omitted
       font: fonts/DepartureMono-Regular.otf
+      font_size: 30
+      music: title/title.mp3               # played in a loop
+      menu:
+        position: {x: 0.5, y: 0.8}         # menu anchor as a fraction of the screen
+        options:
+          new_game: intro
+          continue: room_view
+          exit: QUIT
 
   - id: settings
     type: SettingsScene
     parameters:
+      background: settings/settings.png   # full-screen image; dark fill if omitted
       font: fonts/DepartureMono-Regular.otf
+      font_size: 20
 
   - id: intro
     type: StoryText
