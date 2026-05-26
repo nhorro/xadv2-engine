@@ -9,14 +9,20 @@ background:
   - id: room
     image: a/background/00.png
     z: 0
-    # Worked example of the declarative shader path (design 03 §Shaders): a warm
-    # lamp-light grade over the study background. Tune `strength` (0 = original art)
-    # and `tint` (per-channel multiplier) to taste, or remove this block entirely.
-    shader:
-      source: shaders/ambient_grade.frag
-      params:
-        tint: [1.15, 1.0, 0.82]
-        strength: 0.6
+    # Worked example of the declarative shader path (design 03 §Shaders) and now
+    # of the multi-pass chain (issue #105): a warm lamp-light grade, then a soft
+    # vignette over it. Drop either entry or the whole block to taste.
+    shaders:
+      - source: shaders/ambient_grade.frag
+        params:
+          tint: [1.15, 1.0, 0.82]
+          strength: 0.6
+      - source: shaders/vignette.frag
+        params:
+          strength: 0.45
+          inner:    0.50
+          outer:    1.00
+          color:    [0.05, 0.02, 0.0]
   - id: table
     image: a/background/01.png
     # z = the table's floor-contact line (front legs), so the avatar sorts in
