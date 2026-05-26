@@ -14,6 +14,7 @@
 #include "engine/core/scripting.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/text_encoding.hpp"
+#include "engine/core/thumbnail.hpp"
 #include "engine/gfx/animated_sprite.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/dev_actions.hpp"
@@ -1596,6 +1597,14 @@ void RoomScene::trigger_menu(MenuAction action) {
         // Stage the snapshot for the picker to write. The picker pops itself
         // after a save or back, returning the player to the pause menu.
         ctx_.saves.stage_pending_snap(snap());
+        // Stage the most recent gameplay thumbnail (#119). The MENU state stops
+        // refreshing it, so the staged frame is the last COMMAND frame — what
+        // the player remembers as "the moment they paused". An empty image
+        // (no capture yet, e.g. first frame after a restore) is fine; the save
+        // just skips the sidecar PNG.
+        if (ctx_.thumbnail.valid()) {
+            ctx_.saves.stage_pending_thumbnail(ctx_.thumbnail.image());
+        }
         ctx_.scenes.open_save();
         break;
     case MenuAction::OPEN_LOAD:

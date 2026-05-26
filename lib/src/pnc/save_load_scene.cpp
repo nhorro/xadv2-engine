@@ -152,6 +152,16 @@ void SaveLoadScene::refresh_summaries() {
         // Seed the input with the previous description so a re-save against the
         // same slot doesn't force re-typing.
         v.draft = sf::String::fromUtf8(v.description.begin(), v.description.end());
+        // Thumbnail sidecar (#119): load from disk if present, else leave null
+        // and the row falls back to the placeholder. A load failure is logged
+        // by SFML but doesn't break the row.
+        if (ctx_.saves.slot_has_thumbnail(slot)) {
+            auto tex = std::make_unique<sf::Texture>();
+            if (tex->loadFromFile(ctx_.saves.thumbnail_path(slot).string())) {
+                tex->setSmooth(true);
+                v.thumbnail = std::move(tex);
+            }
+        }
         const float row_top = top0 + static_cast<float>(slot) * (kRowHeight + kRowGap);
         compute_row_rects(row_top, v);
         rows_.push_back(std::move(v));
@@ -351,9 +361,17 @@ void SaveLoadScene::save_into(SlotView& view) {
         const auto utf8 = view.draft.toUtf8();
         staged->description.assign(utf8.begin(), utf8.end());
     }
-    if (!ctx_.saves.save(view.slot, *staged)) {
+    // Thumbnail sidecar (#119). RoomScene's OPEN_SAVE stages the latest
+    // captured image; an empty one (no capture happened yet) skips the PNG.
+    const sf::Image thumb = ctx_.saves.take_pending_thumbnail();
+    const sf::Image* thumb_ptr =
+        (thumb.getSize().x > 0 && thumb.getSize().y > 0) ? &thumb : nullptr;
+    if (!ctx_.saves.save(view.slot, *staged, thumb_ptr)) {
         // save() already logged. Re-stage so a retry against another slot works.
         ctx_.saves.stage_pending_snap(std::move(*staged));
+        if (thumb_ptr) {
+            ctx_.saves.stage_pending_thumbnail(thumb);
+        }
         return;
     }
     ctx_.scenes.pop_scene();
@@ -371,9 +389,10 @@ void SaveLoadScene::load_from(const SlotView& view) {
 }
 
 void SaveLoadScene::cancel() {
-    // Drop the staged snap on cancel so a stale snap doesn't leak into the
+    // Drop the staged snap + thumbnail on cancel so neither leaks into the
     // next time the picker is opened.
     (void) ctx_.saves.take_pending_snap();
+    (void) ctx_.saves.take_pending_thumbnail();
     ctx_.scenes.pop_scene();
 }
 
@@ -550,12 +569,32 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
         plate.setOutlineThickness(focused ? 2.0f : 1.0f);
         target.draw(plate);
 
-        // Thumbnail placeholder.
+        // Thumbnail: the loaded sidecar texture when present (#119), else the
+        // placeholder. The thumb rect is the same shape either way so layout
+        // (label start, button position) stays identical.
         sf::FloatRect thumb(v.row.left + kInnerPad,
                             v.row.top + (v.row.height - kThumbH) / 2.0f,
                             kThumbW,
                             kThumbH);
-        draw_thumbnail_placeholder(target, thumb, font_, thumb_lbl);
+        if (v.thumbnail) {
+            const sf::Vector2u ts = v.thumbnail->getSize();
+            sf::Sprite sprite(*v.thumbnail);
+            sprite.setPosition(thumb.left, thumb.top);
+            if (ts.x > 0 && ts.y > 0) {
+                sprite.setScale(kThumbW / static_cast<float>(ts.x),
+                                kThumbH / static_cast<float>(ts.y));
+            }
+            target.draw(sprite);
+            // Faint outline so the image reads as a contained "card".
+            sf::RectangleShape outline(sf::Vector2f(kThumbW, kThumbH));
+            outline.setPosition(thumb.left, thumb.top);
+            outline.setFillColor(sf::Color::Transparent);
+            outline.setOutlineColor(sf::Color(70, 78, 95));
+            outline.setOutlineThickness(1.0f);
+            target.draw(outline);
+        } else {
+            draw_thumbnail_placeholder(target, thumb, font_, thumb_lbl);
+        }
 
         // Label + description / timestamp.
         if (font_) {

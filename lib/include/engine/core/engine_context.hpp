@@ -15,6 +15,7 @@ class Settings;
 class SettingsStore;
 class StateStore;
 class Strings;
+class Thumbnail;
 struct AudioServices;
 struct CursorState;
 struct DevFlags;
@@ -53,6 +54,11 @@ struct EngineContext {
     /// Player settings persistence (issue #66). The settings scene calls
     /// `save()` when the player applies changes.
     SettingsStore& settings_store;
+    /// Latest captured framebuffer thumbnail (issue #119). The app loop
+    /// refreshes it on frames the active scene marks as good thumbnail
+    /// candidates (`Scene::wants_thumbnail()`); the in-game pause menu hands
+    /// it to `SaveService` when the player opens the save picker.
+    Thumbnail& thumbnail;
 };
 
 } // namespace pac::core
