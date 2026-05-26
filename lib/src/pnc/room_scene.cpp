@@ -1542,19 +1542,20 @@ void RoomScene::api_start_dialog(const std::string& npc_id) {
     view_state_ = ViewState::DIALOG;
 }
 
-// --- pause / save / load menu (M5c/2) ---
+// --- pause / save / load / settings menu (M5c/2) ---
 
 std::vector<RoomScene::MenuButton> RoomScene::menu_buttons() const {
-    // Single vertical column of four buttons. The picker UI for save/load
+    // Single vertical column of five buttons. The picker UI for save/load
     // (slots, thumbnails, descriptions) lives in the SaveLoadScene (issue #108)
-    // and is pushed by `trigger_menu`. The Save action is disabled when the
-    // engine can't take a coherent snapshot or no save scene is configured; the
-    // Load action is disabled when no slot exists or no load scene is configured.
+    // and is pushed by `trigger_menu`; settings is another scene overlay. The
+    // Save action is disabled when the engine can't take a coherent snapshot or
+    // no save scene is configured; the Load action is disabled when no slot
+    // exists or no load scene is configured.
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
     const float w = 360.0f;
     const float row_h = 56.0f;
     const float gap = 14.0f;
-    const int count = 4;
+    const int count = 5;
     const float total_h = count * row_h + (count - 1) * gap;
     const float left = (static_cast<float>(vres.x) - w) / 2.0f;
     const float top = (static_cast<float>(vres.y) - total_h) / 2.0f;
@@ -1573,8 +1574,9 @@ std::vector<RoomScene::MenuButton> RoomScene::menu_buttons() const {
     const MenuAction actions[count] = {MenuAction::RESUME,
                                        MenuAction::OPEN_SAVE,
                                        MenuAction::OPEN_LOAD,
+                                       MenuAction::OPEN_SETTINGS,
                                        MenuAction::QUIT_TO_TITLE};
-    const bool enabled[count] = {true, save_enabled, load_enabled, true};
+    const bool enabled[count] = {true, save_enabled, load_enabled, true, true};
 
     std::vector<MenuButton> out;
     out.reserve(count);
@@ -1629,6 +1631,9 @@ void RoomScene::trigger_menu(MenuAction action) {
         // the helper is a no-op; the button is disabled in that state anyway.
         ctx_.scenes.open_load();
         break;
+    case MenuAction::OPEN_SETTINGS:
+        ctx_.scenes.open_settings();
+        break;
     case MenuAction::QUIT_TO_TITLE:
         ctx_.scenes.goto_scene("title");
         break;
@@ -1655,7 +1660,7 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
                       static_cast<float>(vres.y) * 0.18f);
     target.draw(title);
 
-    // Single column of four buttons; the actual save/load picker is the
+    // Single column of five buttons; the actual save/load picker is the
     // SaveLoadScene (issue #108) opened by OPEN_SAVE / OPEN_LOAD.
     for (const MenuButton& bt : menu_buttons()) {
         const bool hot = bt.enabled && bt.rect.contains(hover_vp_);
@@ -1681,6 +1686,9 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
             break;
         case MenuAction::OPEN_LOAD:
             label = ctx_.strings.ui_label("load_game");
+            break;
+        case MenuAction::OPEN_SETTINGS:
+            label = ctx_.strings.ui_label("settings");
             break;
         case MenuAction::QUIT_TO_TITLE:
             label = ctx_.strings.ui_label("quit_to_title");

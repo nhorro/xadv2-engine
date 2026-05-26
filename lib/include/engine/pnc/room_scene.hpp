@@ -110,9 +110,9 @@ private:
     void say(const std::string& text, sf::Color color);
     void say_at(const std::string& text, sf::Color color, geom::Point world);
 
-    // --- pause / save / load menu (M5c/2; the picker is the SaveLoadScene from
-    // issue #108) ---
-    enum class MenuAction { RESUME, OPEN_SAVE, OPEN_LOAD, QUIT_TO_TITLE };
+    // --- pause / save / load / settings menu (M5c/2; the picker is the
+    // SaveLoadScene from issue #108) ---
+    enum class MenuAction { RESUME, OPEN_SAVE, OPEN_LOAD, OPEN_SETTINGS, QUIT_TO_TITLE };
     struct MenuButton {
         sf::FloatRect rect;
         MenuAction action;
