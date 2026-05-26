@@ -6,6 +6,7 @@
 #include <doctest/doctest.h>
 
 #include <string>
+#include <utility>
 
 using namespace pac::pnc;
 
@@ -70,6 +71,18 @@ scumm_panel:
         next_text: ">"
         size: 22
         color: "#222222"
+  settings_button:
+    enabled: true
+    position: [0.97, 0.15]
+    anchor: center
+    size: [32, 32]
+    render_mode: panel
+    panel:
+      label_key: settings_button
+      font: "fonts/scumm.ttf"
+      font_size: 14
+      normal_color: "#dddddd"
+      hovered_color: "#ffffff"
 )yaml";
 }
 
@@ -124,6 +137,15 @@ TEST_CASE("scumm panel config parses layout, skin, and relative asset paths") {
     CHECK(cfg.skin.background_variants.at("inv_next_hover") == "ui/panel_next_hover.png");
     CHECK(cfg.skin.command_text.font == "ui/fonts/scumm.ttf");
     CHECK(cfg.skin.command_text.align == "right");
+
+    CHECK(cfg.settings_button.enabled);
+    CHECK(cfg.settings_button.position.x == doctest::Approx(0.97f));
+    CHECK(cfg.settings_button.position.y == doctest::Approx(0.15f));
+    CHECK(cfg.settings_button.size.x == doctest::Approx(32.0f));
+    CHECK(cfg.settings_button.anchor == ScummPanelAnchor::CENTER);
+    CHECK(cfg.settings_button.render_mode == ScummButtonRenderMode::PANEL);
+    CHECK(cfg.settings_button.panel.label_key == "settings_button");
+    CHECK(cfg.settings_button.panel.font == "ui/fonts/scumm.ttf");
 }
 
 TEST_CASE("scumm panel config rejects too many verbs for the grid") {
@@ -200,6 +222,60 @@ scumm_panel:
     CHECK_THROWS_AS((void) parse_scumm_panel_config(yaml), DataError);
 }
 
+TEST_CASE("scumm panel config parses image settings button assets relative to the YAML") {
+    const std::string yaml = R"yaml(
+scumm_panel:
+  design_size: [1280, 720]
+  layout:
+    panel:
+      rect: [0, 612, 1280, 108]
+      background:
+        type: solid
+        color: "#000000"
+    command_bar:
+      rect: [0, 0, 1280, 32]
+    body:
+      rect: [0, 32, 1280, 76]
+    verb_panel:
+      rect: [0, 0, 200, 76]
+      rows: 1
+      columns: 1
+    inventory_panel:
+      rect: [200, 0, 1080, 76]
+      rows: 1
+      columns: 1
+  content:
+    verbs: [open]
+  settings_button:
+    enabled: true
+    position: [1, 0]
+    anchor: top_right
+    size: [32, 32]
+    render_mode: image
+    image:
+      normal: "settings.png"
+      hovered: "settings_hover.png"
+)yaml";
+
+    const ScummPanelConfig cfg = parse_scumm_panel_config(yaml, "ui/panel.yml");
+
+    CHECK(cfg.settings_button.enabled);
+    CHECK(cfg.settings_button.anchor == ScummPanelAnchor::TOP_RIGHT);
+    CHECK(cfg.settings_button.render_mode == ScummButtonRenderMode::IMAGE);
+    CHECK(cfg.settings_button.image.normal == "ui/settings.png");
+    CHECK(cfg.settings_button.image.hovered == "ui/settings_hover.png");
+}
+
+TEST_CASE("scumm panel config rejects image settings buttons without a normal image") {
+    std::string yaml = valid_panel_yaml();
+    const std::string needle = "render_mode: panel";
+    const std::size_t pos = yaml.find(needle);
+    REQUIRE(pos != std::string::npos);
+    yaml.replace(pos, needle.size(), "render_mode: image");
+
+    CHECK_THROWS_AS((void) parse_scumm_panel_config(yaml), DataError);
+}
+
 TEST_CASE("scumm panel emits inventory page intents and uses the visible page for item clicks") {
     ScummPanel panel(paging_panel_config(InventoryArrowMode::DRAW), {100, 100}, nullptr, nullptr);
     const InventoryModel inventory = inventory_with_three_items();
@@ -217,6 +293,19 @@ TEST_CASE("scumm panel emits inventory page intents and uses the visible page fo
     intent = panel.click({25.0f, 50.0f}, inventory, state);
     CHECK(intent.kind == PanelIntent::Kind::CLICK_INVENTORY);
     CHECK(intent.item_id == "coin");
+}
+
+TEST_CASE("scumm panel settings button consumes clicks before command controls") {
+    ScummPanelConfig cfg = paging_panel_config(InventoryArrowMode::DRAW);
+    cfg.settings_button.enabled = true;
+    cfg.settings_button.position = {0.95f, 0.5f};
+    cfg.settings_button.size = {10.0f, 10.0f};
+    cfg.settings_button.anchor = ScummPanelAnchor::CENTER;
+    ScummPanel panel(std::move(cfg), {100, 100}, nullptr, nullptr);
+    const InventoryModel inventory = inventory_with_three_items();
+
+    const PanelIntent intent = panel.click({95.0f, 50.0f}, inventory, {});
+    CHECK(intent.kind == PanelIntent::Kind::OPEN_SETTINGS);
 }
 
 TEST_CASE("scumm panel ignores inventory arrow hitboxes when arrows are disabled") {

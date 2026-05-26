@@ -83,6 +83,19 @@ sf::Vector2f vec2_from(const YAML::Node& node, const std::string& field) {
     return v;
 }
 
+sf::Vector2f normalized_vec2_from(const YAML::Node& node, const std::string& field) {
+    if (!node || !node.IsSequence() || node.size() != 2) {
+        panel_fail("scumm-panel.normalized-position-invalid", field + " must be [x, y]", node);
+    }
+    const sf::Vector2f v{number_at(node, 0, field), number_at(node, 1, field)};
+    if (v.x < 0.0f || v.y < 0.0f || v.x > 1.0f || v.y > 1.0f) {
+        panel_fail("scumm-panel.normalized-position-invalid",
+                   field + " values must be between 0 and 1",
+                   node);
+    }
+    return v;
+}
+
 sf::Vector2f gap_from(const YAML::Node& node, const std::string& field, sf::Vector2f fallback) {
     if (!node) {
         return fallback;
@@ -218,6 +231,40 @@ InventoryArrowPlacement arrow_placement(const std::string& value, const YAML::No
                node);
 }
 
+ScummPanelAnchor anchor_from(const std::string& value, const YAML::Node& node) {
+    if (value == "top_left") {
+        return ScummPanelAnchor::TOP_LEFT;
+    }
+    if (value == "top_right") {
+        return ScummPanelAnchor::TOP_RIGHT;
+    }
+    if (value == "bottom_left") {
+        return ScummPanelAnchor::BOTTOM_LEFT;
+    }
+    if (value == "bottom_right") {
+        return ScummPanelAnchor::BOTTOM_RIGHT;
+    }
+    if (value == "center") {
+        return ScummPanelAnchor::CENTER;
+    }
+    panel_fail("scumm-panel.anchor-invalid",
+               "settings_button.anchor must be center, top_left, top_right, bottom_left, "
+               "or bottom_right",
+               node);
+}
+
+ScummButtonRenderMode button_render_mode(const std::string& value, const YAML::Node& node) {
+    if (value == "panel") {
+        return ScummButtonRenderMode::PANEL;
+    }
+    if (value == "image") {
+        return ScummButtonRenderMode::IMAGE;
+    }
+    panel_fail("scumm-panel.button-render-mode-invalid",
+               "settings_button.render_mode must be panel or image",
+               node);
+}
+
 ScummPanelBackground parse_background(const YAML::Node& node,
                                       const std::string& base_dir,
                                       ScummPanelBackground fallback) {
@@ -340,6 +387,78 @@ ScummTextStyle parse_text_style(const YAML::Node& node,
     return style;
 }
 
+ScummSettingsButtonConfig parse_settings_button(const YAML::Node& node,
+                                                const std::string& base_dir,
+                                                ScummSettingsButtonConfig fallback) {
+    if (!node) {
+        return fallback;
+    }
+    if (!node.IsMap()) {
+        panel_fail("scumm-panel.settings-button-invalid",
+                   "scumm_panel.settings_button must be a mapping",
+                   node);
+    }
+
+    ScummSettingsButtonConfig button = fallback;
+    if (node["enabled"]) {
+        button.enabled = node["enabled"].as<bool>();
+    }
+    if (node["position"]) {
+        button.position = normalized_vec2_from(node["position"], "settings_button.position");
+    }
+    if (node["size"]) {
+        button.size = vec2_from(node["size"], "settings_button.size");
+    }
+    if (node["anchor"]) {
+        button.anchor = anchor_from(node["anchor"].as<std::string>(), node["anchor"]);
+    }
+    if (node["render_mode"]) {
+        button.render_mode =
+            button_render_mode(node["render_mode"].as<std::string>(), node["render_mode"]);
+    }
+
+    if (const YAML::Node panel = node["panel"]) {
+        if (panel["label_key"]) {
+            button.panel.label_key = panel["label_key"].as<std::string>();
+        }
+        button.panel.font = resolve_asset(base_dir, panel["font"], "settings_button.panel.font");
+        if (panel["font_size"]) {
+            button.panel.font_size = static_cast<unsigned>(
+                positive_int(panel["font_size"], "settings_button.panel.font_size"));
+        }
+        if (panel["normal_color"]) {
+            button.panel.normal_color =
+                parse_color(panel["normal_color"].as<std::string>(), panel["normal_color"]);
+        }
+        if (panel["hovered_color"]) {
+            button.panel.hovered_color =
+                parse_color(panel["hovered_color"].as<std::string>(), panel["hovered_color"]);
+        }
+        if (panel["background_color"]) {
+            button.panel.background_color =
+                parse_color(panel["background_color"].as<std::string>(), panel["background_color"]);
+        }
+        if (panel["hovered_background_color"]) {
+            button.panel.hovered_background_color =
+                parse_color(panel["hovered_background_color"].as<std::string>(),
+                            panel["hovered_background_color"]);
+        }
+        if (panel["outline_color"]) {
+            button.panel.outline_color =
+                parse_color(panel["outline_color"].as<std::string>(), panel["outline_color"]);
+        }
+    }
+
+    if (const YAML::Node image = node["image"]) {
+        button.image.normal =
+            resolve_asset(base_dir, image["normal"], "settings_button.image.normal");
+        button.image.hovered =
+            resolve_asset(base_dir, image["hovered"], "settings_button.image.hovered");
+    }
+
+    return button;
+}
+
 void validate_config(const ScummPanelConfig& cfg, const YAML::Node& root) {
     const int verb_capacity = cfg.layout.verb_panel.rows * cfg.layout.verb_panel.columns;
     if (static_cast<int>(cfg.content.verbs.size()) > verb_capacity) {
@@ -366,6 +485,20 @@ void validate_config(const ScummPanelConfig& cfg, const YAML::Node& root) {
                 "background_variants arrow mode requires skin.panel.background_variants.normal "
                 "or layout.panel.background.image",
                 root);
+        }
+    }
+    if (cfg.settings_button.enabled) {
+        if (cfg.settings_button.render_mode == ScummButtonRenderMode::PANEL &&
+            cfg.settings_button.panel.label_key.empty()) {
+            panel_fail("scumm-panel.settings-button-label-missing",
+                       "panel-rendered settings buttons require panel.label_key",
+                       root["settings_button"] ? root["settings_button"] : root);
+        }
+        if (cfg.settings_button.render_mode == ScummButtonRenderMode::IMAGE &&
+            cfg.settings_button.image.normal.empty()) {
+            panel_fail("scumm-panel.settings-button-image-missing",
+                       "image-rendered settings buttons require image.normal",
+                       root["settings_button"] ? root["settings_button"] : root);
         }
     }
 }
@@ -534,6 +667,9 @@ ScummPanelConfig parse_scumm_panel_config(const std::string& yaml_text,
             }
         }
     }
+
+    cfg.settings_button =
+        parse_settings_button(panel["settings_button"], base_dir, cfg.settings_button);
 
     validate_config(cfg, panel);
     return cfg;

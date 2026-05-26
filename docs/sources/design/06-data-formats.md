@@ -131,6 +131,9 @@ Coordinate rules:
 - `layout.verb_panel.rect` and `layout.inventory_panel.rect` are relative to the
   body.
 - `layout.inventory_arrows.*.hitbox` is relative to the inventory panel.
+- `settings_button.position` is normalized within the panel: `[0, 0]` is the
+  panel's top-left and `[1, 1]` is its bottom-right. `anchor` determines which
+  point of the button is placed there.
 - At runtime, rectangles and hitboxes scale by
   `runtime_width / design_width` and `runtime_height / design_height`.
 
@@ -147,6 +150,7 @@ Top-level shape:
 | `layout.inventory_panel` | opt | grid | 2x4 classic grid | Inventory grid; page capacity is `rows * columns`. |
 | `layout.inventory_arrows.mode` | opt | enum | `draw` | `draw`, `background_variants`, or `none`. |
 | `content.verbs` | opt | `[verb id]` | classic 9 verbs | Row-major verb order. Use canonical ids such as `open`, `look_at`, and `pick_up`; labels come from UI strings. |
+| `settings_button` | opt | map | disabled | Optional Settings button. Supports `enabled`, normalized `position`, `anchor`, design-pixel `size`, `render_mode: panel | image`, `panel` label/style, and `image.normal` / `image.hovered`. |
 | `skin.command_text`, `skin.verb_text`, `skin.inventory_text` | opt | text style | built-in colors | `font`, `size`, `color`, `hover_color`, `disabled_color`, and `align`. |
 | `skin.panel.background_variants` | opt | map key -> path | none | Background images for arrow visibility/hover states. |
 
@@ -159,10 +163,21 @@ Arrow modes:
   `inv_both_hover`, while still using the configured hitboxes for input.
 - `none`: arrows are not displayed and hitboxes are ignored.
 
+Settings button:
+
+- `enabled: false` preserves existing panel behavior.
+- `render_mode: panel` draws a small engine-rendered button using
+  `panel.label_key` from UI strings plus optional font and colors.
+- `render_mode: image` draws `image.normal`, switching to `image.hovered` while
+  the pointer is inside the button. If `hovered` is omitted, `normal` is reused.
+- Clicking the button is a UI navigation intent: `RoomScene` opens the configured
+  `SettingsScene` overlay through `SceneManager::open_settings()`. It does not
+  select verbs, select inventory, page inventory, or mutate command state.
+
 Validation rejects malformed rectangles, non-positive grid sizes, too many verbs
-for the verb grid, unknown arrow modes, and `background_variants` configs that
+for the verb grid, unknown arrow/button modes, `background_variants` configs that
 provide neither `skin.panel.background_variants.normal` nor a panel background
-image.
+image, and image-rendered Settings buttons without `image.normal`.
 
 ## UI strings — `strings/<lang>.yaml`
 
@@ -180,7 +195,7 @@ language is persisted in the player settings file (see below).
 | `language` | req | string | — | Language tag, e.g. `es`. |
 | `verbs` | req | map verb id → string | — | Display label per verb. Keys are the verb ids: `look_at`, `talk_to`, `pick_up`, `use`, `give`, `open`, `close`, `push`, `pull`. |
 | `connectors` | req | map verb id → string | — | Two-operand connector per verb: `use` (e.g. `con`), `give` (e.g. `a`). |
-| `ui` | req | map key → string | — | Built-in UI labels. Menu (`new_game`, `continue`, `settings`, `quit`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `on`, `off`); the cutscene manual-continue hint (`manual_continue_hint`); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
+| `ui` | req | map key → string | — | Built-in UI labels. Menu (`new_game`, `continue`, `settings`, `settings_button`, `quit`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `on`, `off`); the cutscene manual-continue hint (`manual_continue_hint`); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
 | `defaults` | req | map key → string | — | Engine last-resort captions, spoken when no game handler produced text for a verb. The loader requires the exact key set below — no missing keys, and (in dev) no unknown keys. |
 
 The required `defaults` keys and when each fires:
@@ -220,6 +235,7 @@ ui:
   new_game: "Nuevo juego"
   continue: "Continuar"
   settings: "Opciones"
+  settings_button: "OP"
   quit:     "Salir"
 
 defaults:

@@ -717,6 +717,20 @@ void RoomScene::handle_event(const sf::Event& event) {
     }
     const sf::Vector2f vp{static_cast<float>(event.mouseButton.x),
                           static_cast<float>(event.mouseButton.y)};
+    auto open_settings_if_clicked = [&]() {
+        if (!panel_ || !panel_->contains(vp)) {
+            return false;
+        }
+        const PanelIntent intent = panel_->click(vp, inventory_, command_controller_.state());
+        if (intent.kind != PanelIntent::Kind::OPEN_SETTINGS) {
+            return false;
+        }
+        ctx_.scenes.open_settings();
+        return true;
+    };
+    if (view_state_ != ViewState::BLOCKED && open_settings_if_clicked()) {
+        return;
+    }
     if (speech_.active()) {
         speech_.skip();
         return;
@@ -758,6 +772,8 @@ void RoomScene::handle_event(const sf::Event& event) {
             }
         } else if (intent.kind == PanelIntent::Kind::CHANGE_INVENTORY_PAGE) {
             command_controller_.on_inventory_page_changed({intent.page_index});
+        } else if (intent.kind == PanelIntent::Kind::OPEN_SETTINGS) {
+            ctx_.scenes.open_settings();
         }
         sync_command_hover();
         return;
@@ -1293,7 +1309,7 @@ void RoomScene::draw(sf::RenderTarget& target) const {
             for (const DialogOption& opt : dialog_->options()) {
                 labels.push_back(opt.text);
             }
-            panel_->draw_options(target, labels, hover_vp_);
+            panel_->draw_options(target, ctx_.strings, labels, hover_vp_);
         } else {
             panel_->draw(target, ctx_.strings, inventory_, command_controller_.state(), hover_vp_);
         }

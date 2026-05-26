@@ -24,6 +24,8 @@ enum class ScummPanelBackgroundType { SOLID, IMAGE, NINE_SLICE };
 enum class ScummPanelScaleMode { STRETCH, FIT, TILE, NINE_SLICE };
 enum class InventoryArrowMode { DRAW, BACKGROUND_VARIANTS, NONE };
 enum class InventoryArrowPlacement { RIGHT, LEFT, BOTH };
+enum class ScummPanelAnchor { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT, CENTER };
+enum class ScummButtonRenderMode { PANEL, IMAGE };
 
 struct ScummPanelBackground {
     ScummPanelBackgroundType type = ScummPanelBackgroundType::SOLID;
@@ -113,10 +115,37 @@ struct ScummPanelSkin {
     ScummArrowDrawSkin arrows_draw;
 };
 
+struct ScummSettingsButtonPanelSkin {
+    std::string label_key = "settings_button";
+    std::string font;
+    unsigned font_size = 14;
+    sf::Color normal_color{210, 213, 226};
+    sf::Color hovered_color{248, 250, 255};
+    sf::Color background_color{44, 43, 56};
+    sf::Color hovered_background_color{74, 92, 138};
+    sf::Color outline_color{63, 66, 86};
+};
+
+struct ScummSettingsButtonImageSkin {
+    std::string normal;
+    std::string hovered;
+};
+
+struct ScummSettingsButtonConfig {
+    bool enabled = false;
+    sf::Vector2f position{0.97f, 0.15f}; // normalized panel coordinates
+    sf::Vector2f size{32.0f, 32.0f};     // design pixels
+    ScummPanelAnchor anchor = ScummPanelAnchor::CENTER;
+    ScummButtonRenderMode render_mode = ScummButtonRenderMode::PANEL;
+    ScummSettingsButtonPanelSkin panel;
+    ScummSettingsButtonImageSkin image;
+};
+
 struct ScummPanelConfig {
     ScummPanelLayout layout;
     ScummPanelContent content;
     ScummPanelSkin skin;
+    ScummSettingsButtonConfig settings_button;
 };
 
 [[nodiscard]] ScummPanelConfig default_scumm_panel_config(sf::FloatRect panel_rect);

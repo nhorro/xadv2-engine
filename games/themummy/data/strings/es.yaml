@@ -21,6 +21,7 @@ ui:
   new_game: "Nuevo juego"
   continue: "Continuar"
   settings: "Opciones"
+  settings_button: "OP"
   quit:     "Salir"
   pause:    "Pausa"
   resume:   "Continuar partida"
