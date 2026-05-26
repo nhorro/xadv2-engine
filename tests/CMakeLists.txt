@@ -40,6 +40,7 @@ add_executable(pac_core_tests
     cast_test.cpp
     closeup_test.cpp
     command_builder_test.cpp
+    command_controller_test.cpp
     mover_test.cpp
     inventory_test.cpp
     camera_test.cpp

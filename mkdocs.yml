@@ -90,6 +90,7 @@ nav:
   - Home: index.md
   - Technical:
       - technical/index.md
+      - SCUMM command flow: technical/scumm-command-flow.md
       - Design:
           - Index: sources/design/00-index.md
           - Engine requirements: sources/design/01-engine-requirements.md
