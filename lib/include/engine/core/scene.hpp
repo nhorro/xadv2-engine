@@ -24,6 +24,11 @@ public:
     /// drawing them. A transparent overlay (e.g. a HUD) returns false.
     bool opaque() const { return opaque_; }
 
+    /// True when the current frame is a good candidate for a thumbnail capture
+    /// (issue #119): the scene shows gameplay-like content without modal
+    /// overlays. Default is false — only RoomScene's COMMAND state opts in.
+    virtual bool wants_thumbnail() const { return false; }
+
 protected:
     bool opaque_ = true;
 };
