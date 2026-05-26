@@ -1,0 +1,33 @@
+# Intro cutscene (issue #116). Manual mode — the player advances slide by slide
+# with click / [enter], or skips with [esc]. The localized hint at the bottom-
+# right comes from `strings.ui.manual_continue_hint`. The text wells up over a
+# solid-black background; the first slide ships with an image (the title art)
+# to demonstrate the slide model's image fields.
+
+version: 1
+advance_mode: manual
+
+defaults:
+  text_position: [0.5, 0.8]
+  text_align: center
+  text_style:
+    size: 30
+    color: "#E7E7E9"
+  image_position: [0.5, 0.45]
+  image_size: [0.6, 0.6]
+  image_fit: contain
+
+slides:
+  - image: title/title_screen.png
+    text: "El Cairo, 1936."
+    text_position: [0.5, 0.92]
+    text_style:
+      size: 28
+      color: "#F0D87A"
+
+  - text: "La Dra. Julia llega al museo al anochecer."
+
+  - text: "Las puertas estan abiertas. Algo no anda bien..."
+    text_style:
+      size: 32
+      color: "#FFEEBB"

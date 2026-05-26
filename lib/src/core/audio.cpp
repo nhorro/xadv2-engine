@@ -43,6 +43,17 @@ void MusicPlayer::stop() {
     music_.stop();
 }
 
+float MusicPlayer::playing_offset_seconds() const {
+    if (music_.getStatus() != sf::SoundSource::Playing) {
+        return 0.0f;
+    }
+    return music_.getPlayingOffset().asSeconds();
+}
+
+bool MusicPlayer::is_playing() const {
+    return music_.getStatus() == sf::SoundSource::Playing;
+}
+
 void MusicPlayer::set_volume(float volume01) {
     volume_ = volume01;
     music_.setVolume(volume_ * 100.0f);

@@ -91,9 +91,9 @@ scenes:
       font_size: 22
 
   - id: intro
-    type: StoryText
+    type: Cutscene
     parameters:
-      script: scripts/intro.lua
+      data: cutscenes/intro.yaml
       on_finish: room_view
       font: fonts/DepartureMono-Regular.otf
 
