@@ -3,12 +3,18 @@
 #include <string>
 #include <vector>
 
+namespace pac::core {
+class ResourceSource;
+}
+
 namespace pac::pnc {
 
-/// Room ids found directly under `host_dir` — one per `<id>.yaml` file, sorted.
-/// Backs the dev "jump to room" action (#38); a missing or unreadable directory
-/// yields an empty list. Host filesystem path (resolved via ResourceCache), so
-/// this is dev-only and tied to the loose-files backend.
-[[nodiscard]] std::vector<std::string> room_ids_in_dir(const std::string& host_dir);
+/// Room ids under the rooms logical directory `rooms_dir` (e.g. `rooms`) —
+/// one per `<id>.yaml` file, sorted. Backs the dev "jump to room" action
+/// (#38). Routes through `ResourceSource::list` so it works for both the
+/// loose-files and packed backends (#109); a backend that can't enumerate
+/// yields an empty list.
+[[nodiscard]] std::vector<std::string> room_ids_in_dir(const pac::core::ResourceSource& source,
+                                                       const std::string& rooms_dir);
 
 } // namespace pac::pnc
