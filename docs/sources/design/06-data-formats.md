@@ -58,7 +58,7 @@ default_language: es   # optional; defaults to the first entry
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `id` | req | string | — | Scene id, referenced by `entry` and outcomes. |
-| `type` | req | enum | — | `TitleScreen`, `StoryText`, `RoomScene`, or a registered custom type. |
+| `type` | req | enum | — | `TitleScreen`, `StoryText`, `RoomScene`, `SettingsScene`, `SaveLoadScene`, `CloseUp`, or a registered custom type. |
 | `parameters` | opt | map | — | Type-specific parameters (see below). |
 
 **Scene parameters by type:**
@@ -68,9 +68,12 @@ default_language: es   # optional; defaults to the first entry
   `font` (opt path), `font_size` (opt int — menu label size in virtual pixels),
   and a `menu` map: `menu.position` `{x, y}` (anchor as a 0..1 screen fraction;
   `{0.5, 0.5}` centers the menu block) and `menu.options` with the outcome scene
-  ids `new_game`, `continue` (the entry shows only when a save exists), and `exit`
-  (often `QUIT`). Menu entries are borderless text; hover highlights the entry and
-  switches the cursor to its interact variant.
+  ids `new_game`, `continue` (the entry shows only when a save exists),
+  `load_game` (opt, #108 — when wired *and* a save exists, the title adds a
+  "Recuperar partida" entry that pushes the load picker; the value is reserved
+  for a future opt-out routing override, any non-empty value enables the entry),
+  and `exit` (often `QUIT`). Menu entries are borderless text; hover highlights
+  the entry and switches the cursor to its interact variant.
 - `StoryText` / `Cutscene` — `script` (path), `on_finish` (outcome scene id),
   `font` (opt path).
 - `RoomScene` — `cast` (path), `logic` (path), `inventory` (path),
@@ -83,6 +86,20 @@ default_language: es   # optional; defaults to the first entry
   (arrows / Enter / Esc) **and** mouse (hover selects, left-click a value's left/right
   half decrements/increments, click APPLY/BACK to confirm/cancel), using the same
   custom cursor and hover affordance as the rest of the game.
+- `SaveLoadScene` — `mode` (req, `save` | `load`), `background` (opt path — same
+  shape as `SettingsScene`, the same image is fine), `font` (opt path),
+  `font_size` (opt int), `room_scene` (opt scene id — where `load` goes after
+  a successful pick, default `room_view`). One scene type, two manifest entries
+  (one per mode); the engine auto-detects each by `parameters.mode` at startup
+  and exposes them via `SceneManager::open_save()` / `open_load()` (issue #108).
+  Lists the autosave slot (read-only) plus the manual slots; each row has a
+  thumbnail placeholder, a label, a description and a date/time (from the save
+  metadata, falling back to the file's mtime). In `save` mode every manual row
+  carries its own text-input field for the description; clicking that row's
+  **Save** button writes the snapshot the in-game pause menu staged via
+  `SaveService::stage_pending_snap`. In `load` mode every populated row offers
+  a **Load** button that stages the restore and triggers a `goto_scene` to
+  `room_scene`.
 
 Scenes that render text take their `font` as a logical-path parameter; an engine
 default is used when omitted. Per-character speech color and style come from the
@@ -104,7 +121,7 @@ language is persisted in the player settings file (see below).
 | `language` | req | string | — | Language tag, e.g. `es`. |
 | `verbs` | req | map verb id → string | — | Display label per verb. Keys are the verb ids: `look_at`, `talk_to`, `pick_up`, `use`, `give`, `open`, `close`, `push`, `pull`. |
 | `connectors` | req | map verb id → string | — | Two-operand connector per verb: `use` (e.g. `con`), `give` (e.g. `a`). |
-| `ui` | req | map key → string | — | Built-in UI labels: menu (`new_game`, `continue`, `settings`, `quit`) and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
+| `ui` | req | map key → string | — | Built-in UI labels. Menu (`new_game`, `continue`, `settings`, `quit`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `on`, `off`); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
 | `defaults` | req | map key → string | — | Engine last-resort captions, spoken when no game handler produced text for a verb. The loader requires the exact key set below — no missing keys, and (in dev) no unknown keys. |
 
 The required `defaults` keys and when each fires:
@@ -458,3 +475,14 @@ The save payload and its YAML serialization are specified under "Make persistent
 state explicit" in [02 — Architecture overview](02-architecture-overview.md);
 format, slots, and autosave policy are in
 [R8](01-engine-requirements.md). Saves carry a `save_version` integer.
+
+Top-level fields the save/load picker uses (issue #108):
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `save_version` | int | Format version; older/newer values are refused. |
+| `description` | string | Player-supplied short label shown in the picker. The autosave normally leaves this empty so the row falls back to its timestamp. |
+| `saved_at` | int (Unix seconds) | Wall-clock at save time, stamped by `SaveService::save`. The picker formats this as a local date/time; an older save without the field falls back to the file's mtime. |
+
+`SaveService::slot_summary(slot)` reads only these header fields off disk so
+the picker UI never has to decode the full payload to list slots.

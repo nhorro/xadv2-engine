@@ -60,6 +60,11 @@ scenes:
         options:
           new_game: intro
           continue: room_view
+          # Optional `load_game` outcome (#108): when present and a save exists,
+          # the title adds a "Recuperar partida" entry that opens the load
+          # picker. Any non-empty value enables the entry — the picker's
+          # internal goto target is set by SaveLoadScene's `room_scene` param.
+          load_game: room_view
           exit: QUIT
 
   - id: settings
@@ -68,6 +73,22 @@ scenes:
       background: settings/settings.png   # full-screen image; dark fill if omitted
       font: fonts/DepartureMono-Regular.otf
       font_size: 20
+
+  - id: save
+    type: SaveLoadScene
+    parameters:
+      mode: save
+      background: settings/settings.png   # shares the settings backdrop (#108)
+      font: fonts/DepartureMono-Regular.otf
+      font_size: 22
+
+  - id: load
+    type: SaveLoadScene
+    parameters:
+      mode: load
+      background: settings/settings.png
+      font: fonts/DepartureMono-Regular.otf
+      font_size: 22
 
   - id: intro
     type: StoryText

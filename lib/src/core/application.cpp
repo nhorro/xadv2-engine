@@ -44,6 +44,7 @@ constexpr float kSceneTransition = 0.35f; // fade-to-black seconds between scene
 // Engine-handled scenes are located by their conventional manifest type string;
 // this is a data convention, not a dependency on the genre layer's types.
 constexpr char kSettingsSceneType[] = "SettingsScene";
+constexpr char kSaveLoadSceneType[] = "SaveLoadScene";
 
 int as_int(float value) {
     return static_cast<int>(std::lround(value));
@@ -211,10 +212,21 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
         return scene;
     });
 
+    bool settings_seen = false;
     for (const SceneDesc& desc : manifest.scenes) {
-        if (desc.type == kSettingsSceneType) {
+        if (desc.type == kSettingsSceneType && !settings_seen) {
             scenes.set_settings_scene_id(desc.id);
-            break;
+            settings_seen = true;
+        } else if (desc.type == kSaveLoadSceneType) {
+            const std::string mode = desc.parameters.get_or("mode", "");
+            if (mode == "save") {
+                scenes.set_save_scene_id(desc.id);
+            } else if (mode == "load") {
+                scenes.set_load_scene_id(desc.id);
+            } else {
+                log.warn("manifest: SaveLoadScene '" + desc.id +
+                         "' needs parameters.mode = save | load");
+            }
         }
     }
 

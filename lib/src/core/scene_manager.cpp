@@ -18,6 +18,14 @@ void SceneManager::set_settings_scene_id(std::string id) {
     settings_scene_id_ = std::move(id);
 }
 
+void SceneManager::set_save_scene_id(std::string id) {
+    save_scene_id_ = std::move(id);
+}
+
+void SceneManager::set_load_scene_id(std::string id) {
+    load_scene_id_ = std::move(id);
+}
+
 void SceneManager::goto_scene(const std::string& id) {
     if (id == "QUIT") {
         quit();
@@ -43,6 +51,20 @@ void SceneManager::open_settings() {
         return;
     }
     push_scene(settings_scene_id_);
+}
+
+void SceneManager::open_save() {
+    if (save_scene_id_.empty()) {
+        return;
+    }
+    push_scene(save_scene_id_);
+}
+
+void SceneManager::open_load() {
+    if (load_scene_id_.empty()) {
+        return;
+    }
+    push_scene(load_scene_id_);
 }
 
 void SceneManager::quit() {

@@ -5,6 +5,8 @@
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <fstream>
 #include <sstream>
 #include <system_error>
@@ -134,6 +136,8 @@ std::map<std::string, std::map<std::string, bool>> decode_room_bool_map(const YA
 void emit_game_state(YAML::Emitter& out, const GameState& s) {
     out << YAML::BeginMap;
     out << YAML::Key << "save_version" << YAML::Value << s.save_version;
+    out << YAML::Key << "description" << YAML::Value << YAML::DoubleQuoted << s.description;
+    out << YAML::Key << "saved_at" << YAML::Value << s.saved_at;
     out << YAML::Key << "current_scene_id" << YAML::Value << s.current_scene_id;
 
     out << YAML::Key << "room_view" << YAML::Value;
@@ -193,6 +197,8 @@ void emit_game_state(YAML::Emitter& out, const GameState& s) {
 GameState decode_game_state(const YAML::Node& root) {
     GameState s;
     s.save_version = root["save_version"] ? root["save_version"].as<int>() : 0;
+    s.description = root["description"] ? root["description"].as<std::string>() : std::string();
+    s.saved_at = root["saved_at"] ? root["saved_at"].as<std::int64_t>() : 0;
     s.current_scene_id =
         root["current_scene_id"] ? root["current_scene_id"].as<std::string>() : std::string();
 
@@ -274,8 +280,16 @@ bool SaveService::save(int slot, const GameState& state) {
         return false;
     }
 
+    // Stamp `saved_at` with the current wall-clock so the UI has a stable
+    // timestamp even after a file copy that resets mtime.
+    GameState stamped = state;
+    stamped.saved_at =
+        static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::seconds>(
+                                      std::chrono::system_clock::now().time_since_epoch())
+                                      .count());
+
     YAML::Emitter out;
-    emit_game_state(out, state);
+    emit_game_state(out, stamped);
     if (!out.good()) {
         log_->error(std::string("SaveService::save: emitter error: ") + out.GetLastError());
         return false;
@@ -337,6 +351,51 @@ std::optional<GameState> SaveService::take_pending_restore() {
     GameState s = std::move(*pending_restore_);
     pending_restore_.reset();
     return s;
+}
+
+void SaveService::stage_pending_snap(GameState state) {
+    pending_snap_ = std::move(state);
+}
+
+std::optional<GameState> SaveService::take_pending_snap() {
+    if (!pending_snap_) {
+        return std::nullopt;
+    }
+    GameState s = std::move(*pending_snap_);
+    pending_snap_.reset();
+    return s;
+}
+
+std::optional<SlotSummary> SaveService::slot_summary(int slot) const {
+    if (!slot_exists(slot)) {
+        return std::nullopt;
+    }
+    const std::filesystem::path path = slot_path(slot);
+    YAML::Node root;
+    try {
+        root = YAML::LoadFile(path.string());
+    } catch (const YAML::Exception& e) {
+        log_->error("SaveService::slot_summary: parse error in '" + path.string() +
+                    "': " + e.what());
+        return std::nullopt;
+    }
+    if (!root || !root.IsMap()) {
+        return std::nullopt;
+    }
+    SlotSummary out;
+    if (const YAML::Node n = root["description"]) {
+        try {
+            out.description = n.as<std::string>();
+        } catch (const YAML::Exception&) {
+        }
+    }
+    if (const YAML::Node n = root["saved_at"]) {
+        try {
+            out.saved_at = n.as<std::int64_t>();
+        } catch (const YAML::Exception&) {
+        }
+    }
+    return out;
 }
 
 std::optional<int> SaveService::latest_slot() const {
