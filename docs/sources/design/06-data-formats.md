@@ -79,7 +79,8 @@ default_language: es   # optional; defaults to the first entry
 - `RoomScene` — `cast` (path), `logic` (path), `inventory` (path),
   `inventory_logic` (path), `rooms` (directory path), `start_room` (room id),
   `player` (req, cast character id — the persistent player avatar; appearance comes
-  from this character's cast entry), `font` (opt path — speech and panel font).
+  from this character's cast entry), `font` (opt path — speech and default panel
+  font), `scumm_panel` (opt path — YAML panel layout/skin config).
 - `SettingsScene` — `background` (opt path — full-screen image scaled to the virtual
   resolution; a dark fill when omitted), `font` (opt path), `font_size` (opt int —
   menu-row text size; the title derives from it). Rows are navigable by keyboard
@@ -104,6 +105,54 @@ default_language: es   # optional; defaults to the first entry
 Scenes that render text take their `font` as a logical-path parameter; an engine
 default is used when omitted. Per-character speech color and style come from the
 cast file, not the scene `font`.
+
+## SCUMM panel config — `ui/scumm_panel*.yml`
+
+`RoomScene.parameters.scumm_panel` may point at a panel layout/skin YAML file.
+When omitted, the engine uses the built-in classic 85% scenery / 15% panel
+layout. The config controls visual layout only: command construction and command
+preview state still live in `CommandController`.
+
+Coordinate rules:
+
+- `scumm_panel.design_size` defines the nominal coordinate system.
+- `layout.panel.rect` is in `design_size` coordinates.
+- `layout.command_bar.rect` and `layout.body.rect` are relative to the panel.
+- `layout.verb_panel.rect` and `layout.inventory_panel.rect` are relative to the
+  body.
+- `layout.inventory_arrows.*.hitbox` is relative to the inventory panel.
+- At runtime, rectangles and hitboxes scale by
+  `runtime_width / design_width` and `runtime_height / design_height`.
+
+Top-level shape:
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `scumm_panel.design_size` | req | `[w, h]` | — | Positive design-space size. |
+| `layout.panel.rect` | req | `[x, y, w, h]` | — | Complete panel rectangle. |
+| `layout.panel.background` | opt | map | solid dark fill | `type: solid`, `image`, or `nine_slice`; image paths resolve relative to this YAML file. |
+| `layout.command_bar.rect` | req | rect | — | Current command text region. |
+| `layout.body.rect` | req | rect | — | Parent region for verbs and inventory. |
+| `layout.verb_panel` | opt | grid | 3x3 classic grid | Grid rect, row/column count, padding, and cell gap. |
+| `layout.inventory_panel` | opt | grid | 2x4 classic grid | Inventory grid; page capacity is `rows * columns`. |
+| `layout.inventory_arrows.mode` | opt | enum | `draw` | `draw`, `background_variants`, or `none`. |
+| `content.verbs` | opt | `[verb id]` | classic 9 verbs | Row-major verb order. Use canonical ids such as `open`, `look_at`, and `pick_up`; labels come from UI strings. |
+| `skin.command_text`, `skin.verb_text`, `skin.inventory_text` | opt | text style | built-in colors | `font`, `size`, `color`, `hover_color`, `disabled_color`, and `align`. |
+| `skin.panel.background_variants` | opt | map key -> path | none | Background images for arrow visibility/hover states. |
+
+Arrow modes:
+
+- `draw`: the engine draws `skin.arrows.draw.previous_text` and `next_text` in
+  the configured hitboxes.
+- `background_variants`: the engine does not draw arrows; it selects a panel
+  background variant such as `inv_prev_visible`, `inv_next_hover`, or
+  `inv_both_hover`, while still using the configured hitboxes for input.
+- `none`: arrows are not displayed and hitboxes are ignored.
+
+Validation rejects malformed rectangles, non-positive grid sizes, too many verbs
+for the verb grid, unknown arrow modes, and `background_variants` configs that
+provide neither `skin.panel.background_variants.normal` nor a panel background
+image.
 
 ## UI strings — `strings/<lang>.yaml`
 

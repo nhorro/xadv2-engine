@@ -889,6 +889,11 @@ The command bar previews the command currently being built.
 The top bar shall not build logic from strings. It formats the internal command
 state for the player.
 
+The panel's visual layout and skin may be supplied through a `RoomScene`
+`scumm_panel` YAML config. That file controls rectangles, grids, backgrounds,
+text style, and inventory arrow presentation; command state and semantic command
+construction remain owned by `CommandController`.
+
 ## Building and running a command
 
 When a command becomes ready:
