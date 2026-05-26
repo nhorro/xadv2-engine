@@ -1,0 +1,41 @@
+# Sandbox manifest for the room-sketches experiment. The minimum a RoomScene
+# needs: a cast, a rooms directory, a start room, and a player character. No
+# title screen, no intro — the entry scene IS the room, so the launcher drops
+# you straight into the lab.
+
+version: 1
+id: room_sketches
+
+resolution: { width: 1280, height: 720 }
+window:
+  fullscreen: false
+  width: 1280
+  height: 720
+
+resources:
+  src: "."
+
+languages:
+  - id: es
+    name: "Español"
+    strings: strings/es.yaml
+
+entry: room_view
+
+development:
+  edit_mode: true
+  show_walkboxes: true
+  show_hotspots: false
+  show_anchors: false
+  show_state: false
+  allow_room_reload: true
+
+scenes:
+  - id: room_view
+    type: RoomScene
+    parameters:
+      cast: cast.yaml
+      rooms: rooms
+      start_room: lab
+      player: player
+      font: fonts/DepartureMono-Regular.otf

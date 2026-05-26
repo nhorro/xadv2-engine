@@ -1,0 +1,2 @@
+add_executable(pac_room_sketches main.cpp)
+target_link_libraries(pac_room_sketches PRIVATE pac_engine pac_project_options)
