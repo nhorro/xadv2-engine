@@ -53,6 +53,7 @@ TitleScreen::TitleScreen(pac::core::EngineContext& ctx, const pac::core::ScenePa
     music_path_ = params.get_or("music", "");
     new_game_target_ = params.get_or("menu.options.new_game", "");
     continue_target_ = params.get_or("menu.options.continue", "");
+    load_game_target_ = params.get_or("menu.options.load_game", "");
     exit_target_ = params.get_or("menu.options.exit", "QUIT");
 
     menu_anchor_.x = parse_fraction(params, "menu.position.x", 0.5f);
@@ -98,6 +99,14 @@ void TitleScreen::rebuild_entries() {
     entries_.push_back({ctx_.strings.ui_label("new_game"), Action::NEW_GAME, 0.0f});
     if (!continue_target_.empty() && ctx_.saves.latest_slot().has_value()) {
         entries_.push_back({ctx_.strings.ui_label("continue"), Action::CONTINUE, 0.0f});
+    }
+    // Optional "Load game" entry (#108) — shows when the manifest wires it
+    // (`menu.options.load_game`) and a save exists. The action pushes the load
+    // scene via SceneManager::open_load(); `load_game_target_` is reserved for
+    // a future opt-out routing override and otherwise unused.
+    if (!load_game_target_.empty() && !ctx_.scenes.load_scene_id().empty() &&
+        ctx_.saves.latest_slot().has_value()) {
+        entries_.push_back({ctx_.strings.ui_label("load_game"), Action::LOAD_GAME, 0.0f});
     }
     entries_.push_back({ctx_.strings.ui_label("settings"), Action::SETTINGS, 0.0f});
     entries_.push_back({ctx_.strings.ui_label("quit"), Action::EXIT, 0.0f});
@@ -160,6 +169,9 @@ void TitleScreen::trigger(Action action) {
         ctx_.scenes.goto_scene(continue_target_);
         break;
     }
+    case Action::LOAD_GAME:
+        ctx_.scenes.open_load();
+        break;
     case Action::SETTINGS:
         ctx_.scenes.open_settings();
         break;
