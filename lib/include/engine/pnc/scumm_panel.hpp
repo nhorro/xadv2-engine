@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/pnc/command.hpp"
+#include "engine/pnc/command_state.hpp"
 
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/Graphics/Rect.hpp>
@@ -82,8 +83,7 @@ public:
     void draw(sf::RenderTarget& target,
               const pac::core::Strings& strings,
               const InventoryModel& inventory,
-              const std::string& command_preview,
-              std::optional<Verb> selected_verb,
+              const CommandState& command_state,
               sf::Vector2f cursor) const;
 
     /// Draw dialog options in place of the verb/inventory layout. Used while
