@@ -44,19 +44,6 @@ constexpr float kSpeechRise = 250.0f;
 constexpr float kApproachReached = 8.0f;
 constexpr float kRoomFadeDefault = 0.3f; // change_room fade-out/in seconds
 
-/// Whether `verb` is offered for an operand with these affordances. `look_at` is
-/// always allowed; every other verb must be listed (design 04 §Affordances).
-bool affordance_ok(const std::vector<std::string>* affordances, Verb verb) {
-    if (verb == Verb::LOOK_AT) {
-        return true;
-    }
-    if (!affordances) {
-        return false;
-    }
-    const std::string vid(verb_id(verb));
-    return std::find(affordances->begin(), affordances->end(), vid) != affordances->end();
-}
-
 std::optional<pac::core::StateValue> to_state_value(const sol::object& v) {
     if (v.is<bool>()) {
         return pac::core::StateValue{v.as<bool>()};
@@ -128,7 +115,7 @@ struct RoomScene::Lua {
 };
 
 RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
-    : ctx_(ctx) {
+    : ctx_(ctx), command_controller_(*this) {
     cast_path_ = params.get_or("cast", "cast.yaml");
     rooms_dir_ = params.get_or("rooms", "rooms");
     start_room_ = params.get_or("start_room", "");
@@ -394,7 +381,7 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     room_.emplace(std::move(data));
     current_room_id_ = id;
     current_zone_.clear();
-    builder_.cancel();
+    command_controller_.reset();
     warn_unsupported_shader_features(room_->data(), ctx_.log);
 
     room_scope_ = ctx_.scripting.open_scope();
@@ -659,6 +646,7 @@ void RoomScene::handle_event(const sf::Event& event) {
     // virtual space by the application's event rewrite.
     if (event.type == sf::Event::MouseMoved) {
         hover_vp_ = {static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y)};
+        sync_command_hover();
         return;
     }
     // Debug overlay toggles (#37): F1-F4 flip a layer. Only in dev (edit_mode);
@@ -729,7 +717,7 @@ void RoomScene::handle_event(const sf::Event& event) {
             return;
         }
         pending_approach_.reset();
-        builder_.cancel();
+        command_controller_.cancel();
         if (player_) {
             player_->stop();
         }
@@ -748,10 +736,13 @@ void RoomScene::handle_event(const sf::Event& event) {
     if (panel_ && panel_->contains(vp)) {
         const PanelIntent intent = panel_->click(vp, inventory_);
         if (intent.kind == PanelIntent::Kind::SELECT_VERB) {
-            builder_.select_verb(intent.verb);
+            command_controller_.on_verb_selected({intent.verb});
         } else if (intent.kind == PanelIntent::Kind::CLICK_INVENTORY) {
-            object_clicked({ObjectKind::INVENTORY_OBJECT, intent.item_id});
+            if (const auto cmd = command_controller_.on_inventory_item_selected({intent.item_id})) {
+                execute_command(*cmd);
+            }
         }
+        sync_command_hover();
         return;
     }
 
@@ -760,11 +751,13 @@ void RoomScene::handle_event(const sf::Event& event) {
     }
     const geom::Point world = virtual_to_world(vp);
     if (const RoomHotspot* hs = hotspot_under(world)) {
-        object_clicked({ObjectKind::ROOM_OBJECT, hs->id});
-    } else if (builder_.state() != CommandBuilder::State::IDLE) {
+        if (const auto cmd = command_controller_.on_hotspot_clicked({hs->id})) {
+            execute_command(*cmd);
+        }
+    } else if (command_controller_.state().builder_state != CommandBuilder::State::IDLE) {
         // Clicking empty scenery while a command is being built cancels it and
         // returns to IDLE (issue #28).
-        builder_.cancel();
+        command_controller_.cancel();
     } else if (player_) {
         // IDLE: walk there. find_path clamps a click outside the walkable area to
         // the nearest reachable point (issue #28) and routes around obstacles; the
@@ -773,30 +766,18 @@ void RoomScene::handle_event(const sf::Event& event) {
         const auto path = geom::find_path(player_->position(), world, d.walkable, d.obstacles);
         player_->follow_path(path);
     }
+    sync_command_hover();
 }
 
-void RoomScene::object_clicked(const ObjectRef& object) {
-    const Operand info = resolve_operand(object);
-    if (builder_.state() == CommandBuilder::State::IDLE) {
-        builder_.select_verb(info.default_verb);
-    }
-    const std::optional<Verb> verb = builder_.verb();
-    if (!verb) {
-        return;
-    }
-    builder_.provide_object(object, affordance_ok(info.affordances, *verb), info.combinable);
-    execute_ready_command();
-}
-
-RoomScene::Operand RoomScene::resolve_operand(const ObjectRef& object) const {
-    Operand info;
+CommandOperandInfo RoomScene::resolve_command_operand(const ObjectRef& object) const {
+    CommandOperandInfo info;
     info.name = object.id; // fallback when the id is unknown
     if (object.kind == ObjectKind::ROOM_OBJECT && room_) {
         const auto it = room_->data().hotspots.find(object.id);
         if (it != room_->data().hotspots.end()) {
             info.found = true;
             info.name = it->second.name;
-            info.affordances = &it->second.affordances;
+            info.affordances = it->second.affordances;
             if (auto v = verb_from_id(it->second.default_verb)) {
                 info.default_verb = *v;
             }
@@ -805,7 +786,7 @@ RoomScene::Operand RoomScene::resolve_operand(const ObjectRef& object) const {
         if (const InventoryItem* item = inventory_.item(object.id)) {
             info.found = true;
             info.name = item->name;
-            info.affordances = &item->affordances;
+            info.affordances = item->affordances;
             info.combinable = item->combinable;
             if (auto v = verb_from_id(item->default_verb)) {
                 info.default_verb = *v;
@@ -815,20 +796,13 @@ RoomScene::Operand RoomScene::resolve_operand(const ObjectRef& object) const {
     return info;
 }
 
-void RoomScene::execute_ready_command() {
-    if (builder_.state() != CommandBuilder::State::COMMAND_READY) {
-        return;
-    }
-    const std::optional<Command> cmd = builder_.take_ready();
-    if (!cmd) {
-        return;
-    }
+void RoomScene::execute_command(const Command& cmd) {
     // Resolve the room operand the command targets (if any) and its approach point.
     const ObjectRef* room_target = nullptr;
-    if (cmd->param2 && cmd->param2->kind == ObjectKind::ROOM_OBJECT) {
-        room_target = &*cmd->param2;
-    } else if (cmd->param1.kind == ObjectKind::ROOM_OBJECT) {
-        room_target = &cmd->param1;
+    if (cmd.param2 && cmd.param2->kind == ObjectKind::ROOM_OBJECT) {
+        room_target = &*cmd.param2;
+    } else if (cmd.param1.kind == ObjectKind::ROOM_OBJECT) {
+        room_target = &cmd.param1;
     }
     const RoomHotspot* hs = nullptr;
     if (room_target && room_) {
@@ -851,13 +825,13 @@ void RoomScene::execute_ready_command() {
         if (hs->requires_approach && far) {
             // Defer: block input and run the command on arrival (update() polls
             // for the avatar to stop). The builder stays in COMMAND_EXECUTING.
-            pending_approach_ = PendingApproach{*cmd, ap, room_target->id};
+            pending_approach_ = PendingApproach{cmd, ap, room_target->id};
             view_state_ = ViewState::BLOCKED;
             return;
         }
     }
 
-    dispatch_and_feedback(*cmd);
+    dispatch_and_feedback(cmd);
 }
 
 void RoomScene::face_target(const Command& cmd) {
@@ -916,7 +890,7 @@ void RoomScene::dispatch_and_feedback(const Command& cmd) {
     // called `start_dialog`), the dialog's first NPC line is already on screen;
     // suppress the fallback caption that would otherwise overwrite it.
     if (view_state_ != ViewState::COMMAND) {
-        builder_.finish_execution();
+        command_controller_.finish_execution();
         return;
     }
     sf::Color color(230, 230, 230);
@@ -931,7 +905,8 @@ void RoomScene::dispatch_and_feedback(const Command& cmd) {
     } else if (!spoke_during_command_) {
         say(ctx_.strings.caption("nothing_happens"), color);
     }
-    builder_.finish_execution();
+    command_controller_.finish_execution();
+    sync_command_hover();
 }
 
 std::optional<sf::FloatRect> RoomScene::object_frame_bounds(const std::string& object_id) const {
@@ -1012,83 +987,46 @@ std::optional<std::string> RoomScene::dispatch(const Command& cmd) {
     return lua_->call_game(verb, p1.id, std::nullopt);
 }
 
-std::string RoomScene::command_preview() const {
-    const std::optional<Verb> verb = builder_.verb();
-    if (!verb) {
-        return {};
-    }
-    const pac::core::Strings& strings = ctx_.strings;
-    std::string s = strings.verb_label(std::string(verb_id(*verb)));
-    if (builder_.param1()) {
-        s += " " + resolve_operand(*builder_.param1()).name;
-        if (*verb == Verb::USE || *verb == Verb::GIVE) {
-            s += " " + strings.connector(std::string(verb_id(*verb)));
-        }
-    }
-    if (builder_.param2()) {
-        s += " " + resolve_operand(*builder_.param2()).name;
-    }
-    return s;
+std::string RoomScene::command_verb_label(Verb verb) const {
+    return ctx_.strings.verb_label(std::string(verb_id(verb)));
 }
 
-std::string RoomScene::top_bar_text() const {
-    // Only the command view shows a command bar (dialog/menu/blocked don't).
-    if (view_state_ != ViewState::COMMAND) {
-        return {};
-    }
-    const pac::core::Strings& strings = ctx_.strings;
+std::string RoomScene::command_connector_label(Verb verb) const {
+    return ctx_.strings.connector(std::string(verb_id(verb)));
+}
 
-    // Resolve what the pointer is over: a panel verb, an operand (room hotspot or
-    // inventory item), a walkable floor tile, or nothing.
-    enum class Hover { NONE, VERB, OPERAND, WALKABLE };
-    Hover hover = Hover::NONE;
-    Verb hover_verb = Verb::LOOK_AT;
-    ObjectRef hover_obj;
+std::string RoomScene::command_walk_label() const {
+    return ctx_.strings.ui_label("walk_to");
+}
+
+void RoomScene::sync_command_hover() {
+    if (view_state_ != ViewState::COMMAND) {
+        command_controller_.clear_hover();
+        return;
+    }
     if (panel_ && panel_->contains(hover_vp_)) {
         const PanelIntent in = panel_->click(hover_vp_, inventory_);
         if (in.kind == PanelIntent::Kind::SELECT_VERB) {
-            hover = Hover::VERB;
-            hover_verb = in.verb;
+            command_controller_.on_verb_hovered(in.verb);
         } else if (in.kind == PanelIntent::Kind::CLICK_INVENTORY) {
-            hover = Hover::OPERAND;
-            hover_obj = {ObjectKind::INVENTORY_OBJECT, in.item_id};
+            command_controller_.on_inventory_item_hovered(in.item_id);
+        } else {
+            command_controller_.clear_hover();
         }
-    } else if (room_) {
+        return;
+    }
+    if (room_) {
         const geom::Point world = virtual_to_world(hover_vp_);
         if (const RoomHotspot* hs = hotspot_under(world)) {
-            hover = Hover::OPERAND;
-            hover_obj = {ObjectKind::ROOM_OBJECT, hs->id};
+            command_controller_.on_hotspot_hovered({hs->id});
         } else if (room_->data().is_walkable(world)) {
-            hover = Hover::WALKABLE;
+            command_controller_.on_walkable_hovered();
+        } else {
+            command_controller_.clear_hover();
         }
+        return;
     }
-
-    // IDLE: the bar just names what's under the pointer (design 04 §Top bar).
-    if (builder_.state() == CommandBuilder::State::IDLE) {
-        switch (hover) {
-        case Hover::VERB:
-            return strings.verb_label(std::string(verb_id(hover_verb)));
-        case Hover::OPERAND:
-            return resolve_operand(hover_obj).name;
-        case Hover::WALKABLE:
-            return strings.ui_label("walk_to");
-        case Hover::NONE:
-            break;
-        }
-        return {};
-    }
-
-    // Building a command: show the committed preview, and append the hovered
-    // operand only when it would be a valid next argument.
-    std::string base = command_preview();
-    if (hover == Hover::OPERAND) {
-        const Operand info = resolve_operand(hover_obj);
-        const std::optional<Verb> verb = builder_.verb();
-        if (verb && builder_.would_accept(hover_obj, affordance_ok(info.affordances, *verb))) {
-            base += " " + info.name;
-        }
-    }
-    return base;
+    command_controller_.clear_hover();
 }
 
 void RoomScene::update(float dt) {
@@ -1153,6 +1091,7 @@ void RoomScene::update(float dt) {
     if (camera_ && view_state_ == ViewState::COMMAND && prev_view_state_ != ViewState::COMMAND) {
         camera_->follow_player();
     }
+    sync_command_hover();
     // Cursor affordance (#73): request the INTERACT cursor when an interactive
     // hotspot is under the pointer in COMMAND. hover_vp_ is offscreen (-1,-1)
     // until the first MouseMoved, so this stays DEFAULT until the mouse moves.
@@ -1227,8 +1166,9 @@ std::string RoomScene::debug_hud_text() const {
         view = "MENU";
         break;
     }
+    const CommandState& command_state = command_controller_.state();
     const char* builder = "?";
-    switch (builder_.state()) {
+    switch (command_state.builder_state) {
     case CommandBuilder::State::IDLE:
         builder = "IDLE";
         break;
@@ -1266,15 +1206,15 @@ std::string RoomScene::debug_hud_text() const {
     out += view;
     out += "\nCMD: ";
     out += builder;
-    if (builder_.verb()) {
+    if (command_state.selected_verb) {
         out += " verb=";
-        out += verb_id(*builder_.verb());
+        out += verb_id(*command_state.selected_verb);
     }
-    if (builder_.param1() && builder_.param1()->valid()) {
-        out += " p1=" + builder_.param1()->id;
+    if (command_state.param1 && command_state.param1->valid()) {
+        out += " p1=" + command_state.param1->id;
     }
-    if (builder_.param2() && builder_.param2()->valid()) {
-        out += " p2=" + builder_.param2()->id;
+    if (command_state.param2 && command_state.param2->valid()) {
+        out += " p2=" + command_state.param2->id;
     }
 
     out += "\n-- world state --";
@@ -1338,12 +1278,7 @@ void RoomScene::draw(sf::RenderTarget& target) const {
             }
             panel_->draw_options(target, labels, hover_vp_);
         } else {
-            panel_->draw(target,
-                         ctx_.strings,
-                         inventory_,
-                         top_bar_text(),
-                         builder_.verb(),
-                         hover_vp_);
+            panel_->draw(target, ctx_.strings, inventory_, command_controller_.state(), hover_vp_);
         }
     }
     if (view_state_ == ViewState::MENU) {
@@ -1815,7 +1750,7 @@ bool RoomScene::restore(const pac::core::GameState& state) {
         run_task_ = 0;
     }
     view_state_ = ViewState::COMMAND;
-    builder_.cancel();
+    command_controller_.reset();
     speech_.skip();
 
     // Schedule the room load; update() will reseat the player at the saved

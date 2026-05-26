@@ -9,7 +9,7 @@
 #include "engine/pnc/camera.hpp"
 #include "engine/pnc/cast.hpp"
 #include "engine/pnc/command.hpp"
-#include "engine/pnc/command_builder.hpp"
+#include "engine/pnc/command_controller.hpp"
 #include "engine/pnc/debug_overlay.hpp"
 #include "engine/pnc/dialog.hpp"
 #include "engine/pnc/inventory.hpp"
@@ -38,7 +38,7 @@ namespace pac::pnc {
 /// scrolling camera over the scenery viewport, the SCUMM panel + command builder
 /// + dispatcher, regions/objects with z-order, and zone-driven room transitions.
 /// State persists across room changes (precursor to GameState in M5).
-class RoomScene : public pac::core::Scene {
+class RoomScene : public pac::core::Scene, private CommandControllerHost {
 public:
     /// High-level state of the room view (design 04 §Room view states). The
     /// SCUMM panel layout, input routing, and scripted-input gating all key off
@@ -117,12 +117,12 @@ private:
     void handle_menu_event(const sf::Event& event);
     void draw_menu(sf::RenderTarget& target) const;
     void trigger_menu(MenuAction action);
-    void object_clicked(const ObjectRef& object);
+    void sync_command_hover();
     /// Route the player to a hotspot's approach point through the find_path seam:
     /// clamps an approach outside the walkable area to the nearest reachable point
     /// (dev warning) and short-circuits when already near it (issue #22).
     void walk_to_approach(geom::Point approach, const std::string& hotspot_id);
-    void execute_ready_command();
+    void execute_command(const Command& cmd);
     /// Route a command through the handler chain (inventory -> hotspot ->
     /// game.lua fallback). Returns the handler's caption string, if any.
     std::optional<std::string> dispatch(const Command& cmd);
@@ -140,21 +140,11 @@ private:
     /// the hotspot has no resolvable footprint.
     [[nodiscard]] std::optional<geom::Point> hotspot_focus(const RoomHotspot& hs) const;
 
-    /// Resolved display data for a command operand (room hotspot or inventory
-    /// item). `found` is false when the id is unknown; `name` then falls back to
-    /// the id so the bar still shows something.
-    struct Operand {
-        bool found = false;
-        std::string name;
-        const std::vector<std::string>* affordances = nullptr;
-        bool combinable = false;
-        Verb default_verb = Verb::LOOK_AT;
-    };
-    [[nodiscard]] Operand resolve_operand(const ObjectRef& object) const;
-    [[nodiscard]] std::string command_preview() const;
-    /// The top-bar text: the command being built, plus a preview of the element
-    /// under the cursor per the room-view command state (design 04 §Top bar).
-    [[nodiscard]] std::string top_bar_text() const;
+    [[nodiscard]] CommandOperandInfo
+    resolve_command_operand(const ObjectRef& object) const override;
+    [[nodiscard]] std::string command_verb_label(Verb verb) const override;
+    [[nodiscard]] std::string command_connector_label(Verb verb) const override;
+    [[nodiscard]] std::string command_walk_label() const override;
     /// Multi-line debug HUD text (#37): room/zone/view-state, command-builder
     /// state, and a dump of world/room/region state. Drawn by the F4 overlay.
     [[nodiscard]] std::string debug_hud_text() const;
@@ -202,7 +192,7 @@ private:
     std::optional<Camera> camera_;
     SpeechManager speech_;
     // Set whenever a line is shown via say()/say_at(); cleared before each command
-    // dispatch so execute_ready_command() can tell whether the verb handler already
+    // dispatch so execute_command() can tell whether the verb handler already
     // spoke (e.g. called talk()) and skip the "nothing happens" fallback caption.
     bool spoke_during_command_ = false;
     RoomRenderer renderer_;
@@ -210,7 +200,7 @@ private:
     // Dev overlay layer toggles (#37). Seeded from ctx_.dev in enter(); flipped by
     // F1-F4. Only rendered / responsive to keys when ctx_.dev.edit_mode is set.
     DebugOverlayFlags debug_flags_;
-    CommandBuilder builder_;
+    CommandController command_controller_;
     std::optional<ScummPanel> panel_;
     // Last known pointer position in virtual coords; drives the top-bar hover
     // preview. Off-screen until the first MouseMoved so nothing is "hovered".
