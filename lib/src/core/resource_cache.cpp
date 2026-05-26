@@ -41,22 +41,39 @@ const sf::Font* ResourceCache::try_font(const std::string& logical) {
     if (it != fonts_.end()) {
         return &it->second;
     }
-    // sf::Font::loadFromFile reads glyphs lazily, so it needs a host path. Packed
-    // archives (design-for) will instead keep the byte buffer alive and use
-    // loadFromMemory.
+    // sf::Font samples glyph data lazily from the buffer we pass in, so the
+    // buffer must outlive the font — we cache it via persistent_bytes() so its
+    // address is stable for the lifetime of the cache. Same path for both the
+    // loose-files and packed backends.
+    const std::vector<std::byte>* bytes = nullptr;
     try {
-        const std::string path = host_path(logical);
-        auto [pos, inserted] = fonts_.try_emplace(logical);
-        if (!pos->second.loadFromFile(path)) {
-            fonts_.erase(pos);
-            log_.warn("font: could not load '" + logical + "'");
-            return nullptr;
-        }
-        return &pos->second;
+        bytes = persistent_bytes(logical);
     } catch (const std::exception& e) {
         log_.warn(std::string("font: ") + e.what());
         return nullptr;
     }
+    if (!bytes || bytes->empty()) {
+        log_.warn("font: could not load '" + logical + "'");
+        return nullptr;
+    }
+    auto [pos, inserted] = fonts_.try_emplace(logical);
+    if (!pos->second.loadFromMemory(bytes->data(), bytes->size())) {
+        fonts_.erase(pos);
+        log_.warn("font: could not decode '" + logical + "'");
+        return nullptr;
+    }
+    return &pos->second;
+}
+
+const std::vector<std::byte>* ResourceCache::persistent_bytes(const std::string& logical) {
+    const auto it = persistent_bytes_.find(logical);
+    if (it != persistent_bytes_.end()) {
+        return it->second.get();
+    }
+    auto buf = std::make_unique<std::vector<std::byte>>(source_.read_bytes(logical));
+    const std::vector<std::byte>* raw = buf.get();
+    persistent_bytes_.emplace(logical, std::move(buf));
+    return raw;
 }
 
 // Whole-word search for an identifier in shader source, so a reserved uniform is
