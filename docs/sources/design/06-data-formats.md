@@ -536,3 +536,21 @@ Top-level fields the save/load picker uses (issue #108):
 
 `SaveService::slot_summary(slot)` reads only these header fields off disk so
 the picker UI never has to decode the full payload to list slots.
+
+### Thumbnail sidecar (issue #119)
+
+Saves carry an optional preview image alongside the YAML: `slot_N.thumb.png`
+next to `slot_N.yaml`, written when `SaveService::save` is called with a
+non-empty `sf::Image`. The runtime captures it from the framebuffer:
+
+- The app loop refreshes a `Thumbnail` service every ~half-second while the
+  active scene returns `wants_thumbnail() == true` (RoomScene's COMMAND
+  state). The captured image is cropped to the gameplay viewport (no
+  letterbox bars) and downscaled to 256×144.
+- When the player picks "Guardar partida" from the in-game pause menu,
+  RoomScene stages both the snapshot *and* the latest thumbnail; the save
+  picker writes both atomically.
+- The save picker loads each slot's sidecar when present and renders it in
+  the slot row, falling back to the "Sin captura" placeholder when missing
+  (an older save, a slot whose first capture never landed, or a corrupt
+  PNG). A failed thumbnail write is logged but does **not** fail the save.

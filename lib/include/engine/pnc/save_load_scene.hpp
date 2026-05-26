@@ -4,11 +4,13 @@
 #include "engine/core/scene.hpp"
 
 #include <SFML/Graphics/Rect.hpp>
+#include <SFML/Graphics/Texture.hpp>
 #include <SFML/System/String.hpp>
 #include <SFML/System/Vector2.hpp>
 #include <SFML/Window/Keyboard.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -70,6 +72,11 @@ private:
         // backspace drops one glyph, not a single UTF-8 byte. Seeded from the
         // disk `description` so a re-save keeps the previous text by default.
         sf::String draft;
+        /// Loaded thumbnail sidecar (#119). `nullptr` when the slot has no
+        /// thumbnail on disk (older save, autosave whose capture never landed)
+        /// — the picker then draws the placeholder. Heap-allocated so its
+        /// address is stable while the SlotView is moved around the vector.
+        std::unique_ptr<sf::Texture> thumbnail;
     };
 
     void refresh_summaries(); // read SlotSummary for each slot
