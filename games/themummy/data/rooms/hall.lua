@@ -32,13 +32,16 @@ room.hotspots = {
     end,
     open = function()
       if get_room_state("salida.open") then
+        play_sound("sfx/door_open.ogg")
         change_room("exterior", "from_hall")
-      else        
+      else
+        -- A locked-door rattle gives the failed attempt some feedback.
+        play_sound("sfx/door_locked.ogg")
         -- Returning nothing and just talking doesn't work, we need to review this.
-        -- For now, let's return the text here.         
+        -- For now, let's return the text here.
         --talk("julia", "La puerta de SALIDA esta cerrada con llave.")
         return("Intento abrir la puerta, pero esta cerrada con llave.")
-      end      
+      end
     end,
   },
 }
