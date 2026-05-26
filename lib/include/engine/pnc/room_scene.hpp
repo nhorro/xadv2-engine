@@ -178,6 +178,7 @@ private:
     std::string start_room_;
     std::string player_char_;
     std::string font_path_;
+    std::string scumm_panel_path_;
     std::string inventory_path_;
     std::string inventory_logic_;
     std::string logic_path_;

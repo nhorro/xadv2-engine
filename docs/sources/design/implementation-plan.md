@@ -201,7 +201,8 @@ Acceptance:
 - Manifest uses `resources.src`, `strings`, scene list, and built-in scene types:
   `TitleScreen`, `SettingsScene`, `StoryText`, `RoomScene`.
 - `RoomScene` parameters include `cast`, `logic`, `inventory`,
-  `inventory_logic`, `rooms`, `start_room`, `player`, optional `font`.
+  `inventory_logic`, `rooms`, `start_room`, `player`, optional `font`, and
+  optional `scumm_panel`.
 - Static data stays in YAML: manifest, strings, cast, rooms, spritesheets,
   animations, inventory.
 - Behavior stays in Lua: game logic, room hooks/handlers, inventory handlers,
