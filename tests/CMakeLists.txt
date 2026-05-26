@@ -28,6 +28,7 @@ add_executable(pac_core_tests
     scene_stack_test.cpp
     screen_fade_test.cpp
     resource_path_test.cpp
+    pack_resource_source_test.cpp
     display_test.cpp
     geometry_test.cpp
     spritesheet_test.cpp

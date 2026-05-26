@@ -12,13 +12,23 @@ MusicPlayer::MusicPlayer(ResourceCache& resources, Diagnostics& log)
     : resources_(resources), log_(log) {}
 
 void MusicPlayer::play(const std::string& logical, bool loop) {
+    // sf::Music streams from the buffer we pass in, so the buffer must outlive
+    // the music (a requirement of openFromMemory). ResourceCache::persistent_bytes
+    // caches the buffer with a stable address — the same path works for both the
+    // loose-files and packed backends.
+    const std::vector<std::byte>* bytes = nullptr;
     try {
-        if (!music_.openFromFile(resources_.host_path(logical))) {
-            log_.warn("music: could not open '" + logical + "'");
-            return;
-        }
+        bytes = resources_.persistent_bytes(logical);
     } catch (const std::exception& e) {
         log_.warn(std::string("music: ") + e.what());
+        return;
+    }
+    if (!bytes || bytes->empty()) {
+        log_.warn("music: could not load '" + logical + "'");
+        return;
+    }
+    if (!music_.openFromMemory(bytes->data(), bytes->size())) {
+        log_.warn("music: could not decode '" + logical + "'");
         return;
     }
     music_.setLoop(loop);

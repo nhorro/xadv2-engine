@@ -1,5 +1,6 @@
 #include "engine/core/resource_source.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -90,6 +91,37 @@ std::vector<std::byte> FilesystemResourceSource::read_bytes(const std::string& l
         in.read(reinterpret_cast<char*>(bytes.data()), size);
     }
     return bytes;
+}
+
+std::vector<std::string> FilesystemResourceSource::list(const std::string& prefix,
+                                                        const std::string& suffix) const {
+    std::vector<std::string> out;
+    std::error_code ec;
+    const std::filesystem::path base =
+        prefix.empty() ? std::filesystem::path(root_) : std::filesystem::path(root_) / prefix;
+    if (!std::filesystem::is_directory(base, ec)) {
+        return out;
+    }
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(base, ec)) {
+        if (ec || !entry.is_regular_file()) {
+            continue;
+        }
+        std::error_code ec2;
+        const auto rel = std::filesystem::relative(entry.path(), std::filesystem::path(root_), ec2);
+        if (ec2) {
+            continue;
+        }
+        // Force forward slashes so the result is a logical path.
+        std::string logical = rel.generic_string();
+        if (!suffix.empty() &&
+            (logical.size() < suffix.size() ||
+             logical.compare(logical.size() - suffix.size(), suffix.size(), suffix) != 0)) {
+            continue;
+        }
+        out.push_back(std::move(logical));
+    }
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 } // namespace pac::core

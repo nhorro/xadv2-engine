@@ -5,9 +5,11 @@
 #include <SFML/Graphics/Shader.hpp>
 #include <SFML/Graphics/Texture.hpp>
 
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace pac::core {
 
@@ -45,8 +47,19 @@ public:
     const sf::SoundBuffer& sound_buffer(const std::string& logical);
 
     /// UI fonts are optional: returns nullptr (and logs) on failure instead of
-    /// throwing, so a missing font degrades gracefully.
+    /// throwing, so a missing font degrades gracefully. The backing byte buffer
+    /// is owned by the cache and lives for the cache's lifetime, so the font is
+    /// safe to use after the call returns (a requirement of
+    /// `sf::Font::loadFromMemory`).
     const sf::Font* try_font(const std::string& logical);
+
+    /// Cached byte buffer for resources the engine loads via SFML's
+    /// `*FromMemory` APIs and must keep alive for the lifetime of the loaded
+    /// object (currently `sf::Music` — `MusicPlayer` calls this then
+    /// `openFromMemory` against the returned pointer). Throws on missing or
+    /// undecodable bytes. The buffer's address is stable for the cache's
+    /// lifetime, so callers may hold the pointer.
+    const std::vector<std::byte>* persistent_bytes(const std::string& logical);
 
     /// Loads & caches a compiled fragment shader by logical path (resources-root
     /// relative). Returns nullptr — caching the failure so it is attempted, and
@@ -59,8 +72,11 @@ public:
     /// Pass-throughs to the source for the loaders (parsed once, not cached here).
     std::string read_text(const std::string& logical) const;
 
-    /// Host filesystem path, for SFML APIs that stream from a file (sf::Music) or
-    /// read lazily (sf::Font). Throws if the backend has no host path.
+    /// Host filesystem path. Available only when the backend is the filesystem
+    /// source (loose-files dev path); throws `ResourceError` for a packed
+    /// archive. Engine code paths that need it should fall back to
+    /// `persistent_bytes` + the SFML `loadFromMemory` / `openFromMemory` APIs,
+    /// which work for both backends.
     std::string host_path(const std::string& logical) const;
 
 private:
@@ -69,6 +85,9 @@ private:
     std::map<std::string, sf::Texture> textures_;
     std::map<std::string, sf::Font> fonts_;
     std::map<std::string, sf::SoundBuffer> sounds_;
+    // Byte buffers we keep alive for SFML `*FromMemory` callers (fonts, music).
+    // Backed by a unique_ptr so addresses are stable across map rehashes.
+    std::map<std::string, std::unique_ptr<std::vector<std::byte>>> persistent_bytes_;
     // A present key with a null pointer records a load that already failed, so a
     // missing / uncompilable shader is reported once, not every frame.
     std::map<std::string, std::unique_ptr<ShaderProgram>> shaders_;
