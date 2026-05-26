@@ -58,15 +58,148 @@ Flujo recomendado:
 
 ### Prompts útiles
 
-> **TODO:** colección de prompts probados para fondos (estilo, perspectiva,
-> iluminación) y para hojas de sprites (grilla, fondo chroma, vista de personaje).
+### Fondos
 
-```text
-# Plantilla de prompt (placeholder)
-[estilo] background of [lugar], point-and-click adventure, [hora del día],
-flat lighting, no characters, [paleta], wide composition with empty floor area
-for the player to walk, [resolución] aspect.
-```
+#### Plantilla de referencia para escena interior
+
+~~~
+Create a 2D background for a point-and-click adventure game.
+
+CANVAS AND LAYOUT
+Resolution: 1280x720 pixels.
+Horizontal composition.
+The playable scene occupies the upper 85% of the image.
+The bottom 15% must remain visually safe for a possible command interface; do not place important narrative information there.
+The main action should happen in the visible upper area.
+
+CAMERA AND COMPOSITION
+Use a mostly frontal composition with slight depth.
+Avoid dramatic perspective.
+Avoid extreme camera angles.
+The scene should feel like a readable theatrical set.
+Use 2 or 3 clear depth planes:
+- background: walls, windows, doors, distant decoration
+- middle ground: main furniture and interactive objects
+- foreground: optional occlusion objects that the character can walk behind
+
+WALKABLE AREA
+Include a clear walkable area in the lower-middle part of the scene.
+Keep it mostly open.
+Objects near the walkable area must have simple, readable bases and clear floor footprints.
+Avoid confusing diagonal objects or irregular silhouettes in the walking zone.
+Leave enough space for a full-body character sprite to move naturally.
+
+INTERACTIVE OBJECTS
+Include several readable interactive objects, but do not overcrowd the scene.
+Important objects must be visually distinguishable without looking like UI elements.
+Use composition, contrast, lighting, and spacing to guide attention.
+
+VISUAL CLARITY
+Prioritize readability over decorative complexity.
+Avoid clutter.
+Avoid placing important objects at the extreme edges.
+Avoid tiny unreadable labels unless they are purely decorative.
+Make the scene suitable for hotspots, object examination, and character navigation.
+
+CONTENT
+Location: [describe location]
+Time period: [describe period]
+Mood: [describe mood]
+Narrative purpose: [describe what the player should understand from this room]
+Key interactive objects: [list objects]
+Foreground occlusion objects: [list optional objects]
+Doors / exits: [list exits]
+Lighting: [describe lighting]
+Color palette: [describe palette]
+
+STYLE
+Art style: [describe style]
+Linework: [describe linework]
+Rendering: [describe rendering]
+Texture: [describe texture]
+Do not use photorealism unless explicitly requested.
+Do not include characters unless requested.
+Do not include UI, captions, labels, arrows, annotations, or text overlays.
+~~~
+
+**Resultado**
+
+![Interior](./assets/background-prompt-example-interior.png)
+
+#### Plantilla de referencia para escena exterior
+
+~~~
+Create a 2D background for a point-and-click adventure game.
+
+CANVAS AND LAYOUT
+Resolution: 1280x720 pixels.
+Horizontal composition.
+The playable scene occupies the upper 85% of the image.
+The bottom 15% must remain visually safe for a possible command interface; do not place important narrative information there.
+The main interactive action should happen in the visible upper area.
+
+CAMERA AND COMPOSITION
+Use a mostly frontal or gently angled composition.
+Avoid dramatic perspective.
+Avoid extreme camera angles.
+The scene should feel readable and stable, like a designed adventure-game set.
+Use 2 or 3 clear depth planes:
+- background: distant landscape, sky, mountains, forest, lake, buildings far away
+- middle ground: main environmental structures, paths, trees, rocks, fences, signs, docks, entrances
+- foreground: optional occlusion elements such as bushes, trunks, rocks, railings, or low objects the character can walk behind
+
+WALKABLE AREA
+Include a clear walkable area in the lower-middle part of the scene.
+The walkable area should be easy to read, using a path, dirt ground, beach, yard, road, platform, dock, or another visually coherent surface.
+Keep enough open space for a full-body character sprite to move naturally.
+Avoid confusing terrain boundaries or overly irregular ground shapes.
+
+INTERACTIVE OBJECTS
+Include several readable interactive outdoor objects, but do not overcrowd the scene.
+Important objects should be clearly distinguishable through composition, lighting, contrast, silhouette, or placement.
+Use recognizable environmental anchors such as a signpost, gate, shack, vehicle, campfire, ladder, dock, crate, or large distinctive rock.
+
+EXITS AND NAVIGATION
+Make scene exits easy to understand.
+Exits may be represented by paths, roads, stairs, bridges, gates, dock connections, openings between trees, or visible access points to other areas.
+Do not make exits ambiguous or visually hidden.
+
+VISUAL CLARITY
+Prioritize gameplay readability over pure landscape spectacle.
+Avoid large empty areas with no gameplay purpose.
+Avoid overly dense vegetation or clutter that hides interactive zones.
+Avoid making the sky or distant scenery dominate the scene too much.
+Keep the main action in the middle and lower portions of the image.
+
+CONTENT
+Location: [describe exterior location]
+Environment type: [forest trail / lakeshore / mountain path / town street / dock / campsite / abandoned yard / etc.]
+Time period: [describe period]
+Mood: [describe mood]
+Narrative purpose: [describe what the player should understand from this place]
+Key interactive objects: [list objects]
+Main walkable surface: [path / dirt / snow / grass / wooden dock / street / beach / etc.]
+Exits: [list exits]
+Foreground occlusion objects: [list optional objects]
+Lighting: [describe lighting]
+Weather: [clear / cloudy / misty / windy / light snow / rain / etc.]
+Color palette: [describe palette]
+
+STYLE
+Art style: [describe style]
+Linework: [describe linework]
+Rendering: [describe rendering]
+Texture: [describe texture]
+Do not use photorealism unless explicitly requested.
+Do not include characters unless requested.
+Do not include UI, captions, labels, arrows, annotations, or text overlays.
+~~~
+
+**Resultado**
+
+![Exterior](./assets/background-prompt-example-exterior.png)
+
+Nota: notar error en farol, bicicletas, ventanas del lado derecho. Requiere edición.
 
 ## Checklist antes de integrar
 
