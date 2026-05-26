@@ -86,8 +86,7 @@ PanelIntent ScummPanel::click(sf::Vector2f p, const InventoryModel& inventory) c
 void ScummPanel::draw(sf::RenderTarget& target,
                       const pac::core::Strings& strings,
                       const InventoryModel& inventory,
-                      const std::string& command_preview,
-                      std::optional<Verb> selected_verb,
+                      const CommandState& command_state,
                       sf::Vector2f cursor) const {
     draw_backdrop(target);
 
@@ -96,7 +95,7 @@ void ScummPanel::draw(sf::RenderTarget& target,
     }
 
     // Command bar text, vertically centered in the bar strip.
-    sf::Text bar(pac::core::utf8(command_preview), *font_, theme_.command_text_size);
+    sf::Text bar(pac::core::utf8(command_state.preview_text), *font_, theme_.command_text_size);
     bar.setFillColor(theme_.command_text);
     const sf::FloatRect bb = bar.getLocalBounds();
     bar.setPosition(region_.left + theme_.pad,
@@ -105,7 +104,8 @@ void ScummPanel::draw(sf::RenderTarget& target,
 
     // Verb grid. Selected wins over hover so the active verb stays distinct.
     for (const VerbCell& cell : verb_cells()) {
-        const bool selected = selected_verb && *selected_verb == cell.verb;
+        const bool selected =
+            command_state.selected_verb && *command_state.selected_verb == cell.verb;
         const bool hot = cell.rect.contains(cursor);
         sf::RectangleShape box(sf::Vector2f(cell.rect.width, cell.rect.height));
         box.setPosition(cell.rect.left, cell.rect.top);
