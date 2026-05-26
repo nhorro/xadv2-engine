@@ -102,7 +102,7 @@ background:
     CHECK(std::get<float>(p.value) == doctest::Approx(4.0f));
 }
 
-TEST_CASE("shaders list keeps order; design-for multi-pass") {
+TEST_CASE("shaders list keeps order (multi-pass chain feeds them in order)") {
     const RoomData r = parse_room(R"YAML(
 id: r
 background:

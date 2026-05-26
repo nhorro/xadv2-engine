@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/gfx/shader_chain.hpp"
+
 #include <SFML/System/Vector2.hpp>
 
 #include <string>
@@ -27,9 +29,10 @@ struct ShaderEnv {
     float time = 0.0f;
 };
 
-/// Log a one-time warning (at room load) for shader features that parse but are
-/// not yet applied: a multi-shader stack (only the first runs) and a `controller`
-/// reference (declarative-only for now). Keeps the per-frame render path quiet.
+/// Log a one-time warning (at room load) for a shader `controller` reference —
+/// the controller registry is design-for and not yet implemented, so the
+/// drawable falls back to unshaded. Multi-shader stacks are now fully supported
+/// (ping-pong RT chain in `gfx::ShaderChain`).
 void warn_unsupported_shader_features(const RoomData& data, pac::core::Diagnostics& log);
 
 /// Derive a room's world bounds from its background layers: the bounding box of
@@ -60,6 +63,12 @@ public:
               const std::vector<const Avatar*>& npcs,
               pac::core::Diagnostics& log,
               const ShaderEnv& shaders = {}) const;
+
+private:
+    // Pooled across draws so a steady scene reaches a steady allocation; the
+    // chain is the multi-pass RT path shared by every shaded drawable. Marked
+    // `mutable` so the draw method may stay const for the scene's draw contract.
+    mutable gfx::ShaderChain chain_;
 };
 
 } // namespace pac::pnc

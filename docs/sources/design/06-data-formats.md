@@ -175,6 +175,7 @@ Worked example: [05 — Scripting API](05-scripting-api.md).
 | `sprite` | req if `animated_sprite` | path | — | An `*.anim.yaml`. |
 | `composite` | req if `composite` | path | — | A `*.composite.yaml`. |
 | `shadow` | opt | `{size: {x, y}, color: {r, g, b, a}}` | none | Ground shadow drawn under the avatar. |
+| `shader` / `shaders` | opt | shader ref / `[shader ref]` | — | Shader(s) applied to the avatar's animated sprite (issue #106 — every PC / NPC that uses this appearance inherits the stack). `u_resolution` for an avatar shader equals the **current frame size in pixels**. See **Shaders** below. |
 
 **`characters`** — map of character id → character:
 
@@ -215,7 +216,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `interactive` | opt | bool | `false` | Whether the layer receives pointer interaction. |
 | `visible` | opt | bool | `true` | Initial visibility. Toggle at runtime with `set_layer_visible(id, bool)` (needs an `id`); persisted per room. |
 | `shader` | opt | shader ref | — | A shader applied when drawing the layer. See **Shaders** below. |
-| `shaders` | opt | `[shader ref]` | — | Ordered shader stack (design-for; only the first applies for now). See **Shaders** below. |
+| `shaders` | opt | `[shader ref]` | — | Ordered shader stack — the engine runs them as a multi-pass chain in this order. See **Shaders** below. |
 | `animation` | opt | anim ref | — | Design-for. |
 
 `background.color` (`{r, g, b, a}`) is an optional solid fill behind all layers.
@@ -226,7 +227,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 |-------|-----|------|---------|---------|
 | `area` | req | polygon | — | Region footprint. |
 | `z` | req unless `over`/`baseline` | number | — | Draw depth. |
-| `over` | opt | layer id | — | Inherit the named layer's `z` instead of an explicit `z`. |
+| `over` | opt | layer id | — | Inherit the named layer's `z` instead of an explicit `z`. The region also **inherits the layer's shader stack** (issue #105): layer effects run first so the region matches the surrounding background; the region's own `shader`/`shaders` run on top. |
 | `baseline` | opt | number | — | Floor-line world-Y; the region sorts here against avatar feet (occludes feet above the line, is occluded by feet below), for a perspective region the player passes. Overrides `over` / `z`. |
 | `states` | req | map state id → path | — | Image per named state. |
 | `initial` | req | state id | — | Starting state. |
@@ -276,7 +277,7 @@ source activates the hotspot.
 | `orientation` | opt | `up`/`right`/`down`/`left` | `down` | Initial facing. |
 | `player` | opt | bool | `false` | Marks the player's placement entry (does not create the player; see [player vs NPC avatars](04-point-and-click-concepts.md)). |
 
-**Shaders** (on a layer, region, or object) — see [03 § Shaders](03-2d-game-concepts.md) for the model. A **shader ref** is either a string (shorthand for `{source: <string>}`) or a mapping:
+**Shaders** (on a layer, region, object, or [appearance](#cast--castyaml)) — see [03 § Shaders](03-2d-game-concepts.md) for the model. A **shader ref** is either a string (shorthand for `{source: <string>}`) or a mapping:
 
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|

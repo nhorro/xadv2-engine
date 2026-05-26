@@ -92,9 +92,12 @@ void Avatar::draw_shadow(sf::RenderTarget& target) const {
     target.draw(blob);
 }
 
-void Avatar::draw(sf::RenderTarget& target) const {
+void Avatar::draw(sf::RenderTarget& target,
+                  pac::core::ResourceCache& resources,
+                  float time,
+                  pac::gfx::ShaderChain* chain) const {
     draw_shadow(target); // beneath the sprite, grounded on the pivot
-    target.draw(sprite_);
+    sprite_.draw(target, resources, time, chain);
 }
 
 } // namespace pac::pnc
