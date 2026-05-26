@@ -36,6 +36,7 @@ ui:
   quit_to_title: "Salir al título"
   back:     "Volver"
   apply:    "Aplicar"
+  manual_continue_hint: "click o [enter] para continuar, [esc] para saltar"
   resolution: "Resolución"
   fullscreen: "Pantalla completa"
   language: "Idioma"

@@ -23,6 +23,16 @@ public:
     void stop();
     void set_volume(float volume01);
 
+    /// Current playback offset of the active track in seconds. Returns 0 when
+    /// nothing is playing. Used by timed cutscenes (issue #116) to keep slide
+    /// transitions in sync with a narrated audio track when the engine
+    /// stutters or pauses.
+    [[nodiscard]] float playing_offset_seconds() const;
+
+    /// True while the underlying `sf::Music` is in the Playing state. Lets
+    /// callers detect track end without polling for offset == duration.
+    [[nodiscard]] bool is_playing() const;
+
 private:
     ResourceCache& resources_;
     Diagnostics& log_;

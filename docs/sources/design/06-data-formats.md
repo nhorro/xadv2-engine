@@ -58,7 +58,7 @@ default_language: es   # optional; defaults to the first entry
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `id` | req | string | — | Scene id, referenced by `entry` and outcomes. |
-| `type` | req | enum | — | `TitleScreen`, `StoryText`, `RoomScene`, `SettingsScene`, `SaveLoadScene`, `CloseUp`, or a registered custom type. |
+| `type` | req | enum | — | `TitleScreen`, `StoryText`, `Cutscene`, `RoomScene`, `SettingsScene`, `SaveLoadScene`, `CloseUp`, or a registered custom type. |
 | `parameters` | opt | map | — | Type-specific parameters (see below). |
 
 **Scene parameters by type:**
@@ -74,8 +74,18 @@ default_language: es   # optional; defaults to the first entry
   for a future opt-out routing override, any non-empty value enables the entry),
   and `exit` (often `QUIT`). Menu entries are borderless text; hover highlights
   the entry and switches the cursor to its interact variant.
-- `StoryText` / `Cutscene` — `script` (path), `on_finish` (outcome scene id),
-  `font` (opt path).
+- `StoryText` — Lua-driven cut-scene (script invokes `show_text(...)`).
+  Parameters: `script` (path), `on_finish` (outcome scene id), `font` (opt path).
+  Skippable with Enter / Space / Esc / click. Use for scripted yield-based
+  sequences (waits, branches, event hooks).
+- `Cutscene` (issue #116) — YAML slide-based cut-scene. Parameters: `data`
+  (req path to the cutscene YAML — see [cutscene file](#cutscene--cutscenesidyaml)),
+  `on_finish` (outcome scene id), `font` (opt path — fallback when a slide's
+  `text_style.font` is empty). Three advancement modes (`auto`, `manual`,
+  `timed`); `Esc` always skips. The localized manual continue/skip hint comes
+  from `strings.ui.manual_continue_hint`. Use for declarative, scrollable
+  slide shows; pick `StoryText` instead when the cutscene needs scripted
+  yields or branching.
 - `RoomScene` — `cast` (path), `logic` (path), `inventory` (path),
   `inventory_logic` (path), `rooms` (directory path), `start_room` (room id),
   `player` (req, cast character id — the persistent player avatar; appearance comes
@@ -170,7 +180,7 @@ language is persisted in the player settings file (see below).
 | `language` | req | string | — | Language tag, e.g. `es`. |
 | `verbs` | req | map verb id → string | — | Display label per verb. Keys are the verb ids: `look_at`, `talk_to`, `pick_up`, `use`, `give`, `open`, `close`, `push`, `pull`. |
 | `connectors` | req | map verb id → string | — | Two-operand connector per verb: `use` (e.g. `con`), `give` (e.g. `a`). |
-| `ui` | req | map key → string | — | Built-in UI labels. Menu (`new_game`, `continue`, `settings`, `quit`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `on`, `off`); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
+| `ui` | req | map key → string | — | Built-in UI labels. Menu (`new_game`, `continue`, `settings`, `quit`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `on`, `off`); the cutscene manual-continue hint (`manual_continue_hint`); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
 | `defaults` | req | map key → string | — | Engine last-resort captions, spoken when no game handler produced text for a verb. The loader requires the exact key set below — no missing keys, and (in dev) no unknown keys. |
 
 The required `defaults` keys and when each fires:
@@ -364,6 +374,107 @@ shader:
     center: [0.5, 0.3]         # vec2
     tint:   [0.2, 0.4, 0.8, 1.0]   # vec4
 ```
+
+## Cutscene — `cutscenes/<id>.yaml`
+
+Data file for the `Cutscene` scene type (issue #116) — a list of slides over a
+solid-black background, with auto / manual / timed advancement.
+
+Top level:
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `version` | opt | int | `1` | Format version. |
+| `advance_mode` | opt | enum | `auto` | `auto`, `manual`, or `timed` — see below. |
+| `audio` | opt | path | — | Background audio (timed mode). Played at scene start; slide transitions read its playback offset so they stay in sync when the engine stutters. |
+| `defaults` | opt | map | — | Style / layout defaults applied to every slide. Per-slide fields override these. |
+| `slides` | req | `[slide]` | — | Non-empty list of slides. |
+
+**Advance modes:**
+
+| Mode | Behavior | Input |
+|------|----------|-------|
+| `auto` | Each slide stays on screen for `duration` seconds, then advances. Equivalent to the old text-only cutscene. | `Esc` skips. |
+| `manual` | Player advances slides themselves. A localized hint is drawn at the bottom-right (`strings.ui.manual_continue_hint`). | `Enter` / `Space` / left-click advance; `Esc` skips. |
+| `timed` | Slides become active at their `at` timestamp. When `audio` is set, the music playback offset drives the clock; otherwise the scene's wall-clock is used. | `Esc` skips. |
+
+**`defaults`** — any subset of:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `text_style` | map | Default `{font, size, color}` (see slide section). |
+| `text_position` | `[x, y]` | Default normalized anchor for slide text. |
+| `text_align` | enum | Default `left` / `center` / `right`. |
+| `image_position` | `[x, y]` | Default normalized anchor for slide images. |
+| `image_size` | `[w, h]` | Default normalized box (max extent in screen space). |
+| `image_fit` | enum | `contain` (preserve aspect) or `stretch`. |
+| `duration` | float | Default per-slide duration for `auto` mode. |
+
+**`slide`** — one slide:
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `text` | opt | string | — | Single-line text drawn at `text_position`. |
+| `image` | opt | path | — | Image drawn behind the text. |
+| `text_position` | opt | `[x, y]` | from `defaults` | Normalized anchor (0–1). |
+| `text_align` | opt | enum | from `defaults` | Horizontal alignment relative to the anchor. Vertical anchoring is always centered on the y. |
+| `text_style` | opt | map | from `defaults` | Per-slide override. Each field (`font`, `size`, `color`) composes individually with the defaults. |
+| `image_position` | opt | `[x, y]` | from `defaults` | Normalized anchor; the image is centered (horizontally and vertically) on this point. |
+| `image_size` | opt | `[w, h]` | from `defaults` | Normalized box. `contain` keeps the image inside it; `stretch` fills it. |
+| `image_fit` | opt | enum | from `defaults` | `contain` or `stretch`. |
+| `duration` | opt | float | from `defaults.duration` | `auto` mode only — seconds the slide stays before advancing. |
+| `at` | req in `timed` | float | — | Seconds from scene start (or audio offset) when the slide becomes active. Must be monotonically non-decreasing across slides. |
+
+**Positions are normalized screen coordinates:**
+
+```text
+[0.0, 0.0] = top-left
+[0.5, 0.5] = center of the screen
+[1.0, 1.0] = bottom-right
+```
+
+**`text_style.color`** accepts `"#RRGGBB"` or `"#RRGGBBAA"` (case-insensitive,
+`#` optional). White (`#FFFFFF`) is the default.
+
+```yaml
+# A small manual-advance intro with an image and styled text.
+version: 1
+advance_mode: manual
+
+defaults:
+  text_position: [0.5, 0.8]
+  text_align: center
+  text_style: { size: 30, color: "#E7E7E9" }
+  image_position: [0.5, 0.45]
+  image_size: [0.6, 0.6]
+  image_fit: contain
+
+slides:
+  - image: cutscenes/island.png
+    text: "El Cairo, 1936."
+    text_position: [0.5, 0.92]
+    text_style: { color: "#F0D87A" }
+  - text: "Algo no anda bien..."
+    text_style: { size: 32, color: "#FFEEBB" }
+```
+
+```yaml
+# A narrated cutscene: audio drives the slide changes via their `at` timestamps.
+advance_mode: timed
+audio: audio/intro_narration.mp3
+slides:
+  - at: 0.0
+    image: cutscenes/lake.png
+  - at: 3.2
+    text: "Todo empezó una noche de viento."
+  - at: 7.5
+    image: cutscenes/institute.png
+    text: "En el instituto, una máquina seguía funcionando."
+```
+
+The existing `StoryText` Lua-driven cutscene is unaffected — pick `Cutscene`
+for declarative slide shows and `StoryText` when you need scripted timing or
+branching.
 
 ## Close-up — `closeups/<id>.yaml`
 
