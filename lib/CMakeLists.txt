@@ -89,6 +89,7 @@ add_library(pac_engine STATIC
     src/pnc/blank_scene.cpp
     src/pnc/title_screen.cpp
     src/pnc/settings_scene.cpp
+    src/pnc/save_load_scene.cpp
     src/pnc/story_text_scene.cpp
     src/pnc/room.cpp
     src/pnc/cast.cpp

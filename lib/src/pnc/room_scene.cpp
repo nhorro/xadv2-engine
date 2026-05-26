@@ -1580,43 +1580,43 @@ void RoomScene::api_start_dialog(const std::string& npc_id) {
 // --- pause / save / load menu (M5c/2) ---
 
 std::vector<RoomScene::MenuButton> RoomScene::menu_buttons() const {
+    // Single vertical column of four buttons. The picker UI for save/load
+    // (slots, thumbnails, descriptions) lives in the SaveLoadScene (issue #108)
+    // and is pushed by `trigger_menu`. The Save action is disabled when the
+    // engine can't take a coherent snapshot or no save scene is configured; the
+    // Load action is disabled when no slot exists or no load scene is configured.
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
-    const float w = 480.0f;
+    const float w = 360.0f;
     const float row_h = 56.0f;
-    const float gap = 12.0f;
-    const float footer_y_gap = 32.0f;
-    const float total_h = 3.0f * row_h + 2.0f * gap + footer_y_gap + row_h;
+    const float gap = 14.0f;
+    const int count = 4;
+    const float total_h = count * row_h + (count - 1) * gap;
     const float left = (static_cast<float>(vres.x) - w) / 2.0f;
     const float top = (static_cast<float>(vres.y) - total_h) / 2.0f;
-    const float btn_w = 100.0f;
-    const float label_w = w - 2.0f * btn_w - 2.0f * gap;
 
-    auto save_action = [](int slot) {
-        return slot == 1   ? MenuAction::SAVE_SLOT_1
-               : slot == 2 ? MenuAction::SAVE_SLOT_2
-                           : MenuAction::SAVE_SLOT_3;
+    auto any_save_exists = [this]() {
+        for (int s = 0; s < pac::core::SaveService::kSlotCount; ++s) {
+            if (ctx_.saves.slot_exists(s)) {
+                return true;
+            }
+        }
+        return false;
     };
-    auto load_action = [](int slot) {
-        return slot == 1   ? MenuAction::LOAD_SLOT_1
-               : slot == 2 ? MenuAction::LOAD_SLOT_2
-                           : MenuAction::LOAD_SLOT_3;
-    };
+    const bool save_enabled = can_save() && !ctx_.scenes.save_scene_id().empty();
+    const bool load_enabled = any_save_exists() && !ctx_.scenes.load_scene_id().empty();
+
+    const MenuAction actions[count] = {MenuAction::RESUME,
+                                       MenuAction::OPEN_SAVE,
+                                       MenuAction::OPEN_LOAD,
+                                       MenuAction::QUIT_TO_TITLE};
+    const bool enabled[count] = {true, save_enabled, load_enabled, true};
 
     std::vector<MenuButton> out;
-    for (int slot = 1; slot <= 3; ++slot) {
-        const float y = top + static_cast<float>(slot - 1) * (row_h + gap);
-        const float save_x = left + label_w + gap;
-        const float load_x = save_x + btn_w + gap;
-        out.push_back({{save_x, y, btn_w, row_h}, save_action(slot), true});
-        out.push_back({{load_x, y, btn_w, row_h}, load_action(slot), ctx_.saves.slot_exists(slot)});
+    out.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        const float y = top + static_cast<float>(i) * (row_h + gap);
+        out.push_back({{left, y, w, row_h}, actions[i], enabled[i]});
     }
-    // Footer: Resume (left), Quit to title (right).
-    const float footer_y = top + 3.0f * (row_h + gap) - gap + footer_y_gap;
-    const float footer_btn_w = (w - gap) / 2.0f;
-    out.push_back({{left, footer_y, footer_btn_w, row_h}, MenuAction::RESUME, true});
-    out.push_back({{left + footer_btn_w + gap, footer_y, footer_btn_w, row_h},
-                   MenuAction::QUIT_TO_TITLE,
-                   true});
     return out;
 }
 
@@ -1636,41 +1636,25 @@ void RoomScene::handle_menu_event(const sf::Event& event) {
 }
 
 void RoomScene::trigger_menu(MenuAction action) {
-    auto save_to = [this](int slot) {
-        if (!can_save()) {
-            ctx_.log.warn("RoomScene: cannot save here (view state isn't COMMAND/MENU)");
-            return;
-        }
-        ctx_.saves.save(slot, snap());
-    };
     switch (action) {
-    case MenuAction::SAVE_SLOT_1:
-        save_to(1);
-        break;
-    case MenuAction::SAVE_SLOT_2:
-        save_to(2);
-        break;
-    case MenuAction::SAVE_SLOT_3:
-        save_to(3);
-        break;
-    case MenuAction::LOAD_SLOT_1:
-    case MenuAction::LOAD_SLOT_2:
-    case MenuAction::LOAD_SLOT_3: {
-        const int slot = (action == MenuAction::LOAD_SLOT_1)   ? 1
-                         : (action == MenuAction::LOAD_SLOT_2) ? 2
-                                                               : 3;
-        if (auto state = ctx_.saves.load(slot)) {
-            // Same hand-off as Title's Continue: stage + scene change.
-            // restore() would also work directly, but routing through
-            // scene-change keeps the bootstrapping (cast/inventory/lua
-            // bindings re-init) consistent with a fresh entry.
-            ctx_.saves.stage_restore(std::move(*state));
-            ctx_.scenes.goto_scene("room_view");
-        }
-        break;
-    }
     case MenuAction::RESUME:
         view_state_ = ViewState::COMMAND;
+        break;
+    case MenuAction::OPEN_SAVE:
+        if (!can_save()) {
+            ctx_.log.warn("RoomScene: cannot save here (view state isn't COMMAND/MENU)");
+            break;
+        }
+        // Stage the snapshot for the picker to write. The picker pops itself
+        // after a save or back, returning the player to the pause menu.
+        ctx_.saves.stage_pending_snap(snap());
+        ctx_.scenes.open_save();
+        break;
+    case MenuAction::OPEN_LOAD:
+        // The picker handles the load itself (slot pick → stage_restore →
+        // goto_scene), so nothing to stage here. If no load scene is configured
+        // the helper is a no-op; the button is disabled in that state anyway.
+        ctx_.scenes.open_load();
         break;
     case MenuAction::QUIT_TO_TITLE:
         ctx_.scenes.goto_scene("title");
@@ -1698,31 +1682,9 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
                       static_cast<float>(vres.y) * 0.18f);
     target.draw(title);
 
-    // Slot rows (the buttons themselves come from menu_buttons; we still need
-    // to draw a "Slot N — Saved/Empty" label next to each row).
-    const auto buttons = menu_buttons();
-    const float row_h = 56.0f;
-    const float label_pad = 12.0f;
-    for (int slot = 1; slot <= 3; ++slot) {
-        // Save button for this slot is at buttons[(slot-1)*2]; its rect.top is
-        // the row's vertical origin.
-        const sf::FloatRect save_btn = buttons[static_cast<std::size_t>((slot - 1) * 2)].rect;
-        const float row_y = save_btn.top;
-        const float row_left = save_btn.left - 120.0f /* approximate label width */;
-
-        const std::string label = "Slot " + std::to_string(slot) +
-                                  (ctx_.saves.slot_exists(slot) ? " — Guardado" : " — Vacío");
-        sf::Text txt(pac::core::utf8(label), *font_, 22);
-        txt.setFillColor(sf::Color(220, 224, 235));
-        const sf::FloatRect b = txt.getLocalBounds();
-        txt.setPosition(row_left - 200.0f + label_pad,
-                        row_y + (row_h - b.height) / 2.0f - b.top - 1.0f);
-        target.draw(txt);
-    }
-
-    // Buttons themselves. An enabled button under the cursor highlights like the
-    // title menu / SCUMM panel (issue: consistent hover on all buttons).
-    for (const MenuButton& bt : buttons) {
+    // Single column of four buttons; the actual save/load picker is the
+    // SaveLoadScene (issue #108) opened by OPEN_SAVE / OPEN_LOAD.
+    for (const MenuButton& bt : menu_buttons()) {
         const bool hot = bt.enabled && bt.rect.contains(hover_vp_);
         sf::RectangleShape box(sf::Vector2f(bt.rect.width, bt.rect.height));
         box.setPosition(bt.rect.left, bt.rect.top);
@@ -1738,18 +1700,14 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
 
         std::string label;
         switch (bt.action) {
-        case MenuAction::SAVE_SLOT_1:
-        case MenuAction::SAVE_SLOT_2:
-        case MenuAction::SAVE_SLOT_3:
-            label = "Guardar";
-            break;
-        case MenuAction::LOAD_SLOT_1:
-        case MenuAction::LOAD_SLOT_2:
-        case MenuAction::LOAD_SLOT_3:
-            label = "Cargar";
-            break;
         case MenuAction::RESUME:
             label = ctx_.strings.ui_label("resume");
+            break;
+        case MenuAction::OPEN_SAVE:
+            label = ctx_.strings.ui_label("save_game");
+            break;
+        case MenuAction::OPEN_LOAD:
+            label = ctx_.strings.ui_label("load_game");
             break;
         case MenuAction::QUIT_TO_TITLE:
             label = ctx_.strings.ui_label("quit_to_title");

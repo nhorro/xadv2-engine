@@ -2,6 +2,7 @@
 
 #include "engine/core/state_store.hpp"
 
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
@@ -24,6 +25,18 @@ namespace pac::core {
 /// prefix isolates them from author-set state.
 struct GameState {
     int save_version = 1;
+
+    /// Player-supplied short description (issue #108). Optional — the save/load
+    /// UI falls back to the file's mtime when this is empty. Round-trips
+    /// through the save file; the autosave normally leaves it empty so the UI
+    /// always shows its timestamp.
+    std::string description;
+
+    /// Unix-epoch seconds at the moment of save. Set by `SaveService::save` so
+    /// the UI can render a date/time without re-reading file mtimes (and so a
+    /// snapshot timestamp survives a file copy that resets mtime). 0 ⇒ unset
+    /// (an older save without the field); the UI then falls back to mtime.
+    std::int64_t saved_at = 0;
 
     /// Top-level scene id (manifest entry). MVP only saves while RoomScene is
     /// active, but the field is recorded so saving from other scenes is a

@@ -2,10 +2,21 @@
 
 #include "engine/core/game_state.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <string>
 
 namespace pac::core {
+
+/// A light header read off a save slot for the picker UI (issue #108): the
+/// player's description (if any) and the wall-clock seconds at save time. The
+/// UI falls back to `last_write_time` when `saved_at` is 0 (an older save
+/// written before issue #108).
+struct SlotSummary {
+    std::string description;
+    std::int64_t saved_at = 0;
+};
 
 class Diagnostics;
 
@@ -46,6 +57,13 @@ public:
     /// the manual slots.
     [[nodiscard]] std::optional<int> latest_slot() const;
 
+    /// Cheap header-only read of `slot` for the picker UI: parses the YAML
+    /// but only keeps `description` + `saved_at`. Returns nullopt on a
+    /// missing or malformed file (an inhabited slot whose header parsed but
+    /// has neither field still returns a zero-initialized summary, so the UI
+    /// can detect "exists but with no metadata" via `slot_exists()`).
+    [[nodiscard]] std::optional<SlotSummary> slot_summary(int slot) const;
+
     /// Stage `state` as the GameState the next scene should restore from.
     /// Used by TitleScreen's "Continue" button: it loads a slot and stages
     /// the result here, then triggers the scene change; the new RoomScene
@@ -59,12 +77,27 @@ public:
 
     [[nodiscard]] bool has_pending_restore() const { return pending_restore_.has_value(); }
 
+    /// Stage a snapshot for the save UI to write (issue #108). RoomScene snaps
+    /// the current state and stages it before pushing the save scene; the save
+    /// scene later edits the description on it and calls `save(slot, *snap)`.
+    /// One pending snap at a time — pushing a new one overwrites.
+    void stage_pending_snap(GameState state);
+
+    /// Take and clear the pending snap, if any. The save scene calls this when
+    /// the player confirms a slot; if the snap has gone stale (somehow popped
+    /// without saving), the caller sees `nullopt` and bails.
+    [[nodiscard]] std::optional<GameState> take_pending_snap();
+
+    /// True when a snap is staged (the save UI uses this to enable its buttons).
+    [[nodiscard]] bool has_pending_snap() const { return pending_snap_.has_value(); }
+
 private:
     [[nodiscard]] static bool slot_in_range(int slot);
 
     std::filesystem::path dir_;
     Diagnostics* log_;
     std::optional<GameState> pending_restore_;
+    std::optional<GameState> pending_snap_;
 };
 
 } // namespace pac::core
