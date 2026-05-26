@@ -476,7 +476,7 @@ design-for addition; the MVP only shows or hides objects.
 |----------|------------|---------|---------|
 | `play_music(path, loop?)` | logical path, optional bool | — | Start streamed music. |
 | `stop_music()` | — | — | Stop current music. |
-| `play_sound(path)` | logical path | — | Play short sound effect. |
+| `play_sound(path, volume?, pan?)` | logical path, optional number (0..1), optional number (-1..1) | — | Play a short sound effect. `volume` scales the global SFX volume; `pan` places it L/R (-1 left, 0 center, +1 right). Panning affects mono clips only; a position-aware/spatial path is design-for. |
 | `stop_sounds()` | — | — | Stop all active sound effects. |
 
 ### Input and room-view control

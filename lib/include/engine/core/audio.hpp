@@ -35,7 +35,11 @@ class SoundPlayer {
 public:
     SoundPlayer(ResourceCache& resources, Diagnostics& log);
 
-    void play(const std::string& logical);
+    /// Play a one-shot effect. `volume01` (0..1) scales the global SFX volume for
+    /// this voice; `pan` (-1 left .. 0 center .. +1 right) places it in the stereo
+    /// field. Panning only affects MONO buffers — a stereo clip plays as-authored.
+    /// A simple stereo balance for now; a position-aware/spatial path is design-for.
+    void play(const std::string& logical, float volume01 = 1.0f, float pan = 0.0f);
     void stop_all();
     void set_volume(float volume01);
 

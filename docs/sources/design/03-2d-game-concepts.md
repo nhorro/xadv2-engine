@@ -630,12 +630,20 @@ stop_music()
 
 The sound player supports short overlapping sounds, such as clicks, footsteps,
 and object interaction sounds. Sound buffers are loaded through the resource
-layer and cached.
+layer and cached, and played on a small pool of voices (oldest-free reused).
+
+Each one-shot may set a per-call **volume** (0..1, scaling the global SFX volume)
+and a stereo **pan** (-1 left .. 0 center .. +1 right). Panning is a simple stereo
+balance that affects **mono** buffers only — a stereo clip plays as authored. A
+position-aware/spatial mix (pan/volume derived from a source's world position
+relative to the camera or player) is design-for.
 
 Lua API:
 
 ```lua
-play_sound("sfx/click.wav")
+play_sound("sfx/click.wav")            -- centered, full SFX volume
+play_sound("sfx/door_open.ogg", 0.8)   -- quieter
+play_sound("sfx/bird.ogg", 1.0, -0.6)  -- off to the left
 stop_sounds()
 ```
 
