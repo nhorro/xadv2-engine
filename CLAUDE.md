@@ -144,8 +144,14 @@ via pkg-config.
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug      # add -DPAC_ENABLE_SANITIZERS=ON in dev
 cmake --build build -j"$(nproc)"
 ctest --test-dir build --output-on-failure
-./build/games/themummy/pac_themummy games/themummy/data/game.yaml          # run the sample
+./build/games/themummy/pac_themummy games/themummy/data/game.yaml          # run the sample (loose files)
 ./build/games/themummy/pac_themummy games/themummy/data/game.yaml --frames 5   # headless smoke
+
+# Pack the resources into a single archive (issue #109). The runtime
+# auto-discovers `resources.pak` next to the binary or in CWD; pass `--pak`
+# to override. Without a pak the loose-files workflow above keeps working.
+python tools/pack/pack.py games/themummy/data build/games/themummy/resources.pak
+./build/games/themummy/pac_themummy                                        # runs from the pak
 ```
 
 Equivalent via CMake presets (`CMakePresets.json`): `cmake --preset linux-debug`

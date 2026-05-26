@@ -471,14 +471,7 @@ void RoomScene::dev_reload_room() {
 }
 
 void RoomScene::dev_jump_to_next_room() {
-    std::string host;
-    try {
-        host = ctx_.resources.host_path(rooms_dir_);
-    } catch (const std::exception& e) {
-        ctx_.log.warn(std::string("dev: cannot enumerate rooms: ") + e.what());
-        return;
-    }
-    const std::vector<std::string> ids = room_ids_in_dir(host);
+    const std::vector<std::string> ids = room_ids_in_dir(ctx_.resources.source(), rooms_dir_);
     if (ids.size() < 2) {
         ctx_.log.info("dev: no other room to jump to");
         return;

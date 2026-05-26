@@ -351,15 +351,49 @@ inline in their own files and are not part of this resource.
 
 ## Resource source
 
-`resources.src` identifies the root source for logical resources.
+The engine reads every asset through a `ResourceSource` (`engine/core/resource_source.hpp`).
+Two backends ship with the engine; both expose the same `exists` / `read_text` /
+`read_bytes` / `list` surface, so the rest of the engine stays backend-agnostic.
 
-| `src` kind | Scope | Meaning |
-|------------|-------|---------|
-| Directory | MVP | Filesystem resource backend. Useful during development. |
-| Archive file | Design-for / post-MVP | Packed resource backend. Useful for distribution. |
+| Backend | Scope | Meaning |
+|---------|-------|---------|
+| `FilesystemResourceSource` | Authoring | Loose files under a host directory. The manifest's `resources.src` names the root. |
+| `PackResourceSource` | Distribution (#109) | A single `resources.pak` archive (see below). Discovered automatically at startup. |
 
-All game assets are referenced by logical paths relative to `resources.src`, for
-example:
+**Discovery (issue #109).** At startup the engine looks for `resources.pak`:
+
+1. The path passed via `--pak <path>` (override), if any.
+2. Next to the running executable (`/proc/self/exe` on Linux; `argv[0]` parent
+   elsewhere as a best-effort fallback).
+3. The current working directory.
+
+If a pak is found, the engine reads the manifest from `game.yaml` inside the
+archive and ignores the manifest path argument. If no pak is found, startup
+falls back to the loose-files workflow: the CLI argument names the manifest
+file on disk, and `resources.src` (from that manifest) names the resource root
+directory.
+
+The pak file format (`engine/core/pack_format.hpp`) is a flat list of files
+keyed by logical path. The TOC lives at the end of the file so the packer can
+stream payloads then patch a small header. Payload bytes are XOR-obfuscated
+with a per-archive seed plus a per-file path hash; the goal is to defeat
+casual snooping at scripts (Lua, YAML) in a hex editor, not cryptography. PNG
+and MP3 stay compressed natively, so no extra compression is applied.
+
+The packer lives at `tools/pack/pack.py`:
+
+```
+python tools/pack/pack.py <resources_root> <resources.pak>
+```
+
+Both backends are stream-and-cache safe: the `ResourceCache` keeps decoded
+textures, fonts (loaded via `loadFromMemory` so the bytes outlive the font),
+sound buffers, and shader programs alive for the cache's lifetime, and
+`MusicPlayer` streams the current track from memory through
+`openFromMemory` against the cache's persistent buffer.
+
+All game assets are referenced by logical paths relative to the resource root,
+for example:
 
 ```text
 backgrounds/study.png

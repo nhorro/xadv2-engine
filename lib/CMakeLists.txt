@@ -66,6 +66,8 @@ add_library(pac_engine STATIC
     src/core/scene_params.cpp
     src/core/resource_source.cpp
     src/core/resource_cache.cpp
+    src/core/pack_format.cpp
+    src/core/pack_resource_source.cpp
     src/core/strings.cpp
     src/core/localization.cpp
     src/core/manifest.cpp

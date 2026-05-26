@@ -8,6 +8,7 @@
 #include "engine/core/localization.hpp"
 #include "engine/core/lua_api.hpp"
 #include "engine/core/manifest.hpp"
+#include "engine/core/pack_resource_source.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
 #include "engine/core/save_service.hpp"
@@ -29,9 +30,11 @@
 #include <SFML/Window/Event.hpp>
 
 #include <cmath>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
+#include <system_error>
 
 namespace pac::core {
 
@@ -45,6 +48,56 @@ constexpr float kSceneTransition = 0.35f; // fade-to-black seconds between scene
 // this is a data convention, not a dependency on the genre layer's types.
 constexpr char kSettingsSceneType[] = "SettingsScene";
 constexpr char kSaveLoadSceneType[] = "SaveLoadScene";
+
+// Canonical archive name searched next to the executable / in the working dir
+// (#109). The packed manifest inside is always named `game.yaml`.
+constexpr char kPakFileName[] = "resources.pak";
+constexpr char kPakManifestLogical[] = "game.yaml";
+
+// Best-effort host path of the running executable's directory. Linux reads it
+// from /proc; Windows uses GetModuleFileName (not pulled in here to avoid
+// linking shenanigans — Windows currently falls back to argv0's parent or CWD).
+// `argv0` is the application-provided hint when present.
+std::filesystem::path executable_dir(const std::string& argv0) {
+#if defined(__linux__)
+    std::error_code ec;
+    const auto exe = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (!ec) {
+        return exe.parent_path();
+    }
+#endif
+    if (!argv0.empty()) {
+        std::error_code ec;
+        const auto p = std::filesystem::weakly_canonical(argv0, ec);
+        if (!ec && !p.empty()) {
+            return p.parent_path();
+        }
+    }
+    return std::filesystem::current_path();
+}
+
+/// Locate the shipped pak archive (#109). Order: the `--pak` override, then
+/// `resources.pak` next to the running executable, then in the current working
+/// directory. Returns an empty path when none of those exist — startup then
+/// falls back to the loose-files manifest workflow.
+std::filesystem::path discover_pak(const std::string& argv0, const std::string& override_path) {
+    if (!override_path.empty()) {
+        return std::filesystem::path(override_path);
+    }
+    std::error_code ec;
+    const auto exe_dir = executable_dir(argv0);
+    if (!exe_dir.empty()) {
+        const auto candidate = exe_dir / kPakFileName;
+        if (std::filesystem::is_regular_file(candidate, ec)) {
+            return candidate;
+        }
+    }
+    const auto cwd_candidate = std::filesystem::current_path(ec) / kPakFileName;
+    if (!ec && std::filesystem::is_regular_file(cwd_candidate, ec)) {
+        return cwd_candidate;
+    }
+    return {};
+}
 
 int as_int(float value) {
     return static_cast<int>(std::lround(value));
@@ -126,15 +179,45 @@ std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
 int run(const std::string& manifest_path, const SceneFactory& factory, const RunOptions& opts) {
     Diagnostics log;
 
+    // Resource backend (#109): prefer a `resources.pak` archive next to the
+    // executable / in CWD; fall back to the loose-files manifest. In pak mode
+    // the manifest lives inside the archive at `game.yaml`; the CLI manifest
+    // argument is ignored. In filesystem mode the argument names the manifest
+    // file on disk (today's behavior).
+    const std::filesystem::path pak = discover_pak(opts.argv0, opts.pak_path);
+
+    std::unique_ptr<ResourceSource> source_holder;
     Manifest manifest;
-    try {
-        manifest = load_manifest(manifest_path);
-    } catch (const std::exception& e) {
-        log.error(e.what());
-        return 1;
+    if (!pak.empty()) {
+        try {
+            source_holder = std::make_unique<PackResourceSource>(pak);
+        } catch (const std::exception& e) {
+            log.error(e.what());
+            return 1;
+        }
+        try {
+            manifest = parse_manifest(source_holder->read_text(kPakManifestLogical));
+        } catch (const std::exception& e) {
+            log.error(std::string("manifest in pak: ") + e.what());
+            return 1;
+        }
+        // Inside a pak, every entry is keyed by a logical path; the manifest's
+        // `resources.src` no longer points at a host directory. Normalize to
+        // an empty value so downstream string handling stays consistent.
+        manifest.resources_src.clear();
+        log.info("loaded manifest from pak '" + pak.string() + "'");
+    } else {
+        try {
+            manifest = load_manifest(manifest_path);
+        } catch (const std::exception& e) {
+            log.error(e.what());
+            return 1;
+        }
+        source_holder = std::make_unique<FilesystemResourceSource>(manifest.resources_src);
+        log.info("loaded manifest '" + manifest_path +
+                 "' (resource root: " + manifest.resources_src + ")");
     }
-    log.info("loaded manifest '" + manifest_path + "' (resource root: " + manifest.resources_src +
-             ")");
+    ResourceSource& source = *source_holder;
 
     Settings settings;
     settings.audio.music_volume = manifest.settings.music_volume;
@@ -152,7 +235,6 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
     settings_store.load(settings);
     settings.clamp();
 
-    FilesystemResourceSource source(manifest.resources_src);
     ResourceCache resources(source, log);
 
     // Active UI-strings language (issue #72): the stored preference when it names

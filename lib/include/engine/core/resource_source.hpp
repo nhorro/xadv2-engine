@@ -26,8 +26,9 @@ std::string logical_dir(const std::string& logical);
 /// to the file that names them (e.g. a spritesheet's image, an anim's spritesheet).
 std::string logical_join(const std::string& dir, const std::string& rel);
 
-/// Opens readable assets named by logical path. Backends: filesystem (MVP) and a
-/// packed archive (design-for).
+/// Opens readable assets named by logical path. Backends: filesystem (loose
+/// files; the dev / authoring path) and a packed archive (`.pak`; the shipped
+/// path — see [pack_format.hpp] and `PackResourceSource`).
 class ResourceSource {
 public:
     virtual ~ResourceSource() = default;
@@ -35,6 +36,17 @@ public:
     virtual bool exists(const std::string& logical) const = 0;
     virtual std::string read_text(const std::string& logical) const = 0;
     virtual std::vector<std::byte> read_bytes(const std::string& logical) const = 0;
+
+    /// List the logical paths that start with `prefix` and end with `suffix`.
+    /// Default: empty (a backend that can't enumerate falls back gracefully —
+    /// the affected dev tools then skip the listing). Both backends shipped by
+    /// the engine override this.
+    [[nodiscard]] virtual std::vector<std::string> list(const std::string& prefix,
+                                                        const std::string& suffix) const {
+        (void) prefix;
+        (void) suffix;
+        return {};
+    }
 };
 
 /// Reads loose files under a filesystem root.
@@ -52,6 +64,13 @@ public:
     /// must take a path (sf::Font/sf::Music); throws ResourceError on an invalid
     /// logical path.
     std::string host_path(const std::string& logical) const;
+
+    /// Logical paths that start with `prefix` (`prefix` is itself a logical
+    /// directory or "") and end with `suffix` (case-sensitive, often a file
+    /// extension like ".lua"). Returned paths are full logical paths sorted
+    /// lexicographically — used by dev tooling (room enumeration, etc.) so the
+    /// packed backend can offer the same surface.
+    std::vector<std::string> list(const std::string& prefix, const std::string& suffix) const;
 
 private:
     std::string root_;
