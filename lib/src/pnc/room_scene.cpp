@@ -5,6 +5,7 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
+#include "engine/core/load_error.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
 #include "engine/core/save_service.hpp"
@@ -121,6 +122,7 @@ RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams
     start_room_ = params.get_or("start_room", "");
     player_char_ = params.get_or("player", "");
     font_path_ = params.get_or("font", "");
+    scumm_panel_path_ = params.get_or("scumm_panel", "");
     inventory_path_ = params.get_or("inventory", "");
     inventory_logic_ = params.get_or("inventory_logic", "");
     logic_path_ = params.get_or("logic", "");
@@ -167,11 +169,23 @@ void RoomScene::enter() {
 
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
     const float scenery = scenery_height();
-    panel_.emplace(sf::FloatRect(0.0f,
-                                 scenery,
-                                 static_cast<float>(vres.x),
-                                 static_cast<float>(vres.y) - scenery),
-                   font_);
+    const sf::FloatRect default_panel_rect(0.0f,
+                                           scenery,
+                                           static_cast<float>(vres.x),
+                                           static_cast<float>(vres.y) - scenery);
+    ScummPanelConfig panel_config = default_scumm_panel_config(default_panel_rect);
+    if (!scumm_panel_path_.empty()) {
+        try {
+            panel_config = parse_scumm_panel_config(ctx_.resources.read_text(scumm_panel_path_),
+                                                    scumm_panel_path_);
+        } catch (pac::core::LoadError& e) {
+            ctx_.log.error(std::string("RoomScene: scumm_panel: ") +
+                           e.with_file(scumm_panel_path_).what());
+        } catch (const std::exception& e) {
+            ctx_.log.error(std::string("RoomScene: scumm_panel: ") + e.what());
+        }
+    }
+    panel_.emplace(std::move(panel_config), vres, font_, &ctx_.resources);
 
     lua_ = std::make_unique<Lua>();
     lua_->log = &ctx_.log;
@@ -734,13 +748,15 @@ void RoomScene::handle_event(const sf::Event& event) {
     }
 
     if (panel_ && panel_->contains(vp)) {
-        const PanelIntent intent = panel_->click(vp, inventory_);
+        const PanelIntent intent = panel_->click(vp, inventory_, command_controller_.state());
         if (intent.kind == PanelIntent::Kind::SELECT_VERB) {
             command_controller_.on_verb_selected({intent.verb});
         } else if (intent.kind == PanelIntent::Kind::CLICK_INVENTORY) {
             if (const auto cmd = command_controller_.on_inventory_item_selected({intent.item_id})) {
                 execute_command(*cmd);
             }
+        } else if (intent.kind == PanelIntent::Kind::CHANGE_INVENTORY_PAGE) {
+            command_controller_.on_inventory_page_changed({intent.page_index});
         }
         sync_command_hover();
         return;
@@ -1005,7 +1021,7 @@ void RoomScene::sync_command_hover() {
         return;
     }
     if (panel_ && panel_->contains(hover_vp_)) {
-        const PanelIntent in = panel_->click(hover_vp_, inventory_);
+        const PanelIntent in = panel_->click(hover_vp_, inventory_, command_controller_.state());
         if (in.kind == PanelIntent::Kind::SELECT_VERB) {
             command_controller_.on_verb_hovered(in.verb);
         } else if (in.kind == PanelIntent::Kind::CLICK_INVENTORY) {

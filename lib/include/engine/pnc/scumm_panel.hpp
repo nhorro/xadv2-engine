@@ -2,6 +2,7 @@
 
 #include "engine/pnc/command.hpp"
 #include "engine/pnc/command_state.hpp"
+#include "engine/pnc/scumm_panel_config.hpp"
 
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/Graphics/Rect.hpp>
@@ -17,8 +18,9 @@ class RenderTarget;
 } // namespace sf
 
 namespace pac::core {
+class ResourceCache;
 class Strings;
-}
+} // namespace pac::core
 
 namespace pac::pnc {
 
@@ -61,10 +63,11 @@ struct ScummPanelTheme {
 
 /// What a click on the panel means (the panel itself is not the command system).
 struct PanelIntent {
-    enum class Kind { NONE, SELECT_VERB, CLICK_INVENTORY };
+    enum class Kind { NONE, SELECT_VERB, CLICK_INVENTORY, CHANGE_INVENTORY_PAGE };
     Kind kind = Kind::NONE;
     Verb verb{};
     std::string item_id;
+    int page_index = 0;
 };
 
 /// The bottom SCUMM panel: a command bar, a verb grid, and a text inventory list.
@@ -73,10 +76,16 @@ struct PanelIntent {
 class ScummPanel {
 public:
     ScummPanel(sf::FloatRect region, const sf::Font* font, ScummPanelTheme theme = {});
+    ScummPanel(ScummPanelConfig config,
+               sf::Vector2u runtime_size,
+               const sf::Font* font,
+               pac::core::ResourceCache* resources,
+               ScummPanelTheme theme = {});
 
     [[nodiscard]] bool contains(sf::Vector2f virtual_point) const;
     [[nodiscard]] PanelIntent click(sf::Vector2f virtual_point,
-                                    const InventoryModel& inventory) const;
+                                    const InventoryModel& inventory,
+                                    const CommandState& command_state) const;
 
     /// `cursor` is the pointer position (panel/virtual coords) used to highlight
     /// the hovered verb cell and inventory row; pass an off-panel point for none.
@@ -100,15 +109,53 @@ private:
         Verb verb;
         sf::FloatRect rect;
     };
+    struct InventoryCell {
+        std::string item_id;
+        sf::FloatRect rect;
+    };
     [[nodiscard]] std::vector<VerbCell> verb_cells() const;
+    [[nodiscard]] std::vector<InventoryCell> inventory_cells(const InventoryModel& inventory,
+                                                             int page_index) const;
     /// Panel fill + command-bar strip + separator rule (shared by both draw paths).
-    void draw_backdrop(sf::RenderTarget& target) const;
+    void draw_backdrop(sf::RenderTarget& target,
+                       const InventoryModel* inventory = nullptr,
+                       const CommandState* command_state = nullptr,
+                       sf::Vector2f cursor = {-1.0f, -1.0f}) const;
+    void draw_background_image(sf::RenderTarget& target,
+                               const std::string& image,
+                               ScummPanelScaleMode mode) const;
+    void draw_nine_slice(sf::RenderTarget& target, const std::string& image) const;
+    void draw_inventory_arrows(sf::RenderTarget& target,
+                               const InventoryModel& inventory,
+                               const CommandState& command_state,
+                               sf::Vector2f cursor) const;
     [[nodiscard]] sf::FloatRect inventory_area() const;
+    [[nodiscard]] sf::FloatRect command_bar_area() const;
+    [[nodiscard]] sf::FloatRect arrow_previous_area() const;
+    [[nodiscard]] sf::FloatRect arrow_next_area() const;
     [[nodiscard]] sf::FloatRect options_area() const;
     [[nodiscard]] float option_row_height(std::size_t option_count) const;
+    [[nodiscard]] sf::FloatRect scale_rect(sf::FloatRect design_rect) const;
+    [[nodiscard]] sf::FloatRect panel_child(sf::FloatRect rect) const;
+    [[nodiscard]] sf::FloatRect body_child(sf::FloatRect rect) const;
+    [[nodiscard]] sf::FloatRect inventory_child(sf::FloatRect rect) const;
+    [[nodiscard]] const sf::Font* font_or_default(const sf::Font* configured) const;
+    [[nodiscard]] unsigned scaled_text_size(unsigned design_size) const;
+    [[nodiscard]] int inventory_capacity() const;
+    [[nodiscard]] int inventory_page_count(const InventoryModel& inventory) const;
+    [[nodiscard]] int clamped_inventory_page(const InventoryModel& inventory, int page_index) const;
+    [[nodiscard]] std::string background_variant(const InventoryModel& inventory,
+                                                 const CommandState& command_state,
+                                                 sf::Vector2f cursor) const;
 
-    sf::FloatRect region_;
+    ScummPanelConfig config_;
+    sf::Vector2u runtime_size_{1280, 720};
     const sf::Font* font_;
+    pac::core::ResourceCache* resources_ = nullptr;
+    const sf::Font* command_font_ = nullptr;
+    const sf::Font* verb_font_ = nullptr;
+    const sf::Font* inventory_font_ = nullptr;
+    const sf::Font* arrow_font_ = nullptr;
     ScummPanelTheme theme_;
 };
 

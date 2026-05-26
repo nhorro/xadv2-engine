@@ -41,6 +41,7 @@ add_executable(pac_core_tests
     closeup_test.cpp
     command_builder_test.cpp
     command_controller_test.cpp
+    scumm_panel_config_test.cpp
     mover_test.cpp
     inventory_test.cpp
     camera_test.cpp

@@ -109,6 +109,7 @@ add_library(pac_engine STATIC
     src/pnc/command_controller.cpp
     src/pnc/inventory.cpp
     src/pnc/camera.cpp
+    src/pnc/scumm_panel_config.cpp
     src/pnc/scumm_panel.cpp
     src/pnc/dialog.cpp
     src/pnc/closeup.cpp
