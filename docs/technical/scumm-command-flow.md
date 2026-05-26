@@ -5,16 +5,17 @@ component, not the command system itself.
 
 ```text
 RoomScene input hit testing -> CommandController -> CommandState -> ScummPanel
-ScummPanel UI intents ------^
+ScummPanel command UI intents ------^
+ScummPanel navigation intents -> SceneManager overlays
 CommandController completed command -> RoomScene movement + Lua dispatch
 ```
 
 ## Responsibilities
 
 `ScummPanel` renders `CommandState` and translates panel clicks into UI intents:
-verb selection, inventory item selection, and inventory page changes. It does not
-inspect room hotspots, own `CommandBuilder`, execute Lua handlers, or decide
-whether a command is valid.
+verb selection, inventory item selection, inventory page changes, and independent
+navigation intents such as opening Settings. It does not inspect room hotspots,
+own `CommandBuilder`, execute Lua handlers, or decide whether a command is valid.
 
 `CommandController` owns `CommandBuilder` and the authoritative `CommandState`.
 It receives UI intents and room-object events, resolves operand metadata through
@@ -25,6 +26,11 @@ language-independent `Command` when the builder reaches `COMMAND_READY`.
 space or room/world space, emits the corresponding controller input, handles
 walk-to-approach behavior, and dispatches completed commands to the current room,
 inventory behavior, or global `game.lua` fallback.
+
+Navigation controls in the panel are not command controls. For example, the
+Settings button emits `OPEN_SETTINGS`; `RoomScene` consumes it and asks
+`SceneManager` to push the configured Settings overlay without touching
+`CommandController`.
 
 ## Current Boundary
 

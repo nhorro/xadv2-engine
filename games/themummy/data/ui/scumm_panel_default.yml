@@ -15,7 +15,7 @@ scumm_panel:
         color: "#1a181f"
 
     command_bar:
-      rect: [0, 0, 1280, 32]
+      rect: [0, 0, 1236, 32]
       text_align: center
 
     body:
@@ -59,6 +59,21 @@ scumm_panel:
       - pick_up
       - use
       - give
+
+  settings_button:
+    enabled: true
+    position: [0.983, 0.148]
+    anchor: center
+    size: [28, 28]
+    render_mode: panel
+    panel:
+      label_key: settings_button
+      font_size: 14
+      normal_color: "#d2d5e2"
+      hovered_color: "#f8faff"
+      background_color: "#2c2b38"
+      hovered_background_color: "#4a5c8a"
+      outline_color: "#3f4256"
 
   skin:
     command_text:

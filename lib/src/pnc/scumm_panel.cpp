@@ -95,6 +95,7 @@ ScummPanel::ScummPanel(ScummPanelConfig config,
     verb_font_ = load_font(config_.skin.verb_text.font);
     inventory_font_ = load_font(config_.skin.inventory_text.font);
     arrow_font_ = load_font(config_.skin.arrows_draw.font);
+    settings_font_ = load_font(config_.settings_button.panel.font);
 }
 
 bool ScummPanel::contains(sf::Vector2f p) const {
@@ -240,9 +241,45 @@ sf::FloatRect ScummPanel::arrow_next_area() const {
     return inventory_child(config_.layout.inventory_arrows.next_hitbox);
 }
 
+sf::FloatRect ScummPanel::settings_button_area() const {
+    const ScummSettingsButtonConfig& button = config_.settings_button;
+    if (!button.enabled) {
+        return {};
+    }
+
+    const sf::FloatRect panel = config_.layout.panel_rect;
+    const sf::Vector2f size = button.size;
+    sf::Vector2f anchor_offset;
+    switch (button.anchor) {
+    case ScummPanelAnchor::TOP_LEFT:
+        anchor_offset = {0.0f, 0.0f};
+        break;
+    case ScummPanelAnchor::TOP_RIGHT:
+        anchor_offset = {size.x, 0.0f};
+        break;
+    case ScummPanelAnchor::BOTTOM_LEFT:
+        anchor_offset = {0.0f, size.y};
+        break;
+    case ScummPanelAnchor::BOTTOM_RIGHT:
+        anchor_offset = {size.x, size.y};
+        break;
+    case ScummPanelAnchor::CENTER:
+        anchor_offset = {size.x / 2.0f, size.y / 2.0f};
+        break;
+    }
+
+    const sf::Vector2f anchor_point{panel.left + button.position.x * panel.width,
+                                    panel.top + button.position.y * panel.height};
+    return scale_rect(
+        {anchor_point.x - anchor_offset.x, anchor_point.y - anchor_offset.y, size.x, size.y});
+}
+
 PanelIntent ScummPanel::click(sf::Vector2f p,
                               const InventoryModel& inventory,
                               const CommandState& command_state) const {
+    if (config_.settings_button.enabled && settings_button_area().contains(p)) {
+        return {PanelIntent::Kind::OPEN_SETTINGS, Verb::LOOK_AT, {}, 0};
+    }
     for (const VerbCell& cell : verb_cells()) {
         if (cell.rect.contains(p)) {
             return {PanelIntent::Kind::SELECT_VERB, cell.verb, {}, 0};
@@ -435,6 +472,25 @@ void ScummPanel::draw_backdrop(sf::RenderTarget& target,
     }
 }
 
+void ScummPanel::draw_image_in_rect(sf::RenderTarget& target,
+                                    const std::string& image,
+                                    sf::FloatRect rect) const {
+    if (!resources_ || image.empty()) {
+        return;
+    }
+    try {
+        const sf::Texture& texture = resources_->texture(image);
+        const sf::Vector2u size = texture.getSize();
+        sf::Sprite sprite(texture);
+        sprite.setPosition(rect.left, rect.top);
+        sprite.setScale(rect.width / static_cast<float>(size.x),
+                        rect.height / static_cast<float>(size.y));
+        target.draw(sprite);
+    } catch (const std::exception&) {
+        // Optional button art falls back to no image.
+    }
+}
+
 void ScummPanel::draw_inventory_arrows(sf::RenderTarget& target,
                                        const InventoryModel& inventory,
                                        const CommandState& command_state,
@@ -459,6 +515,42 @@ void ScummPanel::draw_inventory_arrows(sf::RenderTarget& target,
     };
     draw_arrow(arrow_previous_area(), config_.skin.arrows_draw.previous_text, prev);
     draw_arrow(arrow_next_area(), config_.skin.arrows_draw.next_text, next);
+}
+
+void ScummPanel::draw_settings_button(sf::RenderTarget& target,
+                                      const pac::core::Strings& strings,
+                                      sf::Vector2f cursor) const {
+    if (!config_.settings_button.enabled) {
+        return;
+    }
+    const sf::FloatRect rect = settings_button_area();
+    const bool hot = rect.contains(cursor);
+    const ScummSettingsButtonConfig& button = config_.settings_button;
+
+    if (button.render_mode == ScummButtonRenderMode::IMAGE) {
+        const std::string& image =
+            hot && !button.image.hovered.empty() ? button.image.hovered : button.image.normal;
+        draw_image_in_rect(target, image, rect);
+        return;
+    }
+
+    sf::RectangleShape box(sf::Vector2f(rect.width, rect.height));
+    box.setPosition(rect.left, rect.top);
+    box.setFillColor(hot ? button.panel.hovered_background_color : button.panel.background_color);
+    box.setOutlineThickness(1.0f);
+    box.setOutlineColor(button.panel.outline_color);
+    target.draw(box);
+
+    const sf::Font* settings_font = font_or_default(settings_font_);
+    if (!settings_font) {
+        return;
+    }
+    sf::Text label(pac::core::utf8(strings.ui_label(button.panel.label_key)),
+                   *settings_font,
+                   scaled_text_size(button.panel.font_size));
+    label.setFillColor(hot ? button.panel.hovered_color : button.panel.normal_color);
+    center_text(label, rect);
+    target.draw(label);
 }
 
 void ScummPanel::draw(sf::RenderTarget& target,
@@ -557,6 +649,7 @@ void ScummPanel::draw(sf::RenderTarget& target,
         }
     }
     draw_inventory_arrows(target, inventory, command_state, cursor);
+    draw_settings_button(target, strings, cursor);
 }
 
 sf::FloatRect ScummPanel::options_area() const {
@@ -585,6 +678,7 @@ float ScummPanel::option_row_height(std::size_t option_count) const {
 }
 
 void ScummPanel::draw_options(sf::RenderTarget& target,
+                              const pac::core::Strings& strings,
                               const std::vector<std::string>& options,
                               sf::Vector2f cursor) const {
     draw_backdrop(target);
@@ -615,6 +709,7 @@ void ScummPanel::draw_options(sf::RenderTarget& target,
         label.setPosition(area.left + theme_.pad, y + (row - b.height) / 2.0f - b.top - 1.0f);
         target.draw(label);
     }
+    draw_settings_button(target, strings, cursor);
 }
 
 int ScummPanel::click_option(sf::Vector2f p, std::size_t option_count) const {
