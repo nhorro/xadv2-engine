@@ -34,6 +34,16 @@ public:
     void set_builder(Builder builder);
     void set_settings_scene_id(std::string id);
 
+    /// Configure the manifest scene ids the save/load picker (issue #108) is
+    /// found at. Auto-detected at startup from any `SaveLoadScene` entries
+    /// with `parameters.mode: save` / `mode: load`. Empty when the manifest
+    /// declares no such scene — the corresponding `open_*` is then a no-op
+    /// (the game runs without a save/load UI, like the M5c MVP).
+    void set_save_scene_id(std::string id);
+    void set_load_scene_id(std::string id);
+    [[nodiscard]] const std::string& save_scene_id() const { return save_scene_id_; }
+    [[nodiscard]] const std::string& load_scene_id() const { return load_scene_id_; }
+
     /// Seconds for a `goto_scene` fade-out/in. 0 (default) = instant swap.
     void set_transition_duration(float seconds) { transition_duration_ = seconds; }
     /// Start a fade-in from black (e.g. at startup), using the transition duration.
@@ -43,6 +53,8 @@ public:
     void push_scene(const std::string& id); // overlay above the current scene
     void pop_scene();                       // remove the top scene
     void open_settings();                   // engine-handled: push the SettingsScene
+    void open_save();                       // engine-handled: push the save picker
+    void open_load();                       // engine-handled: push the load picker
     void quit();
 
     void apply_pending();
@@ -67,6 +79,8 @@ private:
 
     Builder builder_;
     std::string settings_scene_id_;
+    std::string save_scene_id_;
+    std::string load_scene_id_;
     std::vector<std::unique_ptr<Scene>> stack_;
     std::vector<Op> pending_;
     bool running_ = true;

@@ -226,3 +226,61 @@ TEST_CASE("stage_restore + take_pending_restore hand off a GameState once") {
     CHECK_FALSE(svc.has_pending_restore());
     CHECK_FALSE(svc.take_pending_restore().has_value());
 }
+
+TEST_CASE("description + saved_at round-trip; saved_at stamped on save (issue #108)") {
+    Diagnostics log = quiet();
+    TempDir td;
+    SaveService svc(td.path, log);
+
+    GameState in = make_rich_state();
+    in.description = "Antes del Sarc\xc3\xb3"
+                     "fago"; // "Antes del Sarcófago" in UTF-8
+    in.saved_at = 0;         // unset; service must stamp
+
+    const auto before = std::chrono::duration_cast<std::chrono::seconds>(
+                            std::chrono::system_clock::now().time_since_epoch())
+                            .count();
+    REQUIRE(svc.save(2, in));
+    const auto after = std::chrono::duration_cast<std::chrono::seconds>(
+                           std::chrono::system_clock::now().time_since_epoch())
+                           .count();
+
+    const auto out_opt = svc.load(2);
+    REQUIRE(out_opt.has_value());
+    CHECK(out_opt->description == in.description);
+    // Stamped within the test window (allow a 2s slack for clock drift on slow CI).
+    CHECK(out_opt->saved_at >= before - 2);
+    CHECK(out_opt->saved_at <= after + 2);
+
+    // The light header read returns the same metadata without parsing the rest.
+    const auto summary = svc.slot_summary(2);
+    REQUIRE(summary.has_value());
+    CHECK(summary->description == in.description);
+    CHECK(summary->saved_at == out_opt->saved_at);
+}
+
+TEST_CASE("slot_summary returns nullopt for a missing slot") {
+    Diagnostics log = quiet();
+    TempDir td;
+    SaveService svc(td.path, log);
+    CHECK_FALSE(svc.slot_summary(1).has_value());
+}
+
+TEST_CASE("pending_snap stages + drains exactly once") {
+    Diagnostics log = quiet();
+    TempDir td;
+    SaveService svc(td.path, log);
+
+    CHECK_FALSE(svc.has_pending_snap());
+    CHECK_FALSE(svc.take_pending_snap().has_value());
+
+    GameState in = make_rich_state();
+    in.description = "snap";
+    svc.stage_pending_snap(in);
+    CHECK(svc.has_pending_snap());
+
+    const auto out = svc.take_pending_snap();
+    REQUIRE(out.has_value());
+    CHECK(out->description == "snap");
+    CHECK_FALSE(svc.has_pending_snap()); // single-shot, like stage_restore
+}

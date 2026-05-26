@@ -45,7 +45,7 @@ public:
     void draw(sf::RenderTarget& target) const override;
 
 private:
-    enum class Action { NEW_GAME, CONTINUE, SETTINGS, EXIT };
+    enum class Action { NEW_GAME, CONTINUE, LOAD_GAME, SETTINGS, EXIT };
     struct Entry {
         std::string label;
         Action action;
@@ -62,6 +62,7 @@ private:
     std::string music_path_;
     std::string new_game_target_;
     std::string continue_target_;
+    std::string load_game_target_; // optional (#108); when wired, shows the load picker
     std::string exit_target_;
     sf::Vector2f menu_anchor_{0.5f, 0.5f}; // screen-fraction position of the menu block
     unsigned font_size_ = 28;
