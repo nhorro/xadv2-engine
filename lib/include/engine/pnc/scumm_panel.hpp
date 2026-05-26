@@ -63,7 +63,7 @@ struct ScummPanelTheme {
 
 /// What a click on the panel means (the panel itself is not the command system).
 struct PanelIntent {
-    enum class Kind { NONE, SELECT_VERB, CLICK_INVENTORY, CHANGE_INVENTORY_PAGE };
+    enum class Kind { NONE, SELECT_VERB, CLICK_INVENTORY, CHANGE_INVENTORY_PAGE, OPEN_SETTINGS };
     Kind kind = Kind::NONE;
     Verb verb{};
     std::string item_id;
@@ -98,6 +98,7 @@ public:
     /// Draw dialog options in place of the verb/inventory layout. Used while
     /// the room view is in ViewState::DIALOG. `cursor` highlights the hovered row.
     void draw_options(sf::RenderTarget& target,
+                      const pac::core::Strings& strings,
                       const std::vector<std::string>& options,
                       sf::Vector2f cursor) const;
 
@@ -129,10 +130,17 @@ private:
                                const InventoryModel& inventory,
                                const CommandState& command_state,
                                sf::Vector2f cursor) const;
+    void draw_settings_button(sf::RenderTarget& target,
+                              const pac::core::Strings& strings,
+                              sf::Vector2f cursor) const;
+    void draw_image_in_rect(sf::RenderTarget& target,
+                            const std::string& image,
+                            sf::FloatRect rect) const;
     [[nodiscard]] sf::FloatRect inventory_area() const;
     [[nodiscard]] sf::FloatRect command_bar_area() const;
     [[nodiscard]] sf::FloatRect arrow_previous_area() const;
     [[nodiscard]] sf::FloatRect arrow_next_area() const;
+    [[nodiscard]] sf::FloatRect settings_button_area() const;
     [[nodiscard]] sf::FloatRect options_area() const;
     [[nodiscard]] float option_row_height(std::size_t option_count) const;
     [[nodiscard]] sf::FloatRect scale_rect(sf::FloatRect design_rect) const;
@@ -156,6 +164,7 @@ private:
     const sf::Font* verb_font_ = nullptr;
     const sf::Font* inventory_font_ = nullptr;
     const sf::Font* arrow_font_ = nullptr;
+    const sf::Font* settings_font_ = nullptr;
     ScummPanelTheme theme_;
 };
 
