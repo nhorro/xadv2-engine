@@ -56,6 +56,11 @@ public:
     void update(float dt) override;
     void draw(sf::RenderTarget& target) const override;
 
+    /// Save-thumbnail capture (issue #119) is only meaningful while the room
+    /// shows uncluttered gameplay — the COMMAND state. DIALOG / MENU / BLOCKED
+    /// frames carry overlays the player wouldn't want immortalized in a save.
+    bool wants_thumbnail() const override { return view_state_ == ViewState::COMMAND; }
+
     // --- genre Lua API targets (invoked by the bound script globals) ---
     void api_change_room(const std::string& id, const std::string& entry_point);
     void api_set_region_state(const std::string& region_id, const std::string& state);

@@ -2,6 +2,8 @@
 
 #include "engine/core/game_state.hpp"
 
+#include <SFML/Graphics/Image.hpp>
+
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -41,12 +43,21 @@ public:
     /// Resolved path for `slot`'s file (regardless of whether it exists).
     [[nodiscard]] std::filesystem::path slot_path(int slot) const;
 
+    /// Resolved path for `slot`'s thumbnail sidecar (#119) — `slot_N.thumb.png`
+    /// alongside the YAML save. Regardless of whether the file exists.
+    [[nodiscard]] std::filesystem::path thumbnail_path(int slot) const;
+
     /// True if the slot file exists and is a regular file.
     [[nodiscard]] bool slot_exists(int slot) const;
 
-    /// Write `state` to `slot`. Returns false (and logs) on slot-out-of-range
-    /// or I/O failure. Creates the save directory if needed.
-    bool save(int slot, const GameState& state);
+    /// True if the slot has a thumbnail sidecar on disk (#119).
+    [[nodiscard]] bool slot_has_thumbnail(int slot) const;
+
+    /// Write `state` to `slot`, and optionally `thumbnail` as a sidecar PNG
+    /// (#119). Returns false (and logs) on slot-out-of-range or I/O failure
+    /// for the main save (a thumbnail write failure is logged but does not
+    /// fail the save). Creates the save directory if needed.
+    bool save(int slot, const GameState& state, const sf::Image* thumbnail = nullptr);
 
     /// Read `slot`. Returns nullopt on a missing file, malformed YAML, or
     /// unsupported `save_version`.
@@ -91,6 +102,15 @@ public:
     /// True when a snap is staged (the save UI uses this to enable its buttons).
     [[nodiscard]] bool has_pending_snap() const { return pending_snap_.has_value(); }
 
+    /// Stage a thumbnail image (#119) alongside the pending snap. RoomScene
+    /// calls this with `EngineContext::thumbnail.image()` so the save scene
+    /// can write the sidecar PNG. An empty image clears any prior staging.
+    void stage_pending_thumbnail(sf::Image image);
+
+    /// Take and clear the staged thumbnail. Returns an empty image when none
+    /// was staged (the save still writes; the slot just gets no sidecar PNG).
+    [[nodiscard]] sf::Image take_pending_thumbnail();
+
 private:
     [[nodiscard]] static bool slot_in_range(int slot);
 
@@ -98,6 +118,7 @@ private:
     Diagnostics* log_;
     std::optional<GameState> pending_restore_;
     std::optional<GameState> pending_snap_;
+    sf::Image pending_thumbnail_;
 };
 
 } // namespace pac::core

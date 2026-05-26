@@ -284,3 +284,55 @@ TEST_CASE("pending_snap stages + drains exactly once") {
     CHECK(out->description == "snap");
     CHECK_FALSE(svc.has_pending_snap()); // single-shot, like stage_restore
 }
+
+TEST_CASE("save writes a thumbnail sidecar PNG when one is supplied (issue #119)") {
+    Diagnostics log = quiet();
+    TempDir td;
+    SaveService svc(td.path, log);
+
+    // 4×3 pseudo-image: just enough to round-trip via PNG (sf::Image::saveToFile
+    // / loadFromFile decode through stb_image and may renormalize, but the path
+    // shape is what we're verifying — not pixel exactness).
+    sf::Image img;
+    img.create(4u, 3u, sf::Color(120, 80, 40, 255));
+
+    const GameState in = make_rich_state();
+    REQUIRE(svc.save(1, in, &img));
+    REQUIRE(svc.slot_exists(1));
+    REQUIRE(svc.slot_has_thumbnail(1));
+
+    sf::Image roundtrip;
+    REQUIRE(roundtrip.loadFromFile(svc.thumbnail_path(1).string()));
+    CHECK(roundtrip.getSize() == sf::Vector2u(4u, 3u));
+}
+
+TEST_CASE("save without a thumbnail leaves the slot's sidecar untouched") {
+    Diagnostics log = quiet();
+    TempDir td;
+    SaveService svc(td.path, log);
+
+    sf::Image img;
+    img.create(2u, 2u, sf::Color::Red);
+    const GameState in = make_rich_state();
+    REQUIRE(svc.save(1, in, &img));
+    REQUIRE(svc.slot_has_thumbnail(1));
+
+    // Re-save the same slot without passing a thumbnail. The save should
+    // succeed and the existing sidecar should still be on disk — clearing it
+    // would mean "Guardar" silently loses the preview, which is the wrong UX.
+    REQUIRE(svc.save(1, in, nullptr));
+    CHECK(svc.slot_has_thumbnail(1));
+}
+
+TEST_CASE("stage_pending_thumbnail drains exactly once") {
+    Diagnostics log = quiet();
+    TempDir td;
+    SaveService svc(td.path, log);
+
+    sf::Image img;
+    img.create(8u, 8u, sf::Color::Blue);
+    svc.stage_pending_thumbnail(img);
+    CHECK(svc.take_pending_thumbnail().getSize() == sf::Vector2u(8u, 8u));
+    // Drained — the next take returns an empty image.
+    CHECK(svc.take_pending_thumbnail().getSize() == sf::Vector2u(0u, 0u));
+}

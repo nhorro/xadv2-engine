@@ -20,6 +20,7 @@
 #include "engine/core/settings_store.hpp"
 #include "engine/core/state_store.hpp"
 #include "engine/core/strings.hpp"
+#include "engine/core/thumbnail.hpp"
 #include "engine/core/user_data.hpp"
 
 #include <SFML/Graphics/Image.hpp>
@@ -263,6 +264,7 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
     SceneManager scenes;
     SaveService saves(user_data_dir(manifest.id) / "saves", log);
     CursorState cursor_state;
+    Thumbnail thumbnail;
 
     EngineContext ctx{display,
                       resources,
@@ -278,7 +280,8 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
                       saves,
                       cursor_state,
                       localization,
-                      settings_store};
+                      settings_store,
+                      thumbnail};
     bind_core_api(ctx);
 
     scenes.set_builder([&](const std::string& id) -> std::unique_ptr<Scene> {
@@ -409,6 +412,17 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
         window.clear(sf::Color::Black); // letterbox bars
         window.setView(display.view());
         scenes.draw(window);
+
+        // Thumbnail refresh (issue #119): every ~0.5s while the active scene
+        // is in a thumbnail-friendly state (RoomScene COMMAND), capture the
+        // current framebuffer cropped to the gameplay viewport. The save
+        // picker reads `ctx.thumbnail.image()` when the player saves. Throttle
+        // keeps the per-frame GPU readback off the hot path.
+        constexpr int kThumbnailEveryFrames = 30;
+        const Scene* top = scenes.top();
+        if (top && top->wants_thumbnail() && (frames % kThumbnailEveryFrames) == 0) {
+            thumbnail.capture(window, display.viewport());
+        }
 
         const bool last_frame = (opts.max_frames > 0 && frames + 1 >= opts.max_frames);
         if (last_frame && !opts.screenshot_path.empty()) {

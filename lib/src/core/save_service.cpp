@@ -22,6 +22,10 @@ std::string slot_filename(int slot) {
     return "slot_" + std::to_string(slot) + ".yaml";
 }
 
+std::string thumbnail_filename(int slot) {
+    return "slot_" + std::to_string(slot) + ".thumb.png";
+}
+
 // --- StateValue codec --------------------------------------------------------
 //
 // YAML's implicit type detection turns unquoted `true` / `42` into bool / int,
@@ -260,6 +264,10 @@ std::filesystem::path SaveService::slot_path(int slot) const {
     return dir_ / slot_filename(slot);
 }
 
+std::filesystem::path SaveService::thumbnail_path(int slot) const {
+    return dir_ / thumbnail_filename(slot);
+}
+
 bool SaveService::slot_exists(int slot) const {
     if (!slot_in_range(slot)) {
         return false;
@@ -268,7 +276,15 @@ bool SaveService::slot_exists(int slot) const {
     return std::filesystem::is_regular_file(slot_path(slot), ec);
 }
 
-bool SaveService::save(int slot, const GameState& state) {
+bool SaveService::slot_has_thumbnail(int slot) const {
+    if (!slot_in_range(slot)) {
+        return false;
+    }
+    std::error_code ec;
+    return std::filesystem::is_regular_file(thumbnail_path(slot), ec);
+}
+
+bool SaveService::save(int slot, const GameState& state, const sf::Image* thumbnail) {
     if (!slot_in_range(slot)) {
         log_->error("SaveService::save: slot " + std::to_string(slot) + " out of range");
         return false;
@@ -302,7 +318,23 @@ bool SaveService::save(int slot, const GameState& state) {
         return false;
     }
     file << out.c_str() << '\n';
-    return file.good();
+    file.close();
+    if (!file.good()) {
+        return false;
+    }
+
+    // Thumbnail sidecar (#119). A failure here is non-fatal: the YAML save is
+    // already on disk, so we log and continue. An empty image (the room had no
+    // capture yet) silently leaves any existing sidecar in place — clearing
+    // it would create a worse UX where saving over a slot drops its preview.
+    const std::filesystem::path thumb_path = thumbnail_path(slot);
+    if (thumbnail && thumbnail->getSize().x > 0 && thumbnail->getSize().y > 0) {
+        if (!thumbnail->saveToFile(thumb_path.string())) {
+            log_->warn("SaveService::save: could not write thumbnail '" + thumb_path.string() +
+                       "'");
+        }
+    }
+    return true;
 }
 
 std::optional<GameState> SaveService::load(int slot) {
@@ -364,6 +396,16 @@ std::optional<GameState> SaveService::take_pending_snap() {
     GameState s = std::move(*pending_snap_);
     pending_snap_.reset();
     return s;
+}
+
+void SaveService::stage_pending_thumbnail(sf::Image image) {
+    pending_thumbnail_ = std::move(image);
+}
+
+sf::Image SaveService::take_pending_thumbnail() {
+    sf::Image img = std::move(pending_thumbnail_);
+    pending_thumbnail_ = sf::Image();
+    return img;
 }
 
 std::optional<SlotSummary> SaveService::slot_summary(int slot) const {
