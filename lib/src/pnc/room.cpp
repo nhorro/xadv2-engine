@@ -2,11 +2,11 @@
 
 #include "core/load_error_yaml.hpp"
 #include "engine/pnc/data_error.hpp"
+#include "shader_yaml.hpp"
 
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <string>
 #include <utility>
@@ -57,108 +57,10 @@ geom::Polygon parse_polygon(const YAML::Node& node) {
     return poly;
 }
 
-// A `vecN` shader param from a 2/3/4-element number sequence.
-gfx::ShaderValue parse_shader_vec(const YAML::Node& seq) {
-    switch (seq.size()) {
-    case 2:
-        return std::array<float, 2>{seq[0].as<float>(), seq[1].as<float>()};
-    case 3:
-        return std::array<float, 3>{seq[0].as<float>(), seq[1].as<float>(), seq[2].as<float>()};
-    case 4:
-        return std::array<float, 4>{seq[0].as<float>(),
-                                    seq[1].as<float>(),
-                                    seq[2].as<float>(),
-                                    seq[3].as<float>()};
-    default:
-        room_fail("room.shader-param-vec-size",
-                  "a shader vector param must have 2, 3, or 4 numbers",
-                  seq);
-    }
-}
-
-// Resolve a shader param value (design 06 §Shaders). A sequence infers vecN; an
-// explicit {type, value} mapping overrides; a bare scalar infers bool from
-// true/false and otherwise float (an integer literal becomes a float — declare
-// {type: int} for a true int uniform).
-gfx::ShaderValue parse_shader_value(const YAML::Node& node) {
-    if (node.IsSequence()) {
-        return parse_shader_vec(node);
-    }
-    if (node.IsMap()) {
-        if (!node["type"] || !node["value"]) {
-            room_fail("room.shader-param-form",
-                      "a shader param mapping needs 'type' and 'value'",
-                      node);
-        }
-        const std::string type = node["type"].as<std::string>();
-        const YAML::Node value = node["value"];
-        if (type == "bool") {
-            return value.as<bool>();
-        }
-        if (type == "int") {
-            return value.as<int>();
-        }
-        if (type == "float") {
-            return value.as<float>();
-        }
-        if (type == "vec2" || type == "vec3" || type == "vec4") {
-            return parse_shader_vec(value);
-        }
-        room_fail("room.shader-param-type",
-                  "unknown shader param type '" + type + "' (want bool/int/float/vec2/vec3/vec4)",
-                  node["type"]);
-    }
-    const std::string scalar = node.Scalar();
-    if (scalar == "true") {
-        return true;
-    }
-    if (scalar == "false") {
-        return false;
-    }
-    return node.as<float>();
-}
-
-// A single shader effect: a bare string is shorthand for `{source: <string>}`.
-gfx::ShaderEffect parse_one_shader(const YAML::Node& node) {
-    gfx::ShaderEffect fx;
-    if (node.IsScalar()) {
-        fx.source = node.as<std::string>();
-        return fx;
-    }
-    if (!node["source"]) {
-        room_fail("room.shader-source-missing", "a shader needs a 'source'", node);
-    }
-    fx.source = node["source"].as<std::string>();
-    if (node["controller"]) {
-        fx.controller = node["controller"].as<std::string>();
-    }
-    if (node["enabled"]) {
-        fx.enabled = node["enabled"].as<bool>();
-    }
-    if (const YAML::Node params = node["params"]) {
-        for (const auto& kv : params) {
-            gfx::ShaderParam p;
-            p.name = kv.first.as<std::string>();
-            p.value = parse_shader_value(kv.second);
-            fx.params.push_back(std::move(p));
-        }
-    }
-    return fx;
-}
-
-// Shaders on a drawable: `shader` (one, shorthand or mapping) and/or `shaders`
-// (an ordered list). Both may appear; `shader` comes first.
+// Shaders on a drawable (`shader:` single + optional `shaders:` ordered list)
+// share a parser with the cast loader's appearance shaders; see shader_yaml.hpp.
 std::vector<gfx::ShaderEffect> parse_shaders(const YAML::Node& owner) {
-    std::vector<gfx::ShaderEffect> out;
-    if (const YAML::Node one = owner["shader"]) {
-        out.push_back(parse_one_shader(one));
-    }
-    if (const YAML::Node list = owner["shaders"]) {
-        for (const YAML::Node& e : list) {
-            out.push_back(parse_one_shader(e));
-        }
-    }
-    return out;
+    return detail::parse_shaders(owner, kSource, "room");
 }
 
 } // namespace

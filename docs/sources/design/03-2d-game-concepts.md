@@ -252,9 +252,10 @@ uniforms) needs no engine code per shader.
 
 This is a generic 2D concept (`pac::gfx`): the data types live there, loading is a
 `ResourceCache` resource, and each genre layer wires them onto its drawables. The
-point-and-click slice applies them to room **background layers, regions, and
-objects** (design 04). Avatars / animated sprites are a planned target behind the
-same seam.
+point-and-click slice applies them to room **background layers, regions, objects,
+and avatars** (PCs and NPCs; declared on the cast appearance — design 04). A
+walk-behind currently draws unshaded (it's a textured polygon, not a sprite, so it
+needs a polygon-aware multi-pass path that is out of scope for now).
 
 ### Loading
 
@@ -314,18 +315,40 @@ The `controller` field parses today and is **reserved**; the registry that runs 
 is design-for and not yet implemented (a referenced controller is logged once and
 the drawable draws unshaded until then). The declarative path stays untouched by it.
 
-### Multiple shaders (design-for)
+### Multiple shaders
 
 A drawable may declare an ordered `shaders:` list as well as / instead of a single
-`shader:`. Running several in order is a multi-pass pipeline (render the drawable to
-an off-screen target, then apply each pass), which needs render-to-texture support.
-Until that lands, **only the first shader is applied** and a warning is logged at
-room load. The data model already carries the full list so authoring is
-forward-compatible.
+`shader:`. The engine runs them as a multi-pass pipeline: render the drawable into
+an off-screen `sf::RenderTexture`, then ping-pong through each enabled pass, with
+the next pass sampling the previous pass's output as `texture`. The two pooled
+render textures grow monotonically to fit the largest drawable seen, so a steady
+scene reaches a steady allocation. Single-shader keeps the direct-draw fast path
+(no RT). A pass that fails to load (missing source, unsupported GPU, compile
+error) is logged once by the resource cache and skipped; the rest of the chain
+still runs.
+
+### Region shader inheritance
+
+A region with `over: <layer>` is conceptually a swappable patch of that layer, so
+it inherits the layer's shader stack: the layer's effects run first (so the
+region matches the surrounding background) and the region's own effects run on
+top. A region without `over:` uses only its own shaders.
+
+### Avatar shaders
+
+Avatars (PCs and NPCs) declare their shader stack on their **cast appearance**
+(`cast.yaml` — see design 06). Every avatar that uses that appearance picks up
+the stack at construction. The render path is the same chain used for layers /
+regions / objects: the current animation frame is baked into the chain's RT,
+passes apply, the final RT is blitted at the avatar's walking-pivot position with
+the avatar's perspective scale (so the pivot stays planted under the feet).
+Authoring tip: `u_resolution` for an avatar shader equals the **current frame
+size in pixels** (not the spritesheet atlas), so author params in those units.
 
 ### Worked example
 
-A subtle warm colour grade over a background layer — parameters only, no time:
+A subtle warm colour grade plus a soft vignette over a background layer — the
+multi-pass chain in action:
 
 ```glsl
 // shaders/ambient_grade.frag
@@ -339,15 +362,19 @@ void main() {
 ```
 
 ```yaml
-# in a room's background layer
-shader:
-  source: shaders/ambient_grade.frag
-  params: { tint: [1.06, 1.0, 0.9], strength: 0.35 }
+# in a room's background layer (study.yaml uses this exact stack)
+shaders:
+  - source: shaders/ambient_grade.frag
+    params: { tint: [1.15, 1.0, 0.82], strength: 0.6 }
+  - source: shaders/vignette.frag
+    params: { strength: 0.45, inner: 0.5, outer: 1.0, color: [0.05, 0.02, 0.0] }
 ```
 
-See `games/themummy/data/shaders/` for this and a `u_time`-driven flicker example.
-A dedicated shader-showcase game (per issue #56) is a planned second iteration; this
-section plus those examples are its reference.
+`games/themummy/data/shaders/` ships a small library of stock effects you can use
+or adapt: `ambient_grade`, `candle_flicker`, `color_grade`, `spotlight`,
+`omnilight`, `dust_particles`, `horizontal_displacement`, `vignette`. A dedicated
+shader-showcase game (per issue #56) is a planned second iteration; this section
+plus those examples are its reference.
 
 ## Lua integration
 

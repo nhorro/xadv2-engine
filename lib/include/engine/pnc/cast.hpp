@@ -1,11 +1,14 @@
 #pragma once
 
+#include "engine/gfx/shader_effect.hpp"
+
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/System/Vector2.hpp>
 
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace pac::pnc {
 
@@ -19,11 +22,15 @@ struct Shadow {
 
 /// A reusable visual definition. M3 supports `animated_sprite`; `composite` is
 /// parsed but realized later. `shadow` is an optional ground blob (issue #75).
+/// `shaders` is an optional declarative stack applied to the animated sprite at
+/// draw time (issue #106 — same data model as a layer/region/object shader, see
+/// design 03 §Shaders); the per-room avatar instance inherits this list.
 struct Appearance {
     std::string type;      // "animated_sprite" | "composite"
     std::string sprite;    // *.anim.yaml (animated_sprite)
     std::string composite; // *.composite.yaml (composite)
     std::optional<Shadow> shadow;
+    std::vector<gfx::ShaderEffect> shaders;
 };
 
 struct Character {

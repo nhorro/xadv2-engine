@@ -2,36 +2,132 @@
 
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
+#include "engine/gfx/shader_chain.hpp"
 
+#include <SFML/Graphics/Glsl.hpp>
+#include <SFML/Graphics/RenderStates.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
+#include <SFML/Graphics/Shader.hpp>
 #include <SFML/Graphics/Sprite.hpp>
+#include <SFML/Graphics/Texture.hpp>
 
 #include <utility>
 
 namespace pac::gfx {
 
+namespace {
+
+// Build the sf::Sprite for the current frame: textureRect from the atlas, origin
+// at the named pivot, tint color. The caller then applies the transform.
+bool build_current_sprite(const Spritesheet& sheet,
+                          const SequencePlayer& player,
+                          const std::string& pivot,
+                          sf::Color color,
+                          sf::Sprite& out_sprite,
+                          sf::IntRect& out_rect,
+                          sf::Vector2f& out_origin) {
+    const std::string frame_id = player.current_frame_id();
+    if (frame_id.empty()) {
+        return false;
+    }
+    const Frame* frame = sheet.frame(frame_id);
+    if (!frame) {
+        return false;
+    }
+    out_sprite.setTexture(sheet.texture(), false);
+    out_sprite.setTextureRect(frame->rect);
+    out_rect = frame->rect;
+    out_origin = sf::Vector2f(0.0f, 0.0f);
+    if (const sf::Vector2f* p = frame->anchor(pivot)) {
+        out_sprite.setOrigin(*p);
+        out_origin = *p;
+    }
+    out_sprite.setColor(color);
+    return true;
+}
+
+} // namespace
+
 AnimatedSprite::AnimatedSprite(Spritesheet sheet, Animation anim)
     : sheet_(std::move(sheet)), pivot_(anim.pivot), player_(std::move(anim)) {}
 
 void AnimatedSprite::draw(sf::RenderTarget& target, sf::RenderStates states) const {
-    const std::string frame_id = player_.current_frame_id();
-    if (frame_id.empty()) {
+    sf::Sprite sprite;
+    sf::IntRect rect;
+    sf::Vector2f origin;
+    if (!build_current_sprite(sheet_, player_, pivot_, color_, sprite, rect, origin)) {
         return;
     }
-    const Frame* frame = sheet_.frame(frame_id);
-    if (!frame) {
-        return;
-    }
-
-    sf::Sprite sprite(sheet_.texture());
-    sprite.setTextureRect(frame->rect);
-    if (const sf::Vector2f* pivot = frame->anchor(pivot_)) {
-        sprite.setOrigin(*pivot); // place pivot at this sprite's position
-    }
-    sprite.setColor(color_);
-
     states.transform *= getTransform();
     target.draw(sprite, states);
+}
+
+void AnimatedSprite::draw(sf::RenderTarget& target,
+                          pac::core::ResourceCache& resources,
+                          float time,
+                          ShaderChain* chain) const {
+    sf::Sprite sprite;
+    sf::IntRect rect;
+    sf::Vector2f origin;
+    if (!build_current_sprite(sheet_, player_, pivot_, color_, sprite, rect, origin)) {
+        return;
+    }
+
+    // Count effects we can apply right now (enabled, no controller). A controller
+    // is design-for and the drawable falls back to unshaded for it.
+    std::size_t applicable = 0;
+    const ShaderEffect* single = nullptr;
+    for (const ShaderEffect& fx : shaders_) {
+        if (fx.enabled && fx.controller.empty()) {
+            ++applicable;
+            if (!single) {
+                single = &fx;
+            }
+        }
+    }
+
+    sf::RenderStates states;
+    states.transform *= getTransform();
+
+    if (applicable <= 1) {
+        if (applicable == 1) {
+            pac::core::ShaderProgram* program = resources.shader(single->source);
+            if (program) {
+                if (program->uses_time) {
+                    program->shader.setUniform("u_time", time);
+                }
+                if (program->uses_resolution) {
+                    program->shader.setUniform("u_resolution",
+                                               sf::Glsl::Vec2(static_cast<float>(rect.width),
+                                                              static_cast<float>(rect.height)));
+                }
+                if (program->uses_texture) {
+                    program->shader.setUniform("texture", sf::Shader::CurrentTexture);
+                }
+                apply_shader_params(program->shader, single->params);
+                states.shader = &program->shader;
+            }
+        }
+        target.draw(sprite, states);
+        return;
+    }
+
+    // Multi-pass: bake the current frame into the chain's RT, then blit the
+    // result with the same origin/transform so the avatar's pivot still lands at
+    // the avatar's world position.
+    if (!chain) {
+        target.draw(sprite, states);
+        return;
+    }
+    const sf::Texture* result = chain->apply(resources, sheet_.texture(), rect, shaders_, time);
+    if (!result) {
+        target.draw(sprite, states);
+        return;
+    }
+    sf::Sprite blit(*result, sf::IntRect(0, 0, rect.width, rect.height));
+    blit.setOrigin(origin);
+    blit.setColor(color_);
+    target.draw(blit, states);
 }
 
 AnimatedSprite load_animated_sprite(pac::core::ResourceCache& res,

@@ -2,6 +2,7 @@
 
 #include "core/load_error_yaml.hpp"
 #include "engine/pnc/data_error.hpp"
+#include "shader_yaml.hpp"
 
 #include <yaml-cpp/yaml.h>
 
@@ -55,6 +56,7 @@ Cast parse_cast(const std::string& yaml_text) {
             }
             app.sprite = node["sprite"] ? node["sprite"].as<std::string>() : std::string();
             app.composite = node["composite"] ? node["composite"].as<std::string>() : std::string();
+            app.shaders = detail::parse_shaders(node, kSource, "cast");
             if (const YAML::Node shadow = node["shadow"]) {
                 Shadow sh;
                 const YAML::Node size = shadow["size"];
