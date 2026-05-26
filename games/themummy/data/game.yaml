@@ -105,6 +105,7 @@ scenes:
       start_room: hall
       player: julia
       font: fonts/DepartureMono-Regular.otf
+      scumm_panel: ui/scumm_panel_default.yml
       inventory: inventory.yaml
       inventory_logic: inventory.lua
       logic: game.lua

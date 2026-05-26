@@ -12,8 +12,9 @@ CommandController completed command -> RoomScene movement + Lua dispatch
 ## Responsibilities
 
 `ScummPanel` renders `CommandState` and translates panel clicks into UI intents:
-verb selection and inventory item selection. It does not inspect room hotspots,
-own `CommandBuilder`, execute Lua handlers, or decide whether a command is valid.
+verb selection, inventory item selection, and inventory page changes. It does not
+inspect room hotspots, own `CommandBuilder`, execute Lua handlers, or decide
+whether a command is valid.
 
 `CommandController` owns `CommandBuilder` and the authoritative `CommandState`.
 It receives UI intents and room-object events, resolves operand metadata through
