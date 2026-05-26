@@ -39,6 +39,7 @@ add_executable(pac_core_tests
     room_test.cpp
     cast_test.cpp
     closeup_test.cpp
+    cutscene_test.cpp
     command_builder_test.cpp
     command_controller_test.cpp
     scumm_panel_config_test.cpp
