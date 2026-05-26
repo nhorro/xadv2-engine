@@ -527,9 +527,13 @@ std::optional<Avatar> RoomScene::make_avatar(const std::string& character_id) {
         return std::nullopt;
     }
     try {
-        return Avatar(gfx::load_animated_sprite(ctx_.resources, app->sprite),
+        Avatar avatar(gfx::load_animated_sprite(ctx_.resources, app->sprite),
                       kAvatarScale,
                       app->shadow);
+        if (!app->shaders.empty()) {
+            avatar.set_shaders(app->shaders);
+        }
+        return avatar;
     } catch (const std::exception& e) {
         ctx_.log.error(std::string("RoomScene: appearance for '" + character_id + "': ") +
                        e.what());

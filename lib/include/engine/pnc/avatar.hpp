@@ -2,6 +2,7 @@
 
 #include "engine/geom/geometry.hpp"
 #include "engine/gfx/animated_sprite.hpp"
+#include "engine/gfx/shader_effect.hpp"
 #include "engine/pnc/cast.hpp" // Shadow
 #include "engine/pnc/mover.hpp"
 
@@ -11,6 +12,14 @@
 
 namespace sf {
 class RenderTarget;
+}
+
+namespace pac::core {
+class ResourceCache;
+}
+
+namespace pac::gfx {
+class ShaderChain;
 }
 
 namespace pac::pnc {
@@ -42,7 +51,21 @@ public:
     bool moving() const { return mover_.moving(); }
 
     void update(float dt, const RoomData& room);
-    void draw(sf::RenderTarget& target) const;
+
+    /// Render the avatar (shadow blob + animated sprite). The renderer supplies
+    /// `resources` and `time` so the sprite can apply its shader stack (design 03
+    /// §Shaders, issue #106); `chain` is the per-render multi-pass pool, may be
+    /// null (single-shader and unshaded paths still work).
+    void draw(sf::RenderTarget& target,
+              pac::core::ResourceCache& resources,
+              float time = 0.0f,
+              pac::gfx::ShaderChain* chain = nullptr) const;
+
+    /// Set the shader stack carried by the avatar's animated sprite (mirrors the
+    /// cast appearance's `shaders:`). Cleared with an empty vector.
+    void set_shaders(std::vector<pac::gfx::ShaderEffect> shaders) {
+        sprite_.set_shaders(std::move(shaders));
+    }
 
     float z() const { return mover_.position().y; } // depth key = walking-pivot y
 

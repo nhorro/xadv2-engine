@@ -4,6 +4,9 @@
 
 #include <doctest/doctest.h>
 
+#include <array>
+#include <variant>
+
 using namespace pac::pnc;
 using pac::test::error_code;
 
@@ -70,6 +73,37 @@ TEST_CASE("parse_cast rejects a shadow without a size") {
               parse_cast("appearances:\n  a: { type: animated_sprite, sprite: s, shadow: { color: "
                          "{ r: 0, g: 0, b: 0 } } }\n");
           }) == "cast.shadow-size-missing");
+}
+
+TEST_CASE("parse_cast reads an appearance shader stack (issue #106)") {
+    const char* yaml = R"YAML(
+appearances:
+  hero:
+    type: animated_sprite
+    sprite: characters/hero/hero.anim.yml
+    shaders:
+      - source: shaders/color_grade.frag
+        params:
+          tint: [1.0, 0.95, 0.85]
+          strength: 0.4
+      - shaders/vignette.frag
+)YAML";
+    const Cast c = parse_cast(yaml);
+
+    REQUIRE(c.appearance("hero") != nullptr);
+    REQUIRE(c.appearance("hero")->shaders.size() == 2);
+    CHECK(c.appearance("hero")->shaders[0].source == "shaders/color_grade.frag");
+    const auto& tint =
+        std::get<std::array<float, 3>>(c.appearance("hero")->shaders[0].params[0].value);
+    CHECK(tint[0] == doctest::Approx(1.0f));
+    CHECK(c.appearance("hero")->shaders[1].source == "shaders/vignette.frag");
+}
+
+TEST_CASE("parse_cast surfaces shader parse errors with the cast prefix") {
+    CHECK(error_code([] {
+              parse_cast("appearances:\n  a: { type: animated_sprite, sprite: s, "
+                         "shader: { params: { x: 1 } } }\n");
+          }) == "cast.shader-source-missing");
 }
 
 TEST_CASE("parse_cast rejects a character without an appearance") {
