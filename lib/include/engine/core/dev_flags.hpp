@@ -15,6 +15,12 @@ struct DevFlags {
     bool show_anchors = false;   // avatar anchors + z values (F3)
     bool show_state = false;     // command-builder + room/world state HUD (F4)
     bool allow_room_reload = false;
+    // Resource-profiling mode (#112): when on, the harness samples frame timing,
+    // RAM, and resource-cache footprint, logs periodic lines, and writes a report
+    // at exit. Development-only; never a player setting. `profiling_interval` is
+    // the seconds between samples (default 2.0).
+    bool profiling = false;
+    double profiling_interval = 2.0;
 };
 
 } // namespace pac::core

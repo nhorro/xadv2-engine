@@ -61,6 +61,10 @@ public:
     bool running() const { return running_; }
     std::size_t size() const { return stack_.size(); }
     Scene* top() const;
+    /// Id of the active top-level (GOTO) scene, for diagnostics/profiling (#112).
+    /// Unchanged by PUSH/POP overlays so it labels the gameplay scene, not a
+    /// transient menu. Empty until the first scene is entered.
+    const std::string& current_scene_id() const { return current_scene_id_; }
     bool transitioning() const { return transition_pending_; }
 
     void handle_event(const sf::Event& event);
@@ -81,6 +85,7 @@ private:
     std::string settings_scene_id_;
     std::string save_scene_id_;
     std::string load_scene_id_;
+    std::string current_scene_id_;
     std::vector<std::unique_ptr<Scene>> stack_;
     std::vector<Op> pending_;
     bool running_ = true;

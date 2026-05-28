@@ -88,6 +88,7 @@ void SceneManager::do_goto(const std::string& id) {
     if (scene) {
         scene->enter();
         stack_.push_back(std::move(scene));
+        current_scene_id_ = id;
     } else {
         running_ = false; // cannot continue with no scene
     }
