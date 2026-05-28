@@ -43,6 +43,12 @@ development:
   show_anchors: false
   show_state: false
   allow_room_reload: true
+  # Resource-profiling mode (#112): when on, the engine samples frame timing, RAM,
+  # and resource-cache footprint (texture VRAM estimate, shader/sound/font counts),
+  # logs a line every `profiling_interval` seconds, and writes a per-scene report
+  # to the per-user data dir at exit. Development-only; leave off for players.
+  profiling: false
+  profiling_interval: 2.0
 
 entry: title
 #entry: room_view

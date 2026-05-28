@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/core/resource_stats.hpp"
+
 #include <SFML/Audio/SoundBuffer.hpp>
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/Shader.hpp>
@@ -68,6 +70,11 @@ public:
     /// reused across draws; set uniforms per draw, gated on the returned
     /// `uses_*` flags. Render-side (needs a GL context), like texture().
     ShaderProgram* shader(const std::string& logical);
+
+    /// Current cache occupancy for the profiling mode (#112): live texture / font
+    /// / sound / shader counts and an upper-bound VRAM estimate. Cheap (iterates
+    /// the cache maps); only sampled on the profiler's interval, never per frame.
+    ResourceStats stats() const;
 
     /// Pass-throughs to the source for the loaders (parsed once, not cached here).
     std::string read_text(const std::string& logical) const;

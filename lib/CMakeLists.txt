@@ -82,6 +82,7 @@ add_library(pac_engine STATIC
     src/core/user_data.cpp
     src/core/save_service.cpp
     src/core/thumbnail.cpp
+    src/core/profiler.cpp
     src/core/application.cpp
     src/geom/geometry.cpp
     src/gfx/spritesheet.cpp

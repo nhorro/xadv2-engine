@@ -293,6 +293,8 @@ development:
   show_walkboxes: false
   show_hotspots: false
   allow_room_reload: true
+  profiling: false        # resource-profiling mode (#112)
+  profiling_interval: 2.0 # seconds between profiling samples
 
 entry: title
 
@@ -786,6 +788,30 @@ dialog or the pause menu):
 The reload follows the script-task-ownership rules: cancelling the room scope ends
 its coroutines without running Lua cleanup, so authored teardown belongs in
 `on_unload`.
+
+### Resource profiling (#112)
+
+The engine targets hardware comparable to other modern point-and-click games
+(Return to Monkey Island, Thimbleweed Park). To keep an eye on resource usage
+during development, the manifest `development.profiling` flag enables a
+profiling mode in the core run loop. When on, the harness:
+
+- measures **frame timing** every frame — the full frame-to-frame time (vsync
+  included → real fps/pacing) and the update+draw "work" time before the vsync
+  wait (→ CPU/draw headroom). These are the cheapest honest CPU proxy;
+- samples **RAM** (resident set size, via `/proc` on Linux) and the
+  **resource-cache footprint** every `profiling_interval` seconds (default
+  `2.0`): an upper-bound texture-VRAM estimate (`width*height*4`, RGBA8) plus
+  live texture / shader / sound / font counts;
+- logs a one-line summary on each sample and writes a **per-scene aggregate
+  report** to the per-user data dir (`profiling-report.txt`) at exit, so authors
+  can see which scene drives peak VRAM / shader count / frame time.
+
+VRAM is the metric of interest: every cached `sf::Texture` is a live GPU
+texture, so the cache's texture footprint bounds VRAM. The report's per-scene
+peaks tell content authors when a smarter load/unload-per-room strategy or a
+shader-budget guideline is warranted. Profiling is development-only and never a
+player setting.
 
 ### Keep layer boundaries strict
 

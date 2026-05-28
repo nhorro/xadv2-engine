@@ -53,6 +53,7 @@ add_executable(pac_core_tests
     dialog_test.cpp
     save_service_test.cpp
     user_data_test.cpp
+    profiler_test.cpp
 )
 target_link_libraries(pac_core_tests PRIVATE pac_engine doctest::doctest pac_project_options)
 # Dialog tests reach for the internal sol2-aware factory under lib/src.
