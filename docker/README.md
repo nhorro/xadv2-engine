@@ -26,16 +26,23 @@ time, so the first run is the slow one; later runs reuse the cached image.
 ## Run the sample game (needs X11)
 
 The game opens a window, so the container has to reach the host's X server. On a
-Linux host:
+Linux host this works with no prep:
 
 ```bash
-xhost +local:                 # authorize local containers (run once per session)
 docker compose run --rm engine
-# ... when done, optionally revoke: xhost -local:
 ```
 
-`docker-compose.yml` shares `/tmp/.X11-unix` and forwards `$DISPLAY`. Override the
-command to run a different manifest or a headless smoke:
+`docker-compose.yml` shares `/tmp/.X11-unix`, forwards `$DISPLAY`, and mounts the
+host's X auth cookie (`$XAUTHORITY`, falling back to `~/.Xauthority`) at a fixed
+path with `XAUTHORITY` pointing at it — so the container authenticates without
+`xhost`. If your cookie can't be found or doesn't match (some remote/SSH or
+unusual setups), authorize local connections instead:
+
+```bash
+xhost +local: && docker compose run --rm engine   # revoke later: xhost -local:
+```
+
+Override the command to run a different manifest or a headless smoke:
 
 ```bash
 docker compose run --rm engine ./build/games/themummy/pac_themummy \
