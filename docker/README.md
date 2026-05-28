@@ -48,19 +48,22 @@ docker compose run --rm engine ./build/games/themummy/pac_themummy \
 
 ### Audio
 
-The `engine` service shares the host's **PulseAudio / PipeWire** socket so the
-game has sound out of the box — no extra flags. It mounts
-`$XDG_RUNTIME_DIR/pulse/native` and `~/.config/pulse/cookie` and sets
-`PULSE_SERVER`; the image ships `libpulse0` so OpenAL's PulseAudio backend loads.
-This works on PulseAudio and on PipeWire desktops (via the pulse-compat socket).
+The `engine` service **targets a desktop host**. It shares the host's
+**PulseAudio / PipeWire** socket (`$XDG_RUNTIME_DIR/pulse/native`) and sets
+`PULSE_SERVER` so the game has sound out of the box — no extra flags. Only the
+socket is mounted (no cookie): it is world-writable on a normal desktop, which is
+enough for the local pulse-compat server. The image ships `libpulse0` so OpenAL's
+PulseAudio backend loads (it dlopens libpulse). Works on PulseAudio and on
+PipeWire desktops (via the pulse-compat socket).
 
-If your host has no pulse socket (e.g. a bare server), audio falls back to a null
-device and SFML logs harmless `OpenAL` warnings. Two options:
-
-- ALSA instead of pulse: drop the pulse mounts/`PULSE_SERVER` and run with the
-  sound devices exposed — `docker compose run --rm --device /dev/snd engine`.
-- No audio: remove the pulse `environment`/`volumes` lines from the `engine`
-  service; the game then runs silently.
+> **No pulse socket on the host?** Compose has no "mount only if it exists", so
+> the bind mount is unconditional: on a host *without* `$XDG_RUNTIME_DIR/pulse/native`
+> Docker would create a **root-owned empty directory** at that path (and audio
+> would still end up silent). So this is not a graceful fallback. On a bare /
+> headless host, either use the `engine-test` service (no host mounts), or remove
+> the pulse `environment` + `volumes` lines from the `engine` service to run the
+> game silently. For ALSA instead of pulse, drop those lines and expose the sound
+> devices: `docker compose run --rm --device /dev/snd engine`.
 
 ## Room editor (browser tool)
 

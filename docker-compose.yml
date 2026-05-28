@@ -18,17 +18,18 @@ services:
       context: .
       dockerfile: docker/engine.Dockerfile
     image: xadv2-engine
-    # Share the host X11 display (window) and PulseAudio/PipeWire socket (sound).
-    # Run `xhost +local:` on the host first to authorize the container. The pulse
-    # socket + cookie come from the host's runtime/config dirs; this works on both
-    # PulseAudio and PipeWire (via its pulse-compat socket) desktops.
+    # Targets a desktop host: shares the X11 display (window) and the
+    # PulseAudio/PipeWire socket (sound). Run `xhost +local:` first to authorize
+    # the container. Only the socket is mounted (no cookie) — it is world-writable
+    # on a normal desktop, which is enough for the local pulse-compat server. On a
+    # host WITHOUT a pulse socket, Docker would create a root-owned dir at that
+    # path: drop these two lines and run silent, or use the `engine-test` service.
     environment:
       DISPLAY: ${DISPLAY:-:0}
       PULSE_SERVER: unix:${XDG_RUNTIME_DIR:-/run/user/1000}/pulse/native
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${XDG_RUNTIME_DIR:-/run/user/1000}/pulse/native:${XDG_RUNTIME_DIR:-/run/user/1000}/pulse/native:rw
-      - ${HOME}/.config/pulse/cookie:/root/.config/pulse/cookie:ro
 
   # Standalone (not extending `engine`) so the headless test path never inherits
   # the host X11 / audio bind mounts — keeps it portable for CI.
