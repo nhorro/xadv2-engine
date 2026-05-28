@@ -1,6 +1,7 @@
 #include "engine/pnc/room_renderer.hpp"
 
 #include "engine/core/diagnostics.hpp"
+#include "engine/core/render_stats.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
 #include "engine/geom/geometry.hpp"
@@ -103,6 +104,9 @@ void draw_shaded_sprite(sf::RenderTarget& target,
             if (pac::core::ShaderProgram* program = resources.shader(fx->source)) {
                 bind_single_pass(program->shader, *program, *fx, tex, time);
                 states.shader = &program->shader;
+                // Profiling (#112): the single-effect fast path is a real shader
+                // draw (no ping-pong FBO, so no RT VRAM). Count it like a pass.
+                pac::core::note_shader_passes(1);
             }
         }
         target.draw(sprite, states);
