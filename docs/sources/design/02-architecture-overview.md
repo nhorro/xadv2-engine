@@ -799,19 +799,27 @@ profiling mode in the core run loop. When on, the harness:
 - measures **frame timing** every frame — the full frame-to-frame time (vsync
   included → real fps/pacing) and the update+draw "work" time before the vsync
   wait (→ CPU/draw headroom). These are the cheapest honest CPU proxy;
+- counts **shader work** every frame — the number of fragment-shader passes
+  (single-effect fast-path draws plus `ShaderChain` ping-pong passes) and the
+  live VRAM of the `ShaderChain` render-target pools. These come from process-wide
+  counters in `render_stats.hpp` (core), which the gfx layer reports into — so the
+  core profiler reads them without breaking the layer dependency rule;
 - samples **RAM** (resident set size, via `/proc` on Linux) and the
   **resource-cache footprint** every `profiling_interval` seconds (default
   `2.0`): an upper-bound texture-VRAM estimate (`width*height*4`, RGBA8) plus
   live texture / shader / sound / font counts;
 - logs a one-line summary on each sample and writes a **per-scene aggregate
   report** to the per-user data dir (`profiling-report.txt`) at exit, so authors
-  can see which scene drives peak VRAM / shader count / frame time.
+  can see which scene drives peak VRAM / shader passes / frame time.
 
-VRAM is the metric of interest: every cached `sf::Texture` is a live GPU
-texture, so the cache's texture footprint bounds VRAM. The report's per-scene
-peaks tell content authors when a smarter load/unload-per-room strategy or a
-shader-budget guideline is warranted. Profiling is development-only and never a
-player setting.
+VRAM is the metric of interest: every cached `sf::Texture` is a live GPU texture,
+so the cache's texture footprint bounds VRAM (the off-screen shader buffers are
+tracked separately as RT VRAM). The report's per-scene peaks tell content authors
+when a smarter load/unload-per-room strategy or a shader-budget guideline is
+warranted. **Caveat:** when the GPU is the bottleneck, the work-time metric
+under-reports the real frame cost (the GPU wait lands in the buffer swap, after
+the work timer) — read frame time, not work time, in that regime. Profiling is
+development-only and never a player setting.
 
 ### Keep layer boundaries strict
 

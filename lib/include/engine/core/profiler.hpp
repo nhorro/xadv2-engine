@@ -8,6 +8,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <string_view>
 
 namespace pac::core {
 
@@ -38,8 +39,22 @@ public:
         double frame_ms_sum = 0.0; // wall-clock frame time (includes vsync wait)
         double work_ms_sum = 0.0;  // update+draw time (excludes the vsync wait)
         double frame_ms_worst = 0.0;
-        std::uint64_t slow_frames = 0; // frames slower than the slow-frame threshold
+        std::uint64_t slow_frames = 0;        // frames slower than the slow-frame threshold
+        std::uint64_t peak_shader_passes = 0; // most ShaderChain passes in one frame
+        std::size_t peak_shader_rt_bytes = 0; // peak live shader render-target VRAM
         ResourceStats peak;
+    };
+
+    /// One rendered frame's inputs. `frame_seconds` is the full frame-to-frame
+    /// wall time; `work_seconds` is the update+draw cost before the vsync wait;
+    /// `shader_passes` / `shader_rt_bytes` are the GPU render counters for this
+    /// frame (see `render_stats.hpp`); `scene_id` labels the active top-level scene.
+    struct FrameInfo {
+        double frame_seconds = 0.0;
+        double work_seconds = 0.0;
+        std::uint64_t shader_passes = 0;
+        std::size_t shader_rt_bytes = 0;
+        std::string_view scene_id;
     };
 
     Profiler(Diagnostics& log,
@@ -48,10 +63,7 @@ public:
              std::function<ResourceStats()> sample_resources,
              double interval_seconds = 2.0);
 
-    /// One rendered frame. `frame_seconds` is the full frame-to-frame wall time;
-    /// `work_seconds` is the update+draw cost before the vsync wait; `scene_id`
-    /// labels the active top-level scene.
-    void frame(double frame_seconds, double work_seconds, const std::string& scene_id);
+    void frame(const FrameInfo& info);
 
     /// Write the aggregate report to the report path and log a final summary.
     /// Idempotent — a second call is a no-op.
@@ -64,7 +76,7 @@ public:
     double total_seconds() const { return total_seconds_; }
 
 private:
-    void take_sample(const std::string& scene_id);
+    void take_sample(const FrameInfo& info);
     std::string build_report() const;
 
     Diagnostics& log_;

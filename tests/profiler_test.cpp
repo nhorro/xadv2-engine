@@ -41,10 +41,13 @@ TEST_CASE("profiler aggregates frame timing per scene") {
 
     // 10 healthy frames (10 ms each, under the 20 ms slow threshold) trigger two
     // interval samples, then one slow frame (30 ms) that does not reach the next.
+    // Frame 4 carries the most shader passes / RT VRAM, to exercise the peaks.
     for (int i = 0; i < 10; ++i) {
-        p.frame(0.01, 0.004, "room");
+        const std::uint64_t passes = (i == 4) ? 6 : 1;
+        const std::size_t rt_bytes = (i == 4) ? 4096 : 1024;
+        p.frame({0.01, 0.004, passes, rt_bytes, "room"});
     }
-    p.frame(0.030, 0.010, "room");
+    p.frame({0.030, 0.010, 1, 1024, "room"});
 
     REQUIRE(p.scenes().count("room") == 1);
     const Profiler::SceneProfile& room = p.scenes().at("room");
@@ -55,6 +58,9 @@ TEST_CASE("profiler aggregates frame timing per scene") {
     CHECK(room.peak.texture_bytes == 1000);
     CHECK(room.peak.texture_count == 5);
     CHECK(room.peak.shader_count == 2);
+    // Shader-pass / RT peaks are tracked every frame (not just on samples).
+    CHECK(room.peak_shader_passes == 6);
+    CHECK(room.peak_shader_rt_bytes == 4096);
 
     CHECK(p.total_frames() == 11);
     CHECK(p.total_seconds() == doctest::Approx(0.13));
@@ -66,10 +72,10 @@ TEST_CASE("profiler keeps scenes separate and writes a report") {
     Profiler p(log, report, "testgame", [] { return ResourceStats{}; }, /*interval=*/0.1);
 
     for (int i = 0; i < 2; ++i) {
-        p.frame(0.05, 0.004, "room");
+        p.frame({0.05, 0.004, 0, 0, "room"});
     }
     for (int i = 0; i < 2; ++i) {
-        p.frame(0.05, 0.004, "title");
+        p.frame({0.05, 0.004, 0, 0, "title"});
     }
     p.finish();
 
