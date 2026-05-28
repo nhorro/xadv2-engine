@@ -4,6 +4,19 @@ Extrardinary Adventures Engine v2
 This is a remake of the third person point and click engine [Extraordinary Adventures](https://github.com/nhorro/ea-engine).
 
 
+Docker
+------
+
+Containerized environments to build/run the engine and the authoring tools on
+Linux without installing the toolchain locally. See [docker/README.md](docker/README.md).
+
+~~~bash
+docker compose run --rm engine-test   # build the engine + run the headless tests
+docker compose up room-editor         # then open http://localhost:8000
+xhost +local: && docker compose run --rm engine   # run the sample game (X11)
+~~~
+
+
 Documentation
 -------------
 
