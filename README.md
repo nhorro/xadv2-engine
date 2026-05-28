@@ -13,7 +13,7 @@ Linux without installing the toolchain locally. See [docker/README.md](docker/RE
 ~~~bash
 docker compose run --rm engine-test   # build the engine + run the headless tests
 docker compose up room-editor         # then open http://localhost:8000
-xhost +local: && docker compose run --rm engine   # run the sample game (X11)
+docker compose run --rm engine        # run the sample game (X11 + audio, desktop host)
 ~~~
 
 

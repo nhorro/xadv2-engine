@@ -18,16 +18,35 @@ services:
       context: .
       dockerfile: docker/engine.Dockerfile
     image: xadv2-engine
-    # Share the host X11 display so the SFML window can open. Run `xhost +local:`
-    # on the host first to authorize the container.
+    # Targets a desktop host: shares the X11 display (window), the X auth cookie,
+    # and the PulseAudio/PipeWire socket + cookie (sound). The X cookie passthrough
+    # means no `xhost` is needed — the host's `$XAUTHORITY` (or `~/.Xauthority`) is
+    # mounted at a fixed path and `XAUTHORITY` points the container at it. For audio
+    # both the socket and the pulse cookie are mounted: classic PulseAudio (e.g.
+    # Ubuntu 20.04/22.04) requires the cookie to authenticate, while PipeWire's
+    # pulse-compat server simply ignores it — so this works on both. On a host
+    # WITHOUT these (bare/headless), the unconditional bind mounts make Docker
+    # create root-owned dirs at the source paths: use the `engine-test` service, or
+    # drop the corresponding lines to run without display/audio. `xhost +local:`
+    # still works as an alternative to the X cookie.
     environment:
       DISPLAY: ${DISPLAY:-:0}
+      XAUTHORITY: /tmp/.xauthority-host
+      PULSE_SERVER: unix:${XDG_RUNTIME_DIR:-/run/user/1000}/pulse/native
+      PULSE_COOKIE: /tmp/.pulse-cookie-host
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${XAUTHORITY:-${HOME}/.Xauthority}:/tmp/.xauthority-host:ro
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/pulse/native:${XDG_RUNTIME_DIR:-/run/user/1000}/pulse/native:rw
+      - ${HOME}/.config/pulse/cookie:/tmp/.pulse-cookie-host:ro
 
+  # Standalone (not extending `engine`) so the headless test path never inherits
+  # the host X11 / audio bind mounts — keeps it portable for CI.
   engine-test:
-    extends:
-      service: engine
+    build:
+      context: .
+      dockerfile: docker/engine.Dockerfile
+    image: xadv2-engine
     command: ctest --test-dir build --output-on-failure
 
   room-editor:
