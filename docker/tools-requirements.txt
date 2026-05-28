@@ -1,0 +1,6 @@
+# Python dependencies for the authoring tools (issue #125).
+# The room editor and avatarmaker are stdlib-only browser UIs and need only
+# PyYAML; the sprite / chroma packers add numpy + OpenCV.
+PyYAML>=6.0
+numpy>=1.26
+opencv-python-headless>=4.9
