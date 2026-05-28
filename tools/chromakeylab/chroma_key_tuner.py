@@ -72,6 +72,46 @@ def background_connected_to_border(bg_mask: np.ndarray) -> np.ndarray:
     return np.isin(labels, list(border_labels))
 
 
+def despill_for_key(
+    rgb_linear: np.ndarray,
+    alpha: np.ndarray,
+    key_rgb: np.ndarray,
+    strength: float,
+) -> np.ndarray:
+    """Chroma-direction-aware despill at the silhouette edge band.
+
+    Channels of `key_rgb` with value >= 50% of the key's max are the
+    "dominant" ones; the rest are "suppressed". An edge pixel whose
+    dominant-channel minimum exceeds its suppressed-channel maximum carries
+    chroma spill in that direction, which we shrink. A near-grey/near-black
+    key has no chroma direction and we return the input unchanged.
+    """
+    out = rgb_linear.copy()
+    if strength <= 0.0:
+        return out
+    edge = (alpha > 0.0) & (alpha < 1.0)
+    if not edge.any():
+        return out
+    key = key_rgb.astype(np.float32) / 255.0
+    max_k = float(key.max())
+    if max_k < 1e-3:
+        return out
+    dom_mask = key >= 0.5 * max_k
+    dom_chans = [c for c in range(3) if dom_mask[c]]
+    sup_chans = [c for c in range(3) if not dom_mask[c]]
+    if not dom_chans or not sup_chans:
+        return out
+    dom_min = rgb_linear[..., dom_chans].min(axis=-1)
+    sup_max = rgb_linear[..., sup_chans].max(axis=-1)
+    excess = np.maximum(0.0, dom_min - sup_max)
+    correction = strength * excess * edge.astype(np.float32)
+    for c in dom_chans:
+        out[..., c] = np.clip(out[..., c] - correction, 0.0, 1.0)
+    for c in sup_chans:
+        out[..., c] = np.clip(out[..., c] + 0.25 * correction, 0.0, 1.0)
+    return out
+
+
 def crop_to_content(rgba: np.ndarray, alpha_threshold: int = 5, padding: int = 0) -> np.ndarray:
     """Crop to the bounding box of pixels with alpha > threshold (+ padding)."""
     alpha = rgba[..., 3]
@@ -184,15 +224,7 @@ def make_output(
     alpha[bg_clean] = 0.0
 
     rgb = img.astype(np.float32) / 255.0
-    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
-    magenta_excess = np.maximum(0, np.minimum(r, b) - g)
-    edge = (alpha > 0.0) & (alpha < 1.0)
-    correction = despill_strength * magenta_excess * edge
-
-    rgb2 = rgb.copy()
-    rgb2[..., 0] = np.clip(rgb2[..., 0] - correction, 0, 1)
-    rgb2[..., 2] = np.clip(rgb2[..., 2] - correction, 0, 1)
-    rgb2[..., 1] = np.clip(rgb2[..., 1] + correction * 0.25, 0, 1)
+    rgb2 = despill_for_key(rgb, alpha, key_rgb, despill_strength)
 
     rgba = np.dstack([(rgb2 * 255).astype(np.uint8), (alpha * 255).astype(np.uint8)])
     debug = {
