@@ -205,16 +205,18 @@ std::string SaveLoadScene::format_when(const SlotView& view) const {
         return format_unix_seconds(view.saved_at);
     }
     // Older save without `saved_at`: fall back to the file's mtime, mapped to
-    // a Unix timestamp. file_clock isn't comparable to system_clock directly;
-    // use the C++20 file_clock::to_sys helper when available, otherwise
-    // approximate via the file_clock epoch offset.
+    // a Unix timestamp. The filesystem clock isn't comparable to system_clock
+    // directly; use the C++20 std::chrono::clock_cast when available, otherwise
+    // approximate via the epoch offset. clock_cast (not file_clock::to_sys) is
+    // used because MSVC's file_time_type uses its own clock, not
+    // std::chrono::file_clock, so the static to_sys helper does not apply there.
     std::error_code ec;
     const auto ft = std::filesystem::last_write_time(ctx_.saves.slot_path(view.slot), ec);
     if (ec) {
         return {};
     }
 #if defined(__cpp_lib_chrono) && __cpp_lib_chrono >= 201907
-    const auto sys = std::chrono::file_clock::to_sys(ft);
+    const auto sys = std::chrono::clock_cast<std::chrono::system_clock>(ft);
     const auto secs =
         std::chrono::duration_cast<std::chrono::seconds>(sys.time_since_epoch()).count();
 #else
