@@ -17,7 +17,7 @@ pip install opencv-python numpy
 ```
 
 The input image must be a PNG (or other OpenCV-readable format) **with an alpha
-channel** — run it through the [Transparentizer](transparentizer.md) first if needed.
+channel** — run it through the [Chroma key lab](chromakeylab.md) first if needed.
 
 ## Basic usage
 
