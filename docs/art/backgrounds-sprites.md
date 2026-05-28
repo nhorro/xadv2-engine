@@ -51,7 +51,7 @@ grilla fija y dejan artefactos.
 Flujo recomendado:
 
 1. Generar la imagen (fondo u hoja de sprites).
-2. [Transparentizar](../authoring/tools/transparentizer.md) si necesitas alpha real.
+2. [Quitar el fondo](../authoring/tools/chromakeylab.md) (chroma key lab) si necesitas alpha real.
 3. [Empaquetar la hoja de sprites](../authoring/tools/spritesheet-packer.md) para
    obtener un atlas limpio + YAML.
 4. Colocar las capas con el [editor de salas](../authoring/tools/room-editor.md).

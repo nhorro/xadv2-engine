@@ -110,7 +110,7 @@ nav:
       - Data formats: authoring/data-formats.md
       - Tools:
           - authoring/tools/index.md
-          - Transparentizer: authoring/tools/transparentizer.md
+          - Chroma key lab: authoring/tools/chromakeylab.md
           - Spritesheet packer: authoring/tools/spritesheet-packer.md
           - Room editor: authoring/tools/room-editor.md
           - Avatar maker: authoring/tools/avatar-maker.md
