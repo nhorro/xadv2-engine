@@ -130,6 +130,28 @@ ShaderProgram* ResourceCache::shader(const std::string& logical) {
     return ptr;
 }
 
+ResourceStats ResourceCache::stats() const {
+    ResourceStats s;
+    s.texture_count = textures_.size();
+    for (const auto& [logical, tex] : textures_) {
+        const sf::Vector2u size = tex.getSize();
+        s.texture_bytes += static_cast<std::size_t>(size.x) * size.y * 4;
+    }
+    s.font_count = fonts_.size();
+    s.sound_count = sounds_.size();
+    for (const auto& [logical, buf] : sounds_) {
+        s.sound_bytes += static_cast<std::size_t>(buf.getSampleCount()) * sizeof(sf::Int16);
+    }
+    // A present key with a null program records a load that already failed; only
+    // count programs that actually hold a compiled shader.
+    for (const auto& [logical, program] : shaders_) {
+        if (program) {
+            ++s.shader_count;
+        }
+    }
+    return s;
+}
+
 std::string ResourceCache::read_text(const std::string& logical) const {
     return source_.read_text(logical);
 }

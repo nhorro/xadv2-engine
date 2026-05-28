@@ -9,6 +9,7 @@
 #include "engine/core/lua_api.hpp"
 #include "engine/core/manifest.hpp"
 #include "engine/core/pack_resource_source.hpp"
+#include "engine/core/profiler.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
 #include "engine/core/save_service.hpp"
@@ -352,11 +353,26 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
     scenes.set_transition_duration(kSceneTransition);
     scenes.start_fade_in();
 
+    // Resource-profiling mode (#112): development-only. Samples frame timing, RAM,
+    // and resource-cache footprint, and writes a report at exit. Off unless the
+    // manifest's `development.profiling` flag is set.
+    std::optional<Profiler> profiler;
+    if (manifest.development.profiling) {
+        profiler.emplace(
+            log,
+            user_data_dir(manifest.id) / "profiling-report.txt",
+            manifest.id,
+            [&resources] { return resources.stats(); },
+            manifest.development.profiling_interval);
+    }
+
     sf::Clock clock;
+    sf::Clock work_clock; // CPU+draw cost of a frame, excluding the vsync wait
     float accumulator = 0.0f;
     int frames = 0;
 
     while (window.isOpen() && scenes.running()) {
+        work_clock.restart();
         sf::Event event;
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed) {
@@ -380,7 +396,8 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
             display.set_fullscreen(mode->fullscreen);
         }
 
-        accumulator += clock.restart().asSeconds();
+        const float frame_seconds = clock.restart().asSeconds();
+        accumulator += frame_seconds;
         int steps = 0;
         while (accumulator >= kFixedDt && steps < kMaxStepsPerFrame) {
             scripting.update(kFixedDt);
@@ -433,6 +450,15 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
                 log.info("wrote screenshot " + opts.screenshot_path);
             }
         }
+
+        // Feed the profiler before the vsync wait so `work_seconds` reflects only
+        // CPU + draw cost, while `frame_seconds` carries the full frame-to-frame
+        // pacing (vsync included → real fps).
+        if (profiler) {
+            profiler->frame(frame_seconds,
+                            work_clock.getElapsedTime().asSeconds(),
+                            scenes.current_scene_id());
+        }
         window.display();
 
         if (opts.max_frames > 0 && ++frames >= opts.max_frames) {
@@ -442,6 +468,9 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
         }
     }
 
+    if (profiler) {
+        profiler->finish();
+    }
     return 0;
 }
 

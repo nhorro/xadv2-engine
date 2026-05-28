@@ -217,6 +217,10 @@ Manifest parse_manifest(const std::string& yaml_text) {
         m.development.show_state = dev["show_state"] ? dev["show_state"].as<bool>() : false;
         m.development.allow_room_reload =
             dev["allow_room_reload"] ? dev["allow_room_reload"].as<bool>() : false;
+        m.development.profiling = dev["profiling"] ? dev["profiling"].as<bool>() : false;
+        if (dev["profiling_interval"]) {
+            m.development.profiling_interval = dev["profiling_interval"].as<double>();
+        }
     }
 
     if (!root["entry"] || root["entry"].as<std::string>().empty()) {
