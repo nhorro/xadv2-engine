@@ -133,7 +133,7 @@ and a Windows CI job. Related to but distinct from #40 (packaging smoke path).
 
 ### Tools / pipelines (from PR #60)
 
-The room editor, transparentizer, and packer work but need bug-fixing, docs, and the
+The room editor, chroma key lab, and packer work but need bug-fixing, docs, and the
 ad-hoc "pipelines" directories replaced with a documented flow. Tracked under #54;
 recommend updating that issue rather than opening a new one.
 
