@@ -6,8 +6,10 @@
 #
 # The project is compiled at image-build time and the headless doctest/CTest
 # suite is run as a gate. The default command launches the sample game, which
-# opens a window and therefore needs an X11 display shared from the host — see
-# docker/README.md. The test suite (engine-test service) is fully headless.
+# opens a window (X11) and plays audio; both the display and a PulseAudio/PipeWire
+# socket are shared from the host by the compose `engine` service — see
+# docker/README.md. `libpulse0` lets OpenAL's PulseAudio backend load at runtime
+# (it dlopens libpulse). The test suite (engine-test service) is fully headless.
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -20,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         liblua5.4-dev \
         libyaml-cpp-dev \
         ca-certificates \
+        libpulse0 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work

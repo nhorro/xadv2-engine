@@ -45,10 +45,22 @@ docker compose run --rm engine ./build/games/themummy/pac_themummy \
 > Wayland-only hosts: run via XWayland (the default on most desktops) or set
 > `DISPLAY` to your XWayland socket. macOS/Windows hosts need an X server
 > (XQuartz / VcXsrv) and a TCP `DISPLAY`.
->
-> Audio is not wired into the container, so the game runs silently and SFML logs
-> harmless `OpenAL` warnings on exit. Map a sound device (e.g. PulseAudio) if you
-> need audio.
+
+### Audio
+
+The `engine` service shares the host's **PulseAudio / PipeWire** socket so the
+game has sound out of the box — no extra flags. It mounts
+`$XDG_RUNTIME_DIR/pulse/native` and `~/.config/pulse/cookie` and sets
+`PULSE_SERVER`; the image ships `libpulse0` so OpenAL's PulseAudio backend loads.
+This works on PulseAudio and on PipeWire desktops (via the pulse-compat socket).
+
+If your host has no pulse socket (e.g. a bare server), audio falls back to a null
+device and SFML logs harmless `OpenAL` warnings. Two options:
+
+- ALSA instead of pulse: drop the pulse mounts/`PULSE_SERVER` and run with the
+  sound devices exposed — `docker compose run --rm --device /dev/snd engine`.
+- No audio: remove the pulse `environment`/`volumes` lines from the `engine`
+  service; the game then runs silently.
 
 ## Room editor (browser tool)
 
