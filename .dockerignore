@@ -1,0 +1,13 @@
+# Keep build artifacts and local state out of the build context so a host build
+# (e.g. a Fedora build/ dir) never leaks into the Linux container image.
+.git
+.github
+build*
+site/
+.venv/
+vcpkg_installed/
+**/__pycache__/
+**/*.pyc
+.doc
+.secret
+*.pak
