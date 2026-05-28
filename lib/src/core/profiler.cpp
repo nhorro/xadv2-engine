@@ -77,11 +77,11 @@ Profiler::Profiler(Diagnostics& log,
     log_.info("profiling: enabled (report -> " + report_path_.string() + ")");
 }
 
-void Profiler::frame(double frame_seconds, double work_seconds, const std::string& scene_id) {
-    const double frame_ms = frame_seconds * 1000.0;
-    const double work_ms = work_seconds * 1000.0;
+void Profiler::frame(const FrameInfo& info) {
+    const double frame_ms = info.frame_seconds * 1000.0;
+    const double work_ms = info.work_seconds * 1000.0;
 
-    SceneProfile& sp = scenes_[scene_id];
+    SceneProfile& sp = scenes_[std::string(info.scene_id)];
     ++sp.frames;
     sp.frame_ms_sum += frame_ms;
     sp.work_ms_sum += work_ms;
@@ -89,25 +89,27 @@ void Profiler::frame(double frame_seconds, double work_seconds, const std::strin
     if (frame_ms > kSlowFrameMs) {
         ++sp.slow_frames;
     }
+    sp.peak_shader_passes = std::max(sp.peak_shader_passes, info.shader_passes);
+    sp.peak_shader_rt_bytes = std::max(sp.peak_shader_rt_bytes, info.shader_rt_bytes);
 
     ++total_frames_;
-    total_seconds_ += frame_seconds;
+    total_seconds_ += info.frame_seconds;
     worst_frame_ms_ = std::max(worst_frame_ms_, frame_ms);
 
-    interval_seconds_accum_ += frame_seconds;
+    interval_seconds_accum_ += info.frame_seconds;
     ++interval_frames_;
     interval_work_ms_sum_ += work_ms;
 
     if (interval_seconds_accum_ >= interval_seconds_) {
-        take_sample(scene_id);
+        take_sample(info);
     }
 }
 
-void Profiler::take_sample(const std::string& scene_id) {
+void Profiler::take_sample(const FrameInfo& info) {
     const ResourceStats res = sample_resources_ ? sample_resources_() : ResourceStats{};
     const std::size_t rss = process_rss_bytes();
     peak_rss_bytes_ = std::max(peak_rss_bytes_, rss);
-    merge_peak(scenes_[scene_id].peak, res);
+    merge_peak(scenes_[std::string(info.scene_id)].peak, res);
 
     const double fps =
         interval_seconds_accum_ > 0.0 ? interval_frames_ / interval_seconds_accum_ : 0.0;
@@ -115,10 +117,11 @@ void Profiler::take_sample(const std::string& scene_id) {
         interval_frames_ > 0 ? interval_work_ms_sum_ / static_cast<double>(interval_frames_) : 0.0;
 
     std::ostringstream line;
-    line << "profiling: t=" << one_dp(total_seconds_) << "s scene=" << scene_id
+    line << "profiling: t=" << one_dp(total_seconds_) << "s scene=" << info.scene_id
          << " fps=" << one_dp(fps) << " work=" << one_dp(avg_work_ms) << "ms"
          << " RAM=" << mib(rss) << " texVRAM=" << mib(res.texture_bytes) << "(" << res.texture_count
-         << ") shaders=" << res.shader_count;
+         << ") shaders=" << res.shader_count << " passes=" << info.shader_passes
+         << " rtVRAM=" << mib(info.shader_rt_bytes);
     log_.info(line.str());
 
     interval_seconds_accum_ = 0.0;
@@ -132,12 +135,16 @@ std::string Profiler::build_report() const {
     double frame_ms_sum = 0.0;
     double work_ms_sum = 0.0;
     std::uint64_t slow_frames = 0;
+    std::uint64_t peak_passes = 0;
+    std::size_t peak_rt_bytes = 0;
     ResourceStats peak;
     for (const auto& [id, sp] : scenes_) {
         frames += sp.frames;
         frame_ms_sum += sp.frame_ms_sum;
         work_ms_sum += sp.work_ms_sum;
         slow_frames += sp.slow_frames;
+        peak_passes = std::max(peak_passes, sp.peak_shader_passes);
+        peak_rt_bytes = std::max(peak_rt_bytes, sp.peak_shader_rt_bytes);
         merge_peak(peak, sp.peak);
     }
 
@@ -158,7 +165,9 @@ std::string Profiler::build_report() const {
     r << "peak RAM (RSS):     " << mib(peak_rss_bytes_) << "\n";
     r << "peak texture VRAM:  " << mib(peak.texture_bytes) << " across " << peak.texture_count
       << " textures (upper bound)\n";
-    r << "peak shaders:       " << peak.shader_count << "\n";
+    r << "peak shaders:       " << peak.shader_count << " loaded\n";
+    r << "peak shader passes: " << peak_passes << " per frame\n";
+    r << "peak shader RT VRAM:" << mib(peak_rt_bytes) << " (off-screen ping-pong buffers)\n";
     r << "peak sounds:        " << peak.sound_count << " (" << mib(peak.sound_bytes) << ")\n";
     r << "peak fonts:         " << peak.font_count << "\n";
 
@@ -166,14 +175,20 @@ std::string Profiler::build_report() const {
     for (const auto& [id, sp] : scenes_) {
         const double scene_avg =
             sp.frames > 0 ? sp.frame_ms_sum / static_cast<double>(sp.frames) : 0.0;
+        const double scene_work =
+            sp.frames > 0 ? sp.work_ms_sum / static_cast<double>(sp.frames) : 0.0;
         r << "  " << std::left << std::setw(16) << id << std::right << sp.frames << " frames, avg "
-          << one_dp(scene_avg) << " ms, worst " << one_dp(sp.frame_ms_worst) << " ms, "
-          << sp.slow_frames << " slow, peak VRAM " << mib(sp.peak.texture_bytes) << " ("
-          << sp.peak.texture_count << " tex), " << sp.peak.shader_count << " shaders\n";
+          << one_dp(scene_avg) << " ms (work " << one_dp(scene_work) << " ms), worst "
+          << one_dp(sp.frame_ms_worst) << " ms, " << sp.slow_frames << " slow\n";
+        r << "  " << std::setw(16) << ""
+          << "  VRAM " << mib(sp.peak.texture_bytes) << " (" << sp.peak.texture_count << " tex), "
+          << sp.peak.shader_count << " shaders, " << sp.peak_shader_passes << " passes/frame, RT "
+          << mib(sp.peak_shader_rt_bytes) << "\n";
     }
 
     r << "\nnote: texture VRAM is an upper-bound estimate (width*height*4, RGBA8); GPU-side\n";
-    r << "compression and mipmaps are not accounted for. CPU is approximated by frame time.\n";
+    r << "compression and mipmaps are not accounted for. shader RT VRAM is the off-screen\n";
+    r << "ping-pong buffers (2 x viewport, RGBA8). CPU is approximated by frame time.\n";
     return r.str();
 }
 

@@ -5,6 +5,7 @@
 #include <SFML/Graphics/Rect.hpp>
 #include <SFML/Graphics/RenderTexture.hpp>
 
+#include <cstddef>
 #include <memory>
 #include <vector>
 
@@ -55,6 +56,9 @@ private:
     std::unique_ptr<sf::RenderTexture> rt_[2];
     unsigned rt_width_ = 0;
     unsigned rt_height_ = 0;
+    // This chain's current render-target VRAM contribution (both pooled RTs),
+    // mirrored into the process-wide profiling counter (#112) on resize/destroy.
+    std::size_t rt_bytes_ = 0;
 };
 
 } // namespace pac::gfx

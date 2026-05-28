@@ -1,5 +1,6 @@
 #include "engine/gfx/shader_chain.hpp"
 
+#include "engine/core/render_stats.hpp"
 #include "engine/core/resource_cache.hpp"
 
 #include <SFML/Graphics/Glsl.hpp>
@@ -15,7 +16,13 @@
 namespace pac::gfx {
 
 ShaderChain::ShaderChain() = default;
-ShaderChain::~ShaderChain() = default;
+
+ShaderChain::~ShaderChain() {
+    // Release this chain's contribution to the live RT-VRAM profiling counter.
+    if (rt_bytes_ != 0) {
+        pac::core::add_shader_rt_bytes(-static_cast<std::ptrdiff_t>(rt_bytes_));
+    }
+}
 
 void ShaderChain::ensure_size(unsigned width, unsigned height) {
     if (rt_[0] && rt_width_ >= width && rt_height_ >= height) {
@@ -30,6 +37,11 @@ void ShaderChain::ensure_size(unsigned width, unsigned height) {
         rt->create(rt_width_, rt_height_);
         rt->setSmooth(false);
     }
+    // Mirror the new pool size into the profiling counter (#112): two RGBA8 RTs.
+    const std::size_t new_bytes = static_cast<std::size_t>(rt_width_) * rt_height_ * 4 * 2;
+    pac::core::add_shader_rt_bytes(static_cast<std::ptrdiff_t>(new_bytes) -
+                                   static_cast<std::ptrdiff_t>(rt_bytes_));
+    rt_bytes_ = new_bytes;
 }
 
 const sf::Texture* ShaderChain::apply(pac::core::ResourceCache& resources,
@@ -103,6 +115,7 @@ const sf::Texture* ShaderChain::apply(pac::core::ResourceCache& resources,
 
         std::swap(src, dst);
         any_applied = true;
+        pac::core::note_shader_passes(1); // profiling counter (#112)
     }
 
     if (!any_applied) {
