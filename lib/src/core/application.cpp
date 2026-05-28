@@ -10,6 +10,7 @@
 #include "engine/core/manifest.hpp"
 #include "engine/core/pack_resource_source.hpp"
 #include "engine/core/profiler.hpp"
+#include "engine/core/render_stats.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
 #include "engine/core/save_service.hpp"
@@ -453,11 +454,16 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
 
         // Feed the profiler before the vsync wait so `work_seconds` reflects only
         // CPU + draw cost, while `frame_seconds` carries the full frame-to-frame
-        // pacing (vsync included → real fps).
+        // pacing (vsync included → real fps). The render counters were accumulated
+        // during scenes.draw() above; read them here, then reset for the next frame.
         if (profiler) {
-            profiler->frame(frame_seconds,
-                            work_clock.getElapsedTime().asSeconds(),
-                            scenes.current_scene_id());
+            const RenderStats rs = render_stats();
+            profiler->frame({frame_seconds,
+                             work_clock.getElapsedTime().asSeconds(),
+                             rs.shader_passes,
+                             rs.shader_rt_bytes,
+                             scenes.current_scene_id()});
+            reset_shader_passes();
         }
         window.display();
 
