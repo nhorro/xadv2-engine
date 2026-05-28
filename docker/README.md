@@ -56,16 +56,17 @@ docker compose run --rm engine ./build/games/themummy/pac_themummy \
 ### Audio
 
 The `engine` service **targets a desktop host**. It shares the host's
-**PulseAudio / PipeWire** socket (`$XDG_RUNTIME_DIR/pulse/native`) and sets
-`PULSE_SERVER` so the game has sound out of the box — no extra flags. Only the
-socket is mounted (no cookie): it is world-writable on a normal desktop, which is
-enough for the local pulse-compat server. The image ships `libpulse0` so OpenAL's
-PulseAudio backend loads (it dlopens libpulse). Works on PulseAudio and on
-PipeWire desktops (via the pulse-compat socket).
+**PulseAudio / PipeWire** socket (`$XDG_RUNTIME_DIR/pulse/native`, via
+`PULSE_SERVER`) and the pulse cookie (`~/.config/pulse/cookie`, via
+`PULSE_COOKIE`) so the game has sound out of the box — no extra flags. The cookie
+is what classic PulseAudio (e.g. Ubuntu 20.04 / 22.04) needs to authenticate;
+PipeWire's pulse-compat server ignores it, so the same config works on both. The
+image ships `libpulse0` so OpenAL's PulseAudio backend loads (it dlopens
+libpulse).
 
-> **No pulse socket on the host?** Compose has no "mount only if it exists", so
-> the bind mount is unconditional: on a host *without* `$XDG_RUNTIME_DIR/pulse/native`
-> Docker would create a **root-owned empty directory** at that path (and audio
+> **No pulse on the host?** Compose has no "mount only if it exists", so the bind
+> mounts are unconditional: on a host *without* the pulse socket / cookie Docker
+> would create **root-owned empty directories** at those source paths (and audio
 > would still end up silent). So this is not a graceful fallback. On a bare /
 > headless host, either use the `engine-test` service (no host mounts), or remove
 > the pulse `environment` + `volumes` lines from the `engine` service to run the
