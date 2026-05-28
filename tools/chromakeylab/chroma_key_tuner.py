@@ -25,11 +25,65 @@ import numpy as np
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("image", type=Path)
-    p.add_argument("--key", nargs=3, type=int, default=[255, 0, 255],
-                   metavar=("R", "G", "B"), help="chroma key RGB color")
+    p.add_argument(
+        "--key",
+        nargs=3,
+        type=int,
+        default=None,
+        metavar=("R", "G", "B"),
+        help="chroma key RGB; auto-detected from image borders when omitted",
+    )
+    p.add_argument(
+        "--patch",
+        type=int,
+        default=20,
+        help="corner patch size for auto chroma detection (pixels)",
+    )
     p.add_argument("--output", type=Path, default=None)
     p.add_argument("--scale", type=float, default=0.75, help="preview scale")
     return p.parse_args()
+
+
+def estimate_key_color(rgb: np.ndarray, patch: int = 20) -> np.ndarray:
+    """Median chroma color sampled from the four corner patches (mirrors the notebook)."""
+    h, w = rgb.shape[:2]
+    patch = max(1, min(patch, h // 2, w // 2))
+    patches = [
+        rgb[:patch, :patch],
+        rgb[:patch, w - patch:],
+        rgb[h - patch:, :patch],
+        rgb[h - patch:, w - patch:],
+    ]
+    samples = np.concatenate([p.reshape(-1, 3) for p in patches], axis=0)
+    return np.median(samples, axis=0).astype(np.uint8)
+
+
+def background_connected_to_border(bg_mask: np.ndarray) -> np.ndarray:
+    """Connected components of `bg_mask` that touch a border row or column."""
+    num, labels = cv2.connectedComponents(bg_mask.astype(np.uint8), connectivity=4)
+    if num <= 1:
+        return np.zeros_like(bg_mask, dtype=bool)
+    border_labels = set()
+    border_labels.update(np.unique(labels[0]).tolist())
+    border_labels.update(np.unique(labels[-1]).tolist())
+    border_labels.update(np.unique(labels[:, 0]).tolist())
+    border_labels.update(np.unique(labels[:, -1]).tolist())
+    border_labels.discard(0)
+    return np.isin(labels, list(border_labels))
+
+
+def crop_to_content(rgba: np.ndarray, alpha_threshold: int = 5, padding: int = 0) -> np.ndarray:
+    """Crop to the bounding box of pixels with alpha > threshold (+ padding)."""
+    alpha = rgba[..., 3]
+    mask = alpha > alpha_threshold
+    if not np.any(mask):
+        return rgba
+    ys, xs = np.where(mask)
+    y0 = max(int(ys.min()) - padding, 0)
+    y1 = min(int(ys.max()) + padding + 1, rgba.shape[0])
+    x0 = max(int(xs.min()) - padding, 0)
+    x1 = min(int(xs.max()) + padding + 1, rgba.shape[1])
+    return rgba[y0:y1, x0:x1]
 
 
 def imread_rgb(path: Path) -> np.ndarray:
@@ -52,6 +106,7 @@ def create_trackbar_window(name: str) -> None:
     cv2.createTrackbar("Erode k", name, 0, 15, lambda _: None)
     cv2.createTrackbar("Feather x10", name, 20, 100, lambda _: None)
     cv2.createTrackbar("Despill x100", name, 70, 100, lambda _: None)
+    cv2.createTrackbar("Border only", name, 1, 1, lambda _: None)  # preserve interior chroma
     cv2.createTrackbar("View", name, 0, 5, lambda _: None)
 
 
@@ -99,6 +154,7 @@ def make_output(
     erode_k: int,
     feather_px: float,
     despill_strength: float,
+    border_only: bool,
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     img_f = img.astype(np.float32)
     key_f = key_rgb.astype(np.float32)
@@ -114,6 +170,11 @@ def make_output(
     bg_hsv = (hue_dist <= hue_tol) & (S >= min_sat) & (V >= min_val)
 
     bg = bg_rgb | bg_hsv
+    # Keep only background reachable from the image border, so interior pixels
+    # that share the chroma colour stay foreground (notebook §"Keep only
+    # background connected to the image border").
+    if border_only:
+        bg = background_connected_to_border(bg)
     bg_clean = morph_mask(bg, open_k, close_k, dilate_k, erode_k)
     fg_clean = ~bg_clean
 
@@ -154,7 +215,11 @@ def resize_preview(img: np.ndarray, scale: float) -> np.ndarray:
 def main() -> None:
     args = parse_args()
     img = imread_rgb(args.image)
-    key_rgb = np.array(args.key, dtype=np.uint8)
+    if args.key is None:
+        key_rgb = estimate_key_color(img, patch=args.patch)
+        print(f"auto chroma RGB: {tuple(int(x) for x in key_rgb)}")
+    else:
+        key_rgb = np.array(args.key, dtype=np.uint8)
     output = args.output or args.image.with_name(args.image.stem + "_extracted.png")
 
     controls = "controls"
@@ -174,11 +239,12 @@ def main() -> None:
         erode_k = cv2.getTrackbarPos("Erode k", controls)
         feather_px = cv2.getTrackbarPos("Feather x10", controls) / 10.0
         despill = cv2.getTrackbarPos("Despill x100", controls) / 100.0
+        border_only = cv2.getTrackbarPos("Border only", controls) > 0
         view = cv2.getTrackbarPos("View", controls)
 
         rgba, debug = make_output(
             img, key_rgb, rgb_thresh, hue_tol, min_sat, min_val,
-            open_k, close_k, dilate_k, erode_k, feather_px, despill
+            open_k, close_k, dilate_k, erode_k, feather_px, despill, border_only
         )
         latest_rgba = rgba
 
@@ -209,8 +275,11 @@ def main() -> None:
         if k in (27, ord("q"), ord("Q")):
             break
         if k in (ord("s"), ord("S")) and latest_rgba is not None:
-            cv2.imwrite(str(output), cv2.cvtColor(latest_rgba, cv2.COLOR_RGBA2BGRA))
-            print(f"Saved {output}")
+            cropped = crop_to_content(latest_rgba)
+            cv2.imwrite(str(output), cv2.cvtColor(cropped, cv2.COLOR_RGBA2BGRA))
+            h0, w0 = latest_rgba.shape[:2]
+            h1, w1 = cropped.shape[:2]
+            print(f"Saved {output}  ({w0}x{h0} -> {w1}x{h1})")
 
     cv2.destroyAllWindows()
 
