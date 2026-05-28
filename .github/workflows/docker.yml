@@ -1,0 +1,57 @@
+# Docker image validation (issue #125).
+#
+# Keeps the dev / tooling Docker environments from bit-rotting without touching the
+# main build/test matrix in ci.yml. It runs only when the Docker files change, plus
+# a weekly schedule to catch base-image / upstream drift. Building the `engine`
+# image compiles the project and runs the headless doctest/CTest suite as part of
+# its build (the Dockerfile's `RUN ... ctest`), so a green build is also a green
+# Linux build+test inside the container. No X11/audio is needed — those are runtime
+# concerns of the `engine` service, not the image build.
+name: Docker
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'docker/**'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/workflows/docker.yml'
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'docker/**'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/workflows/docker.yml'
+  schedule:
+    - cron: '0 6 * * 1' # weekly (Mon 06:00 UTC): catch base-image / upstream drift
+
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-images:
+    name: Build Docker images
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Build engine + tools images
+        # `engine` compiles the project and runs the headless ctest suite during its
+        # image build; room-editor builds the shared tools image. engine-test/tools
+        # reuse those same image tags, so these two cover all four services.
+        run: docker compose build engine room-editor
+
+      - name: Smoke-check the tools image
+        # Confirm the Python tool dependencies import at runtime (catches missing
+        # system libs such as libglib). --no-deps avoids starting other services.
+        run: >
+          docker compose run --rm --no-deps tools -lc
+          "python3 -c 'import cv2, numpy, yaml; print(cv2.__version__)'"
