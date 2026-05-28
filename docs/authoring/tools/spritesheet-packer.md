@@ -31,9 +31,14 @@ Sprites are auto-named `frame_000`, `frame_001`, … unless you supply a names f
 
 ## Recommended workflow
 
-1. Run once with `--frames-dir debug_frames` to dump each detected crop.
-2. Inspect the crops; tune detection until each crop is exactly one logical frame:
-   `--alpha-threshold`, `--merge-kernel`, `--row-tolerance`, `--min-area`.
+1. Run once with `--debug-image debug.png` to see what the packer detected.
+   Green numbered rects are kept components in traversal order; red rects
+   are dropped (below `--min-area`); orange tint marks pixels the
+   morphology close added on top of the raw alpha mask — a smoking gun for
+   "two-detected-as-one" failures.
+2. Tune detection (`--alpha-threshold`, `--merge-kernel`, `--row-tolerance`,
+   `--min-area`) until the green rect count matches what you expect. Use
+   `--frames-dir` once you're close to dump each crop individually.
 3. Write a `names.txt` matching the **source traversal order** (rows top-to-bottom,
    left-to-right) — e.g. a 4×5 character sheet:
    ```text
@@ -45,11 +50,17 @@ Sprites are auto-named `frame_000`, `frame_001`, … unless you supply a names f
 4. Re-run with `--names-file names.txt` and add anchors, e.g. `--add-anchor feet 0.5 1.0`.
 5. Use the generated YAML in the engine animation definitions.
 
+!!! tip "Debug image is written even when the run fails"
+    `--debug-image` is rendered before the `--names-file` length check, so
+    if you get "20 names but 16 sprites were detected", the debug PNG is
+    already on disk and tells you which 4 are missing.
+
 ## Key options
 
 | Option | Purpose |
 |--------|---------|
 | `--out-image` / `--out-yaml` | Output atlas PNG and metadata YAML (required). |
+| `--debug-image` | Diagnostic PNG showing kept (green), dropped (red), and bridged-by-close (orange) regions. |
 | `--frames-dir` | Dump each detected crop as a PNG (for tuning). |
 | `--names-file` | Explicit sprite ids in traversal order (recommended). |
 | `--prefix` / `--start-index` | Auto-naming controls. |
