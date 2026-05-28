@@ -459,23 +459,54 @@ This usually means one of the following:
 - A small artifact was detected as a sprite.
 - A valid sprite was ignored because its visible area was below `--min-area`.
 
-Use `--frames-dir` to inspect what was actually detected.
+The fastest way to see which case applies is `--debug-image PATH` (no
+`--frames-dir` needed). It writes a single PNG showing the source sheet with:
+
+- **green numbered rects** — kept components, in traversal order. A green
+  rect spanning two sprites means the close kernel bridged them.
+- **red rects** — components dropped because their area was below `--min-area`.
+- **orange tint** — pixels added by the morphology close
+  (`mask_post & ~mask_pre`). An orange filament joining two sprites is the
+  smoking gun for "two-detected-as-one".
+- A legend at the top with the parameters in effect.
+
+The debug image is written before the names-file mismatch error, so you can
+inspect it even when the run fails.
+
+```bash
+python3 pack_spritesheet.py messy_sheet.png \
+  --out-image atlas.png --out-yaml atlas.yml \
+  --debug-image debug.png \
+  --merge-kernel 1 --min-area 100
+```
 
 ### Two frames are detected as one sprite
 
-Try lowering `--merge-kernel`.
+Try lowering `--merge-kernel`. Look at the `--debug-image` — an orange tint
+between the two sprites confirms the close kernel is the bridge.
 
 ### One frame is split into multiple sprites
 
-Try increasing `--merge-kernel`.
+Try increasing `--merge-kernel`. The debug image will show two adjacent
+green rects where you expected one.
 
 ### Noise is detected as a sprite
 
-Try increasing `--alpha-threshold` or `--min-area`.
+Try increasing `--alpha-threshold` or `--min-area`. Tiny green rects on
+artifacts make the noise obvious.
+
+### A valid sprite is missing
+
+Look for a **red rect** in the debug image where the sprite should be —
+that's a component below `--min-area`. Either lower `--min-area` or check
+that `--alpha-threshold` isn't chopping off a faint tail. No rect at all in
+that area means the alpha was already empty before threshold.
 
 ### Rows are detected in the wrong order
 
-Try adjusting `--row-tolerance`.
+Try adjusting `--row-tolerance`. The numbered green rects in the debug
+image show the resolved traversal order; if `#5` lands on a sprite you
+thought was `#3`, the row sort grouped them differently.
 
 The algorithm is heuristic. It works best when frames are separated clearly and arranged in visually consistent rows.
 

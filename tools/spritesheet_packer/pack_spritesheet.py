@@ -31,6 +31,17 @@ class Sprite:
     anchors: dict[str, tuple[int, int]] | None = None
 
 
+@dataclass(frozen=True)
+class DetectedBlob:
+    """One connected component picked up by `extract_blobs`. `kept` is False when
+    the blob fell below `--min-area` and was excluded from the packed output —
+    visualizing it in the debug image is what makes lost sprites obvious."""
+
+    box: Box
+    area: int
+    kept: bool
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -110,6 +121,18 @@ def parse_args() -> argparse.Namespace:
         help="Image path to store inside YAML. Defaults to --out-image name.",
     )
     parser.add_argument(
+        "--debug-image",
+        type=Path,
+        default=None,
+        help=(
+            "Optional PNG showing what the packer sees: the source sheet with "
+            "kept detection rects (green, numbered), dropped components below "
+            "--min-area (red), and zones where --merge-kernel bridged separate "
+            "components (orange tint). Useful when the detected count doesn't "
+            "match the expected count."
+        ),
+    )
+    parser.add_argument(
         "--add-anchor",
         nargs=3,
         action="append",
@@ -132,31 +155,43 @@ def load_image(path: Path) -> np.ndarray:
     return image
 
 
-def detect_boxes(
+def extract_blobs(
     image: np.ndarray,
     alpha_threshold: int,
     merge_kernel: int,
     min_area: int,
-    row_tolerance: int,
-) -> list[Box]:
+) -> tuple[np.ndarray, np.ndarray, list[DetectedBlob]]:
+    """Run the threshold + close + connectedComponents pipeline and report ALL
+    components — both kept and discarded — alongside the pre- and post-close
+    masks. Splitting it out from `detect_boxes` is what lets the debug image
+    show why a sprite count came out wrong."""
     alpha = image[:, :, 3]
-    mask = (alpha > alpha_threshold).astype(np.uint8) * 255
-
+    mask_pre = (alpha > alpha_threshold).astype(np.uint8) * 255
+    mask_post = mask_pre
     if merge_kernel > 1:
         kernel = cv2.getStructuringElement(
             cv2.MORPH_RECT, (merge_kernel, merge_kernel)
         )
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        mask_post = cv2.morphologyEx(mask_pre, cv2.MORPH_CLOSE, kernel)
 
-    num_labels, _, stats, _ = cv2.connectedComponentsWithStats(mask)
-    boxes: list[Box] = []
+    num_labels, _, stats, _ = cv2.connectedComponentsWithStats(mask_post)
+    blobs: list[DetectedBlob] = []
     for label in range(1, num_labels):
         x, y, w, h, area = stats[label]
-        if area >= min_area:
-            boxes.append(Box(int(x), int(y), int(w), int(h)))
+        blobs.append(
+            DetectedBlob(
+                box=Box(int(x), int(y), int(w), int(h)),
+                area=int(area),
+                kept=int(area) >= min_area,
+            )
+        )
+    return mask_pre, mask_post, blobs
 
-    boxes.sort(key=lambda box: (box.y, box.x))
 
+def sort_boxes_in_traversal_order(boxes: list[Box], row_tolerance: int) -> list[Box]:
+    """Top-to-bottom, then left-to-right within each row (with a per-row Y
+    tolerance so a slight vertical wobble doesn't break the sort)."""
+    boxes = sorted(boxes, key=lambda box: (box.y, box.x))
     rows: list[list[Box]] = []
     for box in boxes:
         for row in rows:
@@ -166,11 +201,22 @@ def detect_boxes(
                 break
         else:
             rows.append([box])
-
     for row in rows:
         row.sort(key=lambda box: box.x)
     rows.sort(key=lambda row: sum(box.y for box in row) / len(row))
     return [box for row in rows for box in row]
+
+
+def detect_boxes(
+    image: np.ndarray,
+    alpha_threshold: int,
+    merge_kernel: int,
+    min_area: int,
+    row_tolerance: int,
+) -> list[Box]:
+    _, _, blobs = extract_blobs(image, alpha_threshold, merge_kernel, min_area)
+    kept = [b.box for b in blobs if b.kept]
+    return sort_boxes_in_traversal_order(kept, row_tolerance)
 
 
 def next_power_of_two(value: int) -> int:
@@ -294,6 +340,124 @@ def render_yaml(
     return "\n".join(lines) + "\n"
 
 
+def render_debug_image(
+    image: np.ndarray,
+    mask_pre: np.ndarray,
+    mask_post: np.ndarray,
+    blobs: list[DetectedBlob],
+    sorted_boxes: list[Box],
+    alpha_threshold: int,
+    merge_kernel: int,
+    min_area: int,
+    row_tolerance: int,
+) -> np.ndarray:
+    """One PNG that explains what the packer saw.
+
+    Failure modes the colours map to:
+      * **green numbered rects** — kept components, in traversal order. A rect
+        spanning two visibly-separate sprites means the close kernel bridged
+        them (lower `--merge-kernel` or remove the bridging artifact).
+      * **red rects** — components below `--min-area`. A red rect over a sprite
+        you expected to detect means `--min-area` is too high (or
+        `--alpha-threshold` chopped its tail off).
+      * **orange tint** — pixels added by the morphology close
+        (`mask_post & ~mask_pre`). When an orange filament joins two sprites,
+        that's the smoking gun for the "two-detected-as-one" failure mode.
+    """
+    h, w = image.shape[:2]
+
+    # Composite RGBA over a light-grey background so transparent regions are
+    # visible, then dim slightly so overlay strokes pop.
+    bgr = image[..., :3].astype(np.float32)
+    a = image[..., 3:4].astype(np.float32) / 255.0
+    bg = np.full_like(bgr, 220.0)  # near-white grey, BGR=GRY
+    out_f = bgr * a + bg * (1.0 - a)
+    out_f = out_f * 0.7 + 255.0 * 0.3
+    out = np.clip(out_f, 0, 255).astype(np.uint8)
+
+    # Tint pixels added by the close (where two components were potentially
+    # bridged). Vivid orange in BGR.
+    added = (mask_post > 0) & (mask_pre == 0)
+    if added.any():
+        tint = np.array([40, 130, 240], dtype=np.float32)  # BGR orange
+        out_f = out.astype(np.float32)
+        out_f[added] = 0.6 * out_f[added] + 0.4 * tint
+        out = np.clip(out_f, 0, 255).astype(np.uint8)
+
+    # Box → traversal index lookup (kept boxes only).
+    index_of = {(b.x, b.y, b.w, b.h): i for i, b in enumerate(sorted_boxes)}
+
+    # Render dropped first so kept rects + labels sit on top.
+    for blob in blobs:
+        if blob.kept:
+            continue
+        b = blob.box
+        cv2.rectangle(out, (b.x, b.y), (b.x + b.w, b.y + b.h), (60, 60, 220), 1)
+        label = f"dropped a={blob.area}"
+        cv2.putText(
+            out,
+            label,
+            (b.x + 2, b.y + b.h - 4),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.35,
+            (60, 60, 220),
+            1,
+            cv2.LINE_AA,
+        )
+
+    for blob in blobs:
+        if not blob.kept:
+            continue
+        b = blob.box
+        cv2.rectangle(out, (b.x, b.y), (b.x + b.w, b.y + b.h), (0, 180, 0), 2)
+        idx = index_of.get((b.x, b.y, b.w, b.h), -1)
+        label = f"#{idx} a={blob.area}" if idx >= 0 else f"a={blob.area}"
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+        tag_y0 = max(0, b.y - th - 6)
+        cv2.rectangle(
+            out,
+            (b.x, tag_y0),
+            (b.x + tw + 6, tag_y0 + th + 6),
+            (0, 180, 0),
+            -1,
+        )
+        cv2.putText(
+            out,
+            label,
+            (b.x + 3, tag_y0 + th + 2),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.4,
+            (0, 0, 0),
+            1,
+            cv2.LINE_AA,
+        )
+
+    # Legend strip across the top.
+    kept_count = sum(1 for b in blobs if b.kept)
+    dropped_count = sum(1 for b in blobs if not b.kept)
+    legend_lines = [
+        f"kept N={kept_count}   dropped N={dropped_count}   "
+        f"alpha_threshold={alpha_threshold}   merge_kernel={merge_kernel}   "
+        f"min_area={min_area}   row_tolerance={row_tolerance}",
+        "green=kept(#idx, area)   red=dropped(<min_area)   orange=bridged_by_close",
+    ]
+    line_h = 18
+    legend_h = line_h * len(legend_lines) + 8
+    legend = np.full((legend_h, w, 3), 245, dtype=np.uint8)
+    for i, text in enumerate(legend_lines):
+        cv2.putText(
+            legend,
+            text,
+            (10, line_h * (i + 1) - 4),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (40, 40, 40),
+            1,
+            cv2.LINE_AA,
+        )
+    return np.concatenate([legend, out], axis=0)
+
+
 def quote_yaml(value: str) -> str:
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
@@ -394,13 +558,35 @@ def main() -> int:
     args = parse_args()
     anchor_specs = parse_anchor_specs(args.add_anchor)
     image = load_image(args.input)
-    boxes = detect_boxes(
+
+    # Run extraction first so the debug image (when requested) can show every
+    # component the packer considered, kept or not — even if the kept list ends
+    # up empty.
+    mask_pre, mask_post, blobs = extract_blobs(
         image=image,
         alpha_threshold=args.alpha_threshold,
         merge_kernel=args.merge_kernel,
         min_area=args.min_area,
-        row_tolerance=args.row_tolerance,
     )
+    kept_boxes = [b.box for b in blobs if b.kept]
+    boxes = sort_boxes_in_traversal_order(kept_boxes, args.row_tolerance)
+
+    if args.debug_image is not None:
+        debug = render_debug_image(
+            image=image,
+            mask_pre=mask_pre,
+            mask_post=mask_post,
+            blobs=blobs,
+            sorted_boxes=boxes,
+            alpha_threshold=args.alpha_threshold,
+            merge_kernel=args.merge_kernel,
+            min_area=args.min_area,
+            row_tolerance=args.row_tolerance,
+        )
+        args.debug_image.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(args.debug_image), debug)
+        print(f"Debug image: {args.debug_image}")
+
     if not boxes:
         raise RuntimeError("No sprites detected")
 
