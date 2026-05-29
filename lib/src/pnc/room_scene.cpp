@@ -355,10 +355,25 @@ void RoomScene::enter() {
         }
         return sol::make_object(s, s.create_table_with("x", p->x, "y", p->y));
     });
-    // The handle: a light table carrying only the id, with movement-blocking done
-    // in Lua via the scheduler's wait_event (so the yield stays on the Lua side,
-    // like wait/camera_go_to). Re-resolution + fail-loud live in the C++ helpers.
-    // play / play_until_end / anchor (design 05 §Avatars) are not implemented yet.
+    L.set_function("_avatar_play", [this](const std::string& id, const std::string& seq) {
+        api_avatar_play(id, seq);
+    });
+    L.set_function("_avatar_play_until_end", [this](const std::string& id, const std::string& seq) {
+        return api_avatar_play_until_end(id, seq);
+    });
+    L.set_function("_avatar_anchor",
+                   [this](const std::string& id, const std::string& name) -> sol::object {
+                       sol::state& s = ctx_.scripting.lua();
+                       const auto p = api_avatar_anchor(id, name);
+                       if (!p) {
+                           return sol::lua_nil;
+                       }
+                       return sol::make_object(s, s.create_table_with("x", p->x, "y", p->y));
+                   });
+    // The handle: a light table carrying only the id, with movement/animation
+    // blocking done in Lua via the scheduler's wait_event (so the yield stays on
+    // the Lua side, like wait/camera_go_to). Re-resolution + fail-loud live in the
+    // C++ helpers.
     ctx_.scripting.run_string(R"LUA(
 do
   local M = {}
@@ -371,6 +386,13 @@ do
   function M:look_at(target) _avatar_look_at(self.id, target); return self end
   function M:face(direction) _avatar_face(self.id, direction); return self end
   function M:position() return _avatar_position(self.id) end
+  function M:play(sequence) _avatar_play(self.id, sequence); return self end
+  function M:play_until_end(sequence)
+    local ev = _avatar_play_until_end(self.id, sequence)
+    if ev and ev ~= "" then wait_event(ev) end
+    return self
+  end
+  function M:anchor(name) return _avatar_anchor(self.id, name) end
   function avatar(id) return setmetatable({ id = id }, M) end
 end
 )LUA",
@@ -710,9 +732,10 @@ void RoomScene::unload_room() {
         }
     }
     ctx_.scripting.cancel_scope(room_scope_);
-    // Scripted moves belong to tasks in the room scope just cancelled; drop the
-    // bookkeeping so update() never emits an arrival for an unloaded room (#139).
+    // Scripted moves/animations belong to tasks in the room scope just cancelled;
+    // drop the bookkeeping so update() never emits for an unloaded room (#139/#149).
     pending_moves_.clear();
+    pending_anim_.clear();
     // An in-progress dialog references the outgoing room's NPC avatars; the
     // room change kills both. Cancelling the dialog scope also reaps any
     // `run`-task spawned from the option (and anything that task spawned).
@@ -1216,6 +1239,16 @@ void RoomScene::update(float dt) {
                 ++it;
             }
         }
+        // Wake scripted play_until_end whose one-shot sequence has finished (#149).
+        for (auto it = pending_anim_.begin(); it != pending_anim_.end();) {
+            const Avatar* a = resolve_avatar(it->avatar_id);
+            if (a == nullptr || !a->acting()) {
+                ctx_.scripting.emit(it->scope, it->event);
+                it = pending_anim_.erase(it);
+            } else {
+                ++it;
+            }
+        }
         if (camera_) {
             camera_->update(dt); // advance a scripted go_to tween, if any
             if (camera_->following()) {
@@ -1607,6 +1640,41 @@ std::optional<geom::Point> RoomScene::api_avatar_position(const std::string& id)
         return std::nullopt;
     }
     return a->position();
+}
+
+void RoomScene::api_avatar_play(const std::string& id, const std::string& sequence) {
+    if (Avatar* a = resolve_avatar(id)) {
+        a->play(sequence);
+    } else {
+        ctx_.log.error("avatar('" + id + "'):play — no such avatar in the room");
+    }
+}
+
+std::string RoomScene::api_avatar_play_until_end(const std::string& id,
+                                                 const std::string& sequence) {
+    Avatar* a = resolve_avatar(id);
+    if (!a) {
+        ctx_.log.error("avatar('" + id + "'):play_until_end — no such avatar in the room");
+        return std::string();
+    }
+    a->play(sequence);
+    if (!a->acting()) {
+        // play() was a no-op (unknown sequence) — do not yield, or the task hangs.
+        ctx_.log.warn("avatar('" + id + "'):play_until_end — unknown sequence '" + sequence + "'");
+        return std::string();
+    }
+    const std::string event = "__avatar_anim." + id + "." + std::to_string(++anim_seq_);
+    pending_anim_.push_back({id, ctx_.scripting.current_scope(), event});
+    return event;
+}
+
+std::optional<geom::Point> RoomScene::api_avatar_anchor(const std::string& id,
+                                                        const std::string& name) const {
+    const Avatar* a = resolve_avatar(id);
+    if (!a) {
+        return std::nullopt;
+    }
+    return a->anchor(name);
 }
 
 void RoomScene::api_spawn_npc(const std::string& id,
