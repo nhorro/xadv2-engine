@@ -151,6 +151,26 @@ sf::FloatRect AnimatedSprite::global_bounds() const {
     return getTransform().transformRect(local);
 }
 
+std::optional<sf::Vector2f> AnimatedSprite::anchor_world(const std::string& name) const {
+    const std::string frame_id = player_.current_frame_id();
+    const Frame* frame = frame_id.empty() ? nullptr : sheet_.frame(frame_id);
+    if (!frame) {
+        return std::nullopt;
+    }
+    const sf::Vector2f* a = frame->anchor(name);
+    if (!a) {
+        return std::nullopt;
+    }
+    // Anchors are frame-local (top-left origin); the sprite is drawn with its
+    // pivot at the transform position (origin = pivot), so subtract the pivot
+    // before applying the transform — same convention as global_bounds().
+    sf::Vector2f pivot(0.0f, 0.0f);
+    if (const sf::Vector2f* p = frame->anchor(pivot_)) {
+        pivot = *p;
+    }
+    return getTransform().transformPoint(a->x - pivot.x, a->y - pivot.y);
+}
+
 AnimatedSprite load_animated_sprite(pac::core::ResourceCache& res,
                                     const std::string& anim_logical) {
     Animation anim = parse_animation(res.read_text(anim_logical));

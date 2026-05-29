@@ -88,6 +88,14 @@ public:
     void api_avatar_face(const std::string& id, const std::string& direction);
     void api_avatar_look_at(const std::string& id, geom::Point target);
     [[nodiscard]] std::optional<geom::Point> api_avatar_position(const std::string& id) const;
+    void api_avatar_play(const std::string& id, const std::string& sequence);
+    /// Start a one-shot sequence and return the event the Lua wrapper waits on
+    /// (empty when the avatar/sequence is missing, so the script never hangs);
+    /// update() emits it once the avatar stops "acting" (#149).
+    [[nodiscard]] std::string api_avatar_play_until_end(const std::string& id,
+                                                        const std::string& sequence);
+    [[nodiscard]] std::optional<geom::Point> api_avatar_anchor(const std::string& id,
+                                                               const std::string& name) const;
 
     // Scripted NPC presence (#140). `spawn_npc` creates a room NPC from a cast
     // character (or repositions it if already present) and seats it; `despawn_npc`
@@ -289,6 +297,12 @@ private:
     };
     std::vector<PendingMove> pending_moves_;
     std::uint64_t move_seq_ = 0;
+
+    // Scripted `avatar(id):play_until_end(...)` calls in flight (#149): same
+    // pattern as PendingMove, but the wake condition is the avatar no longer
+    // "acting" (its one-shot sequence finished). Cleared on room unload.
+    std::vector<PendingMove> pending_anim_;
+    std::uint64_t anim_seq_ = 0;
 
     // Resolved static point for the running dialog's NPC speech (from the dialog
     // file's `text_anchor`). Empty -> bubble follows the NPC avatar position.

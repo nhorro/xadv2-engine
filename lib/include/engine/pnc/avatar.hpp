@@ -73,6 +73,17 @@ public:
     /// scale applied). Hit-tests a hotspot bound to this avatar (#141).
     [[nodiscard]] sf::FloatRect bounds() const { return sprite_.global_bounds(); }
 
+    /// Play an explicit animation sequence, overriding the mover-driven
+    /// stand/walk animation. A non-looping sequence plays once and then control
+    /// returns to stand/walk; movement also cancels it. No-op if the sequence is
+    /// absent (#149).
+    void play(const std::string& sequence);
+    /// True while a scripted `play` sequence is still running (not yet finished
+    /// and not cancelled by movement).
+    [[nodiscard]] bool acting() const { return !acting_.empty(); }
+    /// World position of a named sprite anchor on the current frame, if present.
+    [[nodiscard]] std::optional<geom::Point> anchor(const std::string& name) const;
+
 private:
     /// Mirror the mover's position and facing/action onto the sprite.
     void sync_sprite();
@@ -83,6 +94,11 @@ private:
     /// Draw the ground shadow blob (if any) centered on the walking pivot, sized
     /// by the shadow's unit size times the avatar's current render scale.
     void draw_shadow(sf::RenderTarget& target) const;
+
+    // Scripted animation override (#149): the sequence set by play(). While
+    // non-empty it supersedes the mover-driven stand/walk animation; a one-shot
+    // sequence clears it on finish, and movement cancels it.
+    std::string acting_;
 
     gfx::AnimatedSprite sprite_;
     Mover mover_;
