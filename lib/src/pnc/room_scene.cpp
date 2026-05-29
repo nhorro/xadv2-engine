@@ -441,6 +441,9 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     if (!player_) {
         if (auto avatar = make_avatar(player_char_)) {
             player_.emplace(std::move(*avatar));
+        } else {
+            ctx_.log.error("RoomScene: player character '" + player_char_ +
+                           "' has no usable avatar; the player will not appear (see error above)");
         }
     }
     seat_player(entry_point);
@@ -547,6 +550,8 @@ void RoomScene::spawn_room_npcs() {
         }
         auto avatar = make_avatar(placement.id);
         if (!avatar) {
+            ctx_.log.error("RoomScene: NPC '" + placement.id + "' in room '" + data.id +
+                           "' will not appear (could not build its avatar; see error above)");
             continue;
         }
         const geom::Point* start = data.point(placement.start);
