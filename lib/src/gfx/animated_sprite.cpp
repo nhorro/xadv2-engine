@@ -130,6 +130,27 @@ void AnimatedSprite::draw(sf::RenderTarget& target,
     target.draw(blit, states);
 }
 
+sf::FloatRect AnimatedSprite::global_bounds() const {
+    const std::string frame_id = player_.current_frame_id();
+    const Frame* frame = frame_id.empty() ? nullptr : sheet_.frame(frame_id);
+    if (!frame) {
+        const sf::Vector2f p = getPosition();
+        return sf::FloatRect(p.x, p.y, 0.0f, 0.0f);
+    }
+    // The frame is drawn with its pivot anchor at the origin (see draw()), so in
+    // local space it spans [-pivot, size - pivot). getTransform() then applies
+    // position + scale to give world-space bounds.
+    sf::Vector2f pivot(0.0f, 0.0f);
+    if (const sf::Vector2f* p = frame->anchor(pivot_)) {
+        pivot = *p;
+    }
+    const sf::FloatRect local(-pivot.x,
+                              -pivot.y,
+                              static_cast<float>(frame->rect.width),
+                              static_cast<float>(frame->rect.height));
+    return getTransform().transformRect(local);
+}
+
 AnimatedSprite load_animated_sprite(pac::core::ResourceCache& res,
                                     const std::string& anim_logical) {
     Animation anim = parse_animation(res.read_text(anim_logical));

@@ -83,6 +83,14 @@ const RoomHotspot* RoomRuntime::hotspot_at(
             if (it != data_.regions.end() && geom::point_in_polygon(world, it->second.area)) {
                 return &hs;
             }
+        } else if (kind == "npc") {
+            // (4) the bound NPC's *current* world bounds (it moves). Resolved from
+            // the live avatar, so the hotspot follows the NPC and is inactive when
+            // the NPC is absent (not spawned / despawned) (#141).
+            const auto it = npcs_.find(ref);
+            if (it != npcs_.end() && it->second.bounds().contains(world)) {
+                return &hs;
+            }
         }
     }
     return nullptr;
