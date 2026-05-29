@@ -1,7 +1,7 @@
 # C++ Engine Coding Guide
 
 This guide is the implementation source of truth for engine C++ code. The
-[design documents](../sources/design/) describe *what* the engine does; this
+[design documents](../design/) describe *what* the engine does; this
 guide describes *how* to write it. If this guide conflicts with the design
 docs, the design docs win — fix this guide.
 
@@ -36,8 +36,8 @@ This guide applies to all C++ code under `lib/`, `games/<game>/main.cpp`,
 │   └── data/                    Manifest, Lua, YAML, assets
 ├── tests/<area>/                One executable per subsystem
 ├── experiments/                 Throwaway; not in CI
-├── docs/coding-guide/           This guide
-├── docs/sources/design/         Design specs
+├── docs/development/coding-guide/           This guide
+├── docs/development/design/         Design specs
 ├── CMakeLists.txt               Top-level (declares dependencies via FetchContent)
 ├── .clangd                      Editor LSP config
 ├── .clang-tidy                  Static analysis config
@@ -45,7 +45,7 @@ This guide applies to all C++ code under `lib/`, `games/<game>/main.cpp`,
 ```
 
 Layers: `core`, `geom`, `gfx`, `pnc`. Dependency direction is one-way; see
-[Architecture overview](../sources/design/02-architecture-overview.md) §Layers.
+[Architecture overview](../design/02-architecture-overview.md) §Layers.
 
 ## 3. File and directory naming
 
@@ -166,7 +166,7 @@ Specific to `RoomScene`:
   survives every `change_room`. NPC avatars are owned by `RoomRuntime` and are
   destroyed/recreated per room.
 
-See [Architecture overview](../sources/design/02-architecture-overview.md)
+See [Architecture overview](../design/02-architecture-overview.md)
 §Keep `RoomScene` as an orchestrator for the full wiring.
 
 Never use `new` or `delete` directly. Allocate through `std::make_unique` or
@@ -211,7 +211,7 @@ Catch `(...)` **only** at the top-level coroutine resume boundary inside
 `ScriptHost`. Never swallow exceptions silently.
 
 Error categories (with dev vs release behavior) are tabulated in
-[Scripting API](../sources/design/05-scripting-api.md) §Error handling —
+[Scripting API](../design/05-scripting-api.md) §Error handling —
 that table is authoritative for what each category does.
 
 ### Loader diagnostics envelope
@@ -270,7 +270,7 @@ design-for, pending a release/dev build-mode gate.
 - Coroutine tasks are a small `Task` struct holding the `sol::coroutine`, the
   context tag, and the current wait condition.
 - Handler invocation receives **bare id strings**, never `ObjectRef` tables.
-  See [Scripting API](../sources/design/05-scripting-api.md) §Hotspot handler
+  See [Scripting API](../design/05-scripting-api.md) §Hotspot handler
   signatures.
 - Do not stash `sol::object`, `sol::table`, or `sol::function` in member
   variables across frames unless lifetime is clearly tied to `ScriptHost`.
@@ -365,7 +365,7 @@ use an explicit `area` on the hotspot or split the region.
 - Spawn order is preserved within a single tick.
 - A task's wait condition is a `std::variant<Ready, Timer, Event, AvatarMove,
   Animation, Speech, Done>` matching the design-doc table in
-  [2D game concepts](../sources/design/03-2d-game-concepts.md) §Script task
+  [2D game concepts](../design/03-2d-game-concepts.md) §Script task
   states.
 - The scheduler runs once per fixed update, after `update(dt)`, before `draw`.
 - Tasks waiting on `Speech` or `AvatarMove` are resumed when the engine-side

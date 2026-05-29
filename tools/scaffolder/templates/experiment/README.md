@@ -44,9 +44,9 @@ data/
 ## Add a feature
 
 - **A shader**: drop a `.frag` under `data/shaders/`, wire it on a layer /
-  region / object in `lab.yaml`. See [docs/sources/design/03-2d-game-concepts.md](../../docs/sources/design/03-2d-game-concepts.md) §Shaders.
+  region / object in `lab.yaml`. See [docs/development/design/03-2d-game-concepts.md](../../docs/development/design/03-2d-game-concepts.md) §Shaders.
 - **A hotspot**: add a `hotspots:` entry in `lab.yaml`, then a verb handler
-  in `lab.lua`. See [docs/sources/design/04-point-and-click-concepts.md](../../docs/sources/design/04-point-and-click-concepts.md).
+  in `lab.lua`. See [docs/development/design/04-point-and-click-concepts.md](../../docs/development/design/04-point-and-click-concepts.md).
 - **A second character**: add a cast entry in `cast.yaml`, then place it as
   an NPC in `lab.yaml`'s `avatars:` list with `player: false`.
 - **An image background**: add a `layers:` block under `background:` in

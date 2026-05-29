@@ -93,4 +93,4 @@ sprites:
 
 > **TODO (skeleton):** document the merge script for combining multiple packed
 > atlases, and cross-link to the gfx animation format in
-> [06 — Data formats](../../sources/design/06-data-formats.md).
+> [06 — Data formats](../../development/design/06-data-formats.md).
