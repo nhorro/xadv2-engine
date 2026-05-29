@@ -99,8 +99,14 @@ struct Region {
 /// An active sprite placed in the room (visual only; interactivity via a hotspot).
 struct RoomObject {
     std::string id;
-    std::string sprite;         // logical path (M4: static texture; YAML key `sprite`)
-    geom::Point position{0, 0}; // world position of the top-left
+    // Logical path. A static texture (e.g. *.png), or an animation (*.anim.yml /
+    // *.yaml) — the latter makes this an *animated* object (an AnimatedSprite,
+    // like an avatar) that can play sequences and be moved from script (#142).
+    std::string sprite;
+    // Initial animation sequence to play (looping) for an animated object. Empty
+    // for static objects, or when the object only animates on a scripted play().
+    std::string sequence;
+    geom::Point position{0, 0}; // top-left for a static texture; pivot for animated
     bool z_auto = true;         // auto: depth = position.y; else explicit z
     float z = 0.0f;
     // Uniform render scale about the top-left `position`, aspect always preserved

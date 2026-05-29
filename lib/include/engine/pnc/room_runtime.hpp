@@ -69,6 +69,18 @@ public:
     [[nodiscard]] bool object_moving(const std::string& object_id) const;
     void update_objects(float dt);
 
+    // Animated objects (#142): an object whose sprite is an animation owns an
+    // AnimatedSprite (built render-side with resources and attached here, like an
+    // NPC avatar). update_objects advances it and syncs its transform to the
+    // runtime pose. `object_play` plays a sequence; pass track_until_end=true for
+    // a one-shot whose completion `object_acting` reports (drives play_until_end).
+    void set_object_sprite(const std::string& object_id, gfx::AnimatedSprite sprite);
+    [[nodiscard]] bool object_animated(const std::string& object_id) const;
+    [[nodiscard]] const gfx::AnimatedSprite* object_sprite(const std::string& object_id) const;
+    bool
+    object_play(const std::string& object_id, const std::string& sequence, bool track_until_end);
+    [[nodiscard]] bool object_acting(const std::string& object_id) const;
+
     void set_layer_visible(const std::string& layer_id, bool visible);
     [[nodiscard]] bool layer_visible(const std::string& layer_id) const;
 
@@ -128,8 +140,10 @@ private:
         geom::Point target{0.0f, 0.0f};
         float speed = 240.0f;
         bool moving = false;
+        std::string acting; // one-shot sequence in progress (for play_until_end)
     };
     std::map<std::string, ObjectRuntime> object_rt_;
+    std::map<std::string, gfx::AnimatedSprite> object_sprites_; // animated objects (#142)
 };
 
 } // namespace pac::pnc
