@@ -127,6 +127,8 @@ def apply_room_patch(room: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, A
             room["regions"] = geometry["regions"]
         if "hotspots" in geometry:
             room["hotspots"] = geometry["hotspots"]
+        if "objects" in geometry:
+            room["objects"] = geometry["objects"]
 
     return room
 
