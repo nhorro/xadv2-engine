@@ -42,6 +42,12 @@ public:
     void set_on_finished(std::function<void()> cb) { player_.set_on_finished(std::move(cb)); }
     const std::string& current_sequence() const { return player_.current_sequence(); }
 
+    /// World-space axis-aligned bounds of the current frame with this sprite's
+    /// transform (position + scale) applied — the pivot anchor sits at the
+    /// transform's position, like draw(). Empty (zero-size at the position) when
+    /// there is no valid current frame. Used for hit-testing a moving avatar.
+    [[nodiscard]] sf::FloatRect global_bounds() const;
+
     void set_color(sf::Color color) { color_ = color; }
 
     void set_shaders(std::vector<ShaderEffect> shaders) { shaders_ = std::move(shaders); }
