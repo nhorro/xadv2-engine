@@ -220,6 +220,36 @@ obstacles:
     CHECK(room.obstacle_enabled("missing")); // unknown id -> defaults true
 }
 
+TEST_CASE("RoomRuntime moves and scales objects from script (#142)") {
+    const char* yaml = R"YAML(
+id: r
+objects:
+  cart: { sprite: o/cart.png, position: { x: 0, y: 0 }, scale: 1.0 }
+)YAML";
+    RoomRuntime room(parse_room(yaml));
+    CHECK(room.object_position("cart").x == doctest::Approx(0.0f)); // seeded from def
+    CHECK(room.object_scale("cart") == doctest::Approx(1.0f));
+
+    room.set_object_scale("cart", 2.0f);
+    CHECK(room.object_scale("cart") == doctest::Approx(2.0f));
+    room.set_object_scale("cart", -1.0f); // non-positive ignored
+    CHECK(room.object_scale("cart") == doctest::Approx(2.0f));
+
+    room.object_move_to("cart", {100, 0}, 100.0f); // 100 px/s toward x=100
+    CHECK(room.object_moving("cart"));
+    room.update_objects(0.5f); // 50 px
+    CHECK(room.object_position("cart").x == doctest::Approx(50.0f));
+    CHECK(room.object_moving("cart"));
+    room.update_objects(1.0f); // would overshoot -> snap to target and stop
+    CHECK(room.object_position("cart").x == doctest::Approx(100.0f));
+    CHECK_FALSE(room.object_moving("cart"));
+
+    room.set_object_position("cart", {5, 7}); // explicit placement stops + teleports
+    CHECK(room.object_position("cart").x == doctest::Approx(5.0f));
+    CHECK(room.object_position("cart").y == doctest::Approx(7.0f));
+    CHECK_FALSE(room.object_moving("cart"));
+}
+
 TEST_CASE("parse_room rejects malformed rooms") {
     CHECK_THROWS_AS(parse_room("version: 1\n"), DataError); // no id
     CHECK_THROWS_AS(parse_room("id: x\nhotspots:\n  h: { name: n }\n"),
