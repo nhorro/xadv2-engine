@@ -8,3 +8,6 @@ vcpkg_installed/
 # MkDocs documentation site
 /site/
 .venv/
+
+# Claude Code local config + memory
+.claude/
