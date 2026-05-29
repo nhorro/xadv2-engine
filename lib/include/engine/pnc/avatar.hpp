@@ -69,6 +69,10 @@ public:
 
     float z() const { return mover_.position().y; } // depth key = walking-pivot y
 
+    /// World-space bounds of the current animation frame (position + perspective
+    /// scale applied). Hit-tests a hotspot bound to this avatar (#141).
+    [[nodiscard]] sf::FloatRect bounds() const { return sprite_.global_bounds(); }
+
 private:
     /// Mirror the mover's position and facing/action onto the sprite.
     void sync_sprite();
