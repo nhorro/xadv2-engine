@@ -15,13 +15,4 @@ order.
 
 The design proper is [`01`](01-engine-requirements.md) through
 [`05`](05-scripting-api.md); the per-file field reference is
-[`06 — Data formats`](06-data-formats.md) (in progress).
-
-## Working documents
-
-These track work in progress and are **not** canonical design:
-
-- [migration-notes.md](migration-notes.md) — gaps between the prototype and the
-  target design.
-- [design-review-proposals.md](design-review-proposals.md) — decision record for
-  the design review: resolved blocking decisions and the remaining smaller gaps.
+[`06 — Data formats`](06-data-formats.md).

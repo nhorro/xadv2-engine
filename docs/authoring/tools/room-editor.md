@@ -74,7 +74,7 @@ geometry:
 
 ## See also
 
-- [Point & click concepts § rooms, layers, zones](../../sources/design/04-point-and-click-concepts.md)
+- [Point & click concepts § rooms, layers, zones](../../development/design/04-point-and-click-concepts.md)
 - [Data formats](../data-formats.md)
 
 ---

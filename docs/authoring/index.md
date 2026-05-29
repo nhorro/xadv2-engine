@@ -13,12 +13,15 @@ Lua API, the data formats, and the asset tools.
 
 ## Where to start
 
-1. **Read the [Lua & content authoring guide](../coding-guide/lua-game.md)** —
+1. **Read the [Lua & content authoring guide](../development/coding-guide/lua-game.md)** —
    the rules and patterns for writing content (the YAML/Lua split, state, scopes,
    common pitfalls).
 2. **Keep the [Lua API reference](lua-api.md)** open while you script.
 3. **Keep the [Data formats reference](data-formats.md)** open while you write YAML.
-4. **Use the [tools](tools/index.md)** to prepare backgrounds, spritesheets, and
+4. **Follow the [Scenery authoring guide](scenery.md)** — recipes for building room
+   contents: layers, regions, objects (static & animated), NPCs, hotspots,
+   obstacles, walk-behinds, and perspective.
+5. **Use the [tools](tools/index.md)** to prepare backgrounds, spritesheets, and
    rooms.
 
 ## Concepts you need
@@ -47,5 +50,5 @@ Lua API, the data formats, and the asset tools.
 
 !!! note
     This section is a skeleton. The pages below currently frame and link the
-    canonical references in the [design docs](../sources/design/00-index.md); they
+    canonical references in the [design docs](../development/design/00-index.md); they
     will grow into standalone, task-oriented author guides over time.

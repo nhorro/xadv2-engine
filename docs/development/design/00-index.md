@@ -14,10 +14,7 @@ engine; the implementation follows them, not the other way around.
 | [03 — 2D game concepts](03-2d-game-concepts.md) | Generic 2D layer: main loop, scene contract, resources, spritesheets / animated / composite sprites, geometry + pathfinding, settings, audio. |
 | [04 — Point & click concepts](04-point-and-click-concepts.md) | Genre layer: rooms, background layers / regions, camera, z-order, hotspots / affordances, avatars, commands + SCUMM panel, dialog, speech, inventory. |
 | [05 — Scripting API](05-scripting-api.md) | The Lua surface: game wiring, cast, room / dialog scripts, full API reference, error handling. |
-| [06 — Data formats](06-data-formats.md) | Complete field reference for every YAML / Lua data file *(in progress)*. |
-
-Working documents (not canonical design): [migration notes](migration-notes.md)
-and the [design review / decision record](design-review-proposals.md).
+| [06 — Data formats](06-data-formats.md) | Complete field reference for every YAML / Lua data file. |
 
 ## Architecture at a glance
 

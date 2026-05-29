@@ -4,7 +4,7 @@ Sección para **artistas y guionistas** de aventuras point & click. Cubre cómo
 diseñar lo que el jugador ve y juega: los fondos y sprites, y las historias y
 puzzles que los conectan.
 
-A diferencia de las secciones [Technical](../technical/index.md) y
+A diferencia de las secciones [Technical](../development/index.md) y
 [Content Creators](../authoring/index.md) (en inglés), esta sección está escrita
 en **español**, porque está pensada para el equipo creativo.
 

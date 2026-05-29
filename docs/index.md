@@ -17,7 +17,7 @@ that matches what you are trying to do.
     truth for the engine) plus the C++ and content coding guides — how the engine
     is built and how to make decisions so the game can evolve.
 
-    [:octicons-arrow-right-24: Go to Technical](technical/index.md)
+    [:octicons-arrow-right-24: Go to Technical](development/index.md)
 
 -   :material-script-text: __Content Creators__
 
@@ -51,7 +51,7 @@ that matches what you are trying to do.
 
 !!! note "The design docs remain the source of truth"
     The implementation follows the design, not the other way around. Where code
-    diverges from the [design documents](sources/design/00-index.md), the code is
+    diverges from the [design documents](development/design/00-index.md), the code is
     what changes. This site renders those documents in place; it does not replace
     them.
 
@@ -66,5 +66,5 @@ mkdocs build          # static HTML site into ./site/
 ```
 
 The standalone design **PDF** is still produced by
-[`docs/sources/design/build-pdf.sh`](https://github.com/nhorro/xadv2-engine/blob/develop/docs/sources/design/build-pdf.sh)
+[`docs/development/design/build-pdf.sh`](https://github.com/nhorro/xadv2-engine/blob/develop/docs/development/design/build-pdf.sh)
 (Markdown → HTML → headless-Chrome print), independent of MkDocs.
