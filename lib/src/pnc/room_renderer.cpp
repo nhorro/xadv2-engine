@@ -263,10 +263,10 @@ void RoomRenderer::draw(sf::RenderTarget& target,
     // an explicit `baseline` (a world-Y ground line, sorts against avatar feet),
     // else the sprite's bottom edge for `z: auto`, else the fixed `z`.
     for (const auto& [id, object] : data.objects) {
-        if (!room.object_visible(id) || object.image.empty()) {
+        if (!room.object_visible(id) || object.sprite.empty()) {
             continue;
         }
-        const std::string image = pac::core::logical_join(room_dir, object.image);
+        const std::string image = pac::core::logical_join(room_dir, object.sprite);
         float z = object.baseline ? *object.baseline : object.z;
         try {
             const sf::Texture& tex = resources.texture(image);
