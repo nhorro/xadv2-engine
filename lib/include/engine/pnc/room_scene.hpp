@@ -88,6 +88,13 @@ public:
     void api_avatar_face(const std::string& id, const std::string& direction);
     void api_avatar_look_at(const std::string& id, geom::Point target);
     [[nodiscard]] std::optional<geom::Point> api_avatar_position(const std::string& id) const;
+
+    // Scripted NPC presence (#140). `spawn_npc` creates a room NPC from a cast
+    // character (or repositions it if already present) and seats it; `despawn_npc`
+    // removes it. The player character is never spawnable. Presence is not
+    // persisted — drive it from on_load against global state.
+    void api_spawn_npc(const std::string& id, geom::Point start, const std::string& orientation);
+    void api_despawn_npc(const std::string& id);
     [[nodiscard]] std::string api_current_room() const { return current_room_id_; }
     [[nodiscard]] InventoryModel& inventory() { return inventory_; }
     [[nodiscard]] ViewState view_state() const { return view_state_; }
