@@ -137,6 +137,10 @@ void RoomRuntime::add_npc(const std::string& id, Avatar avatar) {
     npcs_.insert_or_assign(id, std::move(avatar));
 }
 
+void RoomRuntime::remove_npc(const std::string& id) {
+    npcs_.erase(id);
+}
+
 Avatar* RoomRuntime::npc(const std::string& id) {
     const auto it = npcs_.find(id);
     return it != npcs_.end() ? &it->second : nullptr;

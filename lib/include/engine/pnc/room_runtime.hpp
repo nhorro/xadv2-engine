@@ -64,6 +64,8 @@ public:
 
     // --- NPC avatars (room-scoped) ---
     void add_npc(const std::string& id, Avatar avatar);
+    /// Remove a room NPC if present (scripted despawn, #140). No-op when absent.
+    void remove_npc(const std::string& id);
     [[nodiscard]] Avatar* npc(const std::string& id);
     [[nodiscard]] const Avatar* npc(const std::string& id) const;
     [[nodiscard]] std::vector<const Avatar*> npcs() const;
