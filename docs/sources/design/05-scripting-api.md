@@ -408,9 +408,9 @@ resolution order.
 | `:look_at(target)` | target | — | Face target. |
 | `:face(direction)` | `"up"`, `"right"`, `"down"`, `"left"` | — | Set orientation. |
 | `:position()` | — | point (`{x, y}`) | Return current position. |
-| `:play(sequence)` | string | — | Play animation sequence. *(design-for — not yet implemented.)* |
-| `:play_until_end(sequence)` | string | — | Play non-looping animation and yield until done. *(design-for — not yet implemented.)* |
-| `:anchor(name)` | string | point | Return absolute anchor position. *(design-for — not yet implemented.)* |
+| `:play(sequence)` | string | — | Play an animation sequence, overriding stand/walk until it finishes (one-shot) or movement interrupts it. No-op if the sequence is absent. |
+| `:play_until_end(sequence)` | string | — | Play a **non-looping** sequence and yield until it finishes. (A looping sequence would never end — use `:play`.) |
+| `:anchor(name)` | string | point (`{x, y}`) or `nil` | World position of a named sprite anchor on the current frame, or `nil` if absent. |
 
 `:look_at(target)` is a convenience that resolves a world target to the nearest
 of the four orientations and faces it — equivalent to computing a direction and
