@@ -110,6 +110,7 @@ nav:
       - Data formats: authoring/data-formats.md
       - Tools:
           - authoring/tools/index.md
+          - Scaffolder: authoring/tools/scaffolder.md
           - Chroma key lab: authoring/tools/chromakeylab.md
           - Spritesheet packer: authoring/tools/spritesheet-packer.md
           - Room editor: authoring/tools/room-editor.md
