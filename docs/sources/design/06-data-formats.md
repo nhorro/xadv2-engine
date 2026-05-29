@@ -331,7 +331,8 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 |-------|-----|------|---------|---------|
 | `sprite` | req | path | — | Object texture. **MVP: a static image** (the loader also accepts `image` as a deprecated alias). Animated objects driven from script are design-for (see [05 § Scenery](05-scripting-api.md)). One of `sprite`/`image` is required, else the loader fails with `room.object-sprite-missing`. |
 | `position` | req | `{x, y}` | — | World position (top-left). |
-| `z` | opt | `auto` \| number | `auto` | `auto` = the sprite's bottom edge; a number overrides. |
+| `z` | opt | `auto` \| number | `auto` | `auto` = the sprite's bottom edge (scaled); a number overrides. |
+| `scale` | opt | number | `1.0` | Uniform render scale about `position`, aspect always preserved (like a layer's `scale`); must be > 0. The room editor sets this when resizing an object. |
 | `baseline` | opt | number | — | Floor-line world-Y. When set, the object sorts at this depth against avatar feet (occludes feet above the line, is occluded by feet below) — for a perspective object's foreground piece. Overrides `z`. |
 | `visible` | opt | bool | `true` | Initial visibility; `show_object`/`hide_object` change it at runtime. |
 | `shader` / `shaders` | opt | shader ref / `[shader ref]` | — | Shader(s) applied when drawing the object. See **Shaders** below. |

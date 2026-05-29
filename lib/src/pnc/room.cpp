@@ -240,6 +240,13 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
             if (node["baseline"]) {
                 object.baseline = node["baseline"].as<float>();
             }
+            object.scale = node["scale"] ? node["scale"].as<float>() : 1.0f;
+            if (!(object.scale > 0.0f)) {
+                room_fail("room.object-scale-invalid",
+                          "room '" + room.id + "': object '" + object.id +
+                              "' has a non-positive scale (must be > 0)",
+                          node["scale"]);
+            }
             object.visible = node["visible"] ? node["visible"].as<bool>() : true;
             object.shaders = parse_shaders(node);
             room.objects.emplace(object.id, std::move(object));

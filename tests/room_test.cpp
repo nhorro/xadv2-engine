@@ -289,6 +289,22 @@ objects:
     CHECK_FALSE(r.objects.at("vase").baseline.has_value()); // omitted -> z/z_auto
 }
 
+TEST_CASE("parse_room reads object scale (default 1.0) and rejects non-positive") {
+    const char* yaml = R"YAML(
+id: r
+objects:
+  big:   { sprite: o/a.png, position: { x: 0, y: 0 }, scale: 2.0 }
+  plain: { sprite: o/b.png, position: { x: 0, y: 0 } }
+)YAML";
+    const RoomData r = parse_room(yaml);
+    CHECK(r.objects.at("big").scale == doctest::Approx(2.0f));
+    CHECK(r.objects.at("plain").scale == doctest::Approx(1.0f)); // omitted -> native
+    CHECK(error_code([] {
+              parse_room(
+                  "id: r\nobjects:\n  o: { sprite: a.png, position: {x: 0, y: 0}, scale: 0 }\n");
+          }) == "room.object-scale-invalid");
+}
+
 TEST_CASE("parse_room reads object 'sprite' (canonical) and 'image' (deprecated alias)") {
     const char* yaml = R"YAML(
 id: r

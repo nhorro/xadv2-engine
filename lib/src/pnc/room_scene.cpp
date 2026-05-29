@@ -1079,10 +1079,11 @@ std::optional<sf::FloatRect> RoomScene::object_frame_bounds(const std::string& o
         const sf::Texture& tex =
             ctx_.resources.texture(pac::core::logical_join(room_dir_, it->second.sprite));
         const sf::Vector2u sz = tex.getSize();
+        const float s = it->second.scale;
         return sf::FloatRect(it->second.position.x,
                              it->second.position.y,
-                             static_cast<float>(sz.x),
-                             static_cast<float>(sz.y));
+                             static_cast<float>(sz.x) * s,
+                             static_cast<float>(sz.y) * s);
     } catch (const std::exception&) {
         return std::nullopt;
     }
