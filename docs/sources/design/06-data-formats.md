@@ -329,8 +329,9 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
-| `sprite` | req | path | — | Object texture. **MVP: a static image** (the loader also accepts `image` as a deprecated alias). Animated objects driven from script are design-for (see [05 § Scenery](05-scripting-api.md)). One of `sprite`/`image` is required, else the loader fails with `room.object-sprite-missing`. |
-| `position` | req | `{x, y}` | — | World position (top-left). |
+| `sprite` | req | path | — | Object visual: a **static image** (e.g. `*.png`; the loader accepts `image` as a deprecated alias), or an **animation** (`*.anim.yml` / `*.yaml`) which makes this an *animated object* — an `AnimatedSprite` that can play sequences and be moved/resized from script (see [05 § Object handle](05-scripting-api.md)). One of `sprite`/`image` is required, else the loader fails with `room.object-sprite-missing`. |
+| `sequence` | opt | string | — | For an **animated** object: the initial sequence to play (looping). Recommended so the object shows a frame on load; otherwise it stays blank until `object(id):play(...)`. |
+| `position` | req | `{x, y}` | — | World position — the **top-left** for a static image, the sprite **pivot** for an animated object. |
 | `z` | opt | `auto` \| number | `auto` | `auto` = the sprite's bottom edge (scaled); a number overrides. |
 | `scale` | opt | number | `1.0` | Uniform render scale about `position`, aspect always preserved (like a layer's `scale`); must be > 0. The room editor sets this when resizing an object. |
 | `baseline` | opt | number | — | Floor-line world-Y. When set, the object sorts at this depth against avatar feet (occludes feet above the line, is occluded by feet below) — for a perspective object's foreground piece. Overrides `z`. |
