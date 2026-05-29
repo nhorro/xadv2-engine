@@ -105,7 +105,17 @@ public:
     void api_object_set_position(const std::string& id, geom::Point p);
     [[nodiscard]] std::optional<geom::Point> api_object_position(const std::string& id) const;
     void api_object_set_scale(const std::string& id, float scale);
+    void api_object_play(const std::string& id, const std::string& sequence);
+    /// Play a one-shot sequence on an animated object and return the event the Lua
+    /// wrapper waits on (empty when the object isn't animated / lacks the sequence,
+    /// so the script never hangs); update() emits it once the object stops acting.
+    [[nodiscard]] std::string api_object_play_until_end(const std::string& id,
+                                                        const std::string& sequence);
     [[nodiscard]] bool object_exists(const std::string& id) const;
+    /// Load AnimatedSprites for objects whose `sprite` is an animation (*.yml /
+    /// *.yaml) and seat their initial `sequence`. Called at room load (needs
+    /// resources); static-texture objects are left to the renderer (#142).
+    void build_object_sprites();
 
     // Scripted NPC presence (#140). `spawn_npc` creates a room NPC from a cast
     // character (or repositions it if already present) and seats it; `despawn_npc`
@@ -319,6 +329,11 @@ private:
     // room unload. `obj_move_seq_` makes each arrival event unique.
     std::vector<PendingMove> pending_obj_moves_;
     std::uint64_t obj_move_seq_ = 0;
+
+    // Scripted `object(id):play_until_end(...)` in flight (#142): wake when the
+    // object stops "acting" (its one-shot sequence finished). Cleared on unload.
+    std::vector<PendingMove> pending_obj_anim_;
+    std::uint64_t obj_anim_seq_ = 0;
 
     // Resolved static point for the running dialog's NPC speech (from the dialog
     // file's `text_anchor`). Empty -> bubble follows the NPC avatar position.
