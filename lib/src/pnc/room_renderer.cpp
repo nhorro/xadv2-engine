@@ -267,11 +267,12 @@ void RoomRenderer::draw(sf::RenderTarget& target,
             continue;
         }
         const std::string image = pac::core::logical_join(room_dir, object.sprite);
+        const float obj_scale = object.scale;
         float z = object.baseline ? *object.baseline : object.z;
         try {
             const sf::Texture& tex = resources.texture(image);
             if (!object.baseline && object.z_auto) {
-                z = object.position.y + static_cast<float>(tex.getSize().y);
+                z = object.position.y + static_cast<float>(tex.getSize().y) * obj_scale;
             }
         } catch (const std::exception& e) {
             log.error(e.what());
@@ -281,7 +282,7 @@ void RoomRenderer::draw(sf::RenderTarget& target,
         const std::vector<gfx::ShaderEffect>* fx = &object.shaders;
         items.emplace_back(
             z,
-            [this, &resources, &log, image, pos, fx, shader_time](sf::RenderTarget& t) {
+            [this, &resources, &log, image, pos, obj_scale, fx, shader_time](sf::RenderTarget& t) {
                 try {
                     const sf::Texture& tex = resources.texture(image);
                     const sf::IntRect full(0,
@@ -294,7 +295,7 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                                        tex,
                                        full,
                                        sf::Vector2f(pos.x, pos.y),
-                                       1.0f,
+                                       obj_scale,
                                        *fx,
                                        shader_time);
                 } catch (const std::exception& e) {
