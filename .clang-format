@@ -2,7 +2,7 @@
 # clang-format only enforces *formatting*. Naming conventions (PascalCase types,
 # snake_case methods/functions, lowercase pac:: namespaces, trailing-underscore
 # members, UPPER_SNAKE enum values) are a project convention — see
-# docs/coding-conventions.md.
+# docs/development/coding-conventions.md.
 ---
 Language: Cpp
 BasedOnStyle: LLVM

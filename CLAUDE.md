@@ -63,22 +63,22 @@ milestones.
 
 ## The design docs are the source of truth
 
-The canonical design lives in [docs/sources/design/](docs/sources/design/). **The
+The canonical design lives in [docs/development/design/](docs/development/design/). **The
 implementation follows the design, not the other way around — where code diverges,
-the code is what changes.** Read [00-index.md](docs/sources/design/00-index.md)
+the code is what changes.** Read [00-index.md](docs/development/design/00-index.md)
 first (reading order, glossary, requirement traceability, conventions), then `01`–`06`:
 
 | Doc | Covers |
 |-----|--------|
-| [01-engine-requirements.md](docs/sources/design/01-engine-requirements.md) | Requirements R1–R8, MVP / design-for / constraint scope tags, out-of-scope list. |
-| [02-architecture-overview.md](docs/sources/design/02-architecture-overview.md) | Layers + dependency rule, sol2 Lua bridge, runtime spine, `EngineContext`, manifest, coordinate spaces, `GameState`, implementation guidelines. |
-| [03-2d-game-concepts.md](docs/sources/design/03-2d-game-concepts.md) | Generic 2D layer: main loop, scene contract, resources, spritesheets / animated / composite sprites, geometry + pathfinding, settings, audio. |
-| [04-point-and-click-concepts.md](docs/sources/design/04-point-and-click-concepts.md) | Genre layer: rooms, layers / regions, camera, z-order, hotspots / affordances, avatars, command builder + SCUMM panel, dialog, speech, inventory. |
-| [05-scripting-api.md](docs/sources/design/05-scripting-api.md) | The full Lua API surface, game wiring, error handling. |
-| [06-data-formats.md](docs/sources/design/06-data-formats.md) | Exhaustive field reference for every YAML / Lua data file. |
+| [01-engine-requirements.md](docs/development/design/01-engine-requirements.md) | Requirements R1–R8, MVP / design-for / constraint scope tags, out-of-scope list. |
+| [02-architecture-overview.md](docs/development/design/02-architecture-overview.md) | Layers + dependency rule, sol2 Lua bridge, runtime spine, `EngineContext`, manifest, coordinate spaces, `GameState`, implementation guidelines. |
+| [03-2d-game-concepts.md](docs/development/design/03-2d-game-concepts.md) | Generic 2D layer: main loop, scene contract, resources, spritesheets / animated / composite sprites, geometry + pathfinding, settings, audio. |
+| [04-point-and-click-concepts.md](docs/development/design/04-point-and-click-concepts.md) | Genre layer: rooms, layers / regions, camera, z-order, hotspots / affordances, avatars, command builder + SCUMM panel, dialog, speech, inventory. |
+| [05-scripting-api.md](docs/development/design/05-scripting-api.md) | The full Lua API surface, game wiring, error handling. |
+| [06-data-formats.md](docs/development/design/06-data-formats.md) | Exhaustive field reference for every YAML / Lua data file. |
 
 Reach for the relevant doc before implementing a subsystem; do not reconstruct
-behavior from memory. The PDF in `docs/sources/design/` is generated from these
+behavior from memory. The PDF in `docs/development/design/` is generated from these
 markdown files by `build-pdf.sh` — edit the markdown, not the PDF.
 
 ## Architecture: layers and the dependency rule
@@ -117,7 +117,7 @@ If a feature seems to require crossing a boundary, stop and revisit the design.
 
 Dependency acquisition: compiled libs from the system package manager (apt on Linux,
 vcpkg on Windows); header-only libs (sol2, doctest) via CMake `FetchContent` pinned.
-See [02 § Dependencies](docs/sources/design/02-architecture-overview.md).
+See [02 § Dependencies](docs/development/design/02-architecture-overview.md).
 
 ## Build layout (target)
 
@@ -201,7 +201,7 @@ alongside as `DepartureMono-OFL.txt`.
   types, `snake_case` functions/methods, lowercase `pac::` namespaces,
   trailing-underscore members, `UPPER_SNAKE` enum values. Headers `.hpp` / sources
   `.cpp`, `snake_case` file names mirroring the namespace dirs, `#pragma once`. Full
-  reference: [docs/coding-conventions.md](docs/coding-conventions.md).
+  reference: [docs/development/coding-conventions.md](docs/development/coding-conventions.md).
 - **Static data in YAML, behavior in Lua.** YAML defines *what exists* (manifest,
   cast, room layout, geometry, hotspots, affordances, layers, regions, objects,
   avatar start positions, inventory). Lua defines *what happens* (lifecycle hooks,
@@ -229,7 +229,7 @@ alongside as `DepartureMono-OFL.txt`.
   dialog `once` flags). Lua locals, closures, and running coroutines are transient
   and are never saved. Scripts persist facts only through `set_state` /
   `set_room_state` / inventory / region / dialog stores. See
-  [02 § Make persistent state explicit](docs/sources/design/02-architecture-overview.md).
+  [02 § Make persistent state explicit](docs/development/design/02-architecture-overview.md).
 - **Logic must be headless-testable.** Geometry, command model + builder, dialog
   runtime, state stores, inventory model, and YAML loaders must be constructable
   and exercisable with no window. Point-and-click *logic* must not reach for
@@ -255,7 +255,7 @@ alongside as `DepartureMono-OFL.txt`.
 
 ## How to build it: vertical slices, not isolated subsystems
 
-The plan ([implementation-plan.md](docs/sources/design/implementation-plan.md)) is
+The plan ([implementation-plan.md](docs/development/design/implementation-plan.md)) is
 to reach a playable 3-room MVP through milestones:
 
 - **M0** Core shell: manifest-driven startup, window, 60 Hz loop, blank/title/settings scenes.
@@ -275,6 +275,6 @@ worked examples in the design docs as regression-test candidates.
   [CONTRIBUTING.md](CONTRIBUTING.md).
 - Keep commits small and focused; match existing style.
 - If a change adds an engine feature or data format, update the relevant design doc
-  under `docs/sources/design/` — the design stays authoritative.
+  under `docs/development/design/` — the design stays authoritative.
 </content>
 </invoke>

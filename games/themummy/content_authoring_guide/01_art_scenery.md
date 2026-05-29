@@ -5,11 +5,11 @@ Content authoring guide - Scenery
 
 ### Room definition (.yaml)
 
-See [Room section](../../../docs/sources/design/06-data-formats.md)
+See [Room section](../../../docs/development/design/06-data-formats.md)
 
 ### Room scripting (.lua)
 
-See [Lua game](../../../docs/coding-guide/lua-game.md)
+See [Lua game](../../../docs/development/coding-guide/lua-game.md)
 
 ## Editing rooms
 
@@ -48,7 +48,7 @@ floor. Use layers for the back wall, scenery, parallax backdrops, and **furnitur
 that the player should be able to walk behind or in front of**.
 
 > The exhaustive list of layer fields is in
-> [Data formats § background.layers](../../../docs/sources/design/06-data-formats.md).
+> [Data formats § background.layers](../../../docs/development/design/06-data-formats.md).
 > This section is about *doing it* in the editor.
 
 ### Placing and moving a layer
@@ -172,4 +172,4 @@ in the room, the player and NPCs alike.
 
 > There's no dedicated perspective tool in the room editor yet — you set the two
 > lines by editing the room `.yaml` directly. The exhaustive field reference is in
-> [Data formats § room](../../../docs/sources/design/06-data-formats.md).
+> [Data formats § room](../../../docs/development/design/06-data-formats.md).

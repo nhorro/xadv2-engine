@@ -68,4 +68,4 @@ silent typo in the generated tree.
   successful run tells you what to paste.
 - Generate art. The placeholder blob is intentionally ugly so it's obvious
   it has to be replaced.
-- Wire a pak archive. Use [the resource packer](../../sources/design/02-architecture-overview.md#resource-source) for that.
+- Wire a pak archive. Use [the resource packer](../../development/design/02-architecture-overview.md#resource-source) for that.

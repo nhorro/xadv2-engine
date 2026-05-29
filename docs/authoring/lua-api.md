@@ -2,7 +2,7 @@
 
 !!! abstract "Canonical reference"
     The complete, authoritative Lua API surface lives in the design document
-    [05 — Scripting API](../sources/design/05-scripting-api.md). This page is the
+    [05 — Scripting API](../development/design/05-scripting-api.md). This page is the
     author-facing entry point: it frames the API and points you at the right part.
     When this page and `05` disagree, **`05` wins**.
 
@@ -27,7 +27,7 @@ loop instead of freezing the frame.
 
 ## API areas
 
-Jump to the matching section of [05 — Scripting API](../sources/design/05-scripting-api.md):
+Jump to the matching section of [05 — Scripting API](../development/design/05-scripting-api.md):
 
 - **Lifecycle hooks** — `on_load`, `on_unload`, per-room/scene entry points.
 - **Coroutine scheduler** — `spawn`, `wait`, `emit`, `wait_event`, script scopes
@@ -46,11 +46,11 @@ Jump to the matching section of [05 — Scripting API](../sources/design/05-scri
     Lua locals, closures, and running coroutines are **transient** and are never
     saved. Persist facts only through `set_state` / `set_room_state` / inventory /
     region / dialog stores. See
-    [02 § Make persistent state explicit](../sources/design/02-architecture-overview.md).
+    [02 § Make persistent state explicit](../development/design/02-architecture-overview.md).
 
 ## See also
 
-- [Lua & content authoring guide](../coding-guide/lua-game.md) — patterns and rules.
+- [Lua & content authoring guide](../development/coding-guide/lua-game.md) — patterns and rules.
 - [Data formats](data-formats.md) — the YAML side of each subsystem.
 
 ---

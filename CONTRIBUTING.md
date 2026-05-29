@@ -38,11 +38,11 @@ Thank you for your interest in contributing to xadv2-engine. This project is a r
 
 ## Code Contributions
 
-- Follow the [coding conventions](docs/coding-conventions.md): C++ formatting is
+- Follow the [coding conventions](docs/development/coding-conventions.md): C++ formatting is
   enforced by `.clang-format` (run it before committing); naming and file layout
   rules are documented there.
 - Prefer simple, readable solutions.
-- If your change affects documentation, update or add docs under `docs/sources/`.
+- If your change affects documentation, update or add docs under `docs/`.
 - If relevant, add or update tests in `tests/`.
 
 ## Documentation Contributions
@@ -50,7 +50,7 @@ Thank you for your interest in contributing to xadv2-engine. This project is a r
 Documentation is important for this project.
 
 - The main project overview is in `README.md`.
-- Design and architecture content lives under `docs/sources/design/`.
+- Design and architecture content lives under `docs/development/design/`.
 - If you add a new engine feature or data format, document it alongside the code.
 
 ## Pull Request Process

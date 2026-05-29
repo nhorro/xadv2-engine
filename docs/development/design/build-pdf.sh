@@ -13,8 +13,8 @@
 #   - pdfinfo (poppler-utils)  — prints the page count on success
 #
 # Usage:
-#   doc/sources/design/build-pdf.sh
-#   MARKED_PKG=marked@12 doc/sources/design/build-pdf.sh   # pin the renderer
+#   docs/development/design/build-pdf.sh
+#   MARKED_PKG=marked@12 docs/development/design/build-pdf.sh   # pin the renderer
 #
 set -euo pipefail
 
@@ -50,7 +50,7 @@ trap 'rm -rf "$build"' EXIT
   echo
   echo '## Engine Design Document'
   echo
-  printf '_Generated %s from `doc/sources/design/` (00–06)_\n' "$(date +%Y-%m-%d)"
+  printf '_Generated %s from `docs/development/design/` (00–06)_\n' "$(date +%Y-%m-%d)"
   echo
   for f in "${docs[@]}"; do
     [ -f "$f" ] || { echo "error: missing $f" >&2; exit 1; }

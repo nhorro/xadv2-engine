@@ -1183,7 +1183,3 @@ path — which the SCUMM panel draws instead of text. Inventory items support th
 same optional `default_verb` as hotspots: it must be one of the item's
 `affordances` and defaults to `look_at`.
 
-## Migration notes
-
-Prototype divergences and refactoring tasks are tracked separately in
-[migration notes](migration-notes.md). They are not part of the target design.
