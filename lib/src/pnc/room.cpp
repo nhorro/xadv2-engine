@@ -191,7 +191,15 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
             RoomObject object;
             object.id = kv.first.as<std::string>();
             const YAML::Node node = kv.second;
-            object.image = node["image"] ? node["image"].as<std::string>() : std::string();
+            // `sprite` is the documented key (06-data-formats.md); `image` is
+            // accepted as a deprecated alias. One of them is required.
+            const YAML::Node sprite_node = node["sprite"] ? node["sprite"] : node["image"];
+            if (!sprite_node) {
+                room_fail("room.object-sprite-missing",
+                          "room '" + room.id + "': object '" + object.id + "' is missing 'sprite'",
+                          node);
+            }
+            object.sprite = sprite_node.as<std::string>();
             if (const YAML::Node pos = node["position"]) {
                 object.position = parse_point(pos);
             }
