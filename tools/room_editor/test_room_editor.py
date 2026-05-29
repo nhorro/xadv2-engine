@@ -31,6 +31,26 @@ class RoomEditorTests(TestCase):
         self.assertIn("objects", result)
         self.assertEqual(result["walkable"][2]["y"], 100)
 
+    def test_apply_room_patch_persists_objects(self):
+        # The objects mode (#147) edits room["objects"]; the save patch carries it
+        # under geometry, so a round-trip must write it back.
+        room = {"id": "test", "objects": {"old": {"sprite": "a.png"}}}
+        patch = {
+            "geometry": {
+                "objects": {
+                    "crate": {
+                        "sprite": "objects/crate.png",
+                        "position": {"x": 10, "y": 20},
+                        "scale": 1.5,
+                    }
+                }
+            }
+        }
+        result = apply_room_patch(room, patch)
+        self.assertIn("crate", result["objects"])
+        self.assertNotIn("old", result["objects"])  # replaced wholesale, like regions
+        self.assertEqual(result["objects"]["crate"]["scale"], 1.5)
+
     def test_find_missing_assets_reports_missing_files(self):
         room = {
             "background": {"layers": [{"id": "bg", "image": "missing.png", "z": 0}]},

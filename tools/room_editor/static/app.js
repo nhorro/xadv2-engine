@@ -11,6 +11,7 @@ const state = {
   dragOffset: null,
   imageCache: new Map(),
   viewScale: 1, // world->canvas scale from the last draw(); used to map clicks back to world
+  assets: [], // image asset paths under the base dir, for the object sprite picker (#147)
 };
 
 const canvas = document.getElementById('room-canvas');
@@ -45,7 +46,7 @@ const hotspotAffordances = document.getElementById('hotspot-affordances');
 // affordanceVerbs), so a custom/unknown verb is never hidden or dropped.
 const KNOWN_VERBS = ['look_at', 'talk_to', 'pick_up', 'use', 'give', 'open', 'close', 'push', 'pull'];
 
-const modeOptions = ['walkable', 'obstacles', 'zones', 'regions', 'hotspots', 'points', 'layers', 'preview'];
+const modeOptions = ['walkable', 'obstacles', 'zones', 'regions', 'hotspots', 'points', 'layers', 'objects', 'preview'];
 const entityPrefix = {
   zones: 'zone',
   regions: 'region',
@@ -140,6 +141,7 @@ function getEntities() {
   if (state.mode === 'zones') return (state.room.zones || []).map((zone) => ({ id: zone.id, label: zone.id }));
   if (state.mode === 'regions') return Object.keys(state.room.regions || {}).map((id) => ({ id, label: id }));
   if (state.mode === 'hotspots') return Object.keys(state.room.hotspots || {}).map((id) => ({ id, label: id }));
+  if (state.mode === 'objects') return Object.keys(state.room.objects || {}).map((id) => ({ id, label: id }));
   return [];
 }
 
@@ -375,10 +377,173 @@ function setLayerZBase() {
   setStatus(`Layer z set to its base (${layer.z}).`);
 }
 
+// --- Objects (#147): static room objects (sprite + position + scale/z/baseline).
+// Mirrors the layers mode — drawn on the canvas, selected/dragged, edited via the
+// Objects panel. `sprite` is the engine YAML key; `scale` (default 1) is uniform.
+function objectsMap() {
+  return (state.room && state.room.objects) || {};
+}
+function objectScale(obj) {
+  const s = Number(obj.scale);
+  return Number.isFinite(s) && s > 0 ? s : 1;
+}
+function objectNativeSize(obj) {
+  if (!obj || !obj.sprite) return null;
+  const img = state.imageCache.get(obj.sprite);
+  if (!img || !img.complete || !img.naturalWidth) return null;
+  return { w: img.naturalWidth, h: img.naturalHeight };
+}
+// Drawn rect in world space: [position, position + native size × scale). Falls
+// back to a zero-size rect at the position until the sprite image loads.
+function objectRect(obj) {
+  const pos = obj.position || { x: 0, y: 0 };
+  const native = objectNativeSize(obj);
+  const s = objectScale(obj);
+  if (!native) return { x: pos.x, y: pos.y, w: 0, h: 0 };
+  return { x: pos.x, y: pos.y, w: native.w * s, h: native.h * s };
+}
+function selectedObject() {
+  const objs = objectsMap();
+  return state.selectedEntity && objs[state.selectedEntity] ? objs[state.selectedEntity] : null;
+}
+function selectObject(id) {
+  state.selectedEntity = id;
+  entitySelect.value = id;
+  updateObjectsPanel();
+  draw();
+}
+
+function updateObjectsList() {
+  const list = document.getElementById('objects-list');
+  if (!list) return;
+  const objs = objectsMap();
+  list.innerHTML = Object.entries(objs).map(([id, obj]) => {
+    const pos = obj.position || { x: 0, y: 0 };
+    const sel = id === state.selectedEntity ? ' selected' : '';
+    return `<div class="layer-item${sel}" data-object-id="${id}">
+        <strong>${id}</strong>
+        <div>${obj.sprite || '(no sprite)'}</div>
+        <div>pos: ${pos.x}, ${pos.y} · scale: ${objectScale(obj)}</div>
+      </div>`;
+  }).join('');
+}
+
+function populateObjectSprites(current) {
+  const sel = document.getElementById('object-sprite');
+  if (!sel) return;
+  const imgs = (state.assets || []).filter((p) => /\.(png|jpg|jpeg)$/i.test(p));
+  const opts = ['<option value="">(choose sprite)</option>'].concat(
+    imgs.map((p) => `<option value="${p}"${p === current ? ' selected' : ''}>${p}</option>`)
+  );
+  // Keep the current value even if the asset scan missed it, so editing other
+  // fields doesn't silently drop the sprite.
+  if (current && !imgs.includes(current)) {
+    opts.push(`<option value="${current}" selected>${current}</option>`);
+  }
+  sel.innerHTML = opts.join('');
+}
+
+function updateObjectsPanel() {
+  const panel = document.getElementById('objects-panel');
+  if (panel) panel.style.display = state.mode === 'objects' ? '' : 'none';
+  updateObjectsList();
+  if (state.mode !== 'objects') return;
+  const obj = selectedObject();
+  const setVal = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.value = v;
+  };
+  populateObjectSprites(obj ? obj.sprite || '' : '');
+  if (!obj) {
+    ['object-x', 'object-y', 'object-scale', 'object-z', 'object-baseline'].forEach((id) => setVal(id, ''));
+    return;
+  }
+  const pos = obj.position || { x: 0, y: 0 };
+  setVal('object-x', pos.x);
+  setVal('object-y', pos.y);
+  setVal('object-scale', objectScale(obj));
+  setVal('object-z', obj.z === undefined || obj.z === 'auto' ? '' : obj.z);
+  setVal('object-baseline', obj.baseline === undefined ? '' : obj.baseline);
+  const vis = document.getElementById('object-visible');
+  if (vis) vis.checked = obj.visible !== false;
+}
+
+function applyObjectFields() {
+  const obj = selectedObject();
+  if (!obj) return;
+  const val = (id) => {
+    const el = document.getElementById(id);
+    return el ? String(el.value).trim() : '';
+  };
+  obj.sprite = val('object-sprite');
+  const x = parseInt(val('object-x') || '0', 10);
+  const y = parseInt(val('object-y') || '0', 10);
+  obj.position = { x: Number.isFinite(x) ? x : 0, y: Number.isFinite(y) ? y : 0 };
+  const s = parseFloat(val('object-scale') || '1');
+  if (Number.isFinite(s) && s > 0 && Math.abs(s - 1) > 1e-3) {
+    obj.scale = Math.round(s * 1000) / 1000;
+  } else {
+    delete obj.scale; // 1.0 = native; omit it
+  }
+  const zRaw = val('object-z');
+  if (zRaw === '' || zRaw.toLowerCase() === 'auto') {
+    delete obj.z; // auto (sort by scaled bottom edge)
+  } else {
+    const z = parseFloat(zRaw);
+    if (Number.isFinite(z)) obj.z = Math.round(z);
+  }
+  const bRaw = val('object-baseline');
+  if (bRaw === '') {
+    delete obj.baseline;
+  } else {
+    const b = parseFloat(bRaw);
+    if (Number.isFinite(b)) obj.baseline = Math.round(b);
+  }
+  const vis = document.getElementById('object-visible');
+  if (vis && !vis.checked) obj.visible = false;
+  else delete obj.visible; // visible is the default; omit it
+  updateObjectsList();
+  draw();
+  setStatus(`Object "${state.selectedEntity}" updated.`);
+}
+
+function drawObjects() {
+  const objs = objectsMap();
+  for (const [id, obj] of Object.entries(objs)) {
+    if (!obj.sprite) continue;
+    let img = state.imageCache.get(obj.sprite);
+    if (!img) {
+      img = new Image();
+      img.src = `/assets/${encodeURIComponent(obj.sprite)}`;
+      img.onload = () => {
+        state.imageCache.set(obj.sprite, img);
+        draw();
+      };
+      img.onerror = () => {
+        /* missing sprite: skip silently in the editor */
+      };
+      state.imageCache.set(obj.sprite, img);
+    }
+    if (img.complete && img.naturalWidth !== 0) {
+      const r = objectRect(obj);
+      ctx.drawImage(img, r.x, r.y, r.w, r.h);
+      if (state.mode === 'objects' && id === state.selectedEntity) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(165, 180, 252, 0.95)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+        ctx.restore();
+      }
+    }
+  }
+}
+
 function updateUI() {
   updateModeOptions();
   updateEntityOptions();
   updateLayersList();
+  updateObjectsPanel();
   updateVertexList();
   updateSnapshotSource();
   updateHotspotProps();
@@ -626,6 +791,7 @@ function draw() {
   ctx.fillRect(0, 0, width, height);
 
   drawLayers();
+  drawObjects();
   drawPolygons();
   drawTempRegion();
   drawPoints();
@@ -990,6 +1156,22 @@ function handlePointerDown(evt) {
     }
   }
 
+  // Objects mode: click an object to select it, then drag its body to move it.
+  if (state.mode === 'objects') {
+    const entries = Object.entries(objectsMap()).reverse(); // topmost first
+    for (const [id, obj] of entries) {
+      const r = objectRect(obj);
+      if (r.w <= 0 || r.h <= 0) continue;
+      if (pos.x >= r.x && pos.x <= r.x + r.w && pos.y >= r.y && pos.y <= r.y + r.h) {
+        selectObject(id);
+        state.dragTarget = { type: 'object', id };
+        state.dragOffset = { x: pos.x - r.x, y: pos.y - r.y };
+        return;
+      }
+    }
+    return; // empty space in objects mode: nothing to create here (use Add)
+  }
+
   if (state.mode === 'points') {
     const found = findPointAt(pos);
     if (found) {
@@ -1096,6 +1278,17 @@ function handlePointerMove(evt) {
     const proj = (pos.x - base.x) * dir.x + (pos.y - base.y) * dir.y;
     rescaleLayerAboutBase(layer, proj / cornerBaseDist, base);
     updateLayerInfoUI();
+    draw();
+    return;
+  }
+  if (state.dragTarget.type === 'object') {
+    const obj = objectsMap()[state.dragTarget.id];
+    if (!obj) return;
+    obj.position = {
+      x: Math.round(pos.x - state.dragOffset.x),
+      y: Math.round(pos.y - state.dragOffset.y),
+    };
+    updateObjectsPanel();
     draw();
     return;
   }
@@ -1213,6 +1406,14 @@ function addEntity() {
         return;
       }
       state.room.hotspots[id] = { name: id, area: [], affordances: ['look_at'] };
+    } else if (mode === 'objects') {
+      state.room.objects = state.room.objects || {};
+      if (state.room.objects[id]) {
+        alert('An object with that id already exists.');
+        return;
+      }
+      // New object: pick a sprite from the Objects panel; seed at room centre.
+      state.room.objects[id] = { sprite: '', position: { x: 200, y: 200 } };
     }
     state.selectedEntity = id;
   }
@@ -1240,6 +1441,9 @@ function removeEntity() {
     state.selectedEntity = null;
   } else if (mode === 'hotspots') {
     delete state.room.hotspots[state.selectedEntity];
+    state.selectedEntity = null;
+  } else if (mode === 'objects') {
+    delete (state.room.objects || {})[state.selectedEntity];
     state.selectedEntity = null;
   }
   updateUI();
@@ -1317,6 +1521,7 @@ async function saveRoom() {
       zones: state.room.zones || [],
       regions: state.room.regions || {},
       hotspots: state.room.hotspots || {},
+      objects: state.room.objects || {},
     },
   };
   try {
@@ -1360,6 +1565,17 @@ document.getElementById('layer-scale').addEventListener('change', applyLayerScal
 document.getElementById('layer-reset-size').addEventListener('click', resetLayerSize);
 document.getElementById('layer-z').addEventListener('change', applyLayerZ);
 document.getElementById('layer-z-base').addEventListener('click', setLayerZBase);
+// object controls (#147)
+document.addEventListener('click', (evt) => {
+  const el = evt.target.closest && evt.target.closest('[data-object-id]');
+  const list = document.getElementById('objects-list');
+  if (el && list && list.contains(el)) {
+    const id = el.getAttribute('data-object-id');
+    if (id) selectObject(id);
+  }
+});
+document.getElementById('object-apply').addEventListener('click', applyObjectFields);
+document.getElementById('object-sprite').addEventListener('change', applyObjectFields);
 snapshotRegionButton.addEventListener('click', snapshotRegion);
 modeSelect.addEventListener('change', changeMode);
 entitySelect.addEventListener('change', changeEntity);
@@ -1481,8 +1697,19 @@ async function snapshotRegion() {
   }
 }
 
+async function loadAssets() {
+  try {
+    const data = await fetchJson('/api/assets');
+    state.assets = Array.isArray(data.assets) ? data.assets : [];
+  } catch (_) {
+    state.assets = [];
+  }
+  updateObjectsPanel();
+}
+
 updateModeOptions();
 loadInfo()
   .then(loadRooms)
   .then(loadRoom)
+  .then(loadAssets)
   .catch((err) => setStatus(err.message, true));
