@@ -240,6 +240,18 @@ void RoomScene::enter() {
     L.set_function("enable_hotspot", [this](std::string id) { api_set_hotspot_enabled(id, true); });
     L.set_function("disable_hotspot",
                    [this](std::string id) { api_set_hotspot_enabled(id, false); });
+    // Toggle a named obstacle (#143): a disabled obstacle stops blocking the
+    // walkable area, so the player/NPCs can path through where it was.
+    L.set_function("enable_obstacle", [this](std::string id) {
+        if (room_) {
+            room_->set_obstacle_enabled(id, true);
+        }
+    });
+    L.set_function("disable_obstacle", [this](std::string id) {
+        if (room_) {
+            room_->set_obstacle_enabled(id, false);
+        }
+    });
     L.set_function("has_item", [this](std::string id) { return inventory_.has(id); });
     L.set_function("add_item", [this](std::string id) { inventory_.add(id); });
     L.set_function("remove_item", [this](std::string id) { inventory_.remove(id); });
@@ -496,6 +508,11 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
             room_->set_layer_visible(layer_id, visible);
         }
     }
+    if (const auto it = obstacle_enabled_persist_.find(id); it != obstacle_enabled_persist_.end()) {
+        for (const auto& [obstacle_id, enabled] : it->second) {
+            room_->set_obstacle_enabled(obstacle_id, enabled);
+        }
+    }
 
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
     const sf::Vector2f viewport(static_cast<float>(vres.x), scenery_height());
@@ -684,6 +701,11 @@ void RoomScene::unload_room() {
         for (const BackgroundLayer& layer : room_->data().layers) {
             if (!layer.id.empty()) {
                 layer_visible_persist_[current_room_id_][layer.id] = room_->layer_visible(layer.id);
+            }
+        }
+        for (const Obstacle& o : room_->data().obstacles) {
+            if (!o.id.empty()) {
+                obstacle_enabled_persist_[current_room_id_][o.id] = room_->obstacle_enabled(o.id);
             }
         }
     }
@@ -875,7 +897,8 @@ void RoomScene::handle_event(const sf::Event& event) {
         // the nearest reachable point (issue #28) and routes around obstacles; the
         // avatar walks the returned waypoints in order.
         const RoomData& d = room_->data();
-        const auto path = geom::find_path(player_->position(), world, d.walkable, d.obstacles);
+        const auto path =
+            geom::find_path(player_->position(), world, d.walkable, d.active_obstacles());
         player_->follow_path(path);
     }
     sync_command_hover();
@@ -1066,7 +1089,7 @@ void RoomScene::walk_to_approach(geom::Point approach, const std::string& hotspo
     if (geom::distance(player_->position(), ap) <= kApproachReached) {
         return;
     }
-    const auto path = geom::find_path(player_->position(), ap, d.walkable, d.obstacles);
+    const auto path = geom::find_path(player_->position(), ap, d.walkable, d.active_obstacles());
     player_->follow_path(path);
 }
 
@@ -1556,7 +1579,7 @@ std::string RoomScene::api_avatar_move_to(const std::string& id, geom::Point tar
         return std::string();
     }
     const RoomData& d = room_->data();
-    a->follow_path(geom::find_path(a->position(), target, d.walkable, d.obstacles));
+    a->follow_path(geom::find_path(a->position(), target, d.walkable, d.active_obstacles()));
     const std::string event = "__avatar_arrived." + id + "." + std::to_string(++move_seq_);
     pending_moves_.push_back({id, ctx_.scripting.current_scope(), event});
     return event;
@@ -1916,6 +1939,7 @@ pac::core::GameState RoomScene::snap() const {
     s.hotspot_enabled = hotspot_enabled_persist_;
     s.object_visible = object_visible_persist_;
     s.layer_visible = layer_visible_persist_;
+    s.obstacle_enabled = obstacle_enabled_persist_;
     if (room_) {
         auto& region_map = s.region_states[current_room_id_];
         for (const auto& [region_id, region] : room_->data().regions) {
@@ -1933,6 +1957,12 @@ pac::core::GameState RoomScene::snap() const {
         for (const BackgroundLayer& layer : room_->data().layers) {
             if (!layer.id.empty()) {
                 layer_map[layer.id] = room_->layer_visible(layer.id);
+            }
+        }
+        auto& obstacle_map = s.obstacle_enabled[current_room_id_];
+        for (const Obstacle& o : room_->data().obstacles) {
+            if (!o.id.empty()) {
+                obstacle_map[o.id] = room_->obstacle_enabled(o.id);
             }
         }
     }
@@ -1965,6 +1995,7 @@ bool RoomScene::restore(const pac::core::GameState& state) {
     hotspot_enabled_persist_ = state.hotspot_enabled;
     object_visible_persist_ = state.object_visible;
     layer_visible_persist_ = state.layer_visible;
+    obstacle_enabled_persist_ = state.obstacle_enabled;
     inventory_.replace_all(state.inventory);
 
     // Kill transient runtime — none of it is part of GameState.

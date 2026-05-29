@@ -62,6 +62,12 @@ public:
     void set_hotspot_enabled(const std::string& hotspot_id, bool enabled);
     [[nodiscard]] bool hotspot_enabled(const std::string& hotspot_id) const;
 
+    // Named obstacles (#143): enable/disable a walkable blocker by id. The flag
+    // lives on the obstacle in `data_` so the pathfinder (RoomData::is_walkable /
+    // active_obstacles) sees it. Unknown / unnamed obstacles are ignored.
+    void set_obstacle_enabled(const std::string& obstacle_id, bool enabled);
+    [[nodiscard]] bool obstacle_enabled(const std::string& obstacle_id) const;
+
     // --- NPC avatars (room-scoped) ---
     void add_npc(const std::string& id, Avatar avatar);
     /// Remove a room NPC if present (scripted despawn, #140). No-op when absent.

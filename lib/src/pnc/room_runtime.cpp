@@ -141,6 +141,26 @@ bool RoomRuntime::hotspot_enabled(const std::string& hotspot_id) const {
     return it != hotspot_enabled_.end() ? it->second : true;
 }
 
+void RoomRuntime::set_obstacle_enabled(const std::string& obstacle_id, bool enabled) {
+    if (obstacle_id.empty()) {
+        return;
+    }
+    for (Obstacle& o : data_.obstacles) {
+        if (o.id == obstacle_id) {
+            o.enabled = enabled;
+        }
+    }
+}
+
+bool RoomRuntime::obstacle_enabled(const std::string& obstacle_id) const {
+    for (const Obstacle& o : data_.obstacles) {
+        if (o.id == obstacle_id) {
+            return o.enabled;
+        }
+    }
+    return true;
+}
+
 void RoomRuntime::add_npc(const std::string& id, Avatar avatar) {
     npcs_.insert_or_assign(id, std::move(avatar));
 }
