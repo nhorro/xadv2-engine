@@ -220,6 +220,19 @@ obstacles:
     CHECK(room.obstacle_enabled("missing")); // unknown id -> defaults true
 }
 
+TEST_CASE("parse_room reads object sprite + initial sequence (animated objects, #142)") {
+    const char* yaml = R"YAML(
+id: r
+objects:
+  fountain: { sprite: fx/fountain.anim.yml, sequence: bubble, position: { x: 50, y: 80 } }
+  crate:    { sprite: o/crate.png, position: { x: 10, y: 20 } }
+)YAML";
+    const RoomData r = parse_room(yaml);
+    CHECK(r.objects.at("fountain").sprite == "fx/fountain.anim.yml");
+    CHECK(r.objects.at("fountain").sequence == "bubble");
+    CHECK(r.objects.at("crate").sequence.empty()); // static object: no sequence
+}
+
 TEST_CASE("RoomRuntime moves and scales objects from script (#142)") {
     const char* yaml = R"YAML(
 id: r

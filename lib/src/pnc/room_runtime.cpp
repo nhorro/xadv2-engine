@@ -195,6 +195,47 @@ void RoomRuntime::update_objects(float dt) {
             rt.position.y += d.y / dist * step;
         }
     }
+    // Advance animated objects and sync each sprite's transform to its runtime
+    // pose (position = pivot, like an avatar). A finished one-shot clears `acting`.
+    for (auto& [id, sprite] : object_sprites_) {
+        ObjectRuntime& rt = object_rt_[id];
+        sprite.setPosition(rt.position.x, rt.position.y);
+        sprite.setScale(rt.scale, rt.scale);
+        sprite.update(dt);
+        if (!rt.acting.empty() && sprite.finished()) {
+            rt.acting.clear();
+        }
+    }
+}
+
+void RoomRuntime::set_object_sprite(const std::string& object_id, gfx::AnimatedSprite sprite) {
+    object_sprites_.insert_or_assign(object_id, std::move(sprite));
+}
+
+bool RoomRuntime::object_animated(const std::string& object_id) const {
+    return object_sprites_.count(object_id) > 0;
+}
+
+const gfx::AnimatedSprite* RoomRuntime::object_sprite(const std::string& object_id) const {
+    const auto it = object_sprites_.find(object_id);
+    return it != object_sprites_.end() ? &it->second : nullptr;
+}
+
+bool RoomRuntime::object_play(const std::string& object_id,
+                              const std::string& sequence,
+                              bool track_until_end) {
+    const auto it = object_sprites_.find(object_id);
+    if (it == object_sprites_.end() || !it->second.has(sequence)) {
+        return false; // not animated, or unknown sequence
+    }
+    it->second.play(sequence, true);
+    object_rt_[object_id].acting = track_until_end ? sequence : std::string();
+    return true;
+}
+
+bool RoomRuntime::object_acting(const std::string& object_id) const {
+    const auto it = object_rt_.find(object_id);
+    return it != object_rt_.end() && !it->second.acting.empty();
 }
 
 void RoomRuntime::set_hotspot_enabled(const std::string& hotspot_id, bool enabled) {
