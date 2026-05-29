@@ -267,18 +267,20 @@ void RoomRenderer::draw(sf::RenderTarget& target,
             continue;
         }
         const std::string image = pac::core::logical_join(room_dir, object.sprite);
-        const float obj_scale = object.scale;
+        // Position/scale come from the runtime pose (scriptable move/resize, #142),
+        // falling back to the def for objects never touched by script.
+        const float obj_scale = room.object_scale(id);
+        const geom::Point pos = room.object_position(id);
         float z = object.baseline ? *object.baseline : object.z;
         try {
             const sf::Texture& tex = resources.texture(image);
             if (!object.baseline && object.z_auto) {
-                z = object.position.y + static_cast<float>(tex.getSize().y) * obj_scale;
+                z = pos.y + static_cast<float>(tex.getSize().y) * obj_scale;
             }
         } catch (const std::exception& e) {
             log.error(e.what());
             continue;
         }
-        const geom::Point pos = object.position;
         const std::vector<gfx::ShaderEffect>* fx = &object.shaders;
         items.emplace_back(
             z,

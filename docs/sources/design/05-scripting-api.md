@@ -486,8 +486,23 @@ builds. Region states are not stored here — they are managed by `set_region_st
 | `enable_obstacle(id)` | obstacle id | — | Re-enable a named obstacle (it blocks the walkable area again). Persisted per room. |
 | `disable_obstacle(id)` | obstacle id | — | Disable a named obstacle so the player/NPCs can path through where it was (e.g. once a blocking crate is removed). Persisted per room. |
 
-Driving an object's own animation from a script (`object(id):play(...)`) is a
-design-for addition; the MVP only shows or hides objects.
+#### Object handle
+
+`object(id)` returns a handle to a room object (the id is its `objects:` key).
+Beyond `show_object`/`hide_object`, an object can be moved and resized from
+script. This runtime pose is **transient** — re-derived from the object's def on
+room load, like an avatar's pose (only object *visibility* persists).
+
+| Method | Parameters | Returns | Meaning |
+|--------|------------|---------|---------|
+| `:move_to(target [, speed])` | point name or `{x, y}`, optional px/s | — | Move in a straight line to `target` (free — not walkable-gated), yielding until it arrives. |
+| `:set_position(x, y)` | numbers | — | Place the object immediately (cancels a move). |
+| `:position()` | — | point (`{x, y}`) | Current world position. |
+| `:set_scale(s)` | number > 0 | — | Uniform render scale (resize); aspect preserved. |
+
+Driving an object's own **animation** from a script (`object(id):play(...)`) is a
+design-for addition built on animated objects (a follow-up); the current objects
+are static textures that can be moved, resized, shown, and hidden.
 
 ### Inventory
 
