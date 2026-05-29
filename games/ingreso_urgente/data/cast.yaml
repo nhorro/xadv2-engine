@@ -7,9 +7,20 @@ appearances:
     shadow:
       size: { x: 40, y: 10 }
       color: { r: 0, g: 0, b: 0, a: 90 }
+  delivery_guy:
+    type: animated_sprite
+    sprite: characters/delivery_guy/delivery_guy.anim.yml
+    shadow:
+      size: { x: 40, y: 10 }
+      color: { r: 0, g: 0, b: 0, a: 90 }
 
 characters:
   player:
     appearance: julia
     name: "Julia"
     speech_color: { r: 240, g: 200, b: 230 }
+  delivery_guy:
+    appearance: delivery_guy
+    name: "Repartidor"
+    speech_color: { r: 240, g: 200, b: 230 }    
+  

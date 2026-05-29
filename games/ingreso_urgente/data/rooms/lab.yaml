@@ -13,6 +13,7 @@ walkable: [{x: 369, y: 527}, {x: 412, y: 480}, {x: 559, y: 480}, {x: 703, y: 476
 points:
   player_start: {x: 640, y: 600}
   at_door: {x: 848, y: 423}
+  from_hall: {x: 830, y: 423}
 avatars:
 - id: player
   start: player_start
