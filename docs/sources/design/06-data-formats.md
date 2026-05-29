@@ -288,7 +288,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `background` | req | `{color?, layers}` | — | See below. |
 | `perspective` | opt | `{top: {y, scale}, bottom: {y, scale}}` | base scale | Avatar render scale interpolated by walking-pivot y, clamped outside `[top.y, bottom.y]`. Omitted ⇒ each avatar keeps its base scale. See [04 § Perspective scaling](04-point-and-click-concepts.md). |
 | `walkable` | req | polygon | — | Navigable area. |
-| `obstacles` | opt | `[polygon]` | `[]` | Non-walkable polygons inside `walkable`. |
+| `obstacles` | opt | `[polygon \| obstacle]` | `[]` | Non-walkable polygons inside `walkable`. Each entry is either a bare polygon, or a mapping `{ id, area, enabled? }` — a **named** obstacle that can be toggled at runtime with `enable_obstacle`/`disable_obstacle` (e.g. a crate that blocks the floor until removed). `enabled` (default `true`) is the initial state; runtime toggles are persisted per room. A disabled obstacle does not block walking. |
 | `points` | opt | map id → `{x, y}` | — | Named coordinates (starts, approach, camera targets). |
 | `zones` | opt | `[{id, polygon}]` | — | Trigger polygons for exits / scripted events. |
 | `regions` | opt | map | — | Changeable background parts (see below). |

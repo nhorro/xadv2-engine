@@ -483,6 +483,8 @@ builds. Region states are not stored here — they are managed by `set_region_st
 | `set_layer_visible(id, visible)` | layer id, bool | — | Show/hide a background layer (the layer must have an `id`). Persisted per room. |
 | `enable_hotspot(id)` | hotspot id | — | Allow hotspot interaction. |
 | `disable_hotspot(id)` | hotspot id | — | Prevent hotspot interaction. |
+| `enable_obstacle(id)` | obstacle id | — | Re-enable a named obstacle (it blocks the walkable area again). Persisted per room. |
+| `disable_obstacle(id)` | obstacle id | — | Disable a named obstacle so the player/NPCs can path through where it was (e.g. once a blocking crate is removed). Persisted per room. |
 
 Driving an object's own animation from a script (`object(id):play(...)`) is a
 design-for addition; the MVP only shows or hides objects.

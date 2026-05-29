@@ -68,6 +68,16 @@ struct Zone {
     geom::Polygon polygon;
 };
 
+/// A polygon subtracted from the walkable area for pathfinding. `id` is optional
+/// — a named obstacle can be toggled from Lua (enable_obstacle/disable_obstacle).
+/// `enabled` is the initial state; runtime toggles mutate it and are persisted per
+/// room (like object/hotspot state). A disabled obstacle no longer blocks walking.
+struct Obstacle {
+    std::string id;
+    geom::Polygon area;
+    bool enabled = true;
+};
+
 /// A changeable part of the background with named states (e.g. drawer shut/open),
 /// swapped with set_region_state. A state image may be empty (draws nothing).
 struct Region {
@@ -136,7 +146,7 @@ struct RoomData {
     sf::Color background_color = sf::Color::Black;
     std::vector<BackgroundLayer> layers;
     geom::Polygon walkable;
-    std::vector<geom::Polygon> obstacles;
+    std::vector<Obstacle> obstacles;
     std::map<std::string, geom::Point> points;
     std::vector<Zone> zones;
     std::map<std::string, Region> regions;
@@ -148,6 +158,9 @@ struct RoomData {
 
     const geom::Point* point(const std::string& name) const;
     bool is_walkable(geom::Point p) const;
+    /// Areas of the currently-enabled obstacles, for the pathfinder (geom takes
+    /// plain polygons and must not know about obstacle ids / enabled flags).
+    [[nodiscard]] std::vector<geom::Polygon> active_obstacles() const;
 
     /// Avatar render scale at walking-pivot `y`. Returns `fallback` when the room
     /// has no `perspective`; otherwise the interpolated (clamped) perspective scale.
