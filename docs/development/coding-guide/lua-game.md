@@ -1,7 +1,7 @@
 # Lua and Game Content Authoring Guide
 
 This guide is for game authors writing the Lua scripts and YAML data that make
-up a game. The [design documents](../sources/design/) are the source of truth
+up a game. The [design documents](../design/) are the source of truth
 for schemas and runtime semantics; this guide focuses on the rules and patterns
 authors should follow when writing content.
 
@@ -382,15 +382,15 @@ lives in the design docs; quick links:
 
 | File | Schema location |
 |------|-----------------|
-| `game.yaml` | [Architecture overview](../sources/design/02-architecture-overview.md) §Game manifest |
-| `cast.yaml` | [Data formats](../sources/design/06-data-formats.md) §Cast |
-| `rooms/<id>.yaml` | [Data formats](../sources/design/06-data-formats.md) §Room |
-| `*.anim.yaml` | [Data formats](../sources/design/06-data-formats.md) §Animation |
-| Spritesheet YAML | [Data formats](../sources/design/06-data-formats.md) §Spritesheet |
-| `inventory.yaml` | [Data formats](../sources/design/06-data-formats.md) §Inventory |
-| `dialogs/<id>.lua` | [Data formats](../sources/design/06-data-formats.md) §Dialog |
-| `strings/<lang>.yaml` | [Data formats](../sources/design/06-data-formats.md) §UI strings |
-| Save file | [Architecture overview](../sources/design/02-architecture-overview.md) §Make persistent state explicit |
+| `game.yaml` | [Architecture overview](../design/02-architecture-overview.md) §Game manifest |
+| `cast.yaml` | [Data formats](../design/06-data-formats.md) §Cast |
+| `rooms/<id>.yaml` | [Data formats](../design/06-data-formats.md) §Room |
+| `*.anim.yaml` | [Data formats](../design/06-data-formats.md) §Animation |
+| Spritesheet YAML | [Data formats](../design/06-data-formats.md) §Spritesheet |
+| `inventory.yaml` | [Data formats](../design/06-data-formats.md) §Inventory |
+| `dialogs/<id>.lua` | [Data formats](../design/06-data-formats.md) §Dialog |
+| `strings/<lang>.yaml` | [Data formats](../design/06-data-formats.md) §UI strings |
+| Save file | [Architecture overview](../design/02-architecture-overview.md) §Make persistent state explicit |
 
 Common YAML mistakes:
 

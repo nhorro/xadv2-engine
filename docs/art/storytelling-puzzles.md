@@ -53,5 +53,5 @@ particular, la [referencia de la API de Lua](../authoring/lua-api.md).
 
 ## Ver también
 
-- [Point & click concepts § hotspots, dialog, inventory](../sources/design/04-point-and-click-concepts.md) _(inglés)_
-- [Lua & content authoring guide](../coding-guide/lua-game.md) _(inglés)_
+- [Point & click concepts § hotspots, dialog, inventory](../development/design/04-point-and-click-concepts.md) _(inglés)_
+- [Lua & content authoring guide](../development/coding-guide/lua-game.md) _(inglés)_

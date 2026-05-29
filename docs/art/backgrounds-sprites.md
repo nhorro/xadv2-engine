@@ -211,5 +211,5 @@ Nota: notar error en farol, bicicletas, ventanas del lado derecho. Requiere edic
 ## Ver también
 
 - [Herramientas](../authoring/tools/index.md)
-- [Generic 2D concepts](../sources/design/03-2d-game-concepts.md) _(inglés)_
-- [Point & click concepts](../sources/design/04-point-and-click-concepts.md) _(inglés)_
+- [Generic 2D concepts](../development/design/03-2d-game-concepts.md) _(inglés)_
+- [Point & click concepts](../development/design/04-point-and-click-concepts.md) _(inglés)_

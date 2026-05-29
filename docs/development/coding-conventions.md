@@ -38,4 +38,4 @@ and recursive runs leave it untouched.
 | Whitespace, braces, includes, indent, columns | this file + `.clang-format` |
 | Naming, headers, ownership, error handling, sol2/yaml-cpp patterns, tests, CMake | [coding-guide/cpp-engine.md](coding-guide/cpp-engine.md) |
 | Lua scripting + YAML authoring conventions | [coding-guide/lua-game.md](coding-guide/lua-game.md) |
-| `what` the engine does | [design docs](sources/design/) |
+| `what` the engine does | [design docs](development/design/) |
