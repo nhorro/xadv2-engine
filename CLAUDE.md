@@ -11,11 +11,17 @@ scripted in Lua and configured with YAML. It is a remake of
 material only (reusable assets, behavior ideas, comparison targets) — never
 architecture to preserve.
 
-**Status: M0–M5 are merged and fully closed. M6 (hardening) and M7 (presentation
-& authoring polish) are largely merged — latest in: settings persistence (#66,
-M6), display-mode settings (#71, M7), and localization infrastructure (#72, M7),
-merged via PR #94. Still open: M6 authoring templates (#39), packaging smoke path
-(#40), manual MVP regression checklist (#41), and the Windows build recipe (#68).**
+**Status: M0–M7 are merged. M8 (the prototype game — proving the engine is usable
+by content creators) is largely done: the prototype-feedback features are merged —
+object `sprite` key (#138), the `avatar(id)` handle (#139), scripted NPC presence
+`spawn_npc`/`despawn_npc` (#140), hotspot `bind: npc:` (#141), named/toggleable
+obstacles (#143), avatar `play`/`play_until_end`/`anchor` (#149), object `scale`
+(#154), the room-editor objects mode (#147), dynamic/animated objects driven by an
+`object(id)` handle (#142), and the audience-first docs reorg + scenery authoring
+guide (#145). Still open: M6 authoring templates (#39), packaging smoke path (#40),
+manual MVP regression checklist (#41), the Windows build recipe (#68); plus
+design-for follow-ups (runtime layer/shader control #144, approach-follows-moving-
+target #158).**
 - **M0 Core Shell**: CMake build, `pac_engine` (`pac::core` harness + `pac::pnc`),
   `pac_themummy` sample, headless doctest+CTest.
 - **M1 Generic 2D**: `pac::geom`, `ResourceCache` + `AudioServices`, and `pac::gfx`
@@ -55,10 +61,19 @@ merged via PR #94. Still open: M6 authoring templates (#39), packaging smoke pat
   display-mode settings (windowed/fullscreen with an APPLY/BACK flow, #71), and the
   localization infrastructure (`Localization`, manifest `languages` map + selector,
   Spanish default, #72).
+- **M8 Prototype game (Ingreso Urgente) + scenery polish**: driven by gaps found
+  dogfooding (the `prototype-feedback` label). Scriptable, animated scenery actors —
+  the `object(id)` handle (move/scale/`play`/`play_until_end`, #142/#154) over
+  static *and* `*.anim.yml` objects, and the `avatar(id)` handle
+  (`move_to`/`look_at`/`face`/`position`/`play`/`anchor`, #139/#149); scripted NPC
+  presence (`spawn_npc`/`despawn_npc`, #140); hotspots that bind to *moving*
+  NPCs/objects (#141); named, toggleable obstacles (#143); the room editor's objects
+  mode (#147); and the docs reorg + scenery authoring guide (#145).
 
 The remaining MVP-hardening work is in **M6**: authoring templates (#39), a
 packaging smoke path (#40), the manual MVP regression checklist (#41), and the
-Windows build recipe (#68). **M7** is otherwise fully merged. See the GitHub
+Windows build recipe (#68). **M7** is fully merged; **M8** is largely merged (its
+remaining items are the design-for follow-ups #144 and #158). See the GitHub
 milestones.
 
 ## The design docs are the source of truth
