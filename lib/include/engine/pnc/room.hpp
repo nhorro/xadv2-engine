@@ -103,6 +103,10 @@ struct RoomObject {
     geom::Point position{0, 0}; // world position of the top-left
     bool z_auto = true;         // auto: depth = position.y; else explicit z
     float z = 0.0f;
+    // Uniform render scale about the top-left `position`, aspect always preserved
+    // (like a layer's `scale`). 1.0 = native pixel size. The room editor sets this
+    // when resizing an object; `z: auto` uses the scaled bottom edge (#147).
+    float scale = 1.0f;
     bool visible = true;
     // Optional explicit sort line (world Y), in the same space as an avatar's
     // walking-pivot y. When set, the object sorts at this depth against avatars:
