@@ -243,6 +243,7 @@ private:
     std::map<std::string, std::map<std::string, bool>> hotspot_enabled_persist_;
     std::map<std::string, std::map<std::string, bool>> object_visible_persist_;
     std::map<std::string, std::map<std::string, bool>> layer_visible_persist_;
+    std::map<std::string, std::map<std::string, bool>> obstacle_enabled_persist_;
 
     bool change_pending_ = false;
     std::string pending_room_;

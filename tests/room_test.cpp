@@ -182,6 +182,44 @@ TEST_CASE("is_walkable respects the walkable area and obstacles") {
     CHECK_FALSE(r.is_walkable({650, 550})); // inside the obstacle
 }
 
+TEST_CASE("parse_room reads named obstacles and bare polygons (back-compat)") {
+    const char* yaml = R"YAML(
+id: r
+walkable: [ {x: 0, y: 0}, {x: 100, y: 0}, {x: 100, y: 100}, {x: 0, y: 100} ]
+obstacles:
+  - [ {x: 10, y: 10}, {x: 30, y: 10}, {x: 30, y: 30}, {x: 10, y: 30} ]
+  - { id: crate, area: [ {x: 60, y: 60}, {x: 90, y: 60}, {x: 90, y: 90}, {x: 60, y: 90} ] }
+  - { id: gate, enabled: false, area: [ {x: 0, y: 60}, {x: 20, y: 60}, {x: 20, y: 90}, {x: 0, y: 90} ] }
+)YAML";
+    RoomData r = parse_room(yaml);
+    REQUIRE(r.obstacles.size() == 3);
+    CHECK(r.obstacles[0].id.empty()); // bare polygon -> no id, enabled
+    CHECK(r.obstacles[0].enabled);
+    CHECK(r.obstacles[1].id == "crate");
+    CHECK(r.obstacles[2].id == "gate");
+    CHECK_FALSE(r.obstacles[2].enabled);     // initial enabled: false
+    CHECK(r.active_obstacles().size() == 2); // bare + crate (gate is disabled)
+    CHECK_FALSE(r.is_walkable({75, 75}));    // inside the enabled crate
+    CHECK(r.is_walkable({10, 75}));          // inside the disabled gate -> walkable
+}
+
+TEST_CASE("RoomRuntime toggles a named obstacle and the walkable test follows") {
+    const char* yaml = R"YAML(
+id: r
+walkable: [ {x: 0, y: 0}, {x: 100, y: 0}, {x: 100, y: 100}, {x: 0, y: 100} ]
+obstacles:
+  - { id: crate, area: [ {x: 40, y: 40}, {x: 60, y: 40}, {x: 60, y: 60}, {x: 40, y: 60} ] }
+)YAML";
+    RoomRuntime room(parse_room(yaml));
+    CHECK(room.obstacle_enabled("crate"));
+    CHECK_FALSE(room.data().is_walkable({50, 50})); // crate blocks
+    room.set_obstacle_enabled("crate", false);
+    CHECK_FALSE(room.obstacle_enabled("crate"));
+    CHECK(room.data().is_walkable({50, 50})); // disabled -> walkable
+    CHECK(room.data().active_obstacles().empty());
+    CHECK(room.obstacle_enabled("missing")); // unknown id -> defaults true
+}
+
 TEST_CASE("parse_room rejects malformed rooms") {
     CHECK_THROWS_AS(parse_room("version: 1\n"), DataError); // no id
     CHECK_THROWS_AS(parse_room("id: x\nhotspots:\n  h: { name: n }\n"),
