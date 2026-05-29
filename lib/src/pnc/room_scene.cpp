@@ -364,6 +364,22 @@ end
 )LUA",
                               "=avatar_handle");
 
+    // Scripted NPC presence (#140): create/remove room NPCs from script so an NPC
+    // can appear conditionally (e.g. checked against global state in on_load).
+    // `start` is a named room point or { x, y }; orientation defaults to "down".
+    L.set_function("spawn_npc",
+                   [this, resolve_target](const std::string& id,
+                                          const sol::object& start,
+                                          sol::optional<std::string> orientation) {
+                       const auto p = resolve_target(start);
+                       if (!p) {
+                           ctx_.log.error("spawn_npc('" + id + "'): start is not a known point");
+                           return;
+                       }
+                       api_spawn_npc(id, *p, orientation.value_or(std::string("down")));
+                   });
+    L.set_function("despawn_npc", [this](const std::string& id) { api_despawn_npc(id); });
+
     // Room-view-state controls (issue #32). `block_input` gates clicks during
     // cutscene-like sections; `unblock_input` restores normal play.
     // `set_room_view_state(name)` is the general-purpose setter for the same
@@ -1568,6 +1584,40 @@ std::optional<geom::Point> RoomScene::api_avatar_position(const std::string& id)
         return std::nullopt;
     }
     return a->position();
+}
+
+void RoomScene::api_spawn_npc(const std::string& id,
+                              geom::Point start,
+                              const std::string& orientation) {
+    if (!room_) {
+        ctx_.log.error("spawn_npc('" + id + "'): no room is loaded");
+        return;
+    }
+    if (player_ && id == player_char_) {
+        ctx_.log.error("spawn_npc('" + id + "'): '" + id +
+                       "' is the player character and is not spawnable");
+        return;
+    }
+    // Already present: reposition + reface rather than rebuild, so spawn_npc is
+    // idempotent when called each on_load against global state.
+    if (Avatar* existing = room_->npc(id)) {
+        existing->set_position(start);
+        existing->face(orientation);
+        return;
+    }
+    auto avatar = make_avatar(id);
+    if (!avatar) {
+        return; // make_avatar logged the cause (unknown id / bad appearance)
+    }
+    avatar->set_position(start);
+    avatar->face(orientation);
+    room_->add_npc(id, std::move(*avatar));
+}
+
+void RoomScene::api_despawn_npc(const std::string& id) {
+    if (room_) {
+        room_->remove_npc(id);
+    }
 }
 
 void RoomScene::api_start_dialog(const std::string& npc_id) {

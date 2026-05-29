@@ -419,6 +419,32 @@ is started automatically by the global `talk(speaker, ...)`. Other C++ avatar
 methods (`set_position`, `stand`, `walk`, `set_scale`) are engine-internal and
 intentionally not script-exposed.
 
+#### NPC presence
+
+NPCs listed in a room's `avatars:` are created on room load. To make an NPC appear
+**conditionally** — e.g. only after a global flag is set — spawn it from script
+instead (typically in the room's `on_load`):
+
+| Function | Parameters | Returns | Meaning |
+|----------|------------|---------|---------|
+| `spawn_npc(id, start [, orientation])` | cast character id, point name or `{x, y}`, optional `"up"`/`"right"`/`"down"`/`"left"` | — | Create a room NPC from a cast character and seat it at `start`. If that NPC already exists it is repositioned (so calling each `on_load` is idempotent). The player character is not spawnable. |
+| `despawn_npc(id)` | cast character id | — | Remove a room NPC. No-op if absent. |
+
+NPC presence is **not** persisted (unlike region/object/layer/hotspot state) — it is
+re-derived each load. Drive it from `on_load` against `get_state`, for example:
+
+```lua
+function room.on_load()
+  if get_state("intro.delivery_arrived") then
+    spawn_npc("delivery_guy", "delivery_guy_start", "left")
+  end
+end
+```
+
+Spawned NPCs are room-scoped like declared ones: they render and are destroyed on
+room unload. Interaction still needs a hotspot (a fixed `area`, or a `bind` to the
+NPC once that lands).
+
 ### State
 
 | Function | Parameters | Returns | Meaning |
