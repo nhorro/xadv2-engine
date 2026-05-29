@@ -407,10 +407,10 @@ resolution order.
 | `:move_to(target)` | target | — | Move through room pathfinding and yield until done. |
 | `:look_at(target)` | target | — | Face target. |
 | `:face(direction)` | `"up"`, `"right"`, `"down"`, `"left"` | — | Set orientation. |
-| `:play(sequence)` | string | — | Play animation sequence. |
-| `:play_until_end(sequence)` | string | — | Play non-looping animation and yield until done. |
-| `:position()` | — | point | Return current position. |
-| `:anchor(name)` | string | point | Return absolute anchor position. |
+| `:position()` | — | point (`{x, y}`) | Return current position. |
+| `:play(sequence)` | string | — | Play animation sequence. *(design-for — not yet implemented.)* |
+| `:play_until_end(sequence)` | string | — | Play non-looping animation and yield until done. *(design-for — not yet implemented.)* |
+| `:anchor(name)` | string | point | Return absolute anchor position. *(design-for — not yet implemented.)* |
 
 `:look_at(target)` is a convenience that resolves a world target to the nearest
 of the four orientations and faces it — equivalent to computing a direction and

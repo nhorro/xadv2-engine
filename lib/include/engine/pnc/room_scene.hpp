@@ -78,6 +78,16 @@ public:
     void api_camera_look_at(geom::Point target);
     float api_camera_go_to(geom::Point target);
     void api_camera_follow_player();
+
+    // Scripted avatar control — the `avatar(id)` Lua handle (#139). `id` is a cast
+    // character id; it resolves to the persistent player or a room NPC each call
+    // (never a held pointer). `move_to` starts a pathfound walk and returns an
+    // event name the Lua wrapper waits on (empty when the avatar is missing, so the
+    // script does not hang); RoomScene::update emits it once the avatar stops.
+    [[nodiscard]] std::string api_avatar_move_to(const std::string& id, geom::Point target);
+    void api_avatar_face(const std::string& id, const std::string& direction);
+    void api_avatar_look_at(const std::string& id, geom::Point target);
+    [[nodiscard]] std::optional<geom::Point> api_avatar_position(const std::string& id) const;
     [[nodiscard]] std::string api_current_room() const { return current_room_id_; }
     [[nodiscard]] InventoryModel& inventory() { return inventory_; }
     [[nodiscard]] ViewState view_state() const { return view_state_; }
@@ -107,6 +117,11 @@ private:
     void seat_player(const std::string& entry_point);
     void spawn_room_npcs();
     [[nodiscard]] std::optional<Avatar> make_avatar(const std::string& character_id);
+    /// Resolve a cast character id to its live avatar: the persistent player when
+    /// `id` is the player character, else a room NPC, else nullptr. Re-resolved on
+    /// every scripted avatar call so a stale id fails safely instead of dangling.
+    [[nodiscard]] Avatar* resolve_avatar(const std::string& id);
+    [[nodiscard]] const Avatar* resolve_avatar(const std::string& id) const;
     void say(const std::string& text, sf::Color color);
     void say_at(const std::string& text, sf::Color color, geom::Point world);
 
@@ -253,6 +268,19 @@ private:
         std::string hotspot_id;
     };
     std::optional<PendingApproach> pending_approach_;
+
+    // Scripted `avatar(id):move_to(...)` calls in flight (#139): each records the
+    // moving avatar, the script scope to wake, and the unique event the Lua
+    // wrapper is blocked on. update() emits the event (and drops the entry) once
+    // that avatar stops moving. Cleared on room unload (the room scope's tasks die
+    // with it). `move_seq_` makes each event name unique.
+    struct PendingMove {
+        std::string avatar_id;
+        pac::core::ScopeId scope = 0;
+        std::string event;
+    };
+    std::vector<PendingMove> pending_moves_;
+    std::uint64_t move_seq_ = 0;
 
     // Resolved static point for the running dialog's NPC speech (from the dialog
     // file's `text_anchor`). Empty -> bubble follows the NPC avatar position.
