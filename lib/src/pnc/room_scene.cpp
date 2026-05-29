@@ -287,7 +287,7 @@ void RoomScene::enter() {
             if (player_ && name == player_char_) {
                 return player_->position();
             }
-            ctx_.log.warn("camera target '" + name + "' is not a known point or avatar");
+            ctx_.log.warn("script target '" + name + "' is not a known point or avatar");
         }
         return std::nullopt;
     };
@@ -308,6 +308,61 @@ void RoomScene::enter() {
     ctx_.scripting.run_string(
         "function camera_go_to(target) return wait(_camera_go_to_start(target)) end",
         "=camera_go_to");
+
+    // Scripted avatar control: the `avatar(id)` handle (#139). The C++ helpers
+    // resolve the id to the live player/NPC and do the work; the Lua prelude below
+    // gives the `avatar(id):method` surface. `move_to` starts a pathfound walk and
+    // returns the arrival event the wrapper waits on (empty -> no wait, so a bad id
+    // never hangs the task); RoomScene::update emits it once the avatar stops.
+    L.set_function(
+        "_avatar_move_to",
+        [this, resolve_target](const std::string& id, const sol::object& t) -> std::string {
+            const auto p = resolve_target(t);
+            if (!p) {
+                ctx_.log.error("avatar('" + id + "'):move_to — target is not a known point");
+                return std::string();
+            }
+            return api_avatar_move_to(id, *p);
+        });
+    L.set_function("_avatar_face",
+                   [this](const std::string& id, const std::string& d) { api_avatar_face(id, d); });
+    L.set_function("_avatar_look_at",
+                   [this, resolve_target](const std::string& id, const sol::object& t) {
+                       if (const auto p = resolve_target(t)) {
+                           api_avatar_look_at(id, *p);
+                       } else {
+                           ctx_.log.error("avatar('" + id +
+                                          "'):look_at — target is not a known point");
+                       }
+                   });
+    L.set_function("_avatar_position", [this](const std::string& id) -> sol::object {
+        sol::state& s = ctx_.scripting.lua();
+        const auto p = api_avatar_position(id);
+        if (!p) {
+            return sol::lua_nil;
+        }
+        return sol::make_object(s, s.create_table_with("x", p->x, "y", p->y));
+    });
+    // The handle: a light table carrying only the id, with movement-blocking done
+    // in Lua via the scheduler's wait_event (so the yield stays on the Lua side,
+    // like wait/camera_go_to). Re-resolution + fail-loud live in the C++ helpers.
+    // play / play_until_end / anchor (design 05 §Avatars) are not implemented yet.
+    ctx_.scripting.run_string(R"LUA(
+do
+  local M = {}
+  M.__index = M
+  function M:move_to(target)
+    local ev = _avatar_move_to(self.id, target)
+    if ev and ev ~= "" then wait_event(ev) end
+    return self
+  end
+  function M:look_at(target) _avatar_look_at(self.id, target); return self end
+  function M:face(direction) _avatar_face(self.id, direction); return self end
+  function M:position() return _avatar_position(self.id) end
+  function avatar(id) return setmetatable({ id = id }, M) end
+end
+)LUA",
+                              "=avatar_handle");
 
     // Room-view-state controls (issue #32). `block_input` gates clicks during
     // cutscene-like sections; `unblock_input` restores normal play.
@@ -617,6 +672,9 @@ void RoomScene::unload_room() {
         }
     }
     ctx_.scripting.cancel_scope(room_scope_);
+    // Scripted moves belong to tasks in the room scope just cancelled; drop the
+    // bookkeeping so update() never emits an arrival for an unloaded room (#139).
+    pending_moves_.clear();
     // An in-progress dialog references the outgoing room's NPC avatars; the
     // room change kills both. Cancelling the dialog scope also reaps any
     // `run`-task spawned from the option (and anything that task spawned).
@@ -1107,6 +1165,18 @@ void RoomScene::update(float dt) {
     if (player_ && room_) {
         player_->update(dt, room_->data());
         room_->update_npcs(dt);
+        // Wake any scripted avatar(id):move_to whose avatar has stopped (#139). A
+        // null avatar (vanished, e.g. NPC despawn) emits too so the waiter doesn't
+        // hang; its scope may already be cancelled, which is harmless.
+        for (auto it = pending_moves_.begin(); it != pending_moves_.end();) {
+            const Avatar* a = resolve_avatar(it->avatar_id);
+            if (a == nullptr || !a->moving()) {
+                ctx_.scripting.emit(it->scope, it->event);
+                it = pending_moves_.erase(it);
+            } else {
+                ++it;
+            }
+        }
         if (camera_) {
             camera_->update(dt); // advance a scripted go_to tween, if any
             if (camera_->following()) {
@@ -1447,6 +1517,57 @@ void RoomScene::api_camera_follow_player() {
             camera_->follow(player_->position());
         }
     }
+}
+
+Avatar* RoomScene::resolve_avatar(const std::string& id) {
+    if (player_ && id == player_char_) {
+        return &*player_;
+    }
+    return room_ ? room_->npc(id) : nullptr;
+}
+
+const Avatar* RoomScene::resolve_avatar(const std::string& id) const {
+    if (player_ && id == player_char_) {
+        return &*player_;
+    }
+    return room_ ? room_->npc(id) : nullptr;
+}
+
+std::string RoomScene::api_avatar_move_to(const std::string& id, geom::Point target) {
+    Avatar* a = resolve_avatar(id);
+    if (!a || !room_) {
+        ctx_.log.error("avatar('" + id + "'):move_to — no such avatar in the room");
+        return std::string();
+    }
+    const RoomData& d = room_->data();
+    a->follow_path(geom::find_path(a->position(), target, d.walkable, d.obstacles));
+    const std::string event = "__avatar_arrived." + id + "." + std::to_string(++move_seq_);
+    pending_moves_.push_back({id, ctx_.scripting.current_scope(), event});
+    return event;
+}
+
+void RoomScene::api_avatar_face(const std::string& id, const std::string& direction) {
+    if (Avatar* a = resolve_avatar(id)) {
+        a->face(direction);
+    } else {
+        ctx_.log.error("avatar('" + id + "'):face — no such avatar in the room");
+    }
+}
+
+void RoomScene::api_avatar_look_at(const std::string& id, geom::Point target) {
+    if (Avatar* a = resolve_avatar(id)) {
+        a->face(nearest_direction(target - a->position()));
+    } else {
+        ctx_.log.error("avatar('" + id + "'):look_at — no such avatar in the room");
+    }
+}
+
+std::optional<geom::Point> RoomScene::api_avatar_position(const std::string& id) const {
+    const Avatar* a = resolve_avatar(id);
+    if (!a) {
+        return std::nullopt;
+    }
+    return a->position();
 }
 
 void RoomScene::api_start_dialog(const std::string& npc_id) {
