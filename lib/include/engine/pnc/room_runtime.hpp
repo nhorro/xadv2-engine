@@ -56,6 +56,19 @@ public:
     void set_object_visible(const std::string& object_id, bool visible);
     [[nodiscard]] bool object_visible(const std::string& object_id) const;
 
+    // Scripted object transform + movement (#142). Position and scale start from
+    // the RoomObject def and can be changed from script; `move_to` is a free
+    // linear move (NOT walkable-gated — objects are not characters). This runtime
+    // pose is transient: re-derived from the def on room load, like an avatar's
+    // pose (only object *visibility* persists). update_objects advances moves.
+    [[nodiscard]] geom::Point object_position(const std::string& object_id) const;
+    void set_object_position(const std::string& object_id, geom::Point p);
+    [[nodiscard]] float object_scale(const std::string& object_id) const;
+    void set_object_scale(const std::string& object_id, float scale);
+    void object_move_to(const std::string& object_id, geom::Point target, float speed);
+    [[nodiscard]] bool object_moving(const std::string& object_id) const;
+    void update_objects(float dt);
+
     void set_layer_visible(const std::string& layer_id, bool visible);
     [[nodiscard]] bool layer_visible(const std::string& layer_id) const;
 
@@ -107,6 +120,16 @@ private:
     std::map<std::string, bool> layer_visible_;
     std::map<std::string, bool> hotspot_enabled_;
     std::map<std::string, Avatar> npcs_;
+
+    // Transient per-object runtime pose (#142), seeded from each RoomObject def.
+    struct ObjectRuntime {
+        geom::Point position{0.0f, 0.0f};
+        float scale = 1.0f;
+        geom::Point target{0.0f, 0.0f};
+        float speed = 240.0f;
+        bool moving = false;
+    };
+    std::map<std::string, ObjectRuntime> object_rt_;
 };
 
 } // namespace pac::pnc

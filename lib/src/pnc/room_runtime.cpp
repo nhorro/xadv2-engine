@@ -6,6 +6,7 @@
 
 #include <sol/sol.hpp>
 
+#include <cmath>
 #include <utility>
 
 namespace pac::pnc {
@@ -30,6 +31,10 @@ void RoomRuntime::seed_runtime_state() {
     }
     for (const auto& [id, object] : data_.objects) {
         object_visible_[id] = object.visible;
+        ObjectRuntime rt;
+        rt.position = object.position;
+        rt.scale = object.scale;
+        object_rt_[id] = rt;
     }
     for (const BackgroundLayer& layer : data_.layers) {
         if (!layer.id.empty()) {
@@ -130,6 +135,66 @@ bool RoomRuntime::layer_visible(const std::string& layer_id) const {
 bool RoomRuntime::object_visible(const std::string& object_id) const {
     const auto it = object_visible_.find(object_id);
     return it != object_visible_.end() ? it->second : true;
+}
+
+geom::Point RoomRuntime::object_position(const std::string& object_id) const {
+    const auto it = object_rt_.find(object_id);
+    if (it != object_rt_.end()) {
+        return it->second.position;
+    }
+    const auto d = data_.objects.find(object_id);
+    return d != data_.objects.end() ? d->second.position : geom::Point{0.0f, 0.0f};
+}
+
+void RoomRuntime::set_object_position(const std::string& object_id, geom::Point p) {
+    auto& rt = object_rt_[object_id];
+    rt.position = p;
+    rt.moving = false; // an explicit placement cancels an in-progress move
+}
+
+float RoomRuntime::object_scale(const std::string& object_id) const {
+    const auto it = object_rt_.find(object_id);
+    if (it != object_rt_.end()) {
+        return it->second.scale;
+    }
+    const auto d = data_.objects.find(object_id);
+    return d != data_.objects.end() ? d->second.scale : 1.0f;
+}
+
+void RoomRuntime::set_object_scale(const std::string& object_id, float scale) {
+    if (scale > 0.0f) {
+        object_rt_[object_id].scale = scale;
+    }
+}
+
+void RoomRuntime::object_move_to(const std::string& object_id, geom::Point target, float speed) {
+    auto& rt = object_rt_[object_id];
+    rt.target = target;
+    rt.speed = speed > 0.0f ? speed : 240.0f;
+    rt.moving = true;
+}
+
+bool RoomRuntime::object_moving(const std::string& object_id) const {
+    const auto it = object_rt_.find(object_id);
+    return it != object_rt_.end() && it->second.moving;
+}
+
+void RoomRuntime::update_objects(float dt) {
+    for (auto& [id, rt] : object_rt_) {
+        if (!rt.moving) {
+            continue;
+        }
+        const geom::Point d{rt.target.x - rt.position.x, rt.target.y - rt.position.y};
+        const float dist = std::sqrt(d.x * d.x + d.y * d.y);
+        const float step = rt.speed * dt;
+        if (dist <= step || dist < 1e-3f) {
+            rt.position = rt.target; // arrived (or close enough): snap and stop
+            rt.moving = false;
+        } else {
+            rt.position.x += d.x / dist * step;
+            rt.position.y += d.y / dist * step;
+        }
+    }
 }
 
 void RoomRuntime::set_hotspot_enabled(const std::string& hotspot_id, bool enabled) {
