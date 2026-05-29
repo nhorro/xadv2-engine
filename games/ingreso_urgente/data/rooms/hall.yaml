@@ -1,0 +1,48 @@
+version: 1
+id: hall
+background:
+  color:
+    r: 24
+    g: 28
+    b: 40
+  layers:
+  - id: background
+    image: hall/00.png
+    z: 0
+perspective:
+  top:
+    y: 424
+    scale: 0.9
+  bottom:
+    y: 640
+    scale: 1.1        
+walkable: [{x: 251, y: 485}, {x: 355, y: 433}, {x: 420, y: 418}, {x: 627, y: 415}, {x: 730, y: 414}, {x: 789, y: 411}, {x: 939, y: 435}, {x: 1036, y: 440}, {x: 1127, y: 473}, {x: 1172, y: 509}, {x: 1265, y: 606}, {x: 73, y: 610}]
+points:
+  player_start: {x: 640, y: 600}
+  from_lab: {x: 1116, y: 490}
+  from_exterior: {x: 701, y: 424}
+  at_lab_door: {x: 1136, y: 493}
+  at_exterior_door: {x: 669, y: 416}
+avatars:
+- id: player
+  start: player_start
+  orientation: down
+  player: true
+obstacles: []
+zones: []
+regions: {}
+hotspots:
+  exterior_door:
+    name: puerta
+    area: [{x: 646, y: 140}, {x: 644, y: 403}, {x: 758, y: 399}, {x: 754, y: 137}]
+    approach: at_exterior_door
+    affordances:
+    - look_at
+    - open
+  lab_door:
+    name: puerta
+    area: [{x: 1220, y: 113}, {x: 1227, y: 368}, {x: 1314, y: 369}, {x: 1311, y: 95}]
+    approach: at_lab_door
+    affordances:
+    - look_at
+    - open

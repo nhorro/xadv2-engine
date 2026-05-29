@@ -1,0 +1,2 @@
+add_executable(pac_ingreso_urgente main.cpp)
+target_link_libraries(pac_ingreso_urgente PRIVATE pac_engine pac_project_options)

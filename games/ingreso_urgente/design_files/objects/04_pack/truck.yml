@@ -1,0 +1,20 @@
+image: "truck.png"
+size:
+  width: 512
+  height: 256
+sprites:
+  - id: "default"
+    rect:
+      x: 2
+      y: 2
+      width: 500
+      height: 206
+    source_rect:
+      x: 0
+      y: 0
+      width: 500
+      height: 206
+    anchors:
+      walking_pivot:
+        x: 250
+        y: 206

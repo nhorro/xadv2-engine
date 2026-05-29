@@ -2,7 +2,12 @@
 build*
 .doc
 vcpkg_installed/
+!build-linux.sh
+!build-windows.bat
 
 # MkDocs documentation site
 /site/
 .venv/
+
+# Claude Code local config + memory
+.claude/

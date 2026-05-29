@@ -1,0 +1,32 @@
+version: 1
+id: lab
+background:
+  color:
+    r: 24
+    g: 28
+    b: 40
+  layers:
+  - id: background
+    image: lab/00.png
+    z: 0
+walkable: [{x: 369, y: 527}, {x: 412, y: 480}, {x: 559, y: 480}, {x: 703, y: 476}, {x: 749, y: 451}, {x: 778, y: 423}, {x: 905, y: 420}, {x: 939, y: 435}, {x: 1036, y: 440}, {x: 1166, y: 612}, {x: 295, y: 608}]
+points:
+  player_start: {x: 640, y: 600}
+  at_door: {x: 848, y: 423}
+  from_hall: {x: 830, y: 423}
+avatars:
+- id: player
+  start: player_start
+  orientation: down
+  player: true
+obstacles: []
+zones: []
+regions: {}
+hotspots:
+  door:
+    name: door
+    area: [{x: 783, y: 94}, {x: 783, y: 412}, {x: 905, y: 408}, {x: 910, y: 96}]
+    approach: at_door
+    affordances:
+    - look_at
+    - open
