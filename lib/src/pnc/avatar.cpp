@@ -17,7 +17,31 @@ Avatar::Avatar(gfx::AnimatedSprite sprite, float scale, std::optional<Shadow> sh
     apply_animation();
 }
 
+void Avatar::play(const std::string& sequence) {
+    if (!sprite_.has(sequence)) {
+        return; // unknown sequence: leave the mover-driven animation in place
+    }
+    acting_ = sequence;
+    sprite_.play(sequence, true); // restart from the first frame
+}
+
+std::optional<geom::Point> Avatar::anchor(const std::string& name) const {
+    if (const auto p = sprite_.anchor_world(name)) {
+        return geom::Point{p->x, p->y};
+    }
+    return std::nullopt;
+}
+
 void Avatar::apply_animation() {
+    if (!acting_.empty()) {
+        // A scripted play() sequence holds until a non-looping one finishes (then
+        // control returns to stand/walk); a looping one runs until movement
+        // cancels it (see move_to / follow_path).
+        if (!sprite_.finished()) {
+            return;
+        }
+        acting_.clear();
+    }
     const char* dir = to_string(mover_.facing());
     const char* base = mover_.action() == Action::Walk ? "walk" : "stand";
     // Prefer the directional variant, then the bare action, then the universal
@@ -50,11 +74,13 @@ void Avatar::face(Direction direction) {
 }
 
 void Avatar::move_to(geom::Point target) {
+    acting_.clear(); // walking cancels a scripted play()
     mover_.move_to(target);
     apply_animation();
 }
 
 void Avatar::follow_path(std::vector<geom::Point> path) {
+    acting_.clear(); // walking cancels a scripted play()
     mover_.follow_path(std::move(path));
     apply_animation();
 }

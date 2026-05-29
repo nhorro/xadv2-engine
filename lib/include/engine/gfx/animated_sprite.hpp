@@ -10,6 +10,7 @@
 #include <SFML/Graphics/Transformable.hpp>
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -47,6 +48,11 @@ public:
     /// transform's position, like draw(). Empty (zero-size at the position) when
     /// there is no valid current frame. Used for hit-testing a moving avatar.
     [[nodiscard]] sf::FloatRect global_bounds() const;
+
+    /// World position of a named anchor on the current frame (transform applied),
+    /// or nullopt when the frame has no such anchor. Mirrors global_bounds()'s
+    /// pivot/transform handling.
+    [[nodiscard]] std::optional<sf::Vector2f> anchor_world(const std::string& name) const;
 
     void set_color(sf::Color color) { color_ = color; }
 
