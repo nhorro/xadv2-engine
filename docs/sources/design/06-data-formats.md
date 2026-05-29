@@ -350,7 +350,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 |-------|-----|------|---------|---------|
 | `name` | req | string | — | Localized noun shown in the command bar. |
 | `area` | req if no `bind` | polygon | — | Explicit hit-test polygon. |
-| `bind` | req if no `area` | `object:<id>` / `region:<id>` | — | Hit test using the bound visual. |
+| `bind` | req if no `area` | `object:<id>` / `region:<id>` / `npc:<id>` | — | Hit test using the bound visual. `npc:<id>` tracks the NPC's current (moving) bounds and is inactive while that NPC is absent — the right choice for a character that walks around. |
 | `approach` | opt | point id \| `{x, y}` | — | Point the player walks toward when a command targets this hotspot. |
 | `requires_approach` | opt | bool | `true` | If `true` (the default), the command waits until the player reaches `approach` (input blocked meanwhile) — walk-then-act. Set `false` for the rare act-from-a-distance interaction: the player still walks toward `approach` but the command fires immediately. |
 | `affordances` | req | `[verb]` | — | Verbs the UI may offer. |

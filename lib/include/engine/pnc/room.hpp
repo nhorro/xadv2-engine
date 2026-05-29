@@ -45,7 +45,8 @@ struct RoomHotspot {
     std::optional<geom::Point> approach;  // resolved approach point, if any
     std::vector<std::string> affordances; // verbs the UI may offer
     std::string default_verb = "look_at";
-    std::string bind; // "object:<id>" / "region:<id>" hit source (see RoomRuntime::hotspot_at)
+    std::string
+        bind; // "object:<id>" / "region:<id>" / "npc:<id>" hit source (RoomRuntime::hotspot_at)
     bool enabled = true;
     // When true (the default), a command on this hotspot only fires once the
     // player has walked to `approach`; until then input is blocked. Set false for

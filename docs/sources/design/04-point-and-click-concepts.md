@@ -529,7 +529,7 @@ A hotspot has:
 | `id` | Stable internal identifier. |
 | `name` | Localized display noun shown in the command bar. |
 | `area` | Optional explicit hit-test polygon. |
-| `bind` | Optional binding to a visual object or region. |
+| `bind` | Optional binding to a visual object, region, or NPC (`object:`/`region:`/`npc:`). An `npc:` bind hit-tests the NPC's current (moving) bounds and is inactive while that NPC is absent. |
 | `approach` | Point the player walks toward when a command targets this hotspot. |
 | `requires_approach` | Optional bool (default `true`). When `true`, the command does not run until the player reaches `approach`; until then input is blocked (walk-then-act, the SCUMM norm). Set `false` for the rare act-from-a-distance interaction: the player still walks toward `approach`, but the command fires immediately. |
 | `affordances` | Verbs that the UI may offer for this hotspot. |
