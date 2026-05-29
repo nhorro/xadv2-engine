@@ -444,6 +444,12 @@ end
     L.set_function("_object_set_scale", [this](const std::string& id, double s) {
         api_object_set_scale(id, static_cast<float>(s));
     });
+    L.set_function("_object_play", [this](const std::string& id, const std::string& seq) {
+        api_object_play(id, seq);
+    });
+    L.set_function("_object_play_until_end", [this](const std::string& id, const std::string& seq) {
+        return api_object_play_until_end(id, seq);
+    });
     ctx_.scripting.run_string(R"LUA(
 do
   local O = {}
@@ -456,6 +462,12 @@ do
   function O:set_position(x, y) _object_set_position(self.id, x, y); return self end
   function O:position() return _object_position(self.id) end
   function O:set_scale(s) _object_set_scale(self.id, s); return self end
+  function O:play(sequence) _object_play(self.id, sequence); return self end
+  function O:play_until_end(sequence)
+    local ev = _object_play_until_end(self.id, sequence)
+    if ev and ev ~= "" then wait_event(ev) end
+    return self
+  end
   function object(id) return setmetatable({ id = id }, O) end
 end
 )LUA",
@@ -608,6 +620,7 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
         camera_->snap_to(player_->position());
     }
     spawn_room_npcs();
+    build_object_sprites();
 
     room_->call_hook("on_load");
     ctx_.scripting.set_current_scope(ctx_.scripting.global_scope());
@@ -784,6 +797,7 @@ void RoomScene::unload_room() {
     pending_moves_.clear();
     pending_anim_.clear();
     pending_obj_moves_.clear();
+    pending_obj_anim_.clear();
     // An in-progress dialog references the outgoing room's NPC avatars; the
     // room change kills both. Cancelling the dialog scope also reaps any
     // `run`-task spawned from the option (and anything that task spawned).
@@ -1123,6 +1137,10 @@ std::optional<sf::FloatRect> RoomScene::object_frame_bounds(const std::string& o
     if (it == room_->data().objects.end() || it->second.sprite.empty()) {
         return std::nullopt;
     }
+    // Animated object: its current frame bounds (transform already synced) (#142).
+    if (const gfx::AnimatedSprite* spr = room_->object_sprite(object_id)) {
+        return spr->global_bounds();
+    }
     try {
         const sf::Texture& tex =
             ctx_.resources.texture(pac::core::logical_join(room_dir_, it->second.sprite));
@@ -1299,12 +1317,21 @@ void RoomScene::update(float dt) {
                 ++it;
             }
         }
-        // Advance scripted object moves and wake any whose object has stopped (#142).
+        // Advance scripted object moves/animations and wake any that have stopped
+        // moving / finished a one-shot sequence (#142).
         room_->update_objects(dt);
         for (auto it = pending_obj_moves_.begin(); it != pending_obj_moves_.end();) {
             if (!object_exists(it->avatar_id) || !room_->object_moving(it->avatar_id)) {
                 ctx_.scripting.emit(it->scope, it->event);
                 it = pending_obj_moves_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        for (auto it = pending_obj_anim_.begin(); it != pending_obj_anim_.end();) {
+            if (!object_exists(it->avatar_id) || !room_->object_acting(it->avatar_id)) {
+                ctx_.scripting.emit(it->scope, it->event);
+                it = pending_obj_anim_.erase(it);
             } else {
                 ++it;
             }
@@ -1774,6 +1801,70 @@ void RoomScene::api_object_set_scale(const std::string& id, float scale) {
     }
     if (scale > 0.0f) {
         room_->set_object_scale(id, scale);
+    }
+}
+
+void RoomScene::api_object_play(const std::string& id, const std::string& sequence) {
+    if (!object_exists(id)) {
+        ctx_.log.error("object('" + id + "'):play — no such object in the room");
+        return;
+    }
+    if (!room_->object_play(id, sequence, false)) {
+        ctx_.log.warn("object('" + id + "'):play — '" + id +
+                      "' is not animated or has no sequence '" + sequence + "'");
+    }
+}
+
+std::string RoomScene::api_object_play_until_end(const std::string& id,
+                                                 const std::string& sequence) {
+    if (!object_exists(id)) {
+        ctx_.log.error("object('" + id + "'):play_until_end — no such object in the room");
+        return std::string();
+    }
+    if (!room_->object_play(id, sequence, true)) {
+        ctx_.log.warn("object('" + id + "'):play_until_end — '" + id +
+                      "' is not animated or has no sequence '" + sequence + "'");
+        return std::string(); // do not yield, or the task hangs
+    }
+    const std::string event = "__object_anim." + id + "." + std::to_string(++obj_anim_seq_);
+    pending_obj_anim_.push_back({id, ctx_.scripting.current_scope(), event});
+    return event;
+}
+
+void RoomScene::build_object_sprites() {
+    if (!room_) {
+        return;
+    }
+    for (const auto& [id, object] : room_->data().objects) {
+        // An animation file (*.yml / *.yaml) makes this an animated object; a
+        // static texture (e.g. *.png) is drawn directly by the renderer.
+        const bool is_anim = object.sprite.size() >= 4 &&
+                             (object.sprite.ends_with(".yml") || object.sprite.ends_with(".yaml"));
+        if (!is_anim) {
+            continue;
+        }
+        try {
+            gfx::AnimatedSprite sprite =
+                gfx::load_animated_sprite(ctx_.resources,
+                                          pac::core::logical_join(room_dir_, object.sprite));
+            room_->set_object_sprite(id, std::move(sprite));
+        } catch (const std::exception& e) {
+            ctx_.log.error("object '" + id + "': could not load animation '" + object.sprite +
+                           "': " + e.what());
+            continue;
+        }
+        // Seat the initial looping sequence so the object renders something.
+        if (!object.sequence.empty()) {
+            if (!room_->object_play(id, object.sequence, false)) {
+                ctx_.log.warn("object '" + id + "': initial sequence '" + object.sequence +
+                              "' not found in its animation");
+            }
+        } else {
+            ctx_.log.warn("object '" + id +
+                          "' is animated but has no 'sequence'; it will not show a frame until "
+                          "object('" +
+                          id + "'):play(...) is called");
+        }
     }
 }
 

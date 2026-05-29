@@ -230,6 +230,9 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                           node);
             }
             object.sprite = sprite_node.as<std::string>();
+            if (node["sequence"]) {
+                object.sequence = node["sequence"].as<std::string>();
+            }
             if (const YAML::Node pos = node["position"]) {
                 object.position = parse_point(pos);
             }

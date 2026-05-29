@@ -499,10 +499,13 @@ room load, like an avatar's pose (only object *visibility* persists).
 | `:set_position(x, y)` | numbers | — | Place the object immediately (cancels a move). |
 | `:position()` | — | point (`{x, y}`) | Current world position. |
 | `:set_scale(s)` | number > 0 | — | Uniform render scale (resize); aspect preserved. |
+| `:play(sequence)` | string | — | Play an animation sequence (looping per its def). **Animated objects only** (sprite is an `*.anim.yml`); no-op + warn otherwise. |
+| `:play_until_end(sequence)` | string | — | Play a non-looping sequence and yield until it finishes. **Animated objects only.** |
 
-Driving an object's own **animation** from a script (`object(id):play(...)`) is a
-design-for addition built on animated objects (a follow-up); the current objects
-are static textures that can be moved, resized, shown, and hidden.
+An object whose `sprite` is an animation (`*.anim.yml`) is an **animated object** —
+an `AnimatedSprite` like an avatar. Its `position` is the sprite **pivot** (not the
+top-left used for a static texture), and it plays its `sequence:` on load. `play`
+and `play_until_end` are no-ops on a static-texture object.
 
 ### Inventory
 
