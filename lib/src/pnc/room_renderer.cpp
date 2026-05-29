@@ -266,6 +266,20 @@ void RoomRenderer::draw(sf::RenderTarget& target,
         if (!room.object_visible(id) || object.sprite.empty()) {
             continue;
         }
+        // Animated object (#142): its AnimatedSprite is advanced + transform-synced
+        // by RoomRuntime::update_objects; draw the current frame. z from the live
+        // frame bounds (scaled bottom edge) unless an explicit baseline/z is set.
+        if (const gfx::AnimatedSprite* spr =
+                room.object_animated(id) ? room.object_sprite(id) : nullptr) {
+            const sf::FloatRect b = spr->global_bounds();
+            float z = object.baseline ? *object.baseline
+                      : object.z_auto ? b.top + b.height
+                                      : object.z;
+            items.emplace_back(z, [spr, &resources, shader_time, this](sf::RenderTarget& t) {
+                spr->draw(t, resources, shader_time, &chain_);
+            });
+            continue;
+        }
         const std::string image = pac::core::logical_join(room_dir, object.sprite);
         // Position/scale come from the runtime pose (scriptable move/resize, #142),
         // falling back to the def for objects never touched by script.
