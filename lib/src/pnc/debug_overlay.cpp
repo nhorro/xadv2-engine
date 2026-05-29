@@ -89,8 +89,12 @@ void DebugOverlay::draw_world(sf::RenderTarget& target,
                               const sf::Font* font) const {
     if (flags.walkboxes) {
         outline_polygon(target, room.walkable, kWalkable);
-        for (const geom::Polygon& obstacle : room.obstacles) {
-            outline_polygon(target, obstacle, kObstacle);
+        for (const Obstacle& obstacle : room.obstacles) {
+            // Only enabled obstacles block walking; skip disabled ones so the
+            // overlay matches what the pathfinder sees (#143).
+            if (obstacle.enabled) {
+                outline_polygon(target, obstacle.area, kObstacle);
+            }
         }
     }
 

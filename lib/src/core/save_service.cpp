@@ -194,6 +194,8 @@ void emit_game_state(YAML::Emitter& out, const GameState& s) {
     emit_room_bool_map(out, s.object_visible);
     out << YAML::Key << "layer_visible" << YAML::Value;
     emit_room_bool_map(out, s.layer_visible);
+    out << YAML::Key << "obstacle_enabled" << YAML::Value;
+    emit_room_bool_map(out, s.obstacle_enabled);
 
     out << YAML::EndMap;
 }
@@ -247,6 +249,7 @@ GameState decode_game_state(const YAML::Node& root) {
     s.hotspot_enabled = decode_room_bool_map(root["hotspot_enabled"]);
     s.object_visible = decode_room_bool_map(root["object_visible"]);
     s.layer_visible = decode_room_bool_map(root["layer_visible"]);
+    s.obstacle_enabled = decode_room_bool_map(root["obstacle_enabled"]);
 
     return s;
 }

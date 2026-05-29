@@ -20,7 +20,26 @@ const geom::Point* RoomData::point(const std::string& name) const {
 }
 
 bool RoomData::is_walkable(geom::Point p) const {
-    return geom::point_in_polygon(p, walkable) && !geom::point_in_any_polygon(p, obstacles);
+    if (!geom::point_in_polygon(p, walkable)) {
+        return false;
+    }
+    for (const Obstacle& o : obstacles) {
+        if (o.enabled && geom::point_in_polygon(p, o.area)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::vector<geom::Polygon> RoomData::active_obstacles() const {
+    std::vector<geom::Polygon> active;
+    active.reserve(obstacles.size());
+    for (const Obstacle& o : obstacles) {
+        if (o.enabled) {
+            active.push_back(o.area);
+        }
+    }
+    return active;
 }
 
 float RoomData::avatar_scale_at(float y, float fallback) const {
@@ -127,7 +146,18 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
         room.walkable = parse_polygon(walk);
     }
     for (const YAML::Node& ob : root["obstacles"] ? root["obstacles"] : YAML::Node()) {
-        room.obstacles.push_back(parse_polygon(ob));
+        Obstacle obs;
+        // Two forms: a bare polygon (legacy: a sequence of points) or a mapping
+        // `{ id, area, enabled? }` (named/toggleable). A map with `area` is the
+        // named form; anything else is parsed as a bare polygon.
+        if (ob.IsMap() && ob["area"]) {
+            obs.id = ob["id"] ? ob["id"].as<std::string>() : std::string();
+            obs.area = parse_polygon(ob["area"]);
+            obs.enabled = ob["enabled"] ? ob["enabled"].as<bool>() : true;
+        } else {
+            obs.area = parse_polygon(ob);
+        }
+        room.obstacles.push_back(std::move(obs));
     }
 
     if (const YAML::Node points = root["points"]) {

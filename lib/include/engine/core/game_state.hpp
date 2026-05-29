@@ -85,6 +85,11 @@ struct GameState {
     /// Per-room background-layer visibility: `layer_visible[room_id][layer_id] = bool`.
     /// Same shape and reasoning as `object_visible`, for `set_layer_visible`.
     std::map<std::string, std::map<std::string, bool>> layer_visible;
+
+    /// Per-room named-obstacle enabled flags: `obstacle_enabled[room_id][obstacle_id] = bool`.
+    /// Same shape and reasoning as `object_visible`, for `enable_obstacle` /
+    /// `disable_obstacle` (#143). Only obstacles with an `id` participate.
+    std::map<std::string, std::map<std::string, bool>> obstacle_enabled;
 };
 
 } // namespace pac::core
