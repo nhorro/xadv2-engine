@@ -414,6 +414,53 @@ end
                    });
     L.set_function("despawn_npc", [this](const std::string& id) { api_despawn_npc(id); });
 
+    // Scripted object control — the `object(id)` handle (#142). Like the avatar
+    // handle, blocking (move_to) yields on the Lua side via wait_event; the C++
+    // helpers resolve the id each call. `target` is a named room point or {x,y};
+    // `speed` is optional (world px/s).
+    L.set_function("_object_move_to",
+                   [this, resolve_target](const std::string& id,
+                                          const sol::object& t,
+                                          sol::optional<double> speed) -> std::string {
+                       const auto p = resolve_target(t);
+                       if (!p) {
+                           ctx_.log.error("object('" + id +
+                                          "'):move_to — target is not a known point");
+                           return std::string();
+                       }
+                       return api_object_move_to(id, *p, static_cast<float>(speed.value_or(240.0)));
+                   });
+    L.set_function("_object_set_position", [this](const std::string& id, float x, float y) {
+        api_object_set_position(id, {x, y});
+    });
+    L.set_function("_object_position", [this](const std::string& id) -> sol::object {
+        sol::state& s = ctx_.scripting.lua();
+        const auto p = api_object_position(id);
+        if (!p) {
+            return sol::lua_nil;
+        }
+        return sol::make_object(s, s.create_table_with("x", p->x, "y", p->y));
+    });
+    L.set_function("_object_set_scale", [this](const std::string& id, double s) {
+        api_object_set_scale(id, static_cast<float>(s));
+    });
+    ctx_.scripting.run_string(R"LUA(
+do
+  local O = {}
+  O.__index = O
+  function O:move_to(target, speed)
+    local ev = _object_move_to(self.id, target, speed)
+    if ev and ev ~= "" then wait_event(ev) end
+    return self
+  end
+  function O:set_position(x, y) _object_set_position(self.id, x, y); return self end
+  function O:position() return _object_position(self.id) end
+  function O:set_scale(s) _object_set_scale(self.id, s); return self end
+  function object(id) return setmetatable({ id = id }, O) end
+end
+)LUA",
+                              "=object_handle");
+
     // Room-view-state controls (issue #32). `block_input` gates clicks during
     // cutscene-like sections; `unblock_input` restores normal play.
     // `set_room_view_state(name)` is the general-purpose setter for the same
@@ -736,6 +783,7 @@ void RoomScene::unload_room() {
     // drop the bookkeeping so update() never emits for an unloaded room (#139/#149).
     pending_moves_.clear();
     pending_anim_.clear();
+    pending_obj_moves_.clear();
     // An in-progress dialog references the outgoing room's NPC avatars; the
     // room change kills both. Cancelling the dialog scope also reaps any
     // `run`-task spawned from the option (and anything that task spawned).
@@ -1079,9 +1127,10 @@ std::optional<sf::FloatRect> RoomScene::object_frame_bounds(const std::string& o
         const sf::Texture& tex =
             ctx_.resources.texture(pac::core::logical_join(room_dir_, it->second.sprite));
         const sf::Vector2u sz = tex.getSize();
-        const float s = it->second.scale;
-        return sf::FloatRect(it->second.position.x,
-                             it->second.position.y,
+        const float s = room_->object_scale(object_id);            // runtime scale (#142)
+        const geom::Point pos = room_->object_position(object_id); // runtime position (#142)
+        return sf::FloatRect(pos.x,
+                             pos.y,
                              static_cast<float>(sz.x) * s,
                              static_cast<float>(sz.y) * s);
     } catch (const std::exception&) {
@@ -1246,6 +1295,16 @@ void RoomScene::update(float dt) {
             if (a == nullptr || !a->acting()) {
                 ctx_.scripting.emit(it->scope, it->event);
                 it = pending_anim_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        // Advance scripted object moves and wake any whose object has stopped (#142).
+        room_->update_objects(dt);
+        for (auto it = pending_obj_moves_.begin(); it != pending_obj_moves_.end();) {
+            if (!object_exists(it->avatar_id) || !room_->object_moving(it->avatar_id)) {
+                ctx_.scripting.emit(it->scope, it->event);
+                it = pending_obj_moves_.erase(it);
             } else {
                 ++it;
             }
@@ -1676,6 +1735,46 @@ std::optional<geom::Point> RoomScene::api_avatar_anchor(const std::string& id,
         return std::nullopt;
     }
     return a->anchor(name);
+}
+
+bool RoomScene::object_exists(const std::string& id) const {
+    return room_ && room_->data().objects.count(id) > 0;
+}
+
+std::string RoomScene::api_object_move_to(const std::string& id, geom::Point target, float speed) {
+    if (!object_exists(id)) {
+        ctx_.log.error("object('" + id + "'):move_to — no such object in the room");
+        return std::string();
+    }
+    room_->object_move_to(id, target, speed);
+    const std::string event = "__object_arrived." + id + "." + std::to_string(++obj_move_seq_);
+    pending_obj_moves_.push_back({id, ctx_.scripting.current_scope(), event});
+    return event;
+}
+
+void RoomScene::api_object_set_position(const std::string& id, geom::Point p) {
+    if (object_exists(id)) {
+        room_->set_object_position(id, p);
+    } else {
+        ctx_.log.error("object('" + id + "'):set_position — no such object in the room");
+    }
+}
+
+std::optional<geom::Point> RoomScene::api_object_position(const std::string& id) const {
+    if (!object_exists(id)) {
+        return std::nullopt;
+    }
+    return room_->object_position(id);
+}
+
+void RoomScene::api_object_set_scale(const std::string& id, float scale) {
+    if (!object_exists(id)) {
+        ctx_.log.error("object('" + id + "'):set_scale — no such object in the room");
+        return;
+    }
+    if (scale > 0.0f) {
+        room_->set_object_scale(id, scale);
+    }
 }
 
 void RoomScene::api_spawn_npc(const std::string& id,

@@ -97,6 +97,16 @@ public:
     [[nodiscard]] std::optional<geom::Point> api_avatar_anchor(const std::string& id,
                                                                const std::string& name) const;
 
+    // Scripted object transform/movement — the `object(id)` Lua handle (#142).
+    // `move_to` is a free linear move (objects are not pathfound); it returns an
+    // event name the wrapper waits on (empty when the object is unknown).
+    [[nodiscard]] std::string
+    api_object_move_to(const std::string& id, geom::Point target, float speed);
+    void api_object_set_position(const std::string& id, geom::Point p);
+    [[nodiscard]] std::optional<geom::Point> api_object_position(const std::string& id) const;
+    void api_object_set_scale(const std::string& id, float scale);
+    [[nodiscard]] bool object_exists(const std::string& id) const;
+
     // Scripted NPC presence (#140). `spawn_npc` creates a room NPC from a cast
     // character (or repositions it if already present) and seats it; `despawn_npc`
     // removes it. The player character is never spawnable. Presence is not
@@ -303,6 +313,12 @@ private:
     // "acting" (its one-shot sequence finished). Cleared on room unload.
     std::vector<PendingMove> pending_anim_;
     std::uint64_t anim_seq_ = 0;
+
+    // Scripted `object(id):move_to(...)` calls in flight (#142): wake condition is
+    // the object no longer moving. `avatar_id` holds the object id. Cleared on
+    // room unload. `obj_move_seq_` makes each arrival event unique.
+    std::vector<PendingMove> pending_obj_moves_;
+    std::uint64_t obj_move_seq_ = 0;
 
     // Resolved static point for the running dialog's NPC speech (from the dialog
     // file's `text_anchor`). Empty -> bubble follows the NPC avatar position.
