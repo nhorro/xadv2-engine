@@ -952,12 +952,12 @@ std::optional<sf::FloatRect> RoomScene::object_frame_bounds(const std::string& o
         return std::nullopt;
     }
     const auto it = room_->data().objects.find(object_id);
-    if (it == room_->data().objects.end() || it->second.image.empty()) {
+    if (it == room_->data().objects.end() || it->second.sprite.empty()) {
         return std::nullopt;
     }
     try {
         const sf::Texture& tex =
-            ctx_.resources.texture(pac::core::logical_join(room_dir_, it->second.image));
+            ctx_.resources.texture(pac::core::logical_join(room_dir_, it->second.sprite));
         const sf::Vector2u sz = tex.getSize();
         return sf::FloatRect(it->second.position.x,
                              it->second.position.y,

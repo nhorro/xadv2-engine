@@ -251,6 +251,24 @@ objects:
     CHECK_FALSE(r.objects.at("vase").baseline.has_value()); // omitted -> z/z_auto
 }
 
+TEST_CASE("parse_room reads object 'sprite' (canonical) and 'image' (deprecated alias)") {
+    const char* yaml = R"YAML(
+id: r
+objects:
+  by_sprite: { sprite: o/a.png, position: { x: 1, y: 2 } }
+  by_image:  { image: o/b.png, position: { x: 3, y: 4 } }
+)YAML";
+    const RoomData r = parse_room(yaml);
+    CHECK(r.objects.at("by_sprite").sprite == "o/a.png");
+    CHECK(r.objects.at("by_image").sprite == "o/b.png"); // alias maps onto the same field
+}
+
+TEST_CASE("parse_room fails loudly when an object has neither 'sprite' nor 'image'") {
+    const char* yaml = "id: r\nobjects:\n  ghost: { position: { x: 0, y: 0 } }\n";
+    CHECK_THROWS_AS(parse_room(yaml), DataError);
+    CHECK(error_code([&] { parse_room(yaml); }) == "room.object-sprite-missing");
+}
+
 TEST_CASE("parse_room reads walk-behind areas and validates the layer reference") {
     const char* yaml = R"YAML(
 id: r
