@@ -107,6 +107,40 @@
           </div>
         </div>
       </section>
+
+      <section class="panel" id="objects-panel" style="display:none">
+        <h2>Objects</h2>
+        <p class="hint">Use Add/Remove (Geometry panel) to create/delete; drag an
+          object on the canvas to move it.</p>
+        <div id="objects-list"></div>
+        <label for="object-sprite">Selected object</label>
+        <div id="object-info">
+          <label>sprite</label>
+          <select id="object-sprite" style="width:100%"></select>
+          <div style="margin-top:.5rem;display:flex;gap:.5rem;align-items:center">
+            <label style="width:3rem">x</label>
+            <input id="object-x" type="number" step="1" />
+            <label style="width:3rem">y</label>
+            <input id="object-y" type="number" step="1" />
+          </div>
+          <div style="margin-top:.5rem;display:flex;gap:.5rem;align-items:center">
+            <label style="width:3rem">scale</label>
+            <input id="object-scale" type="number" step="0.05" min="0.05" />
+            <label style="width:3rem">z</label>
+            <input id="object-z" type="text" placeholder="auto" />
+          </div>
+          <div style="margin-top:.5rem;display:flex;gap:.5rem;align-items:center">
+            <label style="width:4rem">baseline</label>
+            <input id="object-baseline" type="number" step="1" placeholder="(none)" />
+            <label style="margin-left:.5rem"><input id="object-visible" type="checkbox" /> visible</label>
+          </div>
+          <div style="margin-top:.5rem"><button id="object-apply">Apply</button></div>
+          <div class="hint" style="margin-top:.4rem">
+            z: blank/"auto" sorts by the scaled bottom edge; a number overrides;
+            baseline sets a fixed floor line (avatars pass in front below it).
+          </div>
+        </div>
+      </section>
     </aside>
     <section class="canvas-panel">
       <canvas id="room-canvas"></canvas>
