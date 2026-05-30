@@ -304,6 +304,13 @@ end
     // close-up pops back here on Esc / right-click, so the room state is preserved.
     L.set_function("open_closeup",
                    [this](const std::string& scene_id) { ctx_.scenes.push_scene(scene_id); });
+    // Leave the room for a manifest scene (typically a Cutscene / StoryText) — e.g.
+    // an act-closing cutscene triggered from a verb handler. Unlike open_closeup
+    // this REPLACES the room (goto_scene), so the scene's own `on_finish` decides
+    // where to go next (often back to room_view). Persistent state in GameState
+    // survives; the live room is unloaded.
+    L.set_function("start_cutscene",
+                   [this](const std::string& scene_id) { ctx_.scenes.goto_scene(scene_id); });
     // Ambient floating text (non-blocking): onomatopoeia and background NPC
     // chatter, independent of the single speech line. `where` is a point name,
     // "npc:id"/"object:id" (follows the moving thing), or {x=, y=}. `opts` =
