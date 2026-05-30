@@ -245,6 +245,13 @@ end
 return game
 ```
 
+`game.on_start()` runs **once, on a new game**: when the `RoomScene` is entered
+without a staged restore, in the global scope, **before the start room's
+`on_load`** (so a room may read the world state `on_start` seeds — e.g. each
+room's initial configuration). It is **skipped on Continue/Load**, so it never
+overwrites a restored save. It is a plain (non-coroutine) call; wrap any blocking
+sequence in `spawn(...)`.
+
 If a hotspot does not provide a specific handler for a valid command, the command
 system may fall back to `game.lua`.
 
