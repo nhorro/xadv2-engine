@@ -363,6 +363,39 @@ return {
 }
 ```
 
+### Close-up-local functions
+
+While a scripted close-up is open, two extra functions are bound (and unbound on
+exit), in addition to the close-up `talk` and the live room API:
+
+| Function | Parameters | Meaning |
+|----------|------------|---------|
+| `set_hotspot_name(id, name)` | hotspot id, string | Override a hotspot's hover/look label at runtime (e.g. rename an "unidentified" sample to its identification). Lasts for the open view; **persistence is the script's job** — save the chosen name in state and re-apply it in `on_enter` so it survives reopening and save/load. |
+| `shout(text)` | string (empty/none clears) | Set an off-screen "shout" banner — a styled line word-wrapped across the top of the close-up, **independent of the speech bubble** (an unseen character calling from the room). Typically driven from a `spawn`-ed loop that alternates lines with `wait`; the close-up scope is cancelled on exit, so the loop stops and the banner clears automatically. |
+
+```lua
+-- closeups/window_llamas.lua: identify samples; after 3, an off-screen voice nags.
+return {
+  on_enter = function()
+    -- Re-apply identifications persisted from a previous visit.
+    for i = 1, 6 do
+      local n = get_state("llamas.animal" .. i .. ".name")
+      if n then set_hotspot_name("animal" .. i, n) end
+    end
+  end,
+  hotspots = {
+    animal1 = function()
+      talk("player", "Pelaje fino y blanco... una alpaca juvenil.")
+      local name = "Muestra 1 — alpaca juvenil, hembra"
+      set_hotspot_name("animal1", name)
+      set_state("llamas.animal1.name", name)         -- persist
+      identify_and_maybe_nag()                        -- count + start shouting at 3
+    end,
+    -- ...
+  },
+}
+```
+
 ## Coroutine rules
 
 Blocking calls must run inside a spawned task or inside an engine-invoked script
