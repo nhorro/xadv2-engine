@@ -216,8 +216,10 @@ private:
     void walk_to_approach(geom::Point approach, const std::string& hotspot_id);
     void execute_command(const Command& cmd);
     /// Route a command through the handler chain (inventory -> hotspot ->
-    /// game.lua fallback). Returns the handler's caption string, if any.
-    std::optional<std::string> dispatch(const Command& cmd);
+    /// game.lua fallback), stopping at the first handler that exists. The result's
+    /// `handled` flag lets the caller suppress the default caption when a handler
+    /// ran (even silently); `caption` carries a returned line.
+    VerbResult dispatch(const Command& cmd);
     /// Run a command and produce its feedback: shows a returned caption, or the
     /// "nothing happens" fallback only when the handler returned no caption and
     /// did not speak (e.g. via talk()). Shared by the immediate path and the
