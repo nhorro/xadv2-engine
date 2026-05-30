@@ -25,8 +25,8 @@ settings:
     music_volume: 0.8
     sfx_volume: 0.8
 
-entry: title
-#entry: room_view
+#entry: title
+entry: room_view
 
 development:
   edit_mode: false
@@ -94,3 +94,40 @@ scenes:
       player: player
       font: fonts/DepartureMono-Regular.otf
       logic: scripts/game.lua
+
+  # Close-ups
+  - id: window_llamas
+    type: CloseUp
+    parameters:
+      data: closeups/window_llamas.yml
+      logic: closeups/window_llamas.lua    # scripted hotspots (talk in steps, set state)
+      cast: cast.yaml                  # speech colours for talk()
+      font: fonts/DepartureMono-Regular.otf        
+  - id: lab_skull_closeup
+    type: CloseUp
+    parameters:
+      data: closeups/lab_skull.yml
+      logic: closeups/lab_skull.lua    # scripted hotspots (talk in steps, set state)
+      cast: cast.yaml                  # speech colours for talk()
+      font: fonts/DepartureMono-Regular.otf
+  - id: lab_chalkboard
+    type: CloseUp
+    parameters:
+      data: closeups/lab_chalkboard.yml
+      logic: closeups/lab_chalkboard.lua    # scripted hotspots (talk in steps, set state)
+      cast: cast.yaml                  # speech colours for talk()
+      font: fonts/DepartureMono-Regular.otf
+  - id: lab_notebook1
+    type: CloseUp
+    parameters:
+      data: closeups/lab_notebook1.yml
+      logic: closeups/lab_notebook1.lua    # scripted hotspots (talk in steps, set state)
+      cast: cast.yaml                  # speech colours for talk()
+      font: fonts/DepartureMono-Regular.otf  
+  - id: lab_notebook2
+    type: CloseUp
+    parameters:
+      data: closeups/lab_notebook2.yml
+      logic: closeups/lab_notebook2.lua    # scripted hotspots (talk in steps, set state)
+      cast: cast.yaml                  # speech colours for talk()
+      font: fonts/DepartureMono-Regular.otf      

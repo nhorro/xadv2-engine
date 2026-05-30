@@ -4,7 +4,7 @@
 # The path of the tool
 PYTHON_TOOL_PATH=../../../../../tools/spritesheet_packer/
 
-SPRITESHEET_BASENAME=delivery_guy
+SPRITESHEET_BASENAME=schneider
 INPUT_DIR=../01_remove_chroma/
 INPUT_TXT_DIR=../02_frame_naming/
 OUTPUT_DIR=.

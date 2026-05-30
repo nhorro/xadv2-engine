@@ -12,16 +12,21 @@ function room.on_unload() end
 --   end
 -- end
 
-room.hotspots = {  
+room.hotspots = {
   door = {
     look_at = function()
       return "La puerta de ingreso al instituto."
     end,
     open = function()
       --play_sound("sfx/door_open.ogg")
-      change_room("hall", "from_exterior")      
+      change_room("hall", "from_exterior")
     end,
-  }
+  },
+  -- --- handlers for the npc-bound hotspot template in exterior.yaml (issue #141) ---
+  -- delivery_guy = {
+  --   look_at = function() return "El repartidor, esperando junto a la camioneta." end,
+  --   talk_to = function() talk("delivery_guy", "Traigo un paquete urgente.") end,
+  -- },
 }
 
 return room

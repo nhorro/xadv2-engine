@@ -45,6 +45,16 @@ obstacles:
 zones: []
 regions: {}
 hotspots:
+  # --- NPC hotspot template (issue #141). Uncomment to talk to / look at the
+  # delivery guy: `bind: npc:<id>` tracks his moving bounds (no fixed polygon),
+  # and is inactive when he isn't present. Add the matching handlers in
+  # exterior.lua (see the commented block there). ---
+  # delivery_guy:
+  #   name: repartidor
+  #   bind: npc:delivery_guy
+  #   affordances:
+  #   - look_at
+  #   - talk_to
   door:
     name: puerta
     area: [{x: 489, y: 211}, {x: 490, y: 334}, {x: 547, y: 334}, {x: 550, y: 211}]

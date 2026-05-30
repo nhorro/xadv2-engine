@@ -13,14 +13,25 @@ appearances:
     shadow:
       size: { x: 40, y: 10 }
       color: { r: 0, g: 0, b: 0, a: 90 }
+  schneider:
+    type: animated_sprite
+    sprite: characters/schneider/schneider.anim.yml
+    shadow:
+      size: { x: 40, y: 10 }
+      color: { r: 0, g: 0, b: 0, a: 90 }      
 
 characters:
   player:
     appearance: julia
     name: "Julia"
     speech_color: { r: 240, g: 200, b: 230 }
+    speech_gap: 120   # side clearance when a line is placed beside Julia
   delivery_guy:
     appearance: delivery_guy
     name: "Repartidor"
     speech_color: { r: 240, g: 200, b: 230 }    
+  schneider:
+    appearance: schneider
+    name: "Dr. Schneider"
+    speech_color: { r: 140, g: 200, b: 130 }
   
