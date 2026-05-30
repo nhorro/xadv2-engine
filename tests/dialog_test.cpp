@@ -172,6 +172,42 @@ TEST_CASE("dialog speaks NPC line, takes a choice, runs `run`, follows `to`, end
     CHECK(d.ended());
 }
 
+TEST_CASE("options() is empty while a line is being spoken (panel hides during speech)") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    TestHost host;
+    LoadedTree tree = load_tree(s, log, R"lua(
+        return {
+            start = "greet",
+            greet = {
+                npc = "Hola.",
+                options = {
+                    { "Contame.", to = "greet" },
+                    { "Chau.", to = END },
+                },
+            },
+        }
+    )lua");
+    DialogRuntime d = build(s, log, host, tree);
+
+    // While the NPC line is on screen, no options are offered.
+    CHECK(d.state() == DialogRuntime::State::SPEAKING_NPC);
+    CHECK(d.options().empty());
+
+    // Bubble clears -> options become available.
+    host.speaking = false;
+    d.update();
+    CHECK(d.state() == DialogRuntime::State::AWAITING_CHOICE);
+    CHECK(d.options().size() == 2);
+
+    // Choosing speaks the player line; options vanish again until the next node
+    // settles into AWAITING_CHOICE (this is what makes the panel disappear while
+    // the avatar talks).
+    d.choose(0);
+    CHECK(d.state() == DialogRuntime::State::SPEAKING_PLAYER);
+    CHECK(d.options().empty());
+}
+
 TEST_CASE("multi-line NPC speaks each line in order before showing options") {
     Diagnostics log = quiet();
     Scripting s(log);

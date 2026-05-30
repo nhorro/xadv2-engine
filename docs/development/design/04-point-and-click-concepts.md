@@ -965,6 +965,24 @@ While a dialog runs, the room view enters `Dialog` state. The SCUMM panel is
 replaced by dialog options. When the dialog ends, the room view returns to
 `Command` state.
 
+**Dialog panel presentation.** The options area is drawn clean: no command-bar
+strip and no separator rule (the action string has no meaning while choosing),
+and the first option starts at the top of the panel — the command-bar band is
+reclaimed for option text. Options are **plain text** (a resting and a hovered
+colour, no boxes), in the Monkey Island / Thimbleweed Park idiom. While a node's
+NPC or player line is being **spoken**, no options are shown at all: the panel is
+left blank like a `Blocked` cutscene bar so the speech bubble reads cleanly over
+the scenery; the options reappear only once the line clears and the node settles
+into "awaiting a choice".
+
+Long option labels **word-wrap** at word boundaries to the available width (no
+word is clipped off the edge). When the options do not all fit in the panel, they
+**page**: small vertical up/down arrows appear in a right-hand gutter (and *only*
+when more than one page is needed). Paging is line-aware — options are packed onto
+a page by their wrapped height, and an option that would not fit in the remaining
+space is **promoted whole to the next page** rather than split or clipped. The
+wrap + page-packing logic is pure (`layout_dialog_options`) and headless-tested.
+
 ### Dialog format
 
 ```lua
