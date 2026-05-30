@@ -462,6 +462,7 @@ later room cannot resume a task that was waiting in an earlier one.
 | `show_text(text, dur?)` | string, optional duration | — | Show a speaker-less centered text page in virtual space and yield until finished/skipped. |
 | `clear_text()` | — | — | Remove the current text page immediately. |
 | `start_dialog(id [, speaker])` | dialog id, optional cast character id | — | Enter dialog state and run `dialogs/<id>.lua`. `speaker` (default `id`) is the cast character whose speech colour and over-head bubble render the `npc` lines, letting one NPC own several topic-named dialogs. |
+| `float_text(text, where [, opts])` | string, anchor, optional table | — | Show a **non-blocking** floating label over the scenery, independent of the single `talk` line: onomatopoeia (`"¡CLICK!"`) and background NPC chatter. Several can coexist and it returns immediately (drive a recurring effect from a `spawn`-ed loop with `wait`). `where` is a **point name**, `"npc:id"`/`"object:id"` (the label follows the moving thing), or `{ x=, y= }`. `opts` = `{ duration = seconds, color = { r=, g=, b= } }`. Labels are transient (not saved) and cleared on room change. |
 
 `text` may later be replaced or supplemented by a stable line id for localization
 and voice-over. When `dur` is omitted, the engine derives the display time from
