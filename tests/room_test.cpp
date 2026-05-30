@@ -1,3 +1,7 @@
+#include "engine/core/diagnostics.hpp"
+#include "engine/core/resource_cache.hpp"
+#include "engine/core/resource_source.hpp"
+#include "engine/core/scripting.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"
 #include "engine/pnc/room_runtime.hpp"
@@ -5,6 +9,8 @@
 
 #include <doctest/doctest.h>
 
+#include <filesystem>
+#include <fstream>
 #include <optional>
 #include <string>
 
@@ -473,4 +479,54 @@ hotspots:
     CHECK(hit->id == "vase_hs");
     CHECK(room.hotspot_at({100, 100}, bounds) == nullptr); // outside the frame
     CHECK(room.hotspot_at({320, 350}) == nullptr);         // headless overload skips object bind
+}
+
+TEST_CASE("call_hotspot reports handled vs. no-handler (default-caption gating)") {
+    // A behavior with: a verb that returns a caption, a verb that runs a silent
+    // action (returns nil), and verbs/hotspots with no handler at all.
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "pac_call_hotspot_test";
+    fs::remove_all(root);
+    fs::create_directories(root / "rooms");
+    std::ofstream(root / "rooms" / "r.lua") << R"LUA(
+        return {
+          hotspots = {
+            thing = {
+              look_at = function() return "Una cosa." end,
+              use     = function() did_use = true end,  -- silent action, no return
+            },
+          },
+        }
+    )LUA";
+
+    pac::core::Diagnostics log(pac::core::LogLevel::ERROR);
+    pac::core::FilesystemResourceSource source(root.string());
+    pac::core::ResourceCache resources(source, log);
+    pac::core::Scripting scripting(log);
+
+    RoomRuntime room(parse_room("id: r\n"));
+    room.load_behavior(scripting, resources, "rooms/r.lua", log);
+
+    // Handler returns a caption -> handled, caption present.
+    const VerbResult look = room.call_hotspot("thing", "look_at");
+    CHECK(look.handled);
+    REQUIRE(look.caption.has_value());
+    CHECK(*look.caption == "Una cosa.");
+
+    // Handler ran a silent action -> handled, but NO caption (default suppressed).
+    const VerbResult use = room.call_hotspot("thing", "use");
+    CHECK(use.handled);
+    CHECK_FALSE(use.caption.has_value());
+    CHECK(scripting.run_string("assert(did_use == true)")); // the action did run
+
+    // No handler for this verb on an existing hotspot -> not handled.
+    const VerbResult push = room.call_hotspot("thing", "push");
+    CHECK_FALSE(push.handled);
+    CHECK_FALSE(push.caption.has_value());
+
+    // No such hotspot -> not handled.
+    const VerbResult ghost = room.call_hotspot("ghost", "look_at");
+    CHECK_FALSE(ghost.handled);
+
+    fs::remove_all(root);
 }
