@@ -1201,6 +1201,8 @@ void RoomScene::execute_command(const Command& cmd) {
         const RoomData& d = room_->data();
         geom::Point ap = *hs->approach;
         if (!d.walkable.empty() && !d.is_walkable(ap)) {
+            ctx_.log.debug("approach point for hotspot '" + room_target->id +
+                           "' is outside the walkable area; clamped to the nearest walkable point");
             ap = geom::closest_point_in_polygon(ap, d.walkable);
         }
         const bool far = geom::distance(player_->position(), ap) > kApproachReached;
@@ -1258,6 +1260,12 @@ std::optional<geom::Point> RoomScene::hotspot_focus(const RoomHotspot& hs) const
         if (const auto bounds =
                 object_frame_bounds(hs.bind.substr(std::string("object:").size()))) {
             return centre(*bounds);
+        }
+    } else if (hs.bind.starts_with("npc:")) {
+        // The bound NPC's current bounds, so the player turns to face a
+        // (possibly moving) NPC — e.g. talk_to on an `npc:`-bound hotspot.
+        if (const Avatar* a = room_->npc(hs.bind.substr(std::string("npc:").size()))) {
+            return centre(a->bounds());
         }
     }
     return std::nullopt;
@@ -1459,7 +1467,16 @@ void RoomScene::update(float dt) {
         // restoring of a save: that would round-trip the save we just loaded
         // (harmless, but a wasted write and a confusing log line).
         if (!was_restore && can_save()) {
-            ctx_.saves.save(pac::core::SaveService::kAutosaveSlot, snap());
+            // Include a thumbnail so the load picker shows the autosave too (#119);
+            // manual saves stage one, but the autosave path was passing none. This
+            // is the latest gameplay frame (the room we are leaving) — good enough
+            // for the autosave preview.
+            if (ctx_.thumbnail.valid()) {
+                const sf::Image thumb = ctx_.thumbnail.image();
+                ctx_.saves.save(pac::core::SaveService::kAutosaveSlot, snap(), &thumb);
+            } else {
+                ctx_.saves.save(pac::core::SaveService::kAutosaveSlot, snap());
+            }
         }
         return;
     }
@@ -1912,6 +1929,15 @@ std::string RoomScene::api_avatar_move_to(const std::string& id, geom::Point tar
         return std::string();
     }
     const RoomData& d = room_->data();
+    // Flag a scripted move whose target sits outside the walkable area — likely an
+    // authoring slip (a stale point, or a point dropped off the floor). The path
+    // still routes to the nearest reachable point, but the avatar won't reach the
+    // requested spot, which is confusing without this hint.
+    if (!d.walkable.empty() && !d.is_walkable(target)) {
+        ctx_.log.warn("avatar('" + id + "'):move_to target (" + std::to_string(target.x) + ", " +
+                      std::to_string(target.y) +
+                      ") is outside the walkable area; routing to the nearest reachable point");
+    }
     a->follow_path(geom::find_path(a->position(), target, d.walkable, d.active_obstacles()));
     const std::string event = "__avatar_arrived." + id + "." + std::to_string(++move_seq_);
     pending_moves_.push_back({id, ctx_.scripting.current_scope(), event});
