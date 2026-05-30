@@ -24,7 +24,7 @@ Aprovechamos el close-up para hacer el spawn de la Dra. Schneider (así evitamos
 
 Cada evidencia es un close-up, y al hacer click en partes de la imagen se establecen variables que habilitan nuevas opciones del diálogo con la Dra. Schneider, que permiten resolver el caso.
 
-La Dra Schneider muestra un trato lejano, como de una emidencia académica hacia una estudiante, y tiene un lenguaje que expresa sus ideas con precisión, y también la demanda. Eso establece también la relación de la Dr. Schenider como alguien frío, distante, pero también competente (una especie de Dr. House).
+La Dr. Schneider muestra un trato lejano, propio de una emidencia académica hacia una estudiante, y tiene un lenguaje que expresa sus ideas con precisión, y también la demanda. Eso establece también la relación de la Dr. Schenider como alguien fría, distante, pero también competente (una especie de Dr. House).
 
 ### Puzzle 1 - El cadáver
 
