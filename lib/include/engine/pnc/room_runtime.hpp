@@ -21,6 +21,16 @@ class Scripting;
 
 namespace pac::pnc {
 
+/// Outcome of a verb-handler lookup. `handled` is true when a matching handler
+/// function existed and ran (regardless of what it returned); `caption` is its
+/// returned line, if any. This lets the dispatcher distinguish "no handler →
+/// emit the default caption" from "a handler ran (did an action, spoke, or
+/// returned nothing) → it took responsibility, emit nothing".
+struct VerbResult {
+    bool handled = false;
+    std::optional<std::string> caption;
+};
+
 /// Loaded room: its static data plus the Lua behavior table. The behavior (a
 /// sol::table) is held opaquely (pimpl) so sol2 never leaks into a header. Lua
 /// hooks/handlers are invoked through non-sol methods.
@@ -114,12 +124,14 @@ public:
     /// Call a zone hook (on_zone_enter / on_zone_exit) with the zone id, if defined.
     void call_zone_hook(const std::string& hook, const std::string& zone_id);
 
-    /// Call `hotspots.<id>.<verb>(operand?)` if defined; returns its string result
-    /// (a caption), or nullopt when there is no handler / no string result. When
-    /// `operand` is set it is passed as the handler argument (two-operand verbs).
-    std::optional<std::string> call_hotspot(const std::string& hotspot_id,
-                                            const std::string& verb,
-                                            std::optional<std::string> operand = std::nullopt);
+    /// Call `hotspots.<id>.<verb>(operand?)` if defined. The result's `handled`
+    /// is true when the handler function existed and ran (so the caller suppresses
+    /// the default caption even if it returned nothing); `caption` carries a
+    /// returned string. When `operand` is set it is passed as the handler argument
+    /// (two-operand verbs).
+    VerbResult call_hotspot(const std::string& hotspot_id,
+                            const std::string& verb,
+                            std::optional<std::string> operand = std::nullopt);
 
 private:
     struct Behavior;

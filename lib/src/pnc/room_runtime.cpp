@@ -368,36 +368,36 @@ void RoomRuntime::call_zone_hook(const std::string& hook, const std::string& zon
     }
 }
 
-std::optional<std::string> RoomRuntime::call_hotspot(const std::string& hotspot_id,
-                                                     const std::string& verb,
-                                                     std::optional<std::string> operand) {
+VerbResult RoomRuntime::call_hotspot(const std::string& hotspot_id,
+                                     const std::string& verb,
+                                     std::optional<std::string> operand) {
     if (!behavior_ || !behavior_->valid) {
-        return std::nullopt;
+        return {};
     }
     sol::optional<sol::table> hotspots = behavior_->table["hotspots"];
     if (!hotspots) {
-        return std::nullopt;
+        return {};
     }
     sol::optional<sol::table> hs = (*hotspots)[hotspot_id];
     if (!hs) {
-        return std::nullopt;
+        return {};
     }
     sol::optional<sol::protected_function> fn = (*hs)[verb];
     if (!fn) {
-        return std::nullopt;
+        return {}; // no handler for this verb -> caller may show the default caption
     }
+    // A handler exists: from here it is responsible, so `handled` is true even if
+    // it errors or returns nothing (it may have opened a close-up, changed state,
+    // spoken via talk(), ...).
     const sol::protected_function_result r = operand ? (*fn)(*operand) : (*fn)();
     if (!r.valid()) {
         const sol::error err = r;
         behavior_->log->error(std::string("hotspot '" + hotspot_id + "." + verb + "' error: ") +
                               err.what());
-        return std::nullopt;
+        return {true, std::nullopt};
     }
     sol::optional<std::string> caption = r;
-    if (caption) {
-        return *caption;
-    }
-    return std::nullopt;
+    return {true, caption ? std::optional<std::string>(*caption) : std::nullopt};
 }
 
 } // namespace pac::pnc

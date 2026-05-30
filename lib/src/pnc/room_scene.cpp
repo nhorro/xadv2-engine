@@ -67,51 +67,51 @@ struct RoomScene::Lua {
     bool game_valid = false;
     pac::core::Diagnostics* log = nullptr;
 
-    std::optional<std::string> call_inventory(const std::string& item,
-                                              const std::string& verb,
-                                              std::optional<std::string> operand) {
+    VerbResult call_inventory(const std::string& item,
+                              const std::string& verb,
+                              std::optional<std::string> operand) {
         if (!inventory_valid) {
-            return std::nullopt;
+            return {};
         }
         sol::optional<sol::table> t = inventory_table[item];
         if (!t) {
-            return std::nullopt;
+            return {};
         }
         sol::optional<sol::protected_function> fn = (*t)[verb];
         if (!fn) {
-            return std::nullopt;
+            return {};
         }
         const sol::protected_function_result r = operand ? (*fn)(*operand) : (*fn)();
         if (!r.valid()) {
             const sol::error e = r;
             log->error(std::string("inventory '" + item + "." + verb + "' error: ") + e.what());
-            return std::nullopt;
+            return {true, std::nullopt};
         }
         sol::optional<std::string> cap = r;
-        return cap ? std::optional<std::string>(*cap) : std::nullopt;
+        return {true, cap ? std::optional<std::string>(*cap) : std::nullopt};
     }
 
-    std::optional<std::string>
+    VerbResult
     call_game(const std::string& verb, const std::string& a, std::optional<std::string> b) {
         if (!game_valid) {
-            return std::nullopt;
+            return {};
         }
         sol::optional<sol::table> fallbacks = game_table["fallbacks"];
         if (!fallbacks) {
-            return std::nullopt;
+            return {};
         }
         sol::optional<sol::protected_function> fn = (*fallbacks)[verb];
         if (!fn) {
-            return std::nullopt;
+            return {};
         }
         const sol::protected_function_result r = b ? (*fn)(a, *b) : (*fn)(a);
         if (!r.valid()) {
             const sol::error e = r;
             log->error(std::string("game fallback '" + verb + "' error: ") + e.what());
-            return std::nullopt;
+            return {true, std::nullopt};
         }
         sol::optional<std::string> cap = r;
-        return cap ? std::optional<std::string>(*cap) : std::nullopt;
+        return {true, cap ? std::optional<std::string>(*cap) : std::nullopt};
     }
 
     /// Run game.lua's optional `on_start()` once-per-new-game world-state
@@ -1261,7 +1261,7 @@ void RoomScene::dispatch_and_feedback(const Command& cmd) {
     // Turn to face what we're about to act on / talk to, before dispatch (so the
     // avatar already looks at an NPC when its dialog opens).
     face_target(cmd);
-    const std::optional<std::string> caption = dispatch(cmd);
+    const VerbResult result = dispatch(cmd);
     // If dispatch flipped us into a non-command state (e.g. a `talk_to` handler
     // called `start_dialog`), the dialog's first NPC line is already on screen;
     // suppress the fallback caption that would otherwise overwrite it.
@@ -1275,12 +1275,13 @@ void RoomScene::dispatch_and_feedback(const Command& cmd) {
         color = c->speech_color;
         gap = c->speech_gap;
     }
-    // A command that performs an action is valid even when its handler returns no
-    // text: show a returned caption; otherwise fall back to "nothing happens" only
-    // when the handler did not already speak via talk().
-    if (caption) {
-        say(*caption, color, gap);
-    } else if (!spoke_during_command_) {
+    // Show a returned caption. Otherwise fall back to "nothing happens" ONLY when
+    // no handler took responsibility — a handler that ran (opened a close-up,
+    // changed state, spoke via talk(), or just returned nothing) suppresses the
+    // default, since it already decided how to react.
+    if (result.caption) {
+        say(*result.caption, color, gap);
+    } else if (!result.handled && !spoke_during_command_) {
         say(ctx_.strings.caption("nothing_happens"), color, gap);
     }
     command_controller_.finish_execution();
@@ -1342,30 +1343,35 @@ void RoomScene::walk_to_approach(geom::Point approach, const std::string& hotspo
     player_->follow_path(path);
 }
 
-std::optional<std::string> RoomScene::dispatch(const Command& cmd) {
+VerbResult RoomScene::dispatch(const Command& cmd) {
     const std::string verb(verb_id(cmd.verb));
     const ObjectRef& p1 = cmd.param1;
+    // Most specific handler that EXISTS wins and takes responsibility: stop as soon
+    // as one is `handled` (even if it returned no caption), so a silent action
+    // handler doesn't fall through to the default. Only when no handler exists at
+    // any level does the (last) game-fallback result — typically unhandled — flow
+    // back, and the caller shows the default caption.
     if (cmd.param2) {
         const ObjectRef& p2 = *cmd.param2;
         if (p1.kind == ObjectKind::INVENTORY_OBJECT) {
-            if (auto c = lua_->call_inventory(p1.id, verb, p2.id)) {
-                return c;
+            if (VerbResult r = lua_->call_inventory(p1.id, verb, p2.id); r.handled) {
+                return r;
             }
         }
         if (p2.kind == ObjectKind::ROOM_OBJECT && room_) {
-            if (auto c = room_->call_hotspot(p2.id, verb, p1.id)) {
-                return c;
+            if (VerbResult r = room_->call_hotspot(p2.id, verb, p1.id); r.handled) {
+                return r;
             }
         }
         return lua_->call_game(verb, p1.id, p2.id);
     }
     if (p1.kind == ObjectKind::INVENTORY_OBJECT) {
-        if (auto c = lua_->call_inventory(p1.id, verb, std::nullopt)) {
-            return c;
+        if (VerbResult r = lua_->call_inventory(p1.id, verb, std::nullopt); r.handled) {
+            return r;
         }
     } else if (p1.kind == ObjectKind::ROOM_OBJECT && room_) {
-        if (auto c = room_->call_hotspot(p1.id, verb, std::nullopt)) {
-            return c;
+        if (VerbResult r = room_->call_hotspot(p1.id, verb, std::nullopt); r.handled) {
+            return r;
         }
     }
     return lua_->call_game(verb, p1.id, std::nullopt);
