@@ -22,6 +22,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace sf {
 class Font;
@@ -174,6 +175,27 @@ private:
     void say(const std::string& text, sf::Color color, float gap = 48.0f);
     void say_at(const std::string& text, sf::Color color, geom::Point world, float gap = 48.0f);
 
+    // Ambient floating text (`float_text` Lua API): non-blocking, time-limited
+    // labels over the scenery, independent of the single SpeechManager line —
+    // onomatopoeia ("¡CLICK!") and background NPC chatter. Several can coexist; an
+    // npc/object anchor follows the (moving) thing, a point/coords anchor is fixed.
+    struct AmbientLabel {
+        enum class Anchor { POINT, NPC, OBJECT };
+        std::string text;
+        sf::Color color{245, 245, 250};
+        float remaining = 0.0f; // seconds left before it fades out
+        Anchor anchor = Anchor::POINT;
+        geom::Point fixed{0.0f, 0.0f}; // POINT anchor
+        std::string ref;               // NPC / OBJECT id when following
+    };
+    void api_float_text(const std::string& text,
+                        AmbientLabel::Anchor anchor,
+                        geom::Point fixed,
+                        std::string ref,
+                        sf::Color color,
+                        float duration);
+    [[nodiscard]] geom::Point ambient_anchor_point(const AmbientLabel& label) const;
+
     // --- pause / save / load / settings menu (M5c/2; the picker is the
     // SaveLoadScene from issue #108) ---
     enum class MenuAction { RESUME, OPEN_SAVE, OPEN_LOAD, OPEN_SETTINGS, QUIT_TO_TITLE };
@@ -185,6 +207,7 @@ private:
     [[nodiscard]] std::vector<MenuButton> menu_buttons() const;
     void handle_menu_event(const sf::Event& event);
     void draw_menu(sf::RenderTarget& target) const;
+    void draw_ambient(sf::RenderTarget& target) const; // float_text labels (world space)
     void trigger_menu(MenuAction action);
     void sync_command_hover();
     /// Route the player to a hotspot's approach point through the find_path seam:
@@ -261,6 +284,7 @@ private:
     std::optional<Avatar> player_;
     std::optional<Camera> camera_;
     SpeechManager speech_;
+    std::vector<AmbientLabel> ambient_; // active float_text labels (transient)
     // Set whenever a line is shown via say()/say_at(); cleared before each command
     // dispatch so execute_command() can tell whether the verb handler already
     // spoke (e.g. called talk()) and skip the "nothing happens" fallback caption.
