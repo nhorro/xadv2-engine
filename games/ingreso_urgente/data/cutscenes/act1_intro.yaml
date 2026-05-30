@@ -17,11 +17,11 @@ defaults:
   image_fit: contain
 
 slides:
-  - text: "Ingreso Urgente"
+  - text: "Acto I - El informe de La Matilde"
     text_position: [0.5, 0.5]
     text_style:
       size: 48
       color: "#F0D87A"
-  - text: "Una historia empieza..."
-    text_style:
-      size: 28
+  # - text: "Una historia empieza..."
+  #   text_style:
+  #     size: 28

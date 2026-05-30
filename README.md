@@ -37,5 +37,5 @@ Documentation
 ~~~bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r docs/requirements.txt
-mkdocs serve -a localhost:8001 # Room editor uses 8000 by default
+mkdocs serve -a localhost:8002 # Room/closeup editors use 8000/8001 by default
 ~~~

@@ -38,29 +38,25 @@ hotspots:
     - look_at
     - open
   skull_bones:
-    name: restos de cráneo y huesos
+    name: skull_bones
     area: [{x: 78, y: 425}, {x: 146, y: 386}, {x: 282, y: 399}, {x: 202, y: 449}]
     affordances:
     - look_at
-    - use
   notebook1:
-    name: ficha osteológica de La Matilde
+    name: notebook1
     area: [{x: 255, y: 393}, {x: 274, y: 381}, {x: 309, y: 386}, {x: 292, y: 396}]
     affordances:
     - look_at
-    - use
   notebook2:
-    name: ficha de registro contextual del hallazgo
+    name: cuaderno de anotaciones
     area: [{x: 1209, y: 394}, {x: 1265, y: 381}, {x: 1286, y: 396}, {x: 1232, y: 406}]
     affordances:
     - look_at
-    - use
   chalkboard:
     name: pizarra
     area: [{x: 432, y: 98}, {x: 436, y: 253}, {x: 661, y: 255}, {x: 660, y: 96}]
     affordances:
     - look_at
-    - chalkboard
   schneider:
     name: Dra. Schneider
     bind: npc:schneider
@@ -72,49 +68,12 @@ hotspots:
     area: [{x: 131, y: 89}, {x: 131, y: 273}, {x: 188, y: 266}, {x: 190, y: 99}]
     affordances:
     - look_at
-  computer:
-    name: computadora
-    area: [{x: 482, y: 283}, {x: 533, y: 277}, {x: 535, y: 310}, {x: 553, y: 323}, {x: 491, y: 326}, {x: 481, y: 316}]
-    affordances:
-    - look_at
     - use
-  speaker:
-    name: parlante bluetooth
-    area: [{x: 560, y: 299}, {x: 591, y: 290}, {x: 584, y: 317}, {x: 559, y: 320}]
-    affordances:
-    - look_at
-    - use
-  therms_and_mates:
-    name: termos y mates
-    area: [{x: 1050, y: 270}, {x: 1040, y: 288}, {x: 1066, y: 299}, {x: 1123, y: 298}, {x: 1111, y: 250}, {x: 1080, y: 244}]
-    affordances:
-    - look_at
-    - use
-  thermotank:
-    name: termotanque
-    area: [{x: 981, y: 84}, {x: 1043, y: 80}, {x: 1044, y: 194}, {x: 985, y: 187}]
-    affordances:
-    - look_at
-    - use
-    - open
-    - close
-  kettle:
-    name: pava silbadora
-    area: [{x: 946, y: 270}, {x: 961, y: 246}, {x: 990, y: 241}, {x: 989, y: 287}, {x: 952, y: 291}]
-    affordances:
-    - look_at
-  stanley_clone_therm:
+  thermo:
     name: termo y mate
-    area: [{x: 378, y: 279}, {x: 391, y: 254}, {x: 421, y: 286}, {x: 454, y: 289}, {x: 462, y: 318}, {x: 380, y: 320}]
+    area: [{x: 345, y: 280}, {x: 345, y: 390}, {x: 410, y: 390}, {x: 410, y: 280}]
+    approach: intro_window
     affordances:
     - look_at
-    - pick_up
     - use
-    - open
-    - close
-  dustbin:
-    name: cesto de residuos
-    area: [{x: 599, y: 406}, {x: 602, y: 458}, {x: 623, y: 463}, {x: 651, y: 451}, {x: 647, y: 410}, {x: 621, y: 399}]
-    affordances:
-    - look_at
 objects: {}

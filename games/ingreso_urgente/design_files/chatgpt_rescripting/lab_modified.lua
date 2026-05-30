@@ -197,7 +197,7 @@ function room.on_load()
     configure(cfg())
 
     if cfg() == CFG_INTRO and not get_state("lab.julia_intro_seen") then
-         spawn(function() intro() end)
+        spawn(function() intro() end)
     end
 
     -- Arm while Julia is alone, or when the cue was persisted before reload.
@@ -273,17 +273,19 @@ end
 room.hotspots = {
     window = {
         look_at = function()
-            maybe_open_window()            
+            maybe_open_window()
+            return ""
         end,
         use = function()
-            maybe_open_window()            
+            maybe_open_window()
+            return ""
         end,
     },
 
     -- Optional hotspot: add it to lab.yaml if you want a dedicated "termo/mate"
     -- target. If you do not add it, the flow still works through window.look_at
     -- after you call use_thermo() from whichever existing hotspot you prefer.
-    stanley_clone_therm = {
+    thermo = {
         look_at = function()
             if get_state("act1.thermo_checked") then
                 return "El termo ya cumplió su función: acercarme peligrosamente a la ventana."
@@ -291,15 +293,13 @@ room.hotspots = {
             return "El termo y el mate. Tecnología de concentración de baja complejidad y resultados variables."
         end,
         use = function()
-            -- use_thermo() bloquea (move_to / wait / varios talk). Los handlers de
-            -- verbo corren en el hilo principal, así que la secuencia debe ir en
-            -- spawn() para correr como corutina (si no: "yield from outside a coroutine").
-            spawn(use_thermo)
+            use_thermo()
+            return ""
         end,
     },
 
     skull_bones = {
-        look_at = function()            
+        look_at = function()
             if not puzzle_enabled() then
                 talk("player", "Bien. La Matilde. Entierro 1.")
                 talk("player", "Cráneo con lesión visible, fragmentos asociados y una cantidad de silencio bastante poco colaborativa.")
@@ -307,14 +307,16 @@ room.hotspots = {
                 set_state("act1.bones_glanced", true)
             else
                 open_closeup("lab_skull_closeup")
-            end            
+            end
+            return ""
         end,
         use = function()
             if not puzzle_enabled() then
                 talk("player", "No. Manipular evidencia antes de revisar el contexto es una forma bastante rápida de dejar de ser becaria.")
             else
                 talk("player", "Mejor observar antes de tocar. Sobre todo si Schneider está mirando.")
-            end            
+            end
+            return ""
         end,
     },
 
@@ -327,7 +329,7 @@ room.hotspots = {
             else
                 open_closeup("lab_chalkboard")
             end
-            
+            return ""
         end,
         use = function()
             if not puzzle_enabled() then
@@ -336,7 +338,7 @@ room.hotspots = {
             else
                 open_closeup("lab_chalkboard")
             end
-            
+            return ""
         end,
     },
 
@@ -349,7 +351,7 @@ room.hotspots = {
             else
                 open_closeup("lab_notebook1")
             end
-            
+            return ""
         end,
         use = function()
             if not puzzle_enabled() then
@@ -358,7 +360,7 @@ room.hotspots = {
             else
                 open_closeup("lab_notebook1")
             end
-            
+            return ""
         end,
     },
 
@@ -371,7 +373,7 @@ room.hotspots = {
             else
                 open_closeup("lab_notebook2")
             end
-            
+            return ""
         end,
         use = function()
             if not puzzle_enabled() then
@@ -380,7 +382,7 @@ room.hotspots = {
             else
                 open_closeup("lab_notebook2")
             end
-            
+            return ""
         end,
     },
 
@@ -397,9 +399,9 @@ room.hotspots = {
             if not schneider_present() then
                 talk("player", "Todavía no. Primero debería producir algo que pueda sobrevivir a una pregunta de Schneider.")
             else
-            start_dialog("skull_trauma_cause", "schneider")
+                start_dialog("skull_trauma_cause", "schneider")
             end
-            
+            return ""
         end,
     },
 
@@ -410,28 +412,7 @@ room.hotspots = {
         open = function()
             -- play_sound("sfx/door_open.ogg")
             change_room("hall", "from_lab")
-            
-        end,
-    },
-
-    
-    computer = {
-        look_at = function()
-            return "La computadora de escritorio. No tiene acceso a internet, pero al menos no es un dinosaurio."
-        end,
-
-        use = function()
-            -- TODO (vos): gatear con la hipótesis aceptada por Schneider, p.ej.:
-            --   if not get_state("act1.hypothesis_accepted") then
-            --     return "Primero tengo que poder defender la hipótesis."
-            --   end
-
-            -- Preparar el informe en la compu cierra el Acto 1: saltamos a la
-            -- cutscene `act1_outro`. (Requiere PR #167 `start_cutscene` mergeado +
-            -- sincronizado; el guard deja la escena correr mientras tanto.)
-            --if start_cutscene then
-                start_cutscene("act1_outro")
-            --end
+            return ""
         end,
     },
 }

@@ -9,15 +9,6 @@ background:
   - id: background
     image: exterior/00.png
     z: 0
-  - id: box
-    image: exterior/objects/box.png
-    z: 388
-    origin: {x: 368, y: 244}
-    scale: 0.614
-  - id: truck
-    image: exterior/objects/truck.png
-    z: 487
-    origin: {x: 738, y: 278}
 perspective:
   top:
     y: 300
@@ -31,30 +22,47 @@ points:
   from_hall: {x: 516, y: 346}
   at_door: {x: 507, y: 346}
   delivery_guy_start: {x: 632, y: 405}
+# delivery_guy is NOT a declared avatar: he is spawned per configuration by
+# exterior.lua (spawn_npc in CFG_DELIVERY). Only the player is always present.
 avatars:
 - id: player
   start: player_start
   orientation: down
   player: true
-- id: delivery_guy
-  start: delivery_guy_start
-  orientation: down
 obstacles:
 - [{x: 367, y: 390}, {x: 365, y: 354}, {x: 460, y: 354}, {x: 461, y: 390}]
 - [{x: 739, y: 490}, {x: 740, y: 469}, {x: 1235, y: 466}, {x: 1244, y: 485}]
 zones: []
 regions: {}
+
+# box and truck are objects (was layers) so configure() in exterior.lua can
+# show/hide them per configuration. `position` is the top-left (same value the
+# layers used as `origin`); visibility persists and is driven by the room cfg,
+# so they start hidden (CFG_EMPTY). Sprite paths resolve relative to the rooms
+# dir, identical to the old layer paths.
+objects:
+  box:
+    sprite: exterior/objects/box.png
+    position: {x: 368, y: 244}
+    z: 388
+    scale: 0.614
+    visible: false
+  truck:
+    sprite: exterior/objects/truck.png
+    position: {x: 738, y: 278}
+    z: 487
+    visible: false
+
 hotspots:
-  # --- NPC hotspot template (issue #141). Uncomment to talk to / look at the
-  # delivery guy: `bind: npc:<id>` tracks his moving bounds (no fixed polygon),
-  # and is inactive when he isn't present. Add the matching handlers in
-  # exterior.lua (see the commented block there). ---
-  # delivery_guy:
-  #   name: repartidor
-  #   bind: npc:delivery_guy
-  #   affordances:
-  #   - look_at
-  #   - talk_to
+  # NPC hotspot (issue #141): `bind: npc:delivery_guy` tracks his moving bounds
+  # and is inactive when he isn't spawned (CFG_EMPTY / CFG_BOX). Handlers live in
+  # exterior.lua (currently commented).
+  delivery_guy:
+    name: repartidor
+    bind: npc:delivery_guy
+    affordances:
+    - look_at
+    - talk_to
   door:
     name: puerta
     area: [{x: 489, y: 211}, {x: 490, y: 334}, {x: 547, y: 334}, {x: 550, y: 211}]
@@ -62,9 +70,13 @@ hotspots:
     affordances:
     - look_at
     - open
+  # box/truck hotspots bind to their objects (no fixed `area`) so they are
+  # inactive whenever the object is hidden (hit region = the object's sprite
+  # bounds). Re-add an explicit `area` only if you want a hit region different
+  # from the sprite rect.
   box:
     name: caja
-    area: [{x: 374, y: 255}, {x: 370, y: 386}, {x: 459, y: 386}, {x: 459, y: 257}]
+    bind: object:box
     affordances:
     - look_at
     - use
@@ -74,7 +86,7 @@ hotspots:
     - pull
   truck:
     name: camioneta del repartidor
-    area: [{x: 745, y: 373}, {x: 869, y: 352}, {x: 887, y: 318}, {x: 996, y: 298}, {x: 1221, y: 289}, {x: 1242, y: 433}, {x: 1170, y: 449}, {x: 1142, y: 482}, {x: 1098, y: 482}, {x: 1074, y: 449}, {x: 878, y: 446}, {x: 846, y: 481}, {x: 792, y: 478}, {x: 742, y: 438}]
+    bind: object:truck
     affordances:
     - look_at
     - use

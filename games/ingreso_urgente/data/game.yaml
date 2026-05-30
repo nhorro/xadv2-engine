@@ -47,7 +47,7 @@ scenes:
       menu:
         position: {x: 0.5, y: 0.8}
         options:
-          new_game: intro
+          new_game: act1_intro
           continue: room_view
           # Optional load-picker entry on the title (#108). Any non-empty
           # value enables it; the picker's actual goto target is set by the
@@ -78,13 +78,6 @@ scenes:
       font: fonts/DepartureMono-Regular.otf
       font_size: 22
 
-  - id: intro
-    type: Cutscene
-    parameters:
-      data: cutscenes/intro.yaml
-      on_finish: room_view
-      font: fonts/DepartureMono-Regular.otf
-
   - id: room_view
     type: RoomScene
     parameters:
@@ -95,6 +88,27 @@ scenes:
       font: fonts/DepartureMono-Regular.otf
       logic: scripts/game.lua
 
+  # -------------------------------------------------------------------------------
+  # ACTO I. 
+  # -------------------------------------------------------------------------------
+
+  # Cutscenes
+
+  - id: act1_intro
+    type: Cutscene
+    parameters:
+      data: cutscenes/act1_intro.yaml
+      on_finish: room_view
+      font: fonts/DepartureMono-Regular.otf
+
+  - id: act1_outro
+    type: Cutscene
+    parameters:
+      data: cutscenes/act1_outro.yaml
+      # act2_intro no existe aún, así que volvemos a room_view por ahora
+      on_finish: room_view
+      font: fonts/DepartureMono-Regular.otf
+  
   # Close-ups
   - id: window_llamas
     type: CloseUp

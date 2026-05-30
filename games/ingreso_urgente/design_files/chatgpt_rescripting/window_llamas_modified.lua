@@ -1,58 +1,56 @@
 -- Window close-up (window_llamas): Julia gets distracted from her bone-sample
--- report by the "unidentified animals" outside — llamas and alpacas. Purposes:
+-- report by the "unidentified camélidos" outside — llamas and alpacas. Purposes:
 --   * Character: Julia is curious, warm, a little divergent.
 --   * Trigger: after she identifies 3, Dr. Schneider starts nagging off-screen
---     (shout banner); backing out switches the lab to configuration 2 (Schneider
---     present) — see rooms/lab.lua.
+--     (shout banner); backing out raises "lab.schneider_cue", and lab.lua plays
+--     the actual arrival beat (including walking in and turning off the music).
 --
 -- DEPENDS ON engine PR #164 (set_hotspot_name + shout). Until that is merged and
 -- ingreso-urgente is synced with develop, those two calls are guarded below, so
 -- the scene still runs (Julia talks; renames/shouts simply no-op). Once synced,
 -- you can drop the `rename`/`voice` guards and call set_hotspot_name/shout direct.
---
--- TEXT IS DRAFT — rewrite the descriptions / labels / shout lines to taste.
 
-local CFG_PUZZLE = 2 -- keep in sync with rooms/lab.lua (CFG_PUZZLE)
-local NEEDED = 3     -- identifications before Schneider starts nagging
+local NEEDED = 3 -- identifications before Schneider starts nagging
 
--- id -> what Julia says when she examines it + the label it becomes once named.
+-- Keep these keys in sync with the close-up YAML hotspot ids.
+-- If your YAML ids were renamed to camelid1..camelid6, rename these keys too.
 local animals = {
-  camelid1 = {
+  animal1 = {
     label = "Camélido 1 — posible llama",
     lines = {
       "Cuello largo, orejas curvas, expresión de superioridad administrativa.",
       "Llama. O al menos, lo bastante llama como para arriesgar una clasificación desde una ventana.",
     },
   },
-  camelid2 = {
+  animal2 = {
     label = "Camélido 2 — posible alpaca",
     lines = {
       "Más compacta, más lanuda, menos interesada en dominar el paisaje.",
       "Alpaca. Tiene esa forma de nube con patas que finge no estar siendo observada.",
     },
   },
-  camelid3 = {
+  animal3 = {
     label = "Camélido 3 — alpaca probable",
     lines = {
       "Otra alpaca, creo. Cara redonda, lana abundante, actitud de haber entendido el trámite antes que yo.",
       "La evidencia no es concluyente, pero mi hipótesis de alpaca es defendible.",
     },
   },
-  camelid4 = {
+  animal4 = {
     label = "Camélido 4 — llama probable",
     lines = {
       "Esa sí tiene arquitectura de llama: alta, angulosa y con orejas de signo de pregunta.",
       "Una llama. Parece estar evaluando el instituto desde afuera, lo cual es prudente.",
     },
   },
-  camelid5 = {
+  animal5 = {
     label = "Camélido 5 — posible alpaca",
     lines = {
       "Compacta, lanuda, algo ofendida por existir bajo categorías humanas.",
       "Alpaca, probablemente. Aunque podría ser una oveja con aspiraciones andinas.",
     },
   },
-  camelid6 = {
+  animal6 = {
     label = "Camélido 6 — clasificación dudosa",
     lines = {
       "Ese está en sombra. Perfil oscuro, datos insuficientes, dignidad intacta.",
@@ -61,7 +59,7 @@ local animals = {
   },
 }
 
--- Schneider's off-screen interruption. Keep it dry, not cartoonishly angry.
+-- Schneider's off-screen interruption. Dry, not cartoonishly angry.
 local NAG = {
   "Serrategui.",
   "Si ya terminó de clasificar camélidos por la ventana, necesito sus observaciones sobre La Matilde.",
@@ -72,6 +70,7 @@ local NAG = {
 local function rename(id, label)
   if set_hotspot_name then set_hotspot_name(id, label) end
 end
+
 local function voice(text)
   if shout then shout(text) end
 end
@@ -106,12 +105,23 @@ end
 
 local function identify(id)
   local a = animals[id]
+  if not a then
+    return
+  end
+
+  if get_state("llamas." .. id .. ".done") then
+    talk("player", get_state("llamas." .. id .. ".label") or "Camélido ya clasificado.")
+    return
+  end
+
   for _, line in ipairs(a.lines) do
     talk("player", line)
   end
+
   rename(id, a.label)
   set_state("llamas." .. id .. ".done", true)
   set_state("llamas." .. id .. ".label", a.label) -- persist the chosen label
+
   if count_identified() >= NEEDED then
     start_shouting()
   end
@@ -143,13 +153,9 @@ return {
 
   on_exit = function()
     -- Once Schneider is nagging, leaving the window means Julia turns around and
-    -- there she is: switch the lab to configuration 2 (Schneider present). The room
-    -- is frozen beneath the overlay, so this instant change is seen on back-out.
-    -- (Assumes the lab started without Schneider — i.e. lab.cfg was CFG_INTRO.)
+    -- there she is. The room script owns the blocking choreography, so we only set
+    -- a cue here.
     if count_identified() >= NEEDED then
-      set_state("lab.cfg", CFG_PUZZLE)
-      -- Leave a cue; the lab plays schneider_arrives() once we're back in the
-      -- live room (a close-up can't run the beat's blocking moves/talk).
       set_state("lab.schneider_cue", true)
     end
   end,
