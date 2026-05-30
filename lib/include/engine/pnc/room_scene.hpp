@@ -363,6 +363,9 @@ private:
     std::optional<geom::Point> dialog_text_anchor_;
 
     std::optional<DialogRuntime> dialog_;
+    // Current page of the dialog option list (paged when the options don't all
+    // fit). Reset to 0 when a dialog starts and after each choice.
+    int dialog_page_ = 0;
     // SaveService now lives in EngineContext (ctx_.saves) so TitleScreen can
     // read it for Continue and stage a restore for us to consume in enter().
 

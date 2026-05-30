@@ -8,6 +8,7 @@
 #include <SFML/Graphics/Rect.hpp>
 #include <SFML/System/Vector2.hpp>
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -53,12 +54,55 @@ struct ScummPanelTheme {
     float inventory_row_height = 26.0f;
     float option_row_min = 24.0f;
     float option_row_max = 42.0f;
+    float option_gap = 8.0f; // vertical gap between dialog options (virtual px)
 
     // Type sizes (px).
     unsigned command_text_size = 20;
     unsigned verb_text_size = 16;
     unsigned inventory_text_size = 18;
     unsigned option_text_size = 18;
+};
+
+/// One page of laid-out dialog options. The pure-geometry result of
+/// `layout_dialog_options` — no SFML drawing, so the wrap/paging logic is
+/// headless-testable with a fake text measurer.
+struct DialogPageLayout {
+    struct Row {
+        int option_index = 0;           ///< index into the labels vector
+        std::vector<std::string> lines; ///< word-wrapped lines of the label
+        sf::FloatRect rect;             ///< clickable bounds of the whole option
+    };
+    std::vector<Row> rows;    ///< options that fall on the laid-out page
+    int page_count = 1;       ///< total pages needed for all labels
+    int page_index = 0;       ///< the page actually laid out (input clamped to this)
+    bool has_prev = false;    ///< an earlier page exists (show the up arrow)
+    bool has_next = false;    ///< a later page exists (show the down arrow)
+    sf::FloatRect prev_arrow; ///< up-arrow bounds (valid when has_prev)
+    sf::FloatRect next_arrow; ///< down-arrow bounds (valid when has_next)
+};
+
+/// Lay out dialog options into `area`: each label is word-wrapped to the
+/// available width (a right-hand gutter of `arrow_size` is reserved for the
+/// paging arrows) and whole options are packed onto pages — an option that
+/// would not fit in the remaining vertical space is promoted to the next page
+/// rather than clipped. `line_height` is the height of one wrapped line and
+/// `measure` sizes a candidate string (same contract as `wrap_text`). The
+/// requested `page_index` is clamped to `[0, page_count)`. Pure logic, so it is
+/// headless-testable with a fake measurer.
+DialogPageLayout layout_dialog_options(const std::vector<std::string>& labels,
+                                       int page_index,
+                                       sf::FloatRect area,
+                                       float line_height,
+                                       float option_gap,
+                                       float arrow_size,
+                                       const std::function<float(const std::string&)>& measure);
+
+/// What a click means while dialog options are showing.
+struct DialogClick {
+    enum class Kind { NONE, OPTION, PAGE };
+    Kind kind = Kind::NONE;
+    int option_index = -1; ///< valid when kind == OPTION (index into the option list)
+    int page_index = 0;    ///< valid when kind == PAGE (the page to switch to)
 };
 
 /// What a click on the panel means (the panel itself is not the command system).
@@ -96,14 +140,24 @@ public:
               sf::Vector2f cursor) const;
 
     /// Draw dialog options in place of the verb/inventory layout. Used while
-    /// the room view is in ViewState::DIALOG. `cursor` highlights the hovered row.
+    /// the room view is in ViewState::DIALOG. Options are plain text (no boxes,
+    /// no command bar), word-wrapped and paged; `page_index` selects the page
+    /// and vertical prev/next arrows are drawn only when more than one page is
+    /// needed. `cursor` highlights the hovered row/arrow.
     void draw_options(sf::RenderTarget& target,
                       const pac::core::Strings& strings,
                       const std::vector<std::string>& options,
+                      int page_index,
                       sf::Vector2f cursor) const;
 
-    /// Map a click in the panel to a dialog option index, or -1 on miss.
-    [[nodiscard]] int click_option(sf::Vector2f virtual_point, std::size_t option_count) const;
+    /// Map a click (while options show on `page_index`) to an option selection,
+    /// a page change, or nothing.
+    [[nodiscard]] DialogClick click_dialog(sf::Vector2f virtual_point,
+                                           const std::vector<std::string>& options,
+                                           int page_index) const;
+
+    /// Number of pages the option list needs at the current panel geometry.
+    [[nodiscard]] int dialog_page_count(const std::vector<std::string>& options) const;
 
 private:
     struct VerbCell {
@@ -117,11 +171,15 @@ private:
     [[nodiscard]] std::vector<VerbCell> verb_cells() const;
     [[nodiscard]] std::vector<InventoryCell> inventory_cells(const InventoryModel& inventory,
                                                              int page_index) const;
-    /// Panel fill + command-bar strip + separator rule (shared by both draw paths).
+    /// Panel fill + command-bar strip + separator rule (shared by both draw
+    /// paths). `suppress_command_bar` skips the strip + separator (dialog mode,
+    /// where the action string has no meaning) while keeping the panel fill /
+    /// background image.
     void draw_backdrop(sf::RenderTarget& target,
                        const InventoryModel* inventory = nullptr,
                        const CommandState* command_state = nullptr,
-                       sf::Vector2f cursor = {-1.0f, -1.0f}) const;
+                       sf::Vector2f cursor = {-1.0f, -1.0f},
+                       bool suppress_command_bar = false) const;
     void draw_background_image(sf::RenderTarget& target,
                                const std::string& image,
                                ScummPanelScaleMode mode) const;
@@ -142,7 +200,10 @@ private:
     [[nodiscard]] sf::FloatRect arrow_next_area() const;
     [[nodiscard]] sf::FloatRect settings_button_area() const;
     [[nodiscard]] sf::FloatRect options_area() const;
-    [[nodiscard]] float option_row_height(std::size_t option_count) const;
+    /// Build the dialog page layout from the panel's font + geometry (wraps the
+    /// pure `layout_dialog_options` with the panel's measurer).
+    [[nodiscard]] DialogPageLayout dialog_layout(const std::vector<std::string>& options,
+                                                 int page_index) const;
     [[nodiscard]] sf::FloatRect scale_rect(sf::FloatRect design_rect) const;
     [[nodiscard]] sf::FloatRect panel_child(sf::FloatRect rect) const;
     [[nodiscard]] sf::FloatRect body_child(sf::FloatRect rect) const;

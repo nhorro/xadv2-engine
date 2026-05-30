@@ -964,10 +964,19 @@ void RoomScene::handle_event(const sf::Event& event) {
         view_state_ = ViewState::COMMAND;
     }
     if (view_state_ == ViewState::DIALOG && dialog_) {
-        if (panel_ && panel_->contains(vp)) {
-            const int idx = panel_->click_option(vp, dialog_->options().size());
-            if (idx >= 0) {
-                dialog_->choose(idx);
+        const std::vector<DialogOption> opts = dialog_->options();
+        if (panel_ && !opts.empty() && panel_->contains(vp)) {
+            std::vector<std::string> labels;
+            labels.reserve(opts.size());
+            for (const DialogOption& opt : opts) {
+                labels.push_back(opt.text);
+            }
+            const DialogClick click = panel_->click_dialog(vp, labels, dialog_page_);
+            if (click.kind == DialogClick::Kind::PAGE) {
+                dialog_page_ = click.page_index;
+            } else if (click.kind == DialogClick::Kind::OPTION) {
+                dialog_page_ = 0;
+                dialog_->choose(click.option_index);
             }
         }
         return;
@@ -1577,13 +1586,20 @@ void RoomScene::draw(sf::RenderTarget& target) const {
     // view states: a blocked room shows a black/hidden panel. The window clears to
     // black, so not drawing it leaves a clean black bar under the scenery.
     if (panel_ && view_state_ != ViewState::BLOCKED) {
-        if (view_state_ == ViewState::DIALOG && dialog_) {
-            std::vector<std::string> labels;
-            labels.reserve(dialog_->options().size());
-            for (const DialogOption& opt : dialog_->options()) {
-                labels.push_back(opt.text);
+        if (view_state_ == ViewState::DIALOG) {
+            // Options show only while awaiting a choice; while a line is being
+            // spoken the option list is empty, so we draw nothing and leave a
+            // clean bar under the scenery (the speech bubble floats over it).
+            const std::vector<DialogOption> opts =
+                dialog_ ? dialog_->options() : std::vector<DialogOption>{};
+            if (!opts.empty()) {
+                std::vector<std::string> labels;
+                labels.reserve(opts.size());
+                for (const DialogOption& opt : opts) {
+                    labels.push_back(opt.text);
+                }
+                panel_->draw_options(target, ctx_.strings, labels, dialog_page_, hover_vp_);
             }
-            panel_->draw_options(target, ctx_.strings, labels, hover_vp_);
         } else {
             panel_->draw(target, ctx_.strings, inventory_, command_controller_.state(), hover_vp_);
         }
@@ -2055,6 +2071,7 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
         return;
     }
     dialog_.emplace(std::move(*rt));
+    dialog_page_ = 0;
     view_state_ = ViewState::DIALOG;
 }
 
