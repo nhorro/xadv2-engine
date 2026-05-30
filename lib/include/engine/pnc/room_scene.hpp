@@ -71,8 +71,16 @@ public:
     void api_set_room_state(const std::string& key, pac::core::StateValue value);
     [[nodiscard]] std::optional<pac::core::StateValue>
     api_get_room_state(const std::string& key) const;
-    void api_talk(const std::string& speaker_id, const std::string& text);
-    void api_start_dialog(const std::string& npc_id);
+    // Shows the line and returns a unique event the Lua `talk` wrapper waits on so
+    // the speaker blocks until the line is dismissed (design 05: talk "yields until
+    // done"). Empty -> nothing to show, so the wrapper never waits. The wrapper only
+    // waits when running inside a coroutine task; on the main thread (a plain hook /
+    // verb handler) talk stays fire-and-forget.
+    [[nodiscard]] std::string api_talk(const std::string& speaker_id, const std::string& text);
+    // Start dialog `dialog_id` (file `dialogs/<dialog_id>.lua`), spoken by cast
+    // character `speaker_id` (its speech colour + over-head bubble; defaults to
+    // dialog_id). The split lets one NPC have several topic-named dialogs.
+    void api_start_dialog(const std::string& dialog_id, const std::string& speaker_id);
     // Scripted camera overrides (issue #25). look_at snaps; go_to returns the
     // tween duration (s) so the Lua wrapper can yield for it; both suspend follow.
     void api_camera_look_at(geom::Point target);
@@ -157,8 +165,14 @@ private:
     /// every scripted avatar call so a stale id fails safely instead of dangling.
     [[nodiscard]] Avatar* resolve_avatar(const std::string& id);
     [[nodiscard]] const Avatar* resolve_avatar(const std::string& id) const;
-    void say(const std::string& text, sf::Color color);
-    void say_at(const std::string& text, sf::Color color, geom::Point world);
+    // The point a speech balloon floats above: the speaker's "head_pivot" sprite
+    // anchor when the rig defines one, else an estimate (top-centre of the frame).
+    [[nodiscard]] geom::Point speech_anchor(const Avatar& a) const;
+    // `gap` is the speaker's side-placement clearance (Character::speech_gap); it
+    // defaults to the engine default for callers without a known speaker. `world`
+    // is the head anchor the balloon floats above (see speech_anchor).
+    void say(const std::string& text, sf::Color color, float gap = 48.0f);
+    void say_at(const std::string& text, sf::Color color, geom::Point world, float gap = 48.0f);
 
     // --- pause / save / load / settings menu (M5c/2; the picker is the
     // SaveLoadScene from issue #108) ---
@@ -334,6 +348,15 @@ private:
     // object stops "acting" (its one-shot sequence finished). Cleared on unload.
     std::vector<PendingMove> pending_obj_anim_;
     std::uint64_t obj_anim_seq_ = 0;
+
+    // Scripted `talk(...)` calls in flight: wake condition is speech no longer
+    // active (the line's duration elapsed or it was skipped). `avatar_id` is unused
+    // (speech is a single shared bubble). Cleared on room unload. `talk_seq_` makes
+    // each event unique. Because each talk replaces the current bubble, a coroutine
+    // that waits per line keeps at most one entry live; fire-and-forget talks just
+    // leave an entry that emits to no waiter, which is harmless.
+    std::vector<PendingMove> pending_speech_;
+    std::uint64_t talk_seq_ = 0;
 
     // Resolved static point for the running dialog's NPC speech (from the dialog
     // file's `text_anchor`). Empty -> bubble follows the NPC avatar position.

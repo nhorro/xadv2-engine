@@ -10,6 +10,7 @@ a native SFML app; these tools only run at authoring time.
 | [Chroma key lab](chromakeylab.md) | Turn a chroma-key / solid background into real alpha (notebook + interactive tuner). Auto-detects the key, preserves interior chroma via border flood-fill, reports residual halos, crops to content. | Useful |
 | [Spritesheet packer](spritesheet-packer.md) | Detect sprites in a messy generated sheet, pack them into a clean atlas + YAML. | Useful |
 | [Room editor](room-editor.md) | Web editor for room geometry, points, zones, and background layers. | Useful |
+| [Close-up editor](closeup-editor.md) | Web editor for the hotspot polygons of a close-up (`closeups/<id>.yml`). | Useful |
 | [Avatar maker](avatar-maker.md) | Experimental composer for composite (body + head + props) avatars. | Experimental |
 
 !!! info "Why these exist"

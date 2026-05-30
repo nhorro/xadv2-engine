@@ -96,6 +96,9 @@ Cast parse_cast(const std::string& yaml_text) {
                                             color["g"].as<unsigned>(),
                                             color["b"].as<unsigned>());
             }
+            if (const YAML::Node gap = node["speech_gap"]) {
+                ch.speech_gap = gap.as<float>();
+            }
             cast.characters.emplace(ch.id, std::move(ch));
         }
     }

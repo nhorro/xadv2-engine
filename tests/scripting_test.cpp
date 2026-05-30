@@ -34,6 +34,19 @@ TEST_CASE("spawn + wait advances by timer then finishes") {
     CHECK(s.active_task_count() == 0);
 }
 
+TEST_CASE("sleep is an alias for wait") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    CHECK(s.run_string("spawn(function() sleep(1.0) end)"));
+    CHECK(s.active_task_count() == 1);
+    s.update(0.5f); // starts task, yields a 1.0s timer
+    CHECK(s.active_task_count() == 1);
+    s.update(0.6f); // 1.0 -> 0.4
+    CHECK(s.active_task_count() == 1);
+    s.update(0.6f); // elapsed -> coroutine returns -> done
+    CHECK(s.active_task_count() == 0);
+}
+
 TEST_CASE("spawn inherits the current scope") {
     Diagnostics log = quiet();
     Scripting s(log);

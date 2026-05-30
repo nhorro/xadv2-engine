@@ -7,7 +7,6 @@ This is a remake of the third person point and click engine [Extraordinary Adven
 Build instructions
 ------------------
 
-
 ### Linux
 
 ~~~bash
@@ -38,5 +37,5 @@ Documentation
 ~~~bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r docs/requirements.txt
-mkdocs serve
+mkdocs serve -a localhost:8001 # Room editor uses 8000 by default
 ~~~

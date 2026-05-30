@@ -15,6 +15,7 @@ namespace {
 constexpr unsigned kFontSize = 24;
 constexpr float kWrapWidth = 360.0f;   // world px; a line breaks past this width
 constexpr float kScreenMargin = 12.0f; // keep the text this far from the edges
+constexpr float kBalloonTail = 14.0f;  // gap left above the head when floating the balloon
 } // namespace
 
 std::vector<std::string> wrap_text(const std::string& text,
@@ -70,14 +71,55 @@ contain_block(geom::Point anchor, sf::Vector2f size, const sf::FloatRect& bounds
     return {x, y};
 }
 
+geom::Point place_speech(geom::Point anchor,
+                         sf::Vector2f size,
+                         const sf::FloatRect& bounds,
+                         float margin,
+                         float side_gap,
+                         float tail) {
+    const float lo_x = bounds.left + margin;
+    const float hi_x = bounds.left + bounds.width - margin - size.x;
+    const float lo_y = bounds.top + margin;
+    const float hi_y = bounds.top + bounds.height - margin - size.y;
+
+    const auto clamp_x = [&](float v) { return (hi_x < lo_x) ? lo_x : std::clamp(v, lo_x, hi_x); };
+    const auto clamp_y = [&](float v) { return (hi_y < lo_y) ? lo_y : std::clamp(v, lo_y, hi_y); };
+
+    // Preferred: the balloon floats above the head — centered horizontally on the
+    // anchor, its bottom edge `tail` above the anchor point — so it never overlaps
+    // the speaker. A speaker hugging a left/right edge is only nudged horizontally.
+    const float cx = anchor.x - (size.x / 2.0f);
+    const float above_y = anchor.y - tail - size.y;
+    if (above_y >= lo_y) {
+        return {clamp_x(cx), above_y};
+    }
+
+    // No room above (speaker near the top edge): place the balloon beside the head
+    // instead — prefer the right, fall back to the left when the right side runs
+    // past the edge — vertically centered on the head anchor.
+    const float y = clamp_y(anchor.y - (size.y / 2.0f));
+    const float right_x = anchor.x + side_gap;
+    if (right_x <= hi_x) {
+        return {std::max(right_x, lo_x), y};
+    }
+    const float left_x = anchor.x - side_gap - size.x;
+    if (left_x >= lo_x) {
+        return {left_x, y};
+    }
+    // Neither side fits (block wider than the view): clamp the above-block into view.
+    return {clamp_x(cx), clamp_y(above_y)};
+}
+
 void SpeechManager::show(const std::string& text,
                          geom::Point pos,
                          sf::Color color,
-                         float duration) {
+                         float duration,
+                         float side_gap) {
     text_ = text;
     pos_ = pos;
     color_ = color;
     remaining_ = duration;
+    side_gap_ = side_gap;
     active_ = true;
 }
 
@@ -124,7 +166,8 @@ void SpeechManager::draw(sf::RenderTarget& target, const sf::Font* font) const {
     const sf::Vector2f vc = view.getCenter();
     const sf::Vector2f vs = view.getSize();
     const sf::FloatRect bounds(vc.x - (vs.x / 2.0f), vc.y - (vs.y / 2.0f), vs.x, vs.y);
-    const geom::Point top_left = contain_block(pos_, {block_w, block_h}, bounds, kScreenMargin);
+    const geom::Point top_left =
+        place_speech(pos_, {block_w, block_h}, bounds, kScreenMargin, side_gap_, kBalloonTail);
 
     float y = top_left.y;
     for (std::size_t i = 0; i < lines.size(); ++i) {

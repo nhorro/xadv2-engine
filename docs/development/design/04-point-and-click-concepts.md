@@ -60,22 +60,37 @@ point-and-click instance of the R2 custom-scene extension point. Parameters:
 | Parameter | Meaning |
 |-----------|---------|
 | `data` | Close-up definition (logical path to a `closeups/<id>.yaml`). |
+| `logic` | Optional Lua sidecar (`closeups/<id>.lua`) — makes the close-up *scripted*. |
+| `cast` | Optional cast file, for per-speaker speech colours in scripted `talk`. |
 | `font` | UI font (logical path). |
 | `on_exit` | Optional scene id entered on back-out. Omitted ⇒ the close-up pops back to the scene it was opened over. |
 
-The close-up fills the screen with its `background`, hit-tests the pointer
+The close-up fills the screen with its `background` and hit-tests the pointer
 against its hotspots (reusing the room hotspot polygons, the `SpeechManager`, and
-the custom-cursor INTERACT affordance), and gives each hotspot a *single* action:
+the custom-cursor INTERACT affordance). Without a `logic` sidecar each hotspot has
+a *single* fixed action:
 
 - by default, a **look** — the hotspot's localized `name` is shown as a caption;
 - or a **`goto`** — clicking switches to the named scene (e.g. a map close-up
   whose regions jump to rooms).
 
-It is normally opened from a room as an **overlay** with `open_closeup(scene_id)`
-(see [the scripting API](05-scripting-api.md)); because it is pushed over the
-room, **Esc** or **right-click** pops straight back with the room state intact.
-Authored as one YAML file (no Lua) for the MVP — richer scripted close-up
-behavior is design-for and would reuse the room-script bridge.
+With a `logic` sidecar the close-up is **scripted**: clicking a hotspot runs its
+Lua handler (which can make the character `talk` in several steps and change game
+state), and `on_enter`/`on_exit` hooks run on open/close. See
+[the scripting API §Close-up scripts](05-scripting-api.md).
+
+It is normally opened from a room as an **overlay** with `open_closeup(scene_id)`;
+because it is pushed over the room, **Esc** or **right-click** pops straight back
+with the room state intact.
+
+**The room beneath a close-up is frozen** — the scene manager updates only the top
+scene. The coroutine scheduler still runs, and the room's Lua API stays bound to
+the live room, so a close-up script may make **instant** room changes that are seen
+when the player backs out (`spawn_npc`/`despawn_npc`/`set_state`/`show_object`/…).
+This is the supported way to fake an entrance/exit with no animation (an NPC appears
+or vanishes "off-screen" while the player examines something). **Blocking** room
+choreography (`avatar(id):move_to`) is *not* available from a close-up: the room is
+not ticking, so the move would never complete.
 
 ## The room
 
@@ -940,9 +955,11 @@ A dialog is started with:
 start_dialog("stan")
 ```
 
-The dialog id is also the **speaking NPC's character id**: it selects the dialog
-file (`dialogs/stan.lua`) and the cast character whose speech color and position
-render the node `npc` lines. The dialog file therefore declares no speaker field.
+By default the dialog id is also the **speaking NPC's character id**: it selects the
+dialog file (`dialogs/stan.lua`) and the cast character whose speech color and
+position render the node `npc` lines. The dialog file declares no speaker field. A
+second argument — `start_dialog("skull_trauma_cause", "schneider")` — overrides just
+the speaker, so one NPC can own several topic-named dialog files.
 
 While a dialog runs, the room view enters `Dialog` state. The SCUMM panel is
 replaced by dialog options. When the dialog ends, the room view returns to
