@@ -44,6 +44,7 @@ add_executable(pac_core_tests
     command_builder_test.cpp
     command_controller_test.cpp
     scumm_panel_config_test.cpp
+    dialog_options_layout_test.cpp
     mover_test.cpp
     inventory_test.cpp
     camera_test.cpp

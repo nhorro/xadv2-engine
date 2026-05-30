@@ -340,6 +340,12 @@ const std::string& DialogRuntime::text_anchor() const {
 }
 
 std::vector<DialogOption> DialogRuntime::options() const {
+    // Options are choosable only while awaiting a choice. While an NPC or player
+    // line is being spoken (or a `run` callback is executing) the list is empty,
+    // so the room view hides the panel and leaves a clean bar under the scenery.
+    if (impl_->state != State::AWAITING_CHOICE) {
+        return {};
+    }
     return impl_->visible;
 }
 
