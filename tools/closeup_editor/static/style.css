@@ -1,0 +1,75 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #1e1f22;
+  color: #e6e6e6;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #2b2d31;
+  border-bottom: 1px solid #3a3d42;
+}
+
+header strong { margin-right: 0.5rem; }
+
+button, select {
+  background: #3a3d42;
+  color: #e6e6e6;
+  border: 1px solid #4a4d52;
+  border-radius: 4px;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+button:hover, select:hover { background: #45484e; }
+button.active { background: #3b6ea5; border-color: #4f86c6; }
+
+#status { margin-left: auto; font-size: 0.85rem; color: #9fd29f; min-height: 1em; }
+#status.error { color: #e88; }
+
+main { display: flex; gap: 0.75rem; padding: 0.75rem; align-items: flex-start; }
+
+#canvas-wrap {
+  flex: 1;
+  background: #111;
+  border: 1px solid #3a3d42;
+  border-radius: 4px;
+  overflow: auto;
+  line-height: 0;
+}
+#canvas { width: 100%; height: auto; display: block; cursor: crosshair; }
+
+aside {
+  width: 300px;
+  flex-shrink: 0;
+  background: #2b2d31;
+  border: 1px solid #3a3d42;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  max-height: calc(100vh - 5rem);
+  overflow: auto;
+}
+aside h2, aside h3 { margin: 0.5rem 0 0.35rem; font-size: 0.95rem; }
+
+#hotspot-list { list-style: none; margin: 0; padding: 0; }
+#hotspot-list li {
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+#hotspot-list li:hover { background: #34373c; }
+#hotspot-list li.selected { background: #3b6ea5; }
+
+#props label { display: block; margin: 0.35rem 0; font-size: 0.8rem; }
+#props input { width: 100%; margin-top: 0.15rem; padding: 0.3rem; background: #1e1f22; color: #e6e6e6; border: 1px solid #4a4d52; border-radius: 4px; }
+
+ul.help { font-size: 0.78rem; color: #b8b8b8; padding-left: 1.1rem; }
+ul.help li { margin: 0.3rem 0; }
+code { background: #1e1f22; padding: 0 0.2rem; border-radius: 3px; }

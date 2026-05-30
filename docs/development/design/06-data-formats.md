@@ -276,6 +276,7 @@ Worked example: [05 — Scripting API](05-scripting-api.md).
 | `appearance` | req | appearance id | — | Visual definition from `appearances`. |
 | `name` | req | string | — | Localized display name. |
 | `speech_color` | opt | `{r, g, b}` | engine default | Speech text color. |
+| `speech_gap` | opt | number (room px) | `48` | Clearance kept between the speaker and a speech line when it is placed beside them (speaker near the top/bottom edge). Wider characters want a larger value so the line clears the sprite. |
 
 ## Room — `rooms/<id>.yaml`
 
@@ -513,7 +514,21 @@ level:
 |-------|-----|------|---------|---------|
 | `name` | opt | string | id | Localized label; shown as a caption on a look and as the hover label. |
 | `area` | req | polygon | — | Hit-test polygon, in the close-up's virtual-resolution space (≥ 3 points). |
-| `goto` | opt | scene id | — | If set, clicking switches to this scene; otherwise the click shows `name` as a look caption. |
+| `goto` | opt | scene id | — | If set, clicking switches to this scene (when the hotspot has no scripted handler); otherwise the click shows `name` as a look caption. |
+
+### Close-up scripting — `closeups/<id>.lua` (optional)
+
+When the `CloseUp` scene declares a `logic:` param (see below), the named Lua file
+gives the close-up its behavior. It returns a table with optional `on_enter`/
+`on_exit` functions and a `hotspots` map of hotspot id → click-handler function;
+clicking a hotspot runs its handler. Full surface + rules: [05 §Close-up
+scripts](05-scripting-api.md). A scripted hotspot handler takes precedence over the
+YAML `goto`/`name` action.
+
+**Scene parameters** (manifest `parameters:` for a `type: CloseUp` scene): `data`
+(req, path to the close-up YAML), `logic` (opt, path to the Lua sidecar — enables
+scripting), `cast` (opt, cast file for `talk` speech colours), `font` (opt), and
+`on_exit` (opt scene id entered on back-out; omitted ⇒ pop back to the opener).
 
 ## Spritesheet — `<name>.yaml`
 
@@ -533,7 +548,7 @@ Worked example: [03 — 2D game concepts](03-2d-game-concepts.md).
 | `id` | req | string | — | Stable frame id. |
 | `rect` | req | `{x, y, width, height}` | — | Rectangle in the atlas. |
 | `source_rect` | opt | `{x, y, width, height}` | — | Pre-pack source rect (traceability only). |
-| `anchors` | opt | map name → `{x, y}` | — | Frame-local pivot/attachment points (origin = frame top-left). |
+| `anchors` | opt | map name → `{x, y}` | — | Frame-local pivot/attachment points (origin = frame top-left). A `head_pivot` anchor, when present, is where a character's speech balloon floats above; without it the engine estimates the head as the top-centre of the frame. |
 
 ## Animation — `<name>.anim.yaml`
 
@@ -565,9 +580,11 @@ the parent), `child_anchor` (anchor on the child, aligned to `parent_anchor`).
 ## Dialog — `dialogs/<id>.lua`
 
 Returns a node table. Worked example:
-[04 — Point & click concepts](04-point-and-click-concepts.md). The dialog id is
-both the file name and the speaking NPC's cast character id, so there is no
-speaker field in the file.
+[04 — Point & click concepts](04-point-and-click-concepts.md). The dialog id is the
+file name; by default it is also the speaking NPC's cast character id, so there is no
+speaker field in the file. `start_dialog(id, speaker)` overrides the speaker, letting
+one NPC own several topic-named dialog files (e.g. `dialogs/skull_trauma_cause.lua`
+spoken by `schneider`).
 
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|

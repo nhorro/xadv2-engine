@@ -40,7 +40,6 @@ namespace pac::pnc {
 namespace {
 constexpr float kScenerFraction = 0.85f;
 constexpr float kAvatarScale = 1.1f;
-constexpr float kSpeechRise = 250.0f;
 // Distance (world px) within which the avatar is considered "at" an approach
 // point: closer than this we don't bother walking / waiting.
 constexpr float kApproachReached = 8.0f;
@@ -264,9 +263,26 @@ void RoomScene::enter() {
         }
         return out;
     });
-    L.set_function("talk",
-                   [this](std::string speaker, std::string text) { api_talk(speaker, text); });
-    L.set_function("start_dialog", [this](std::string npc_id) { api_start_dialog(npc_id); });
+    L.set_function("_talk_start", [this](std::string speaker, std::string text) {
+        return api_talk(speaker, text);
+    });
+    // talk(speaker, text): show the line, then (when run inside a coroutine task)
+    // yield until it is dismissed so a cutscene's lines play one after another
+    // instead of overwriting each other (design 05: talk "yields until done"). On
+    // the main thread — a plain on_load / verb handler that is not a coroutine — it
+    // stays fire-and-forget so those existing call sites keep working.
+    ctx_.scripting.run_string(R"LUA(
+function talk(speaker, text)
+  local ev = _talk_start(speaker, text)
+  local _, ismain = coroutine.running()
+  if ev and ev ~= "" and not ismain then wait_event(ev) end
+end
+)LUA",
+                              "=talk");
+    L.set_function("start_dialog",
+                   [this](std::string dialog_id, sol::optional<std::string> speaker) {
+                       api_start_dialog(dialog_id, speaker.value_or(dialog_id));
+                   });
     // Open a close-up / examine view (issue #76) as an overlay over the room; the
     // close-up pops back here on Esc / right-click, so the room state is preserved.
     L.set_function("open_closeup",
@@ -798,6 +814,7 @@ void RoomScene::unload_room() {
     pending_anim_.clear();
     pending_obj_moves_.clear();
     pending_obj_anim_.clear();
+    pending_speech_.clear();
     // An in-progress dialog references the outgoing room's NPC avatars; the
     // room change kills both. Cancelling the dialog scope also reaps any
     // `run`-task spawned from the option (and anything that task spawned).
@@ -814,22 +831,30 @@ void RoomScene::unload_room() {
     view_state_ = ViewState::COMMAND;
 }
 
-void RoomScene::say(const std::string& text, sf::Color color) {
-    geom::Point pos{640.0f, 360.0f};
-    if (player_) {
-        pos = player_->position();
+geom::Point RoomScene::speech_anchor(const Avatar& a) const {
+    // Prefer an authored "head_pivot" sprite anchor (sibling of "walking_pivot");
+    // otherwise estimate the head as the top-centre of the current animation frame
+    // (comic-balloon speech placement).
+    if (const auto p = a.anchor("head_pivot")) {
+        return *p;
     }
-    say_at(text, color, pos);
+    const sf::FloatRect b = a.bounds();
+    return {a.position().x, b.top};
 }
 
-void RoomScene::say_at(const std::string& text, sf::Color color, geom::Point world) {
+void RoomScene::say(const std::string& text, sf::Color color, float gap) {
+    const geom::Point pos = player_ ? speech_anchor(*player_) : geom::Point{640.0f, 360.0f};
+    say_at(text, color, pos, gap);
+}
+
+void RoomScene::say_at(const std::string& text, sf::Color color, geom::Point world, float gap) {
     if (text.empty()) {
         return;
     }
-    world.y -= kSpeechRise;
+    // `world` is the head anchor; the balloon floats above it (see place_speech).
     float duration = 0.5f + 0.06f * static_cast<float>(text.size());
     duration = std::clamp(duration, 1.0f, 7.0f);
-    speech_.show(text, world, color, duration);
+    speech_.show(text, world, color, duration, gap);
     spoke_during_command_ = true;
 }
 
@@ -1114,16 +1139,18 @@ void RoomScene::dispatch_and_feedback(const Command& cmd) {
         return;
     }
     sf::Color color(230, 230, 230);
+    float gap = 48.0f;
     if (const Character* c = cast_.character(player_char_)) {
         color = c->speech_color;
+        gap = c->speech_gap;
     }
     // A command that performs an action is valid even when its handler returns no
     // text: show a returned caption; otherwise fall back to "nothing happens" only
     // when the handler did not already speak via talk().
     if (caption) {
-        say(*caption, color);
+        say(*caption, color, gap);
     } else if (!spoke_during_command_) {
-        say(ctx_.strings.caption("nothing_happens"), color);
+        say(ctx_.strings.caption("nothing_happens"), color, gap);
     }
     command_controller_.finish_execution();
     sync_command_hover();
@@ -1336,6 +1363,16 @@ void RoomScene::update(float dt) {
                 ++it;
             }
         }
+        // Wake any scripted talk(...) once its line has been dismissed (duration
+        // elapsed or skipped), so the next line in a cutscene runs (#talk blocking).
+        // speech_.update(dt) runs later this frame; checking here means we wake on
+        // the frame after the bubble clears, which is fine for sequencing.
+        if (!speech_.active() && !pending_speech_.empty()) {
+            for (const PendingMove& p : pending_speech_) {
+                ctx_.scripting.emit(p.scope, p.event);
+            }
+            pending_speech_.clear();
+        }
         if (camera_) {
             camera_->update(dt); // advance a scripted go_to tween, if any
             if (camera_->following()) {
@@ -1536,7 +1573,10 @@ void RoomScene::draw(sf::RenderTarget& target) const {
     }
 
     target.setView(ctx_.display.view());
-    if (panel_) {
+    // The SCUMM panel is hidden in BLOCKED (cutscene-like) state — design 04 §Room
+    // view states: a blocked room shows a black/hidden panel. The window clears to
+    // black, so not drawing it leaves a clean black bar under the scenery.
+    if (panel_ && view_state_ != ViewState::BLOCKED) {
         if (view_state_ == ViewState::DIALOG && dialog_) {
             std::vector<std::string> labels;
             labels.reserve(dialog_->options().size());
@@ -1631,21 +1671,32 @@ std::optional<pac::core::StateValue> RoomScene::api_get_room_state(const std::st
     return it->second;
 }
 
-void RoomScene::api_talk(const std::string& speaker_id, const std::string& text) {
+std::string RoomScene::api_talk(const std::string& speaker_id, const std::string& text) {
     sf::Color color(230, 230, 230);
+    float gap = 48.0f;
     if (const Character* c = cast_.character(speaker_id)) {
         color = c->speech_color;
+        gap = c->speech_gap;
     }
     // Anchor at the speaking NPC's avatar when there is one, so `talk("npc", ...)`
     // appears over that NPC instead of the player. Player speech and speakers
     // without an in-room avatar fall back to the player position.
     if (room_) {
         if (const Avatar* npc = room_->npc(speaker_id)) {
-            say_at(text, color, npc->position());
-            return;
+            say_at(text, color, speech_anchor(*npc), gap);
+        } else {
+            say(text, color, gap);
         }
+    } else {
+        say(text, color, gap);
     }
-    say(text, color);
+    // Nothing shown (empty text) -> no event, so the Lua wrapper never waits.
+    if (!speech_.active()) {
+        return std::string();
+    }
+    const std::string event = "__spoke." + speaker_id + "." + std::to_string(++talk_seq_);
+    pending_speech_.push_back({speaker_id, ctx_.scripting.current_scope(), event});
+    return event;
 }
 
 void RoomScene::api_camera_look_at(geom::Point target) {
@@ -1902,9 +1953,9 @@ void RoomScene::api_despawn_npc(const std::string& id) {
     }
 }
 
-void RoomScene::api_start_dialog(const std::string& npc_id) {
+void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string& speaker_id) {
     if (view_state_ != ViewState::COMMAND) {
-        ctx_.log.error("start_dialog('" + npc_id + "'): a dialog is already running");
+        ctx_.log.error("start_dialog('" + dialog_id + "'): a dialog is already running");
         return;
     }
     dialog_text_anchor_.reset();
@@ -1918,36 +1969,43 @@ void RoomScene::api_start_dialog(const std::string& npc_id) {
         }
         ctx_.log.warn("dialog text_anchor '" + point_name + "' is not a known room point");
     };
-    host.speak_npc = [this, npc_id](const std::string& text) {
+    host.speak_npc = [this, speaker_id](const std::string& text) {
         sf::Color color(230, 230, 230);
-        if (const Character* c = cast_.character(npc_id)) {
+        float gap = 48.0f;
+        if (const Character* c = cast_.character(speaker_id)) {
             color = c->speech_color;
+            gap = c->speech_gap;
         }
-        // A declared text_anchor wins; otherwise the bubble follows the NPC avatar.
+        // A declared text_anchor wins (used as the float-above anchor); otherwise
+        // the balloon follows the speaker NPC avatar's head.
         geom::Point pos{640.0f, 360.0f};
         if (dialog_text_anchor_) {
             pos = *dialog_text_anchor_;
         } else if (room_) {
-            if (const Avatar* a = room_->npc(npc_id)) {
-                pos = a->position();
+            if (const Avatar* a = room_->npc(speaker_id)) {
+                pos = speech_anchor(*a);
             }
         }
-        say_at(text, color, pos);
+        say_at(text, color, pos, gap);
     };
     host.speak_player = [this](const std::string& text) {
         sf::Color color(230, 230, 230);
+        float gap = 48.0f;
         if (const Character* c = cast_.character(player_char_)) {
             color = c->speech_color;
+            gap = c->speech_gap;
         }
-        const geom::Point pos = player_ ? player_->position() : geom::Point{640.0f, 360.0f};
-        say_at(text, color, pos);
+        const geom::Point pos = player_ ? speech_anchor(*player_) : geom::Point{640.0f, 360.0f};
+        say_at(text, color, pos, gap);
     };
     host.is_speaking = [this]() { return speech_.active(); };
     // `once`-consumption persists in the global StateStore under the
     // engine-reserved `__dialog.<id>.<node>.<idx>` prefix, so it survives
     // dialog end + restart and folds into GameState on save.
-    auto consumed_key = [npc_id](const std::string& node, int idx) {
-        return "__dialog." + npc_id + "." + node + "." + std::to_string(idx);
+    // Once-consumption is namespaced by the dialog id (the file), so a speaker with
+    // several dialogs keeps each dialog's `once` flags separate.
+    auto consumed_key = [dialog_id](const std::string& node, int idx) {
+        return "__dialog." + dialog_id + "." + node + "." + std::to_string(idx);
     };
     host.is_option_consumed = [this, consumed_key](const std::string& node, int idx) {
         const auto v = ctx_.state.get(consumed_key(node, idx));
@@ -1990,7 +2048,7 @@ void RoomScene::api_start_dialog(const std::string& npc_id) {
     host.should_end = [this]() { return change_pending_; };
 
     auto rt =
-        DialogRuntime::start(ctx_.scripting, ctx_.resources, ctx_.log, npc_id, std::move(host));
+        DialogRuntime::start(ctx_.scripting, ctx_.resources, ctx_.log, dialog_id, std::move(host));
     if (!rt) {
         ctx_.scripting.cancel_scope(dialog_scope_);
         dialog_scope_ = 0;

@@ -23,6 +23,7 @@ local function default_dur(text)
   if d < 1.0 then return 1.0 elseif d > 7.0 then return 7.0 else return d end
 end
 function wait(seconds) return coroutine.yield({ kind = 'timer', seconds = seconds }) end
+sleep = wait -- familiar alias for wait(seconds)
 function wait_event(name) return coroutine.yield({ kind = 'event', name = name }) end
 function show_text(text, dur)
   return coroutine.yield({ kind = 'text', text = text, seconds = dur or default_dur(text) })

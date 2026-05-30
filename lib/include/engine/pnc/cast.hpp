@@ -38,6 +38,10 @@ struct Character {
     std::string appearance; // appearance id
     std::string name;       // localized display name
     sf::Color speech_color = sf::Color(230, 230, 230);
+    // Clearance (room px) left between the speaker and a speech line when it has to
+    // be placed beside them (speaker near the top/bottom edge). Wider characters
+    // want a larger value so the line clears the sprite. See design 06 §cast.
+    float speech_gap = 48.0f;
 };
 
 /// Parsed `cast.yaml`: appearances + characters.

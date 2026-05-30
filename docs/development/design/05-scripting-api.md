@@ -56,10 +56,14 @@ Room ids resolve to files:
 change_room("study") -> rooms/study.yaml + rooms/study.lua
 ```
 
-Dialog ids resolve to files, and the same id names the speaking NPC character:
+Dialog ids resolve to files, and by default the same id names the speaking NPC
+character. A second argument overrides the speaker, so one NPC can have several
+topic-named dialogs:
 
 ```text
-start_dialog("stan") -> dialogs/stan.lua, spoken by cast character "stan"
+start_dialog("stan")                       -> dialogs/stan.lua, spoken by "stan"
+start_dialog("skull_trauma_cause",         -> dialogs/skull_trauma_cause.lua,
+             "schneider")                      spoken by cast character "schneider"
 ```
 
 ## Cast and appearances
@@ -305,10 +309,63 @@ return {
 
 Dialog callbacks may use the same API as room scripts.
 
+## Close-up scripts
+
+A close-up (`CloseUp` scene, design 04 §CloseUp) becomes **scripted** when its scene
+declares a `logic:` Lua sidecar (`closeups/<id>.lua`). The sidecar returns a table:
+
+```lua
+return {
+  on_enter = function() ... end,   -- optional: runs when the close-up opens
+  on_exit  = function() ... end,   -- optional: runs when it closes
+  hotspots = {
+    <hotspot_id> = function() ... end,   -- runs when that hotspot is clicked
+  },
+}
+```
+
+`<hotspot_id>` matches a hotspot id in the close-up's YAML (which still owns the
+polygon and hover `name`). Static data in YAML, behavior in Lua — same split as a
+room's `.yaml` + `.lua`.
+
+- **Hotspot handlers** run as coroutine tasks, so `talk` blocks line-to-line (the
+  player advances with a click) and `wait`/`sleep` work — no `spawn` wrapper needed.
+  A click while a handler is still running is ignored (it won't interrupt the line).
+- **`on_enter` / `on_exit`** are *direct* (non-blocking) calls, like a room's
+  `on_load` / `on_unload`. Wrap any blocking sequence in your own `spawn(...)`.
+- **`talk`** inside a close-up shows in the close-up's own bubble (centred near the
+  bottom). Speech colour comes from the optional `cast:` scene param.
+- **Reaching the room beneath.** The room is frozen while the close-up is open, but
+  its Lua API is still live, so a close-up script may make **instant** room changes
+  that appear when the player backs out — `spawn_npc`, `despawn_npc`, `set_state`,
+  `show_object`/`hide_object`, etc. This is the supported animation workaround (an NPC
+  enters/leaves "off-screen"). Blocking room moves (`avatar(id):move_to`) are **not**
+  available here — the room is not ticking, so they would never finish.
+
+```lua
+-- closeups/lab_skull.lua
+return {
+  on_enter = function() spawn_npc("schneider", "at_door", "down") end, -- seen on exit
+  hotspots = {
+    craneo = function()
+      talk("player", "Un cráneo casi intacto.")
+      talk("player", "Hay una inscripción en la base.")
+      set_state("lab.read_skull", true)
+    end,
+  },
+}
+```
+
 ## Coroutine rules
 
 Blocking calls must run inside a spawned task or inside an engine-invoked script
 context that is already coroutine-enabled.
+
+`talk` is the one exception that degrades gracefully: inside a coroutine task it
+yields until the line is dismissed (so consecutive lines play in sequence instead
+of overwriting each other), but called on the main thread — directly in a plain
+hook such as `on_load`, or in a verb handler — it shows the line fire-and-forget
+rather than erroring. To play several lines in order, still wrap them in `spawn`.
 
 Valid:
 
@@ -349,7 +406,7 @@ part of save/load.
 | Function | Parameters | Returns | Meaning |
 |----------|------------|---------|---------|
 | `spawn(fn)` | function | task id or nil | Run function as coroutine task in the current script scope. |
-| `wait(seconds)` | number | — | Yield task until time elapses. |
+| `wait(seconds)` | number | — | Yield task until time elapses. `sleep(seconds)` is an alias. |
 | `emit(name, payload?)` | string, optional value | — | Emit named event within the emitter's scope. |
 | `wait_event(name)` | string | payload | Yield until named event occurs in the task's scope. |
 
@@ -364,7 +421,7 @@ later room cannot resume a task that was waiting in an earlier one.
 | `talk(speaker, text, pos?, dur?)` | character id, string, optional position, optional duration | — | Show speech near the speaker and yield until finished/skipped. |
 | `show_text(text, dur?)` | string, optional duration | — | Show a speaker-less centered text page in virtual space and yield until finished/skipped. |
 | `clear_text()` | — | — | Remove the current text page immediately. |
-| `start_dialog(id)` | dialog id | — | Enter dialog state and run dialog. |
+| `start_dialog(id [, speaker])` | dialog id, optional cast character id | — | Enter dialog state and run `dialogs/<id>.lua`. `speaker` (default `id`) is the cast character whose speech colour and over-head bubble render the `npc` lines, letting one NPC own several topic-named dialogs. |
 
 `text` may later be replaced or supplemented by a stable line id for localization
 and voice-over. When `dur` is omitted, the engine derives the display time from
@@ -529,12 +586,14 @@ and `play_until_end` are no-ops on a static-texture object.
 
 | Function | Parameters | Returns | Meaning |
 |----------|------------|---------|---------|
-| `block_input()` | — | — | Switch room view to blocked input mode. |
-| `unblock_input()` | — | — | Restore command input mode. |
-| `set_room_view_state(state)` | string | — | Explicitly set room-view state when needed. |
+| `block_input()` | — | — | Switch room view to the `blocked` state: input disabled and the SCUMM panel hidden (a black bar under the scenery). Use for cutscene-like moments. |
+| `unblock_input()` | — | — | Restore the `command` state: input enabled and the panel shown. |
+| `set_room_view_state(state)` | `"command"` \| `"blocked"` | — | Explicitly set the room-view state — the same two script-settable states as `unblock_input` / `block_input`. The `dialog` and `menu` states are engine-managed (entered via `start_dialog` / the pause menu); passing them, or any other string, logs a warning and is ignored. |
 
-Scripts should prefer high-level operations such as `start_dialog` and command
-execution, which manage room-view state automatically.
+Hiding the SCUMM panel is not a separate operation: the panel is shown in the
+`command` state and hidden in `blocked`, so `block_input()` / `set_room_view_state`
+are how a script hides or shows it. Scripts should prefer high-level operations such
+as `start_dialog` and command execution, which manage room-view state automatically.
 
 ### Resources
 
