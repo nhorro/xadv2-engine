@@ -304,6 +304,52 @@ end
     // close-up pops back here on Esc / right-click, so the room state is preserved.
     L.set_function("open_closeup",
                    [this](const std::string& scene_id) { ctx_.scenes.push_scene(scene_id); });
+    // Ambient floating text (non-blocking): onomatopoeia and background NPC
+    // chatter, independent of the single speech line. `where` is a point name,
+    // "npc:id"/"object:id" (follows the moving thing), or {x=, y=}. `opts` =
+    // { duration = seconds, color = { r=, g=, b= } }.
+    L.set_function(
+        "float_text",
+        [this](const std::string& text, sol::object where, sol::optional<sol::table> opts) {
+            AmbientLabel::Anchor anchor = AmbientLabel::Anchor::POINT;
+            geom::Point fixed{0.0f, 0.0f};
+            std::string ref;
+            if (where.is<std::string>()) {
+                const std::string w = where.as<std::string>();
+                if (w.rfind("npc:", 0) == 0) {
+                    anchor = AmbientLabel::Anchor::NPC;
+                    ref = w.substr(4);
+                } else if (w.rfind("object:", 0) == 0) {
+                    anchor = AmbientLabel::Anchor::OBJECT;
+                    ref = w.substr(7);
+                } else if (const geom::Point* p = room_ ? room_->data().point(w) : nullptr) {
+                    fixed = *p;
+                } else {
+                    ctx_.log.warn("float_text: unknown point '" + w + "'");
+                    return;
+                }
+            } else if (where.is<sol::table>()) {
+                sol::table t = where.as<sol::table>();
+                fixed = {t["x"].get_or(0.0f), t["y"].get_or(0.0f)};
+            } else {
+                ctx_.log.warn(
+                    "float_text: anchor must be a point name, 'npc:'/'object:' id, or {x, y}");
+                return;
+            }
+            sf::Color color(245, 245, 250);
+            float duration = std::clamp(0.6f + 0.05f * static_cast<float>(text.size()), 1.0f, 5.0f);
+            if (opts) {
+                if (sol::optional<sol::table> c = (*opts)["color"]) {
+                    color = sf::Color(static_cast<sf::Uint8>((*c)["r"].get_or(255)),
+                                      static_cast<sf::Uint8>((*c)["g"].get_or(255)),
+                                      static_cast<sf::Uint8>((*c)["b"].get_or(255)));
+                }
+                if (sol::optional<double> d = (*opts)["duration"]) {
+                    duration = static_cast<float>(*d);
+                }
+            }
+            api_float_text(text, anchor, fixed, std::move(ref), color, duration);
+        });
     // `to = END` is injected per-dialog by DialogRuntime::start as a unique
     // sentinel table — no engine-wide binding needed here.
 
@@ -841,6 +887,7 @@ void RoomScene::unload_room() {
     pending_obj_moves_.clear();
     pending_obj_anim_.clear();
     pending_speech_.clear();
+    ambient_.clear(); // transient float_text labels do not survive a room change
     // An in-progress dialog references the outgoing room's NPC avatars; the
     // room change kills both. Cancelling the dialog scope also reaps any
     // `run`-task spawned from the option (and anything that task spawned).
@@ -882,6 +929,55 @@ void RoomScene::say_at(const std::string& text, sf::Color color, geom::Point wor
     duration = std::clamp(duration, 1.0f, 7.0f);
     speech_.show(text, world, color, duration, gap);
     spoke_during_command_ = true;
+}
+
+void RoomScene::api_float_text(const std::string& text,
+                               AmbientLabel::Anchor anchor,
+                               geom::Point fixed,
+                               std::string ref,
+                               sf::Color color,
+                               float duration) {
+    if (text.empty() || duration <= 0.0f) {
+        return;
+    }
+    AmbientLabel label;
+    label.text = text;
+    label.color = color;
+    label.remaining = duration;
+    label.anchor = anchor;
+    label.fixed = fixed;
+    label.ref = std::move(ref);
+    ambient_.push_back(std::move(label));
+}
+
+geom::Point RoomScene::ambient_anchor_point(const AmbientLabel& label) const {
+    if (label.anchor == AmbientLabel::Anchor::NPC && room_) {
+        if (const Avatar* a = room_->npc(label.ref)) {
+            return speech_anchor(*a); // float above the (moving) NPC's head
+        }
+    } else if (label.anchor == AmbientLabel::Anchor::OBJECT) {
+        if (const std::optional<sf::FloatRect> b = object_frame_bounds(label.ref)) {
+            return {b->left + b->width / 2.0f, b->top};
+        }
+    }
+    return label.fixed;
+}
+
+void RoomScene::draw_ambient(sf::RenderTarget& target) const {
+    if (!font_ || ambient_.empty()) {
+        return;
+    }
+    for (const AmbientLabel& label : ambient_) {
+        const geom::Point at = ambient_anchor_point(label);
+        sf::Text text(pac::core::utf8(label.text), *font_, 22);
+        text.setFillColor(label.color);
+        text.setOutlineColor(sf::Color(0, 0, 0, 200));
+        text.setOutlineThickness(2.0f);
+        const sf::FloatRect b = text.getLocalBounds();
+        // Centred just above the anchor (the NPC head / object top / point).
+        text.setPosition(at.x - b.width / 2.0f - b.left, at.y - b.height - 12.0f - b.top);
+        target.draw(text);
+    }
 }
 
 geom::Point RoomScene::virtual_to_world(sf::Vector2f vp) const {
@@ -1440,6 +1536,16 @@ void RoomScene::update(float dt) {
     }
     prev_view_state_ = view_state_;
     speech_.update(dt);
+    // Age out ambient float_text labels.
+    if (!ambient_.empty()) {
+        for (AmbientLabel& label : ambient_) {
+            label.remaining -= dt;
+        }
+        ambient_.erase(std::remove_if(ambient_.begin(),
+                                      ambient_.end(),
+                                      [](const AmbientLabel& l) { return l.remaining <= 0.0f; }),
+                       ambient_.end());
+    }
     if (dialog_) {
         dialog_->update();
         if (dialog_->ended()) {
@@ -1605,6 +1711,7 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                                       font_);
         }
         speech_.draw(target, font_); // world coordinates, over the scenery
+        draw_ambient(target);        // float_text labels, world coordinates
     }
 
     target.setView(ctx_.display.view());
