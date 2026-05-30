@@ -111,6 +111,16 @@ void CloseUpScene::enter() {
                                   "end\n",
                                   "=closeup_talk");
 
+        // Close-up-local authoring primitives (unbound in leave, since the lambdas
+        // capture `this`): rename a hotspot's hover/look label, and set the
+        // off-screen "shout" banner. `shout()` / `shout("")` clears it.
+        L.set_function("set_hotspot_name", [this](std::string id, std::string name) {
+            hotspot_names_[id] = std::move(name);
+        });
+        L.set_function("shout", [this](sol::optional<std::string> text) {
+            shout_text_ = text.value_or(std::string());
+        });
+
         // on_enter runs with the close-up scope current, so a spawn(...) inside it
         // lands here. Restore the global scope afterwards (the scheduler sets the
         // scope per task on resume).
@@ -131,6 +141,8 @@ void CloseUpScene::leave() {
             L["talk"] = impl_->prev_talk;
         }
         L["_closeup_talk_start"] = sol::lua_nil;
+        L["set_hotspot_name"] = sol::lua_nil;
+        L["shout"] = sol::lua_nil;
         ctx_.scripting.set_current_scope(ctx_.scripting.global_scope());
     }
     // Reap the scope: cancels any in-flight hotspot handler / spawned task.
@@ -166,6 +178,11 @@ std::string CloseUpScene::api_talk(const std::string& speaker, const std::string
     return event;
 }
 
+std::string CloseUpScene::display_name(const CloseUpHotspot& hs) const {
+    const auto it = hotspot_names_.find(hs.id);
+    return it != hotspot_names_.end() ? it->second : hs.name;
+}
+
 void CloseUpScene::activate(const CloseUpHotspot& hs) {
     // A scripted handler wins. Ignore a new activation while one is still running
     // (so a multi-step handler isn't interrupted by another click).
@@ -181,10 +198,12 @@ void CloseUpScene::activate(const CloseUpHotspot& hs) {
         ctx_.scenes.goto_scene(hs.goto_scene);
         return;
     }
-    // The single look action: show the hotspot's name as a caption at the cursor.
-    float duration = 0.5f + 0.06f * static_cast<float>(hs.name.size());
+    // The single look action: show the hotspot's (possibly overridden) name as a
+    // caption at the cursor.
+    const std::string name = display_name(hs);
+    float duration = 0.5f + 0.06f * static_cast<float>(name.size());
     duration = std::clamp(duration, 1.0f, 7.0f);
-    speech_.show(hs.name, hover_, kCaptionColor, duration, 48.0f);
+    speech_.show(name, hover_, kCaptionColor, duration, 48.0f);
 }
 
 void CloseUpScene::handle_event(const sf::Event& event) {
@@ -257,15 +276,40 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
     }
 
     if (font_ != nullptr) {
-        // Hover affordance: the examined thing's name across the top, unless a
-        // caption is already showing there.
+        // Off-screen "shout" banner (scripted `shout(text)`): a styled, word-wrapped
+        // line across the very top, independent of the speech bubble. Drawn first so
+        // the hover label can sit below it.
+        float top_below = vh * 0.06f; // where the hover label goes by default
+        if (!shout_text_.empty()) {
+            const unsigned sz = 30;
+            const auto measure = [&](const std::string& s) {
+                return sf::Text(pac::core::utf8(s), *font_, sz).getLocalBounds().width;
+            };
+            const std::vector<std::string> lines = wrap_text(shout_text_, vw * 0.9f, measure);
+            const float line_h = font_->getLineSpacing(sz);
+            float y = vh * 0.04f;
+            for (const std::string& ln : lines) {
+                sf::Text t(pac::core::utf8(ln), *font_, sz);
+                t.setFillColor(sf::Color(235, 70, 60));
+                t.setOutlineColor(sf::Color(0, 0, 0, 220));
+                t.setOutlineThickness(2.5f);
+                const sf::FloatRect b = t.getLocalBounds();
+                t.setPosition((vw - b.width) / 2.0f - b.left, y);
+                target.draw(t);
+                y += line_h;
+            }
+            top_below = y + vh * 0.02f; // push the hover label below the banner
+        }
+
+        // Hover affordance: the examined thing's (possibly renamed) name across the
+        // top, unless a caption is already showing there.
         if (hovered_ != nullptr && !speech_.active()) {
-            sf::Text label(pac::core::utf8(hovered_->name), *font_, 24);
+            sf::Text label(pac::core::utf8(display_name(*hovered_)), *font_, 24);
             label.setFillColor(kCaptionColor);
             label.setOutlineColor(sf::Color(0, 0, 0, 200));
             label.setOutlineThickness(2.0f);
             const sf::FloatRect b = label.getLocalBounds();
-            label.setPosition((vw - b.width) / 2.0f - b.left, vh * 0.06f);
+            label.setPosition((vw - b.width) / 2.0f - b.left, top_below);
             target.draw(label);
         }
 

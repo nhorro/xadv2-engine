@@ -9,6 +9,7 @@
 #include "engine/pnc/speech_manager.hpp"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -51,6 +52,9 @@ public:
 private:
     void exit();
     void activate(const CloseUpHotspot& hs);
+    /// The display name for `hs`: a runtime override set by the scripted
+    /// `set_hotspot_name(id, name)`, or the YAML `name` when none.
+    [[nodiscard]] std::string display_name(const CloseUpHotspot& hs) const;
     /// Close-up-local speech: show `text` for `speaker` (its cast speech color when a
     /// cast is loaded) at the close-up talk anchor, and return the event id the talk
     /// wrapper waits on so consecutive lines play in sequence. Empty text -> no event.
@@ -75,6 +79,14 @@ private:
     Cast cast_;
     bool has_cast_ = false;
     pac::core::TaskId active_handler_ = 0; // the running hotspot-handler task, if any
+
+    // Runtime hotspot-name overrides set by scripted `set_hotspot_name(id, name)`
+    // (e.g. an examined sample renamed from "unidentified" to its identification).
+    // Persistence is the script's job (re-apply from saved state in on_enter).
+    std::map<std::string, std::string> hotspot_names_;
+    // Off-screen "shout" banner set by scripted `shout(text)`: a styled line across
+    // the top, independent of the speech bubble. Empty = nothing shown.
+    std::string shout_text_;
 
     // Close-up `talk(...)` calls in flight: woken when speech clears so a scripted
     // sequence's lines play one after another (mirrors RoomScene::pending_speech_).
