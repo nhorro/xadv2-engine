@@ -10,6 +10,7 @@
 #include "engine/core/scene_params.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/text_encoding.hpp"
+#include "engine/pnc/speech_manager.hpp" // wrap_text (pure word-wrap)
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
@@ -21,12 +22,15 @@
 
 #include <algorithm>
 #include <exception>
+#include <string>
+#include <vector>
 
 namespace pac::pnc {
 
 namespace {
 
-constexpr float kHintMargin = 18.0f; // virtual-px padding for the manual continue/skip hint
+constexpr float kHintMargin = 18.0f;        // virtual-px padding for the manual continue/skip hint
+constexpr float kTextWidthFraction = 0.86f; // slide text wraps within this fraction of the width
 
 // Place `text`'s origin so the anchor sits at the requested (x, y). `anchor.x`
 // + `align` picks the horizontal origin (left edge, center, or right edge);
@@ -76,6 +80,36 @@ void anchor_image(sf::Sprite& sprite,
     sprite.setScale(draw_w / tx, draw_h / ty);
     sprite.setOrigin(tx / 2.0f, ty / 2.0f); // texture-space center
     sprite.setPosition(anchor_px);
+}
+
+// Word-wrap `text` to `max_width` and draw it as a multi-line block whose CENTER
+// sits at `anchor` — so a long line breaks onto the next and the block stays
+// vertically centered on `text_position` instead of overflowing the screen.
+// Each line is aligned per `align`. Reuses the pure word-wrap helper.
+// (Local for now; see the `core/text` text-layout enhancement issue for the
+// shared facility this should eventually live in.)
+void draw_wrapped_text(sf::RenderTarget& target,
+                       const sf::Font& font,
+                       const std::string& text,
+                       unsigned size,
+                       sf::Color color,
+                       sf::Vector2f anchor,
+                       CutsceneTextAlign align,
+                       float max_width) {
+    const auto measure = [&](const std::string& s) {
+        return sf::Text(pac::core::utf8(s), font, size).getLocalBounds().width;
+    };
+    const std::vector<std::string> lines = wrap_text(text, max_width, measure);
+    const float line_h = font.getLineSpacing(size);
+    const float total_h = static_cast<float>(lines.size()) * line_h;
+    float y = anchor.y - total_h / 2.0f + line_h / 2.0f; // center the block on the anchor
+    for (const std::string& line : lines) {
+        sf::Text t(pac::core::utf8(line), font, size);
+        t.setFillColor(color);
+        anchor_text(t, {anchor.x, y}, align);
+        target.draw(t);
+        y += line_h;
+    }
 }
 
 } // namespace
@@ -261,14 +295,18 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
         }
     }
 
-    // Text.
+    // Text: word-wrapped multi-line block, centered on the anchor.
     if (slide.text) {
         if (const sf::Font* font = font_for(slide.text_style)) {
-            sf::Text text(pac::core::utf8(*slide.text), *font, slide.text_style.size);
-            text.setFillColor(slide.text_style.color);
             const sf::Vector2f anchor(slide.text_position.x * vw, slide.text_position.y * vh);
-            anchor_text(text, anchor, slide.text_align);
-            target.draw(text);
+            draw_wrapped_text(target,
+                              *font,
+                              *slide.text,
+                              slide.text_style.size,
+                              slide.text_style.color,
+                              anchor,
+                              slide.text_align,
+                              vw * kTextWidthFraction);
         }
     }
 
