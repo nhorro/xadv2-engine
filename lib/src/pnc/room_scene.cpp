@@ -113,6 +113,23 @@ struct RoomScene::Lua {
         sol::optional<std::string> cap = r;
         return cap ? std::optional<std::string>(*cap) : std::nullopt;
     }
+
+    /// Run game.lua's optional `on_start()` once-per-new-game world-state
+    /// initialization hook. No-op when absent. Errors are logged, not fatal.
+    void call_on_start() {
+        if (!game_valid) {
+            return;
+        }
+        sol::optional<sol::protected_function> fn = game_table["on_start"];
+        if (!fn) {
+            return;
+        }
+        const sol::protected_function_result r = (*fn)();
+        if (!r.valid()) {
+            const sol::error e = r;
+            log->error(std::string("game on_start error: ") + e.what());
+        }
+    }
 };
 
 RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
@@ -550,6 +567,15 @@ end
         ctx_.log.error("RoomScene: no 'start_room'");
         return;
     }
+    // New game (no staged restore reached this point): run game.lua's optional
+    // on_start() for one-time world-state initialization, in the global scope,
+    // BEFORE the start room's on_load so a room can read the state it seeds.
+    // Continue/Load returns above, so on_start never clobbers a restored save.
+    const pac::core::ScopeId prev_scope = ctx_.scripting.current_scope();
+    ctx_.scripting.set_current_scope(ctx_.scripting.global_scope());
+    lua_->call_on_start();
+    ctx_.scripting.set_current_scope(prev_scope);
+
     load_room(start_room_, "");
 }
 
