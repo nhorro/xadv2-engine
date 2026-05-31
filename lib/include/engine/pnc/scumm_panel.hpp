@@ -86,7 +86,7 @@ struct DialogPageLayout {
 /// paging arrows) and whole options are packed onto pages — an option that
 /// would not fit in the remaining vertical space is promoted to the next page
 /// rather than clipped. `line_height` is the height of one wrapped line and
-/// `measure` sizes a candidate string (same contract as `wrap_text`). The
+/// `measure` sizes a candidate string (same contract as `core::wrap_text`). The
 /// requested `page_index` is clamped to `[0, page_count)`. Pure logic, so it is
 /// headless-testable with a fake measurer.
 DialogPageLayout layout_dialog_options(const std::vector<std::string>& labels,

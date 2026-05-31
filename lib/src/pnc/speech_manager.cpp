@@ -1,6 +1,7 @@
 #include "engine/pnc/speech_manager.hpp"
 
 #include "engine/core/text_encoding.hpp"
+#include "engine/core/text_layout.hpp" // core::wrap_text (moved out of pnc)
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
@@ -17,44 +18,6 @@ constexpr float kWrapWidth = 360.0f;   // world px; a line breaks past this widt
 constexpr float kScreenMargin = 12.0f; // keep the text this far from the edges
 constexpr float kBalloonTail = 14.0f;  // gap left above the head when floating the balloon
 } // namespace
-
-std::vector<std::string> wrap_text(const std::string& text,
-                                   float max_width,
-                                   const std::function<float(const std::string&)>& measure) {
-    std::vector<std::string> lines;
-    std::string line;
-    std::string word;
-    const auto flush_word = [&]() {
-        if (word.empty()) {
-            return;
-        }
-        if (line.empty()) {
-            line = word; // a word wider than max_width still starts a line (no split)
-        } else if (measure(line + " " + word) <= max_width) {
-            line += " " + word;
-        } else {
-            lines.push_back(line);
-            line = word;
-        }
-        word.clear();
-    };
-    for (const char c : text) {
-        if (c == '\n') {
-            flush_word();
-            lines.push_back(line);
-            line.clear();
-        } else if (c == ' ') {
-            flush_word();
-        } else {
-            word.push_back(c);
-        }
-    }
-    flush_word();
-    if (!line.empty() || lines.empty()) {
-        lines.push_back(line);
-    }
-    return lines;
-}
 
 geom::Point
 contain_block(geom::Point anchor, sf::Vector2f size, const sf::FloatRect& bounds, float margin) {
@@ -144,7 +107,7 @@ void SpeechManager::draw(sf::RenderTarget& target, const sf::Font* font) const {
     const auto measure = [&](const std::string& s) {
         return sf::Text(pac::core::utf8(s), *font, kFontSize).getLocalBounds().width;
     };
-    const std::vector<std::string> lines = wrap_text(text_, kWrapWidth, measure);
+    const std::vector<std::string> lines = pac::core::wrap_text(text_, kWrapWidth, measure);
     const float line_h = font->getLineSpacing(kFontSize);
     const float block_h = line_h * static_cast<float>(lines.size());
 

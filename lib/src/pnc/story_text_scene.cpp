@@ -6,12 +6,11 @@
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
-#include "engine/core/text_encoding.hpp"
+#include "engine/core/text_layout.hpp" // core::draw_text_block (wrap + center pages)
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
-#include <SFML/Graphics/Text.hpp>
 #include <SFML/Window/Event.hpp>
 
 namespace pac::pnc {
@@ -84,12 +83,22 @@ void StoryTextScene::draw(sf::RenderTarget& target) const {
 
     const std::string& page = ctx_.scripting.current_text();
     if (font_ && !page.empty()) {
-        sf::Text text(pac::core::utf8(page), *font_, 30);
-        text.setFillColor(sf::Color(225, 225, 230));
-        const sf::FloatRect b = text.getLocalBounds();
-        text.setPosition((static_cast<float>(vres.x) - b.width) / 2.0f - b.left,
-                         (static_cast<float>(vres.y) - b.height) / 2.0f - b.top);
-        target.draw(text);
+        // Wrap the page within a margin of the screen and center the block — long
+        // pages and explicit '\n' both lay out instead of overflowing a single line.
+        constexpr float kTextWidthFraction = 0.8f;
+        pac::core::TextStyle style;
+        style.size = 30;
+        style.color = sf::Color(225, 225, 230);
+        const sf::Vector2f center(static_cast<float>(vres.x) / 2.0f,
+                                  static_cast<float>(vres.y) / 2.0f);
+        pac::core::draw_text_block(target,
+                                   *font_,
+                                   page,
+                                   style,
+                                   center,
+                                   static_cast<float>(vres.x) * kTextWidthFraction,
+                                   pac::core::HAlign::Center,
+                                   pac::core::VAnchor::Center);
     }
 }
 
