@@ -16,6 +16,7 @@
 #include "engine/core/text_encoding.hpp"
 #include "engine/core/thumbnail.hpp"
 #include "engine/gfx/animated_sprite.hpp"
+#include "engine/pnc/approach_follow.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/dev_actions.hpp"
 #include "engine/pnc/room.hpp"
@@ -44,6 +45,13 @@ constexpr float kAvatarScale = 1.1f;
 // point: closer than this we don't bother walking / waiting.
 constexpr float kApproachReached = 8.0f;
 constexpr float kRoomFadeDefault = 0.3f; // change_room fade-out/in seconds
+
+// A hotspot bound to one of these kinds tracks a *moving* target, so a
+// `requires_approach` walk-then-act can follow its live position (#158). Region
+// binds are static and use the normal (area/approach) path.
+bool is_moving_bind(const std::string& bind) {
+    return bind.starts_with("npc:") || bind.starts_with("object:");
+}
 
 std::optional<pac::core::StateValue> to_state_value(const sol::object& v) {
     if (v.is<bool>()) {
@@ -908,6 +916,7 @@ void RoomScene::unload_room() {
     // A command deferred for approach belongs to the outgoing room; drop it so it
     // can't fire into the new room (e.g. a zone hook changed rooms mid-walk).
     pending_approach_.reset();
+    pending_moving_approach_.reset();
     view_state_ = ViewState::COMMAND;
 }
 
@@ -1077,15 +1086,16 @@ void RoomScene::handle_event(const sf::Event& event) {
     }
     if (view_state_ == ViewState::BLOCKED) {
         // A cutscene-style block ignores input. But a block that is only the
-        // walk-to-approach wait (a queued command in pending_approach_) is
-        // redirectable: a fresh click drops the queued command and re-routes to
-        // the new target (classic SCUMM redirect, issue #70). Stop the current
-        // walk and fall through to the normal click handling below, which issues
-        // the new movement/command.
-        if (!pending_approach_) {
+        // walk-to-approach wait (a queued command in pending_approach_, or a
+        // moving-target chase in pending_moving_approach_) is redirectable: a fresh
+        // click drops the queued command and re-routes to the new target (classic
+        // SCUMM redirect, issue #70). Stop the current walk and fall through to the
+        // normal click handling below, which issues the new movement/command.
+        if (!pending_approach_ && !pending_moving_approach_) {
             return;
         }
         pending_approach_.reset();
+        pending_moving_approach_.reset();
         command_controller_.cancel();
         if (player_) {
             player_->stop();
@@ -1213,6 +1223,24 @@ void RoomScene::execute_command(const Command& cmd) {
             pending_approach_ = PendingApproach{cmd, ap, room_target->id};
             view_state_ = ViewState::BLOCKED;
             return;
+        }
+    }
+
+    // #158: a bind-only hotspot (no static area, no approach point) bound to a
+    // *moving* NPC/object still honors `requires_approach` — walk toward the
+    // target's live position and re-target it as it moves, firing once in range
+    // (update() drives the chase).
+    if (hs && hs->area.empty() && !hs->approach && hs->requires_approach &&
+        is_moving_bind(hs->bind) && player_ && room_) {
+        if (const std::optional<geom::Point> target = live_bind_target(hs->bind)) {
+            const ChaseParams params; // interaction range / re-path / give-up tunables
+            if (geom::distance(player_->position(), *target) > params.interaction_range) {
+                pending_approach_.reset(); // mutually exclusive with the static path
+                const geom::Point dest = route_to(*target);
+                pending_moving_approach_ = PendingMovingApproach{cmd, room_target->id, dest, 0.0f};
+                view_state_ = ViewState::BLOCKED;
+                return;
+            }
         }
     }
 
@@ -1356,6 +1384,33 @@ void RoomScene::walk_to_approach(geom::Point approach, const std::string& hotspo
     }
     const auto path = geom::find_path(player_->position(), ap, d.walkable, d.active_obstacles());
     player_->follow_path(path);
+}
+
+geom::Point RoomScene::route_to(geom::Point target) {
+    const RoomData& d = room_->data();
+    geom::Point dest = target;
+    if (!d.walkable.empty() && !d.is_walkable(dest)) {
+        dest = geom::closest_point_in_polygon(dest, d.walkable);
+    }
+    player_->follow_path(
+        geom::find_path(player_->position(), dest, d.walkable, d.active_obstacles()));
+    return dest;
+}
+
+std::optional<geom::Point> RoomScene::live_bind_target(const std::string& bind) const {
+    if (!room_) {
+        return std::nullopt;
+    }
+    if (bind.starts_with("npc:")) {
+        if (const Avatar* a = room_->npc(bind.substr(std::string("npc:").size()))) {
+            return a->position();
+        }
+        return std::nullopt;
+    }
+    if (bind.starts_with("object:")) {
+        return api_object_position(bind.substr(std::string("object:").size()));
+    }
+    return std::nullopt;
 }
 
 VerbResult RoomScene::dispatch(const Command& cmd) {
@@ -1550,6 +1605,37 @@ void RoomScene::update(float dt) {
         pending_approach_.reset();
         view_state_ = ViewState::COMMAND;
         dispatch_and_feedback(cmd);
+    }
+    // #158: a command deferred behind a moving bound target. Each frame re-resolve
+    // the target's live position and decide whether to keep walking, re-route, or
+    // fire. A reset target (NPC despawned / object removed) fires from here so the
+    // block can't outlive its target.
+    if (pending_moving_approach_ && player_ && room_) {
+        PendingMovingApproach& pend = *pending_moving_approach_;
+        pend.elapsed += dt;
+        const RoomHotspot* hs = nullptr;
+        if (const auto it = room_->data().hotspots.find(pend.hotspot_id);
+            it != room_->data().hotspots.end()) {
+            hs = &it->second;
+        }
+        const std::optional<geom::Point> target = hs ? live_bind_target(hs->bind) : std::nullopt;
+        const ChaseParams params;
+        const ChaseDecision dec = target ? evaluate_chase(player_->position(),
+                                                          *target,
+                                                          pend.last_dest,
+                                                          player_->moving(),
+                                                          pend.elapsed,
+                                                          params)
+                                         : ChaseDecision{ChaseAction::Fire, {}};
+        if (dec.action == ChaseAction::Fire) {
+            const Command cmd = pend.cmd;
+            pending_moving_approach_.reset();
+            view_state_ = ViewState::COMMAND;
+            dispatch_and_feedback(cmd);
+        } else if (dec.action == ChaseAction::Repath) {
+            pend.last_dest = route_to(dec.repath_to);
+        }
+        // Wait: keep walking the current path.
     }
     // Returning to COMMAND (e.g. a cutscene unblocking) resumes camera follow
     // after a scripted override (issue #25).
