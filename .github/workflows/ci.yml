@@ -1,8 +1,12 @@
 # CI: build + headless tests.
 #
-#   * Ubuntu 24.04 (the dev OS) — system deps via apt, runs on every branch.
-#   * Windows 2022 (the primary release target, R7) — deps via vcpkg manifest,
-#     runs on PRs and on develop/main pushes to keep runner minutes in check.
+#   * Ubuntu 24.04 (the dev OS) — system deps via apt; runs on PRs to develop/main
+#     and on develop/main pushes. Topic-branch pushes no longer trigger a build on
+#     their own — open a PR (or push to develop/main) to get CI. This keeps the
+#     private-repo Actions minute spend bounded.
+#   * Windows 2022 (the primary release target, R7) — deps via vcpkg manifest; the
+#     2x-cost runner runs only on develop/main pushes and manual dispatch (skipped
+#     on PRs). Trigger a manual run to exercise Windows on a PR before merging.
 #
 # Headless only: the doctest+CTest suite never opens a window, so no xvfb is
 # needed on Linux. The themummy SFML smoke run (--frames N) does create a window
@@ -11,9 +15,12 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [develop, main]
   pull_request:
     branches: [develop, main]
+  # Manual trigger — handy to run the Windows job on demand (e.g. to validate a
+  # PR on the primary target before merging, since PRs skip it).
+  workflow_dispatch:
 
 # Newer pushes to the same ref cancel still-running builds; the merge result
 # is what matters, intermediate states aren't worth burning runner minutes on.
@@ -56,9 +63,11 @@ jobs:
   build-and-test-windows:
     name: Build and test (Windows 2022)
     runs-on: windows-2022
-    # Skip the slow vcpkg build on routine topic-branch pushes; still gate every PR
-    # and the integration branches.
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    # The 2x-cost Windows runner is the biggest minute sink, so run it only where it
+    # earns its keep: the integration branches (develop/main pushes) and explicit
+    # manual dispatch. PRs are covered by the Linux job; trigger a manual run if you
+    # need Windows coverage on a PR before merging.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
     env:
       # CI builds/tests Release only, so use a release-only overlay triplet (skips
