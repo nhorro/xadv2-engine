@@ -56,6 +56,8 @@ add_executable(pac_core_tests
     save_service_test.cpp
     user_data_test.cpp
     profiler_test.cpp
+    application_hook_test.cpp
+    pause_overlay_test.cpp
 )
 target_link_libraries(pac_core_tests PRIVATE pac_engine doctest::doctest pac_project_options)
 # Dialog tests reach for the internal sol2-aware factory under lib/src.
@@ -63,3 +65,12 @@ target_include_directories(pac_core_tests PRIVATE ${CMAKE_SOURCE_DIR}/lib/src)
 target_link_libraries(pac_core_tests PRIVATE pac_sol2)
 
 add_test(NAME core_tests COMMAND pac_core_tests)
+
+add_executable(pac_ingreso_urgente_notebook_tests
+    test_main.cpp
+    ingreso_urgente_notebook_test.cpp
+)
+target_link_libraries(pac_ingreso_urgente_notebook_tests
+    PRIVATE pac_ingreso_urgente_notebook doctest::doctest pac_sol2 pac_project_options)
+target_compile_definitions(pac_ingreso_urgente_notebook_tests PRIVATE PAC_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+add_test(NAME ingreso_urgente_notebook_tests COMMAND pac_ingreso_urgente_notebook_tests)
