@@ -70,6 +70,7 @@ add_library(pac_engine STATIC
     src/core/pack_resource_source.cpp
     src/core/strings.cpp
     src/core/localization.cpp
+    src/core/text_layout.cpp
     src/core/manifest.cpp
     src/core/display.cpp
     src/core/audio.cpp
