@@ -7,6 +7,8 @@
 #include <sol/sol.hpp>
 
 #include <algorithm>
+#include <cstdlib>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -54,6 +56,25 @@ struct Scripting::Impl {
                            sol::lib::table);
         lua.safe_script(kPrelude, sol::script_pass_on_error);
 
+        // Strong GC root for every live coroutine's lua thread, keyed by task id.
+        // Each Task holds a sol::thread, but that handle is move/copy-shuffled as
+        // the `tasks` vector grows and compacts (spawns, cancel_scope); under GC
+        // pressure that anchor could be lost and the live thread collected, so a
+        // pending resume hit a freed lua_State (SEGV in lua_resume). This table is
+        // an independent anchor we clear only when a task is actually removed.
+        live_threads = lua.create_table();
+
+        // Dev/playtest GC stress: when PAC_GC_STRESS is set (and not "0"), force a
+        // full Lua GC every scheduler tick. This turns latent coroutine-lifetime
+        // bugs (a thread freed while still scheduled) from rare, timing-dependent
+        // crashes into immediate, deterministic ones — run a playthrough with it on
+        // to flush them out before release. Off (and free) by default.
+        if (const char* e = std::getenv("PAC_GC_STRESS"); e != nullptr && std::string(e) != "0") {
+            gc_stress_ = true;
+            log.warn("PAC_GC_STRESS on: forcing a full Lua GC every scripting tick "
+                     "(dev/playtest only — slow)");
+        }
+
         lua.set_function("spawn", [this](sol::function fn) -> TaskId {
             return spawn(std::move(fn), current_scope);
         });
@@ -93,8 +114,14 @@ struct Scripting::Impl {
         t.wait = Wait::READY;
         t.resume_value = sol::object(); // nil
         tasks.push_back(std::move(t));
-        return tasks.back().id;
+        const Task& added = tasks.back();
+        live_threads[added.id] = added.thread; // GC-anchor for the task's lifetime
+        return added.id;
     }
+
+    // Drop the GC anchor for a removed task so its thread can be collected once it
+    // is no longer scheduled. Call for every task removal (DONE sweep + cancel).
+    void release_thread(TaskId id) { live_threads[id] = sol::lua_nil; }
 
     // Resumes by id, never by reference: t.co(arg) below can run Lua that calls
     // spawn(), which push_back()s into `tasks` and may reallocate it. A held
@@ -160,6 +187,9 @@ struct Scripting::Impl {
     }
 
     void update(float dt) {
+        if (gc_stress_) {
+            lua.collect_garbage(); // dev/playtest: surface coroutine-lifetime bugs now
+        }
         // Snapshot ids: resuming may spawn new tasks (run next frame) or mutate the
         // vector, so we never iterate it directly.
         std::vector<TaskId> ids;
@@ -188,6 +218,11 @@ struct Scripting::Impl {
             }
             resume(id);
         }
+        for (const Task& t : tasks) {
+            if (t.wait == Wait::DONE) {
+                release_thread(t.id);
+            }
+        }
         tasks.erase(std::remove_if(tasks.begin(),
                                    tasks.end(),
                                    [](const Task& t) { return t.wait == Wait::DONE; }),
@@ -211,6 +246,11 @@ struct Scripting::Impl {
                 text_owner = 0;
             }
         }
+        for (const Task& t : tasks) {
+            if (t.scope == scope) {
+                release_thread(t.id);
+            }
+        }
         tasks.erase(std::remove_if(tasks.begin(),
                                    tasks.end(),
                                    [scope](const Task& t) { return t.scope == scope; }),
@@ -229,6 +269,8 @@ struct Scripting::Impl {
 
     Diagnostics& log;
     sol::state lua;
+    sol::table live_threads; // task id -> sol::thread; GC-roots scheduled coroutines
+    bool gc_stress_ = false; // PAC_GC_STRESS: full GC each tick (dev lifetime-bug flush)
     std::vector<Task> tasks;
     TaskId next_task_id = 1;
     ScopeId next_scope_id = 1; // 0 reserved for the global scope
