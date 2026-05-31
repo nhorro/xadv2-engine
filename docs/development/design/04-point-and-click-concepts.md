@@ -545,8 +545,8 @@ A hotspot has:
 | `name` | Localized display noun shown in the command bar. |
 | `area` | Optional explicit hit-test polygon. |
 | `bind` | Optional binding to a visual object, region, or NPC (`object:`/`region:`/`npc:`). An `npc:` bind hit-tests the NPC's current (moving) bounds and is inactive while that NPC is absent. |
-| `approach` | Point the player walks toward when a command targets this hotspot. |
-| `requires_approach` | Optional bool (default `true`). When `true`, the command does not run until the player reaches `approach`; until then input is blocked (walk-then-act, the SCUMM norm). Set `false` for the rare act-from-a-distance interaction: the player still walks toward `approach`, but the command fires immediately. |
+| `approach` | Point the player walks toward when a command targets this hotspot. Optional: a hotspot bound to a moving NPC/object may omit it and walk toward the target's live position instead (see `requires_approach`). |
+| `requires_approach` | Optional bool (default `true`). When `true`, the command does not run until the player reaches `approach`; until then input is blocked (walk-then-act, the SCUMM norm). Set `false` for the rare act-from-a-distance interaction: the player still walks toward `approach`, but the command fires immediately. When the hotspot is bound to a *moving* NPC/object and has no fixed `approach`, `requires_approach` instead drives a chase toward the target's **live position** — re-targeting as it moves and firing once within range, with a give-up timeout so a target fleeing faster than the player can't stall the chase (#158). |
 | `affordances` | Verbs that the UI may offer for this hotspot. |
 | `default_verb` | Optional verb used on a plain click. Must be `look_at` or in `affordances`. Defaults to `look_at`. |
 
@@ -927,10 +927,11 @@ When a command becomes ready:
 6. When the command finishes, the command builder returns to `IDLE`.
 
 While a `requires_approach` command is waiting for the avatar to reach its
-approach point (input blocked), a fresh click **redirects**: the queued command is
-dropped, the current walk stops, and the click is handled as a new command or
-movement (classic SCUMM redirect, issue #70). A cutscene-style block is not
-redirectable — it ignores input until the script unblocks.
+approach point (input blocked) — including a chase toward a moving NPC/object's
+live position (#158) — a fresh click **redirects**: the queued command is dropped,
+the current walk stops, and the click is handled as a new command or movement
+(classic SCUMM redirect, issue #70). A cutscene-style block is not redirectable —
+it ignores input until the script unblocks.
 
 For two-operand verbs, inventory-item behavior has priority when the first
 operand is an inventory item and `inventory.lua` defines a matching handler.
