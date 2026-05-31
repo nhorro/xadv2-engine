@@ -10,6 +10,7 @@
 #include "engine/core/scripting.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/text_encoding.hpp"
+#include "engine/core/text_layout.hpp" // core::wrap_text
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
@@ -285,7 +286,8 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
             const auto measure = [&](const std::string& s) {
                 return sf::Text(pac::core::utf8(s), *font_, sz).getLocalBounds().width;
             };
-            const std::vector<std::string> lines = wrap_text(shout_text_, vw * 0.9f, measure);
+            const std::vector<std::string> lines =
+                pac::core::wrap_text(shout_text_, vw * 0.9f, measure);
             const float line_h = font_->getLineSpacing(sz);
             float y = vh * 0.04f;
             for (const std::string& ln : lines) {

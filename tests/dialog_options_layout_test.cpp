@@ -9,7 +9,7 @@ using namespace pac::pnc;
 
 namespace {
 // Fake measurer: width == character count, so a max width reads as chars-per-line
-// (mirrors the speech wrap_text tests). Keeps the paging logic font-independent.
+// (mirrors the text_layout wrap_text tests). Keeps the paging logic font-independent.
 float by_chars(const std::string& s) {
     return static_cast<float>(s.size());
 }
