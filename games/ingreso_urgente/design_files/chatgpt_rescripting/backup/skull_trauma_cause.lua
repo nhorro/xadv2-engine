@@ -1,14 +1,15 @@
 -- =============================================================================
---  DIALOG — Dra. Schneider / Puzzle de defensa de evidencia arqueológica
+--  DIALOG — Dra. Schneider / Puzzle de evidencia arqueológica
 -- =============================================================================
+--
+--  Archivo sugerido: dialogs/dra_schneider.lua
 --
 --  La Dra. Schneider es el NPC. Julia es la protagonista y habla mediante las
 --  opciones del jugador.
 --
---  Premisa del diálogo:
---  La conclusión preliminar ya existe en la ficha. Schneider no quiere que Julia
---  la repita: quiere comprobar si puede defenderla, distinguir observación de
---  inferencia y no afirmar más de lo que la evidencia permite.
+--  Este diálogo no permite resolver el caso eligiendo directamente una hipótesis.
+--  Primero Julia debe enunciar observaciones, luego descartar hipótesis débiles,
+--  y recién entonces puede formular una conclusión preliminar.
 -- =============================================================================
 
 local function flag(name)
@@ -62,10 +63,8 @@ return {
   intro = {
     npc = {
       "A ver, Serrategui.",
-      "La ficha ya dice 'patrón compatible con trauma contundente perimortem'.",
-      "No necesito que la lea en voz alta.",
-      "Necesito saber si entiende por qué esa frase es defendible.",
-      "Y, sobre todo, qué no autoriza a afirmar.",
+      "No me diga todavía qué cree que pasó.",
+      "Primero ordenemos la evidencia. Después, si sobrevive al orden, hablamos de hipótesis.",
     },
     to = "hub",
   },
@@ -75,7 +74,7 @@ return {
   -- ---------------------------------------------------------------------------
 
   hub = {
-    npc = "Empiece por lo observable. ¿Qué puede sostener?",
+    npc = "Empiece por lo observable. ¿Qué tenemos?",
 
     options = {
 
@@ -140,7 +139,7 @@ return {
       },
 
       {
-        "La lesión podría ser perimortem, no una rotura seca tardía.",
+        "La ficha osteológica habla de posible lesión perimortem.",
         when = function()
           return flag("finding.perimortem_possible")
              and not flag("argument.perimortem_stated")
@@ -152,53 +151,29 @@ return {
       },
 
       {
-        "Una herramienta filosa no explica bien el patrón.",
+        "Podría haber sido un ataque con herramienta filosa.",
         when = function()
           return flag("argument.no_cut_marks_stated")
              and not flag("argument.discarded_blade")
         end,
         run = function()
+          add_attempt()
           set_flag("argument.discarded_blade")
         end,
-        to = "discard_blade",
+        to = "wrong_blade",
       },
 
       {
-        "El derrumbe o la compresión sedimentaria no parecen suficientes.",
+        "Podría ser daño postdepositacional por derrumbe.",
         when = function()
           return flag("argument.no_collapse_stated")
              and not flag("argument.discarded_collapse")
         end,
         run = function()
+          add_attempt()
           set_flag("argument.discarded_collapse")
         end,
-        to = "discard_collapse",
-      },
-
-      {
-        "Entonces fue asesinado.",
-        when = function()
-          return has_basic_observations()
-             and not flag("argument.murder_overstated")
-        end,
-        run = function()
-          add_attempt()
-          set_flag("argument.murder_overstated")
-        end,
-        to = "murder_overstated",
-      },
-
-      {
-        "El objeto lítico podría ser el arma.",
-        when = function()
-          return flag("argument.heavy_object_stated")
-             and not flag("argument.weapon_overstated")
-        end,
-        run = function()
-          add_attempt()
-          set_flag("argument.weapon_overstated")
-        end,
-        to = "weapon_overstated",
+        to = "wrong_collapse",
       },
 
       {
@@ -208,13 +183,14 @@ return {
              and not flag("argument.discussed_fall")
         end,
         run = function()
+          add_attempt()
           set_flag("argument.discussed_fall")
         end,
         to = "possible_fall",
       },
 
       {
-        "La conclusión defendible es trauma contundente perimortem.",
+        "El patrón más consistente es trauma contundente perimortem.",
         when = function()
           return can_state_final_hypothesis()
         end,
@@ -239,10 +215,9 @@ return {
 
   fracture_pattern = {
     npc = {
-      "Bien. Eso sí es una observación útil.",
-      "Una lesión focal con fracturas radiales sugiere un punto de impacto.",
-      "Todavía no me diga quién, ni con qué, ni por qué.",
-      "Primero mecanismo. Después, si la evidencia lo permite, interpretación.",
+      "Bien. Eso es una observación útil.",
+      "Una fractura radial no prueba por sí sola la causa, pero sí sugiere que hubo un foco de energía.",
+      "No me diga todavía quién, ni con qué. Primero mecanismo.",
     },
     to = "hub",
   },
@@ -250,8 +225,7 @@ return {
   no_cut_marks = {
     npc = {
       "Correcto.",
-      "La ausencia de marcas de corte debilita una explicación con herramienta filosa.",
-      "Debilita. No elimina por decreto.",
+      "La ausencia de cortes no demuestra un golpe, pero debilita bastante la hipótesis de una herramienta filosa.",
       "No confunda descartar una posibilidad con probar otra.",
     },
     to = "hub",
@@ -269,8 +243,8 @@ return {
   primary_burial = {
     npc = {
       "Bien observado.",
-      "Si el entierro está en posición anatómica y sin disturbios visibles, el conjunto es más confiable.",
-      "No resuelve el trauma, pero reduce la probabilidad de que estemos leyendo una mezcla posterior de restos.",
+      "Si el entierro está en posición anatómica y sin disturbios, al menos no parece una mezcla posterior de restos.",
+      "Eso no resuelve el trauma, pero mejora la confiabilidad del conjunto.",
     },
     to = "hub",
   },
@@ -278,8 +252,8 @@ return {
   heavy_object = {
     npc = {
       "Cuidado con esa pista.",
-      "Un objeto pesado en el sector puede ser relevante, pero también puede ser sólo una asociación contextual.",
-      "Que un objeto sea pesado no lo convierte en arma. A varios colegas les pasa lo mismo.",
+      "Un objeto pesado en el sector puede ser relevante, pero también puede ser asociación contextual sin relación causal.",
+      "No lo use como arma hasta que la evidencia ósea lo justifique.",
     },
     to = "hub",
   },
@@ -288,60 +262,39 @@ return {
     npc = {
       "Esa palabra conviene usarla con prudencia.",
       "Perimortem no significa automáticamente asesinato.",
-      "Significa que el patrón es compatible con hueso fresco, no con una rotura seca mucho más tardía.",
-      "Es una ventana temporal, no una novela policial.",
+      "Significa que el patrón de fractura es compatible con hueso fresco, no con una rotura seca mucho más tardía.",
     },
     to = "hub",
   },
 
   -- ---------------------------------------------------------------------------
-  -- Descartes y límites
+  -- Hipótesis alternativas
   -- ---------------------------------------------------------------------------
 
-  discard_blade = {
+  wrong_blade = {
     npc = {
-      "De acuerdo.",
-      "Para sostener herramienta filosa esperaríamos cortes lineales, bordes más limpios o marcas repetidas.",
-      "Lo que tenemos apunta mejor a impacto que a filo.",
+      "No me convence.",
+      "Para sostener herramienta filosa esperaría cortes lineales, bordes más limpios o marcas repetidas.",
+      "Lo que tenemos apunta más a impacto que a filo.",
     },
     to = "hub",
   },
 
-  discard_collapse = {
+  wrong_collapse = {
     npc = {
-      "De acuerdo.",
+      "Podría considerarse, pero el contexto no acompaña.",
       "El registro habla de estratigrafía regular, sin bloques sobre el individuo y sin señales claras de colapso.",
-      "Si fuera derrumbe, tendría que explicar por qué el daño aparece tan focalizado en el cráneo.",
+      "Si fue derrumbe, tendría que explicar por qué sólo el cráneo muestra ese patrón focal.",
     },
     to = "hub",
   },
 
   possible_fall = {
     npc = {
-      "Es una alternativa que puede considerarse.",
+      "Es una alternativa razonable, pero todavía floja.",
       "Una caída puede producir trauma craneal, sí.",
       "Pero acá la lesión es focal, el contexto no muestra desorden y no tenemos otras fracturas que refuercen una caída desde altura.",
-      "No la descarte por orgullo teórico. Déjela como menos consistente con el conjunto.",
-    },
-    to = "hub",
-  },
-
-  murder_overstated = {
-    npc = {
-      "No.",
-      "Eso es una conclusión demasiado cómoda para la cantidad de evidencia que tiene.",
-      "Puede hablar de trauma contundente perimortem.",
-      "No puede hablar de asesinato sin intencionalidad, escena, agente y un poco menos de entusiasmo narrativo.",
-    },
-    to = "hub",
-  },
-
-  weapon_overstated = {
-    npc = {
-      "Todavía no.",
-      "Puede mencionarlo como objeto lítico pesado recuperado en el sector.",
-      "Para llamarlo arma necesitaríamos algo más: correspondencia de forma, residuos, marcas compatibles o una razón mejor que el peso.",
-      "Por ahora es un objeto. No le atribuya carrera criminal.",
+      "No la descarte por completo, pero no es la hipótesis más económica.",
     },
     to = "hub",
   },
@@ -353,7 +306,7 @@ return {
   not_ready = {
     npc = {
       "Eso es una respuesta aceptable, aunque poco heroica.",
-      "Revise el cráneo, el tablero, la ficha osteológica y el registro contextual.",
+      "Revise el cráneo, el corcho, la ficha osteológica y el registro contextual.",
       "Después vuelva con observaciones, no con corazonadas.",
     },
     to = END,
@@ -363,7 +316,7 @@ return {
     npc = {
       "Serrategui, está probando respuestas.",
       "Ordene el razonamiento: lesión, mecanismo, contexto, descarte.",
-      "Si una hipótesis no explica esas cuatro cosas, todavía no es una hipótesis. Es una ocurrencia con vocabulario técnico.",
+      "Si una hipótesis no explica esas cuatro cosas, todavía no es una hipótesis. Es decoración.",
     },
     to = "hub",
   },
@@ -376,10 +329,10 @@ return {
     npc = {
       "Ahora sí.",
       "Lesión focal, fracturas radiales, hundimiento localizado, sin marcas de corte y sin contexto de derrumbe.",
-      "La hipótesis defendible es trauma contundente perimortem.",
+      "La hipótesis más consistente es trauma contundente perimortem.",
       "Eso no dice quién lo hizo. Ni siquiera dice con certeza que haya sido intencional.",
-      "Pero sí permite sostener una lectura prudente del caso.",
-      "En arqueología, Serrategui, la prudencia no es timidez. Es higiene intelectual.",
+      "Pero sí nos permite descartar las explicaciones más cómodas.",
+      "Y en arqueología, las explicaciones cómodas suelen ser las primeras que hay que incomodar.",
     },
     run = function()
       set_flag("case.blunt_trauma_supported")
@@ -426,7 +379,7 @@ return {
     npc = {
       "Menciónelo como asociación contextual, no como arma.",
       "Si más adelante aparece residuo, correspondencia de forma o una marca compatible, hablamos.",
-      "Por ahora, que el objeto sea pesado no lo convierte en culpable.",
+      "Por ahora, que el objeto sea pesado no lo convierte en culpable. A varios colegas les pasa lo mismo.",
     },
     to = "after_solution",
   },

@@ -70,8 +70,7 @@ function game.on_start()
   set_state("exterior.cfg", 1) -- CFG_EMPTY   nobody outside yet
   set_state("hall.cfg", 1)     -- CFG_EMPTY   nobody in the hall yet
 
-  -- Dev: uncomment to jump to a later beat for testing.
-  set_state("lab.julia_intro_seen", true)
+  
 
   -- transición previa al puzzle formal 
   set_state("act1.bones_glanced", false)
@@ -81,7 +80,10 @@ function game.on_start()
   set_state("act1.schneider_present", false)
   set_state("act1.puzzle_enabled", false)
 
-  --set_state("lab.cfg", 2)      -- CFG_PUZZLE   Julia + Dr. Schneider, skull-trauma puzzle
+  -- DEV
+  -- Dev: uncomment to jump to a later beat for testing.
+  -- set_state("lab.julia_intro_seen", true)
+  -- set_state("lab.cfg", 2)      -- CFG_PUZZLE   Julia + Dr. Schneider, skull-trauma puzzle
 end
 
 -- Shared verb fallbacks: run when a hotspot/item has no handler for a valid verb.

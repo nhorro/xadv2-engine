@@ -48,12 +48,12 @@ local function configure(c)
         -- TEMP: seed the puzzle "findings" so the dialog's observation options
         -- appear before the close-ups set them. Remove this once each close-up
         -- handler calls set_state("finding.<x>", true).
-        set_state("finding.radial_fractures", true)
-        set_state("finding.no_cut_marks", true)
-        set_state("finding.no_collapse", true)
-        set_state("finding.primary_burial", true)
-        set_state("finding.heavy_lithic_object", true)
-        set_state("finding.perimortem_possible", true)
+        -- set_state("finding.radial_fractures", true)
+        -- set_state("finding.no_cut_marks", true)
+        -- set_state("finding.no_collapse", true)
+        -- set_state("finding.primary_burial", true)
+        -- set_state("finding.heavy_lithic_object", true)
+        -- set_state("finding.perimortem_possible", true)
     else
         -- CFG_INTRO and CFG_ALONE: nobody in the lab but Julia (the player).
         despawn_npc("schneider")
@@ -421,17 +421,13 @@ room.hotspots = {
         end,
 
         use = function()
-            -- TODO (vos): gatear con la hipótesis aceptada por Schneider, p.ej.:
-            --   if not get_state("act1.hypothesis_accepted") then
-            --     return "Primero tengo que poder defender la hipótesis."
-            --   end
+            
+            if not get_state("case.schneider_dialog_done") then
+                 return "Primero tengo que poder defender la hipótesis."
+            end
 
-            -- Preparar el informe en la compu cierra el Acto 1: saltamos a la
-            -- cutscene `act1_outro`. (Requiere PR #167 `start_cutscene` mergeado +
-            -- sincronizado; el guard deja la escena correr mientras tanto.)
-            --if start_cutscene then
-                start_cutscene("act1_outro")
-            --end
+            -- Preparar el informe en la compu cierra el Acto 1
+            start_cutscene("act1_outro")            
         end,
     },
 }
