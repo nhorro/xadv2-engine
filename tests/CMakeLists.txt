@@ -47,6 +47,7 @@ add_executable(pac_core_tests
     scumm_panel_config_test.cpp
     dialog_options_layout_test.cpp
     mover_test.cpp
+    approach_follow_test.cpp
     inventory_test.cpp
     camera_test.cpp
     debug_overlay_test.cpp

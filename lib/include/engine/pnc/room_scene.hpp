@@ -214,6 +214,15 @@ private:
     /// clamps an approach outside the walkable area to the nearest reachable point
     /// (dev warning) and short-circuits when already near it (issue #22).
     void walk_to_approach(geom::Point approach, const std::string& hotspot_id);
+    /// Route the player toward `target` (clamped into the walkable area) via the
+    /// find_path seam and return the clamped destination the path was built to.
+    /// The moving-target approach (#158) re-routes here as its target moves.
+    geom::Point route_to(geom::Point target);
+    /// Live floor/anchor position of a hotspot's `npc:`/`object:` bound target (the
+    /// point on the walkable plane to walk toward), or nullopt if the target is
+    /// absent. Used by the moving-target approach (#158) — distinct from
+    /// `hotspot_focus`, which returns the bounds *center* for facing.
+    std::optional<geom::Point> live_bind_target(const std::string& bind) const;
     void execute_command(const Command& cmd);
     /// Route a command through the handler chain (inventory -> hotspot ->
     /// game.lua fallback), stopping at the first handler that exists. The result's
@@ -344,6 +353,19 @@ private:
         std::string hotspot_id;
     };
     std::optional<PendingApproach> pending_approach_;
+
+    // Like PendingApproach, but for a hotspot bound to a *moving* NPC/object with no
+    // static approach point (#158). The destination is recomputed from the target's
+    // live position each frame; `last_dest` is where the current path was routed and
+    // `elapsed` bounds the chase (give-up timeout). Mutually exclusive with
+    // pending_approach_.
+    struct PendingMovingApproach {
+        Command cmd;
+        std::string hotspot_id;
+        geom::Point last_dest;
+        float elapsed = 0.0f;
+    };
+    std::optional<PendingMovingApproach> pending_moving_approach_;
 
     // Scripted `avatar(id):move_to(...)` calls in flight (#139): each records the
     // moving avatar, the script scope to wake, and the unique event the Lua

@@ -105,6 +105,7 @@ add_library(pac_engine STATIC
     src/pnc/cast.cpp
     src/pnc/mover.cpp
     src/pnc/avatar.cpp
+    src/pnc/approach_follow.cpp
     src/pnc/speech_manager.cpp
     src/pnc/room_runtime.cpp
     src/pnc/room_renderer.cpp
