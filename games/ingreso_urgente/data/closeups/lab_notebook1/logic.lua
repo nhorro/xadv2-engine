@@ -25,11 +25,13 @@ return {
       if not get_state("finding.radial_fractures") then
         set_state("finding.radial_fractures", true)
       end
+      discover_evidence("radial_fractures")
 
       if not get_state("finding.perimortem_possible") then
         talk("player", "El conjunto es compatible con una lesión ocurrida cerca del momento de la muerte, pero todavía hay que cruzarlo con el contexto.")
         set_state("finding.perimortem_possible", true)
       end
+      discover_evidence("perimortem_possible")
     end,
 
     no_cut_marks = function()
@@ -40,6 +42,7 @@ return {
       if not get_state("finding.no_cut_marks") then
         set_state("finding.no_cut_marks", true)
       end
+      discover_evidence("no_cut_marks")
     end,
 
     no_compression = function()
@@ -50,6 +53,7 @@ return {
       if not get_state("finding.no_collapse") then
         set_state("finding.no_collapse", true)
       end
+      discover_evidence("no_collapse")
     end,
 
     preliminary_conclusion = function()

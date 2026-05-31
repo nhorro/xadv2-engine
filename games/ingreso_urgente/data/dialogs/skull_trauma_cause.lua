@@ -42,6 +42,8 @@ local function can_state_final_hypothesis()
   return has_basic_observations()
      and has_discarded_alternatives()
      and flag("argument.perimortem_stated")
+     and get_hypothesis_conclusion("matilde_trauma") == "blunt_perimortem"
+     and is_hypothesis_complete("matilde_trauma")
 end
 
 return {

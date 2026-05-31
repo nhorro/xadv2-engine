@@ -25,6 +25,7 @@ return {
       if not get_state("finding.no_collapse") then
         set_state("finding.no_collapse", true)
       end
+      discover_evidence("no_collapse")
     end,
 
     cranial_fragments = function()
@@ -41,6 +42,7 @@ return {
       if not get_state("finding.heavy_lithic_object") then
         set_state("finding.heavy_lithic_object", true)
       end
+      discover_evidence("heavy_lithic")
     end,
 
     anatomical_position = function()
@@ -51,6 +53,7 @@ return {
       if not get_state("finding.primary_burial") then
         set_state("finding.primary_burial", true)
       end
+      discover_evidence("primary_burial")
     end,
 
     contextual_interpretation = function()
@@ -61,6 +64,7 @@ return {
       if not get_state("finding.no_collapse") then
         set_state("finding.no_collapse", true)
       end
+      discover_evidence("no_collapse")
     end,
   },
 }

@@ -24,6 +24,7 @@ ui:
   settings_button: "OP"
   quit:     "Salir"
   pause:    "Pausa"
+  notebook: "Cuaderno"
   resume:   "Continuar"
   save_game: "Guardar"
   load_game: "Cargar"

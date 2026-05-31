@@ -18,6 +18,7 @@ local NEEDED = 3     -- identifications before Schneider starts nagging
 -- id -> what Julia says when she examines it + the label it becomes once named.
 local animals = {
   camelid1 = {
+    evidence = "camelid1_profile",
     label = "Camélido 1 — posible llama",
     lines = {
       "Cuello largo, orejas curvas, expresión de superioridad administrativa.",
@@ -25,6 +26,7 @@ local animals = {
     },
   },
   camelid2 = {
+    evidence = "camelid2_profile",
     label = "Camélido 2 — posible alpaca",
     lines = {
       "Más compacta, más lanuda, menos interesada en dominar el paisaje.",
@@ -32,6 +34,7 @@ local animals = {
     },
   },
   camelid3 = {
+    evidence = "camelid3_profile",
     label = "Camélido 3 — alpaca probable",
     lines = {
       "Otra alpaca, creo. Cara redonda, lana abundante, actitud de haber entendido el trámite antes que yo.",
@@ -39,6 +42,7 @@ local animals = {
     },
   },
   camelid4 = {
+    evidence = "camelid4_profile",
     label = "Camélido 4 — llama probable",
     lines = {
       "Esa sí tiene arquitectura de llama: alta, angulosa y con orejas de signo de pregunta.",
@@ -46,6 +50,7 @@ local animals = {
     },
   },
   camelid5 = {
+    evidence = "camelid5_profile",
     label = "Camélido 5 — posible alpaca",
     lines = {
       "Compacta, lanuda, algo ofendida por existir bajo categorías humanas.",
@@ -53,6 +58,7 @@ local animals = {
     },
   },
   camelid6 = {
+    evidence = "camelid6_profile",
     label = "Camélido 6 — clasificación dudosa",
     lines = {
       "Ese está en sombra. Perfil oscuro, datos insuficientes, dignidad intacta.",
@@ -112,6 +118,7 @@ local function identify(id)
   rename(id, a.label)
   set_state("llamas." .. id .. ".done", true)
   set_state("llamas." .. id .. ".label", a.label) -- persist the chosen label
+  discover_evidence(a.evidence)
   if count_identified() >= NEEDED then
     start_shouting()
   end

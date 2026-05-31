@@ -7,7 +7,11 @@
 //   pac_ingreso_urgente --frames 5 --shot out.png    # headless smoke
 //   pac_ingreso_urgente --pak resources.pak          # packed build
 
-#include "engine/pnc/game_app.hpp"
+#include "notebook/notebook_module.hpp"
+
+#include "engine/core/application.hpp"
+#include "engine/core/scene_factory.hpp"
+#include "engine/pnc/builtin_scenes.hpp"
 
 #include <cstdlib>
 #include <string>
@@ -44,5 +48,14 @@ int main(int argc, char** argv) {
         }
     }
 
-    return pac::pnc::run_game(manifest, opts);
+    pac::core::SceneFactory factory;
+    pac::pnc::register_builtin_scenes(factory);
+
+    ingreso::notebook::NotebookModule notebook("notebook");
+    notebook.registerScenes(factory);
+    pac::core::ApplicationHooks hooks;
+    hooks.configure = [&notebook](pac::core::EngineContext& ctx, const pac::core::Manifest& manifest) {
+        notebook.configure(ctx, manifest);
+    };
+    return pac::core::run(manifest, factory, opts, hooks);
 }

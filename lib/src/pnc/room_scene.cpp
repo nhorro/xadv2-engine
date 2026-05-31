@@ -18,6 +18,7 @@
 #include "engine/gfx/animated_sprite.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/dev_actions.hpp"
+#include "engine/pnc/pause_overlay.hpp"
 #include "engine/pnc/room.hpp"
 #include "pnc/dialog_internal.hpp"
 
@@ -143,6 +144,7 @@ RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams
     inventory_path_ = params.get_or("inventory", "");
     inventory_logic_ = params.get_or("inventory_logic", "");
     logic_path_ = params.get_or("logic", "");
+    pause_overlays_ = parse_pause_overlays(params, ctx_.log);
     fade_duration_ = kRoomFadeDefault;
     if (const auto v = params.get("fade_duration")) {
         try {
@@ -2250,21 +2252,12 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
 // --- pause / save / load / settings menu (M5c/2) ---
 
 std::vector<RoomScene::MenuButton> RoomScene::menu_buttons() const {
-    // Single vertical column of five buttons. The picker UI for save/load
+    // Single vertical column. The picker UI for save/load
     // (slots, thumbnails, descriptions) lives in the SaveLoadScene (issue #108)
     // and is pushed by `trigger_menu`; settings is another scene overlay. The
     // Save action is disabled when the engine can't take a coherent snapshot or
     // no save scene is configured; the Load action is disabled when no slot
     // exists or no load scene is configured.
-    const sf::Vector2u vres = ctx_.display.virtual_resolution();
-    const float w = 360.0f;
-    const float row_h = 56.0f;
-    const float gap = 14.0f;
-    const int count = 5;
-    const float total_h = count * row_h + (count - 1) * gap;
-    const float left = (static_cast<float>(vres.x) - w) / 2.0f;
-    const float top = (static_cast<float>(vres.y) - total_h) / 2.0f;
-
     auto any_save_exists = [this]() {
         for (int s = 0; s < pac::core::SaveService::kSlotCount; ++s) {
             if (ctx_.saves.slot_exists(s)) {
@@ -2276,18 +2269,35 @@ std::vector<RoomScene::MenuButton> RoomScene::menu_buttons() const {
     const bool save_enabled = can_save() && !ctx_.scenes.save_scene_id().empty();
     const bool load_enabled = any_save_exists() && !ctx_.scenes.load_scene_id().empty();
 
-    const MenuAction actions[count] = {MenuAction::RESUME,
-                                       MenuAction::OPEN_SAVE,
-                                       MenuAction::OPEN_LOAD,
-                                       MenuAction::OPEN_SETTINGS,
-                                       MenuAction::QUIT_TO_TITLE};
-    const bool enabled[count] = {true, save_enabled, load_enabled, true, true};
-
     std::vector<MenuButton> out;
-    out.reserve(count);
+    out.push_back({{}, MenuAction::RESUME, ctx_.strings.ui_label("resume"), {}, 0, true});
+    out.push_back({{}, MenuAction::OPEN_SAVE, ctx_.strings.ui_label("save_game"), {}, 10, save_enabled});
+    out.push_back({{}, MenuAction::OPEN_LOAD, ctx_.strings.ui_label("load_game"), {}, 20, load_enabled});
+    for (const PauseOverlayAction& overlay : pause_overlays_) {
+        out.push_back({{},
+                       MenuAction::PUSH_OVERLAY,
+                       ctx_.strings.ui_label(overlay.label_key),
+                       overlay.scene,
+                       overlay.order,
+                       true});
+    }
+    out.push_back({{}, MenuAction::OPEN_SETTINGS, ctx_.strings.ui_label("settings"), {}, 90, true});
+    out.push_back({{}, MenuAction::QUIT_TO_TITLE, ctx_.strings.ui_label("quit_to_title"), {}, 100, true});
+    std::stable_sort(out.begin(), out.end(), [](const MenuButton& a, const MenuButton& b) {
+        return a.order < b.order;
+    });
+
+    const sf::Vector2u vres = ctx_.display.virtual_resolution();
+    const float w = 360.0f;
+    const float row_h = 56.0f;
+    const float gap = 14.0f;
+    const int count = static_cast<int>(out.size());
+    const float total_h = count * row_h + (count - 1) * gap;
+    const float left = (static_cast<float>(vres.x) - w) / 2.0f;
+    const float top = (static_cast<float>(vres.y) - total_h) / 2.0f;
     for (int i = 0; i < count; ++i) {
         const float y = top + static_cast<float>(i) * (row_h + gap);
-        out.push_back({{left, y, w, row_h}, actions[i], enabled[i]});
+        out[static_cast<std::size_t>(i)].rect = {left, y, w, row_h};
     }
     return out;
 }
@@ -2301,14 +2311,14 @@ void RoomScene::handle_menu_event(const sf::Event& event) {
                           static_cast<float>(event.mouseButton.y)};
     for (const MenuButton& b : menu_buttons()) {
         if (b.enabled && b.rect.contains(vp)) {
-            trigger_menu(b.action);
+            trigger_menu(b);
             return;
         }
     }
 }
 
-void RoomScene::trigger_menu(MenuAction action) {
-    switch (action) {
+void RoomScene::trigger_menu(const MenuButton& button) {
+    switch (button.action) {
     case MenuAction::RESUME:
         view_state_ = ViewState::COMMAND;
         break;
@@ -2335,6 +2345,9 @@ void RoomScene::trigger_menu(MenuAction action) {
         // goto_scene), so nothing to stage here. If no load scene is configured
         // the helper is a no-op; the button is disabled in that state anyway.
         ctx_.scenes.open_load();
+        break;
+    case MenuAction::PUSH_OVERLAY:
+        push_pause_overlay({button.overlay_scene, button.label, button.order}, ctx_.scenes);
         break;
     case MenuAction::OPEN_SETTINGS:
         ctx_.scenes.open_settings();
@@ -2381,25 +2394,7 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
         box.setOutlineThickness(1.5f);
         target.draw(box);
 
-        std::string label;
-        switch (bt.action) {
-        case MenuAction::RESUME:
-            label = ctx_.strings.ui_label("resume");
-            break;
-        case MenuAction::OPEN_SAVE:
-            label = ctx_.strings.ui_label("save_game");
-            break;
-        case MenuAction::OPEN_LOAD:
-            label = ctx_.strings.ui_label("load_game");
-            break;
-        case MenuAction::OPEN_SETTINGS:
-            label = ctx_.strings.ui_label("settings");
-            break;
-        case MenuAction::QUIT_TO_TITLE:
-            label = ctx_.strings.ui_label("quit_to_title");
-            break;
-        }
-        sf::Text txt(pac::core::utf8(label), *font_, 20);
+        sf::Text txt(pac::core::utf8(bt.label), *font_, 20);
         txt.setFillColor(!bt.enabled ? sf::Color(120, 128, 145)
                                      : (hot ? sf::Color::White : sf::Color(220, 224, 235)));
         const sf::FloatRect b = txt.getLocalBounds();

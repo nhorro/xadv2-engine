@@ -30,6 +30,7 @@ return {
         talk("player", "Ese patrón sí es defendible como fracturas radiales asociadas.")
         set_state("finding.radial_fractures", true)
       end
+      discover_evidence("radial_fractures")
     end,
 
     skull_sinking = function()
@@ -40,6 +41,7 @@ return {
         talk("player", "Esto no cierra el caso por sí solo, pero sí vuelve razonable considerar una lesión perimortem.")
         set_state("finding.perimortem_possible", true)
       end
+      discover_evidence("perimortem_possible")
     end,
 
     bones = function()

@@ -411,6 +411,12 @@ sf::Image SaveService::take_pending_thumbnail() {
     return img;
 }
 
+void SaveService::clear_staged() {
+    pending_restore_.reset();
+    pending_snap_.reset();
+    pending_thumbnail_ = sf::Image();
+}
+
 std::optional<SlotSummary> SaveService::slot_summary(int slot) const {
     if (!slot_exists(slot)) {
         return std::nullopt;

@@ -25,8 +25,8 @@ settings:
     music_volume: 0.8
     sfx_volume: 0.8
 
-entry: title
-#entry: room_view
+#entry: title
+entry: notebook
 
 development:
   edit_mode: false
@@ -88,6 +88,17 @@ scenes:
       #scumm_panel: ui/scumm_panel_default.yml
       font: fonts/DepartureMono-Regular.otf
       logic: scripts/game.lua
+      pause_menu:
+        overlays:
+          notebook:
+            scene: notebook
+            label_key: notebook
+            order: 30
+
+  - id: notebook
+    type: IngresoNotebook
+    parameters:
+      data: notebook/notebook.yaml
 
   # -------------------------------------------------------------------------------
   # ACTO I. 
@@ -145,4 +156,4 @@ scenes:
       data: closeups/lab_notebook2/closeup.yml
       logic: closeups/lab_notebook2/logic.lua    # scripted hotspots (talk in steps, set state)
       cast: cast.yaml                  # speech colours for talk()
-      font: fonts/DepartureMono-Regular.otf      
+      font: fonts/DepartureMono-Regular.otf

@@ -111,6 +111,9 @@ public:
     /// was staged (the save still writes; the slot just gets no sidecar PNG).
     [[nodiscard]] sf::Image take_pending_thumbnail();
 
+    /// Clear all transient hand-off data when starting a fresh game.
+    void clear_staged();
+
 private:
     [[nodiscard]] static bool slot_in_range(int slot);
 

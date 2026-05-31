@@ -1,0 +1,331 @@
+version: 1
+ui:
+  background: notebook/notebook.png
+  font: notebook/VT323-Regular.ttf
+  font_size: 19
+  pages:
+    left: { x: 125, y: 175, width: 400, height: 450 }
+    right: { x: 655, y: 180, width: 500, height: 445 }
+  tabs:
+    font_size: 24
+    idle_color: [92, 72, 50, 190]
+    hover_color: [70, 52, 35, 255]
+    selected_color: [45, 34, 25, 255]
+    evidence:
+      label: "Evidencias"
+      position: { x: 220, y: 116 }
+      hitbox: { x: 205, y: 110, width: 160, height: 40 }
+    hypotheses:
+      label: "Hipótesis"
+      position: { x: 420, y: 116 }
+      hitbox: { x: 405, y: 110, width: 190, height: 40 }
+  close:
+    label: "X"
+    position: { x: 1120, y: 96 }
+    hitbox: { x: 1110, y: 90, width: 45, height: 42 }
+    font_size: 28
+    action: pop
+
+evidence_sections:
+  - { id: dummy_layout, label: "[PRUEBA] Evidencias para layout" }
+  - { id: camelids, label: "Camélidos de la ventana" }
+  - { id: matilde, label: "Caso La Matilde" }
+
+evidences:
+  # Temporary authored records for visual testing. Keep them clearly namespaced
+  # so they can be removed without touching Act I evidence ids.
+  - id: dummy_layout_01
+    section: dummy_layout
+    title: "[PRUEBA] Nota breve"
+    note: "**Observación:** Registro corto para revisar una nota de una sola línea."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_02
+    section: dummy_layout
+    title: "[PRUEBA] Título medio con detalles"
+    note: "**Contexto:** Esta entrada tiene un título algo más largo para revisar cómo convive con el ancho de la lista lateral."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_03
+    section: dummy_layout
+    title: "[PRUEBA] Título deliberadamente largo para forzar el borde"
+    note: "**Observación:** El título de esta evidencia es deliberadamente extenso. Sirve para detectar desbordes, recortes y superposiciones en la lista."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_04
+    section: dummy_layout
+    title: "[PRUEBA] Nota con imagen"
+    note: "**Adjunto:** Reutiliza temporalmente la imagen del camélido para revisar su escala y su posición dentro de la página."
+    image: notebook/evidence_llama_a.png
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_05
+    section: dummy_layout
+    title: "[PRUEBA] Párrafos separados"
+    note: |-
+      **Primer párrafo:** Este bloque prueba el espaciado vertical entre párrafos.
+
+      **Segundo párrafo:** También permite revisar cómo se comporta el ajuste de línea cuando el texto ocupa varias líneas consecutivas.
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_06
+    section: dummy_layout
+    title: "[PRUEBA] Lista de puntos"
+    note: |-
+      **Elementos registrados:**
+      - Primer elemento de prueba.
+      - Segundo elemento con una descripción un poco más larga.
+      - Tercer elemento para completar el bloque.
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_07
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 07"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_08
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 08"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_09
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 09"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_10
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 10"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_11
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 11"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_12
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 12"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_13
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 13"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_14
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 14"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_15
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 15"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_16
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 16"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_17
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 17"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_18
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 18"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_19
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 19"
+    note: "**Observación:** Evidencia de relleno para probar desplazamiento vertical."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_layout_20
+    section: dummy_layout
+    title: "[PRUEBA] Entrada 20"
+    note: "**Observación:** Última evidencia de relleno; debe requerir desplazamiento para aparecer en la lista."
+    initially_discovered: true
+    tags: [dummy]
+  - id: dummy_support_camelid1
+    section: dummy_layout
+    title: "[PRUEBA] Apoyo para Camélido 1"
+    note: "**Apoyo de prueba:** Candidato compatible con el primer sujeto de clasificación."
+    initially_discovered: true
+    tags: [dummy, camelid, camelid1]
+  - id: dummy_support_camelid2
+    section: dummy_layout
+    title: "[PRUEBA] Apoyo para Camélido 2"
+    note: "**Apoyo de prueba:** Candidato compatible con el segundo sujeto de clasificación."
+    initially_discovered: true
+    tags: [dummy, camelid, camelid2]
+  - id: dummy_support_camelid3
+    section: dummy_layout
+    title: "[PRUEBA] Apoyo para Camélido 3"
+    note: "**Apoyo de prueba:** Candidato compatible con el tercer sujeto de clasificación."
+    initially_discovered: true
+    tags: [dummy, camelid, camelid3]
+  - id: dummy_support_camelid4
+    section: dummy_layout
+    title: "[PRUEBA] Apoyo para Camélido 4"
+    note: "**Apoyo de prueba:** Candidato compatible con el cuarto sujeto de clasificación."
+    initially_discovered: true
+    tags: [dummy, camelid, camelid4]
+  - id: dummy_support_camelid5
+    section: dummy_layout
+    title: "[PRUEBA] Apoyo para Camélido 5"
+    note: "**Apoyo de prueba:** Candidato compatible con el quinto sujeto de clasificación."
+    initially_discovered: true
+    tags: [dummy, camelid, camelid5]
+  - id: dummy_support_camelid6
+    section: dummy_layout
+    title: "[PRUEBA] Apoyo para Camélido 6"
+    note: "**Apoyo de prueba:** Candidato compatible con el sexto sujeto de clasificación."
+    initially_discovered: true
+    tags: [dummy, camelid, camelid6]
+  - id: dummy_support_fracture_pattern
+    section: dummy_layout
+    title: "[PRUEBA] Apoyo: patrón de fractura"
+    note: "**Apoyo de prueba:** Candidato para la premisa sobre fracturas radiales."
+    initially_discovered: true
+    tags: [dummy, fracture_pattern]
+  - id: dummy_support_no_cut_marks
+    section: dummy_layout
+    title: "[PRUEBA] Apoyo: ausencia de cortes"
+    note: "**Apoyo de prueba:** Candidato para la premisa sobre marcas de corte."
+    initially_discovered: true
+    tags: [dummy, no_cut_marks]
+  - id: dummy_support_no_collapse
+    section: dummy_layout
+    title: "[PRUEBA] Apoyo: ausencia de derrumbe"
+    note: "**Apoyo de prueba:** Candidato para la premisa contextual de derrumbe."
+    initially_discovered: true
+    tags: [dummy, no_collapse]
+  - id: dummy_support_perimortem
+    section: dummy_layout
+    title: "[PRUEBA] Apoyo: interpretación perimortem"
+    note: "**Apoyo de prueba:** Candidato para la interpretación temporal de la lesión."
+    initially_discovered: true
+    tags: [dummy, perimortem]
+  - id: dummy_support_context
+    section: dummy_layout
+    title: "[PRUEBA] Apoyo: contexto complementario"
+    note: "**Apoyo de prueba:** Candidato para la premisa contextual opcional."
+    initially_discovered: true
+    tags: [dummy, context]
+  - id: dummy_support_artifact
+    section: dummy_layout
+    title: "[PRUEBA] Apoyo: objeto compatible"
+    note: "**Apoyo de prueba:** Candidato para la premisa opcional sobre el objeto lítico."
+    initially_discovered: true
+    tags: [dummy, artifact]
+  - id: camelid1_profile
+    section: camelids
+    title: "Camélido 1: cuello largo"
+    note: "**Observación:** Cuello largo, perfil alto y orejas curvas."
+    image: notebook/evidence_llama_a.png
+    tags: [camelid, camelid1, morphology]
+  - id: camelid2_profile
+    section: camelids
+    title: "Camélido 2: lana abundante"
+    note: "**Observación:** Perfil compacto y lana abundante."
+    tags: [camelid, camelid2, morphology]
+  - id: camelid3_profile
+    section: camelids
+    title: "Camélido 3: cara redonda"
+    note: "**Observación:** Cara redonda, cuerpo compacto y lana abundante."
+    tags: [camelid, camelid3, morphology]
+  - id: camelid4_profile
+    section: camelids
+    title: "Camélido 4: perfil alto"
+    note: "**Observación:** Perfil alto, cuerpo anguloso y orejas curvas."
+    tags: [camelid, camelid4, morphology]
+  - id: camelid5_profile
+    section: camelids
+    title: "Camélido 5: perfil compacto"
+    note: "**Observación:** Perfil compacto y vellón denso."
+    tags: [camelid, camelid5, morphology]
+  - id: camelid6_profile
+    section: camelids
+    title: "Camélido 6: datos insuficientes"
+    note: "**Observación:** Perfil parcialmente oculto. Los datos no alcanzan para una clasificación firme."
+    tags: [camelid, camelid6, morphology]
+  - id: radial_fractures
+    section: matilde
+    title: "Fracturas radiales"
+    note: "**Observación:** Las líneas de fractura irradian desde un punto focal en el parietal derecho."
+    tags: [matilde, fracture_pattern]
+  - id: no_cut_marks
+    section: matilde
+    title: "Sin marcas de corte"
+    note: "**Observación:** No hay marcas de corte visibles en la superficie ósea."
+    tags: [matilde, no_cut_marks]
+  - id: no_collapse
+    section: matilde
+    title: "Sin evidencia de derrumbe"
+    note: "**Contexto:** Estratigrafía regular, sin bloques ni señales claras de colapso."
+    tags: [matilde, no_collapse, context]
+  - id: primary_burial
+    section: matilde
+    title: "Entierro primario"
+    note: "**Contexto:** Restos en conexión anatómica y sin disturbios visibles."
+    tags: [matilde, context]
+  - id: heavy_lithic
+    section: matilde
+    title: "Objeto lítico pesado"
+    note: "**Contexto:** Objeto lítico pesado recuperado en el mismo sector. No identifica por sí solo un arma."
+    tags: [matilde, artifact]
+  - id: perimortem_possible
+    section: matilde
+    title: "Interpretación perimortem"
+    note: "**Interpretación:** El patrón es compatible con una lesión cercana al momento de la muerte."
+    tags: [matilde, perimortem]
+
+hypotheses:
+  - id: camelid_classification
+    title: "Clasificación de camélidos"
+    template: classification
+    evidence_tags: [camelid]
+    subjects:
+      - id: camelid1
+        label: "Camélido 1"
+        evidence_tags: [camelid1]
+        options: &camelid_options
+          - { id: llama, label: "Llama" }
+          - { id: alpaca, label: "Alpaca" }
+          - { id: indeterminado, label: "Indeterminado" }
+      - { id: camelid2, label: "Camélido 2", evidence_tags: [camelid2], options: *camelid_options }
+      - { id: camelid3, label: "Camélido 3", evidence_tags: [camelid3], options: *camelid_options }
+      - { id: camelid4, label: "Camélido 4", evidence_tags: [camelid4], options: *camelid_options }
+      - { id: camelid5, label: "Camélido 5", evidence_tags: [camelid5], options: *camelid_options }
+      - { id: camelid6, label: "Camélido 6", evidence_tags: [camelid6], options: *camelid_options }
+
+  - id: matilde_trauma
+    title: "Trauma de La Matilde"
+    template: argument
+    conclusions:
+      - { id: blunt_perimortem, label: "Trauma contundente perimortem" }
+      - { id: sharp_force, label: "Trauma por herramienta filosa" }
+      - { id: postdepositional, label: "Daño postdepositacional" }
+    premises:
+      - { id: fracture_pattern, label: "Patrón de fractura", evidence_tags: [fracture_pattern] }
+      - { id: no_cut_marks, label: "Ausencia de marcas de corte", evidence_tags: [no_cut_marks] }
+      - { id: no_collapse, label: "Ausencia de derrumbe", evidence_tags: [no_collapse] }
+      - { id: perimortem, label: "Interpretación perimortem", evidence_tags: [perimortem] }
+      - { id: context, label: "Contexto complementario", evidence_tags: [context], required: false }
+      - { id: artifact, label: "Objeto compatible", evidence_tags: [artifact], required: false }

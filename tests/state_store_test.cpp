@@ -31,3 +31,18 @@ TEST_CASE("StateStore set / get / has / overwrite / clear") {
     CHECK(s.size() == 0);
     CHECK_FALSE(s.has("a"));
 }
+
+TEST_CASE("StateStore erases individual keys and namespaces") {
+    StateStore s;
+    s.set("notebook.evidence.a.discovered", true);
+    s.set("notebook.evidence.b.discovered", true);
+    s.set("notebook.hypothesis.a.conclusion", std::string("x"));
+    s.set("other", true);
+
+    CHECK(s.erase("notebook.evidence.a.discovered"));
+    CHECK_FALSE(s.erase("notebook.evidence.missing"));
+    CHECK(s.erase_prefix("notebook.evidence.") == 1);
+    CHECK(s.erase_prefix("notebook.") == 1);
+    CHECK(s.size() == 1);
+    CHECK(s.has("other"));
+}

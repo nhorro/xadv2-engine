@@ -32,6 +32,7 @@ return {
       if not get_state("finding.no_collapse") then
         set_state("finding.no_collapse", true)
       end
+      discover_evidence("no_collapse")
     end,
 
     primary_burial_note = function()
@@ -42,6 +43,7 @@ return {
       if not get_state("finding.primary_burial") then
         set_state("finding.primary_burial", true)
       end
+      discover_evidence("primary_burial")
     end,
 
     no_cut_marks_note = function()
@@ -52,6 +54,7 @@ return {
       if not get_state("finding.no_cut_marks") then
         set_state("finding.no_cut_marks", true)
       end
+      discover_evidence("no_cut_marks")
     end,
 
     perimortem_note = function()
@@ -62,6 +65,7 @@ return {
       if not get_state("finding.perimortem_possible") then
         set_state("finding.perimortem_possible", true)
       end
+      discover_evidence("perimortem_possible")
     end,
 
     site_map = function()
