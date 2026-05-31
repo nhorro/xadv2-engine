@@ -10,7 +10,7 @@
 #include "engine/core/scene_params.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/text_encoding.hpp"
-#include "engine/pnc/speech_manager.hpp" // wrap_text (pure word-wrap)
+#include "engine/core/text_layout.hpp" // core::draw_text_block (shared text layout)
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
@@ -32,27 +32,17 @@ namespace {
 constexpr float kHintMargin = 18.0f;        // virtual-px padding for the manual continue/skip hint
 constexpr float kTextWidthFraction = 0.86f; // slide text wraps within this fraction of the width
 
-// Place `text`'s origin so the anchor sits at the requested (x, y). `anchor.x`
-// + `align` picks the horizontal origin (left edge, center, or right edge);
-// vertical origin is always the text's vertical center, which is the most
-// predictable behavior when authors think in screen fractions.
-void anchor_text(sf::Text& text, sf::Vector2f anchor_px, CutsceneTextAlign align) {
-    const sf::FloatRect b = text.getLocalBounds();
-    float origin_x = b.left;
+// Map the slide's author-facing alignment onto the shared text-layout enum.
+pac::core::HAlign to_halign(CutsceneTextAlign align) {
     switch (align) {
     case CutsceneTextAlign::Left:
-        origin_x = b.left;
-        break;
+        return pac::core::HAlign::Left;
     case CutsceneTextAlign::Center:
-        origin_x = b.left + b.width / 2.0f;
-        break;
+        return pac::core::HAlign::Center;
     case CutsceneTextAlign::Right:
-        origin_x = b.left + b.width;
-        break;
+        return pac::core::HAlign::Right;
     }
-    const float origin_y = b.top + b.height / 2.0f;
-    text.setOrigin(origin_x, origin_y);
-    text.setPosition(anchor_px);
+    return pac::core::HAlign::Center;
 }
 
 // Place a sprite covering `target_size` at `anchor_px`, with the chosen fit.
@@ -80,36 +70,6 @@ void anchor_image(sf::Sprite& sprite,
     sprite.setScale(draw_w / tx, draw_h / ty);
     sprite.setOrigin(tx / 2.0f, ty / 2.0f); // texture-space center
     sprite.setPosition(anchor_px);
-}
-
-// Word-wrap `text` to `max_width` and draw it as a multi-line block whose CENTER
-// sits at `anchor` — so a long line breaks onto the next and the block stays
-// vertically centered on `text_position` instead of overflowing the screen.
-// Each line is aligned per `align`. Reuses the pure word-wrap helper.
-// (Local for now; see the `core/text` text-layout enhancement issue for the
-// shared facility this should eventually live in.)
-void draw_wrapped_text(sf::RenderTarget& target,
-                       const sf::Font& font,
-                       const std::string& text,
-                       unsigned size,
-                       sf::Color color,
-                       sf::Vector2f anchor,
-                       CutsceneTextAlign align,
-                       float max_width) {
-    const auto measure = [&](const std::string& s) {
-        return sf::Text(pac::core::utf8(s), font, size).getLocalBounds().width;
-    };
-    const std::vector<std::string> lines = wrap_text(text, max_width, measure);
-    const float line_h = font.getLineSpacing(size);
-    const float total_h = static_cast<float>(lines.size()) * line_h;
-    float y = anchor.y - total_h / 2.0f + line_h / 2.0f; // center the block on the anchor
-    for (const std::string& line : lines) {
-        sf::Text t(pac::core::utf8(line), font, size);
-        t.setFillColor(color);
-        anchor_text(t, {anchor.x, y}, align);
-        target.draw(t);
-        y += line_h;
-    }
 }
 
 } // namespace
@@ -299,14 +259,17 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
     if (slide.text) {
         if (const sf::Font* font = font_for(slide.text_style)) {
             const sf::Vector2f anchor(slide.text_position.x * vw, slide.text_position.y * vh);
-            draw_wrapped_text(target,
-                              *font,
-                              *slide.text,
-                              slide.text_style.size,
-                              slide.text_style.color,
-                              anchor,
-                              slide.text_align,
-                              vw * kTextWidthFraction);
+            pac::core::TextStyle style;
+            style.size = slide.text_style.size;
+            style.color = slide.text_style.color;
+            pac::core::draw_text_block(target,
+                                       *font,
+                                       *slide.text,
+                                       style,
+                                       anchor,
+                                       vw * kTextWidthFraction,
+                                       to_halign(slide.text_align),
+                                       pac::core::VAnchor::Center);
         }
     }
 

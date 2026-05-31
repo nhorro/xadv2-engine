@@ -24,6 +24,7 @@ add_executable(pac_core_tests
     manifest_test.cpp
     strings_test.cpp
     localization_test.cpp
+    text_layout_test.cpp
     settings_store_test.cpp
     scene_stack_test.cpp
     screen_fade_test.cpp

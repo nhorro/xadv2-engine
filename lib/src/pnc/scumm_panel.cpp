@@ -3,6 +3,7 @@
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/text_encoding.hpp"
+#include "engine/core/text_layout.hpp" // core::wrap_text
 #include "engine/pnc/inventory.hpp"
 #include "engine/pnc/speech_manager.hpp"
 
@@ -97,7 +98,7 @@ DialogPageLayout layout_dialog_options(const std::vector<std::string>& labels,
     wrapped.reserve(labels.size());
     heights.reserve(labels.size());
     for (const std::string& label : labels) {
-        std::vector<std::string> lines = wrap_text(label, text_width, measure);
+        std::vector<std::string> lines = pac::core::wrap_text(label, text_width, measure);
         heights.push_back(static_cast<float>(lines.size()) * line_height);
         wrapped.push_back(std::move(lines));
     }
