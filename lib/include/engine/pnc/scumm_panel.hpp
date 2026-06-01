@@ -16,6 +16,7 @@
 namespace sf {
 class Font;
 class RenderTarget;
+class Text;
 } // namespace sf
 
 namespace pac::core {
@@ -26,6 +27,8 @@ class Strings;
 namespace pac::pnc {
 
 class InventoryModel;
+struct InventoryItem;
+struct InventoryIconSheet;
 
 /// Look-and-feel of the SCUMM panel: colors, spacing, and type sizes (issue #77).
 /// Purely presentational — the command model is independent of it. The defaults
@@ -107,11 +110,27 @@ struct DialogClick {
 
 /// What a click on the panel means (the panel itself is not the command system).
 struct PanelIntent {
-    enum class Kind { NONE, SELECT_VERB, CLICK_INVENTORY, CHANGE_INVENTORY_PAGE, OPEN_SETTINGS };
+    enum class Kind {
+        NONE,
+        SELECT_VERB,
+        CLICK_INVENTORY,
+        CHANGE_INVENTORY_PAGE,
+        OPEN_SETTINGS,
+        OPEN_NOTEBOOK
+    };
     Kind kind = Kind::NONE;
     Verb verb{};
     std::string item_id;
     int page_index = 0;
+    std::string tab; ///< valid when kind == OPEN_NOTEBOOK: initial tab hint for the scene
+};
+
+/// Evidence progress readout shown by the optional evidence indicator (issue #172).
+/// The room view reads the counts from the panel config's state keys and passes them
+/// in; the panel only renders "{label} {collected}/{total}".
+struct EvidenceProgress {
+    int collected = 0;
+    int total = 0;
 };
 
 /// The bottom SCUMM panel: a command bar, a verb grid, and a text inventory list.
@@ -126,6 +145,8 @@ public:
                pac::core::ResourceCache* resources,
                ScummPanelTheme theme = {});
 
+    [[nodiscard]] const ScummPanelConfig& config() const { return config_; }
+
     [[nodiscard]] bool contains(sf::Vector2f virtual_point) const;
     [[nodiscard]] PanelIntent click(sf::Vector2f virtual_point,
                                     const InventoryModel& inventory,
@@ -137,7 +158,8 @@ public:
               const pac::core::Strings& strings,
               const InventoryModel& inventory,
               const CommandState& command_state,
-              sf::Vector2f cursor) const;
+              sf::Vector2f cursor,
+              EvidenceProgress evidence = {}) const;
 
     /// Draw dialog options in place of the verb/inventory layout. Used while
     /// the room view is in ViewState::DIALOG. Options are plain text (no boxes,
@@ -168,9 +190,25 @@ private:
         std::string item_id;
         sf::FloatRect rect;
     };
+    struct NotebookCell {
+        std::string label_key;
+        std::string tab;
+        sf::FloatRect rect;
+    };
+    /// Geometry of the icon-style inventory: a fixed `rows*columns` slot grid plus
+    /// a right-hand gutter holding the vertical paging arrows.
+    struct IconInventoryLayout {
+        std::vector<sf::FloatRect> slots; ///< capacity slot rects (incl. empty ones)
+        sf::FloatRect prev_arrow;         ///< up arrow (previous page)
+        sf::FloatRect next_arrow;         ///< down arrow (next page)
+    };
     [[nodiscard]] std::vector<VerbCell> verb_cells() const;
     [[nodiscard]] std::vector<InventoryCell> inventory_cells(const InventoryModel& inventory,
                                                              int page_index) const;
+    [[nodiscard]] IconInventoryLayout icon_inventory_layout() const;
+    /// Body-relative notebook access zones stacked vertically inside
+    /// `notebook.rect` (one row per entry, right of a leading icon).
+    [[nodiscard]] std::vector<NotebookCell> notebook_cells() const;
     /// Panel fill + command-bar strip + separator rule (shared by both draw
     /// paths). `suppress_command_bar` skips the strip + separator (dialog mode,
     /// where the action string has no meaning) while keeping the panel fill /
@@ -191,14 +229,39 @@ private:
     void draw_settings_button(sf::RenderTarget& target,
                               const pac::core::Strings& strings,
                               sf::Vector2f cursor) const;
+    /// Icon-style inventory: fixed slot frames with the held item's icon (or a
+    /// drawn placeholder when the item has none), plus vertical paging arrows
+    /// (same look as the dialog arrows) shown when more than one page exists.
+    void draw_inventory_icons(sf::RenderTarget& target,
+                              const InventoryModel& inventory,
+                              const CommandState& command_state,
+                              sf::Vector2f cursor) const;
+    void draw_evidence_indicator(sf::RenderTarget& target,
+                                 const pac::core::Strings& strings,
+                                 EvidenceProgress evidence) const;
+    void draw_notebook(sf::RenderTarget& target,
+                       const pac::core::Strings& strings,
+                       sf::Vector2f cursor) const;
+    /// Draw `image` scaled into `rect`. `src` selects a sub-rectangle of the
+    /// texture (for sprite-sheet cells); a zero-size `src` means the whole texture.
     void draw_image_in_rect(sf::RenderTarget& target,
                             const std::string& image,
-                            sf::FloatRect rect) const;
+                            sf::FloatRect rect,
+                            sf::IntRect src = {}) const;
+    /// Resolve and draw an inventory item's icon into `dest`: a production sheet
+    /// cell, or the development individual image. Returns false (draw nothing) when
+    /// the item has no usable icon, so the caller can fall back to a placeholder.
+    [[nodiscard]] bool draw_item_icon(sf::RenderTarget& target,
+                                      const InventoryItem& item,
+                                      const InventoryIconSheet& sheet,
+                                      sf::FloatRect dest) const;
     [[nodiscard]] sf::FloatRect inventory_area() const;
     [[nodiscard]] sf::FloatRect command_bar_area() const;
     [[nodiscard]] sf::FloatRect arrow_previous_area() const;
     [[nodiscard]] sf::FloatRect arrow_next_area() const;
     [[nodiscard]] sf::FloatRect settings_button_area() const;
+    [[nodiscard]] sf::FloatRect evidence_indicator_area() const;
+    [[nodiscard]] sf::FloatRect notebook_area() const;
     [[nodiscard]] sf::FloatRect options_area() const;
     /// Build the dialog page layout from the panel's font + geometry (wraps the
     /// pure `layout_dialog_options` with the panel's measurer).
@@ -210,6 +273,8 @@ private:
     [[nodiscard]] sf::FloatRect inventory_child(sf::FloatRect rect) const;
     [[nodiscard]] const sf::Font* font_or_default(const sf::Font* configured) const;
     [[nodiscard]] unsigned scaled_text_size(unsigned design_size) const;
+    /// Apply a text style's fill plus its (optional, panel-scaled) outline.
+    void apply_text_style(sf::Text& text, const ScummTextStyle& style, sf::Color fill) const;
     [[nodiscard]] int inventory_capacity() const;
     [[nodiscard]] int inventory_page_count(const InventoryModel& inventory) const;
     [[nodiscard]] int clamped_inventory_page(const InventoryModel& inventory, int page_index) const;
@@ -226,6 +291,8 @@ private:
     const sf::Font* inventory_font_ = nullptr;
     const sf::Font* arrow_font_ = nullptr;
     const sf::Font* settings_font_ = nullptr;
+    const sf::Font* evidence_font_ = nullptr;
+    const sf::Font* notebook_font_ = nullptr;
     ScummPanelTheme theme_;
 };
 

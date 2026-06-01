@@ -265,6 +265,30 @@ ScummButtonRenderMode button_render_mode(const std::string& value, const YAML::N
                node);
 }
 
+VerbPanelStyle verb_panel_style(const std::string& value, const YAML::Node& node) {
+    if (value == "buttons") {
+        return VerbPanelStyle::BUTTONS;
+    }
+    if (value == "text") {
+        return VerbPanelStyle::TEXT;
+    }
+    panel_fail("scumm-panel.verb-style-invalid",
+               "layout.verb_panel.style must be buttons or text",
+               node);
+}
+
+InventoryStyle inventory_style_from(const std::string& value, const YAML::Node& node) {
+    if (value == "text") {
+        return InventoryStyle::TEXT;
+    }
+    if (value == "icons") {
+        return InventoryStyle::ICONS;
+    }
+    panel_fail("scumm-panel.inventory-style-invalid",
+               "layout.inventory_panel.style must be text or icons",
+               node);
+}
+
 ScummPanelBackground parse_background(const YAML::Node& node,
                                       const std::string& base_dir,
                                       ScummPanelBackground fallback) {
@@ -384,6 +408,13 @@ ScummTextStyle parse_text_style(const YAML::Node& node,
     if (node["align"]) {
         style.align = node["align"].as<std::string>();
     }
+    if (node["outline_thickness"]) {
+        style.outline_thickness = node["outline_thickness"].as<float>();
+    }
+    if (node["outline_color"]) {
+        style.outline_color =
+            parse_color(node["outline_color"].as<std::string>(), node["outline_color"]);
+    }
     return style;
 }
 
@@ -459,21 +490,103 @@ ScummSettingsButtonConfig parse_settings_button(const YAML::Node& node,
     return button;
 }
 
-void validate_config(const ScummPanelConfig& cfg, const YAML::Node& root) {
-    const int verb_capacity = cfg.layout.verb_panel.rows * cfg.layout.verb_panel.columns;
-    if (static_cast<int>(cfg.content.verbs.size()) > verb_capacity) {
-        panel_fail("scumm-panel.too-many-verbs",
-                   "content.verbs length must be <= verb_panel.rows * verb_panel.columns",
-                   root["content"] ? root["content"]["verbs"] : root);
+ScummEvidenceIndicator parse_evidence_indicator(const YAML::Node& node,
+                                                const std::string& base_dir,
+                                                ScummEvidenceIndicator fallback) {
+    if (!node) {
+        return fallback;
     }
-    if (cfg.layout.inventory_arrows.mode == InventoryArrowMode::DRAW) {
+    if (!node.IsMap()) {
+        panel_fail("scumm-panel.evidence-indicator-invalid",
+                   "scumm_panel.evidence_indicator must be a mapping",
+                   node);
+    }
+    ScummEvidenceIndicator ev = fallback;
+    if (node["enabled"]) {
+        ev.enabled = node["enabled"].as<bool>();
+    }
+    ev.rect = rect_from(node["rect"], "evidence_indicator.rect");
+    ev.icon = resolve_asset(base_dir, node["icon"], "evidence_indicator.icon");
+    if (node["label_key"]) {
+        ev.label_key = node["label_key"].as<std::string>();
+    }
+    if (node["collected_state"]) {
+        ev.collected_state = node["collected_state"].as<std::string>();
+    }
+    if (node["total_state"]) {
+        ev.total_state = node["total_state"].as<std::string>();
+    }
+    ev.text = parse_text_style(node["text"], base_dir, "evidence_indicator.text", ev.text);
+    return ev;
+}
+
+ScummNotebookConfig
+parse_notebook(const YAML::Node& node, const std::string& base_dir, ScummNotebookConfig fallback) {
+    if (!node) {
+        return fallback;
+    }
+    if (!node.IsMap()) {
+        panel_fail("scumm-panel.notebook-invalid", "scumm_panel.notebook must be a mapping", node);
+    }
+    ScummNotebookConfig nb = fallback;
+    if (node["enabled"]) {
+        nb.enabled = node["enabled"].as<bool>();
+    }
+    nb.rect = rect_from(node["rect"], "notebook.rect");
+    if (node["scene"]) {
+        nb.scene = node["scene"].as<std::string>();
+    }
+    if (node["tab_state"]) {
+        nb.tab_state = node["tab_state"].as<std::string>();
+    }
+    nb.icon = resolve_asset(base_dir, node["icon"], "notebook.icon");
+    nb.text = parse_text_style(node["text"], base_dir, "notebook.text", nb.text);
+    if (const YAML::Node entries = node["entries"]) {
+        if (!entries.IsSequence()) {
+            panel_fail("scumm-panel.notebook-entries-invalid",
+                       "notebook.entries must be a sequence",
+                       entries);
+        }
+        nb.entries.clear();
+        for (const YAML::Node& en : entries) {
+            if (!en.IsMap() || !en["label_key"]) {
+                panel_fail("scumm-panel.notebook-entry-invalid",
+                           "notebook.entries items must be mappings with a label_key",
+                           en);
+            }
+            ScummNotebookEntry entry;
+            entry.label_key = en["label_key"].as<std::string>();
+            if (en["tab"]) {
+                entry.tab = en["tab"].as<std::string>();
+            }
+            nb.entries.push_back(std::move(entry));
+        }
+    }
+    return nb;
+}
+
+void validate_config(const ScummPanelConfig& cfg, const YAML::Node& root) {
+    // The grid-capacity bound only constrains the BUTTONS grid; TEXT lays verbs out
+    // horizontally and is sized by the rect, not rows*columns.
+    if (cfg.layout.verb_style == VerbPanelStyle::BUTTONS) {
+        const int verb_capacity = cfg.layout.verb_panel.rows * cfg.layout.verb_panel.columns;
+        if (static_cast<int>(cfg.content.verbs.size()) > verb_capacity) {
+            panel_fail("scumm-panel.too-many-verbs",
+                       "content.verbs length must be <= verb_panel.rows * verb_panel.columns",
+                       root["content"] ? root["content"]["verbs"] : root);
+        }
+    }
+    // ICONS inventory has no paging, so the arrow-mode requirements below don't apply.
+    if (cfg.layout.inventory_style == InventoryStyle::TEXT &&
+        cfg.layout.inventory_arrows.mode == InventoryArrowMode::DRAW) {
         if (cfg.skin.arrows_draw.previous_text.empty() || cfg.skin.arrows_draw.next_text.empty()) {
             panel_fail("scumm-panel.arrow-draw-invalid",
                        "draw arrow mode requires previous_text and next_text",
                        root);
         }
     }
-    if (cfg.layout.inventory_arrows.mode == InventoryArrowMode::BACKGROUND_VARIANTS) {
+    if (cfg.layout.inventory_style == InventoryStyle::TEXT &&
+        cfg.layout.inventory_arrows.mode == InventoryArrowMode::BACKGROUND_VARIANTS) {
         const bool has_normal =
             cfg.skin.background_variants.find("normal") != cfg.skin.background_variants.end();
         const bool has_layout_image =
@@ -499,6 +612,18 @@ void validate_config(const ScummPanelConfig& cfg, const YAML::Node& root) {
             panel_fail("scumm-panel.settings-button-image-missing",
                        "image-rendered settings buttons require image.normal",
                        root["settings_button"] ? root["settings_button"] : root);
+        }
+    }
+    if (cfg.notebook.enabled) {
+        if (cfg.notebook.scene.empty()) {
+            panel_fail("scumm-panel.notebook-scene-missing",
+                       "an enabled notebook requires a scene id",
+                       root["notebook"] ? root["notebook"] : root);
+        }
+        if (cfg.notebook.entries.empty()) {
+            panel_fail("scumm-panel.notebook-entries-missing",
+                       "an enabled notebook requires at least one entry",
+                       root["notebook"] ? root["notebook"] : root);
         }
     }
 }
@@ -555,6 +680,9 @@ ScummPanelConfig parse_scumm_panel_config(const std::string& yaml_text,
     ScummPanelConfig cfg;
     cfg.content.verbs.assign(kDefaultVerbGrid.begin(), kDefaultVerbGrid.end());
     cfg.layout.design_size = vec2_from(panel["design_size"], "scumm_panel.design_size");
+    if (panel["smooth"]) {
+        cfg.font_smooth = panel["smooth"].as<bool>();
+    }
 
     const YAML::Node layout = panel["layout"];
     if (!layout || !layout.IsMap()) {
@@ -581,8 +709,17 @@ ScummPanelConfig parse_scumm_panel_config(const std::string& yaml_text,
     }
     cfg.layout.verb_panel =
         parse_grid(layout["verb_panel"], "layout.verb_panel", cfg.layout.verb_panel);
+    if (layout["verb_panel"] && layout["verb_panel"]["style"]) {
+        cfg.layout.verb_style = verb_panel_style(layout["verb_panel"]["style"].as<std::string>(),
+                                                 layout["verb_panel"]["style"]);
+    }
     cfg.layout.inventory_panel =
         parse_grid(layout["inventory_panel"], "layout.inventory_panel", cfg.layout.inventory_panel);
+    if (layout["inventory_panel"] && layout["inventory_panel"]["style"]) {
+        cfg.layout.inventory_style =
+            inventory_style_from(layout["inventory_panel"]["style"].as<std::string>(),
+                                 layout["inventory_panel"]["style"]);
+    }
 
     if (const YAML::Node arrows = layout["inventory_arrows"]) {
         if (arrows["mode"]) {
@@ -622,11 +759,15 @@ ScummPanelConfig parse_scumm_panel_config(const std::string& yaml_text,
     }
 
     if (const YAML::Node skin = panel["skin"]) {
-        if (const YAML::Node variants = skin["panel"]["background_variants"]) {
-            for (const auto& kv : variants) {
-                const std::string key = kv.first.as<std::string>();
-                cfg.skin.background_variants[key] =
-                    resolve_asset(base_dir, kv.second, "skin.panel.background_variants." + key);
+        // Guard the intermediate node: yaml-cpp throws InvalidNode if we index
+        // skin["panel"]["background_variants"] when skin has no "panel" child.
+        if (const YAML::Node skin_panel = skin["panel"]) {
+            if (const YAML::Node variants = skin_panel["background_variants"]) {
+                for (const auto& kv : variants) {
+                    const std::string key = kv.first.as<std::string>();
+                    cfg.skin.background_variants[key] =
+                        resolve_asset(base_dir, kv.second, "skin.panel.background_variants." + key);
+                }
             }
         }
         cfg.skin.command_text = parse_text_style(skin["command_text"],
@@ -639,7 +780,8 @@ ScummPanelConfig parse_scumm_panel_config(const std::string& yaml_text,
                                                    base_dir,
                                                    "skin.inventory_text",
                                                    cfg.skin.inventory_text);
-        if (const YAML::Node arrows = skin["arrows"]["draw"]) {
+        const YAML::Node skin_arrows = skin["arrows"];
+        if (const YAML::Node arrows = skin_arrows ? skin_arrows["draw"] : YAML::Node()) {
             cfg.skin.arrows_draw.font =
                 resolve_asset(base_dir, arrows["font"], "skin.arrows.draw.font");
             if (arrows["previous_text"]) {
@@ -670,6 +812,9 @@ ScummPanelConfig parse_scumm_panel_config(const std::string& yaml_text,
 
     cfg.settings_button =
         parse_settings_button(panel["settings_button"], base_dir, cfg.settings_button);
+    cfg.evidence_indicator =
+        parse_evidence_indicator(panel["evidence_indicator"], base_dir, cfg.evidence_indicator);
+    cfg.notebook = parse_notebook(panel["notebook"], base_dir, cfg.notebook);
 
     validate_config(cfg, panel);
     return cfg;

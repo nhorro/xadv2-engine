@@ -36,6 +36,52 @@ TEST_CASE("parse_inventory rejects a missing items map") {
     CHECK(error_code([] { parse_inventory("nope: 1\n"); }) == "inventory.items-not-map");
 }
 
+TEST_CASE("parse_inventory reads per-item icon and icon_cell") {
+    const char* yaml = R"YAML(
+items:
+  thermo:
+    name: "termo"
+    icon: items/thermo.png
+  badge:
+    name: "credencial"
+    icon_cell: 5
+)YAML";
+    const auto items = parse_inventory(yaml);
+    CHECK(items.at("thermo").icon == "items/thermo.png");
+    CHECK(items.at("thermo").icon_cell == -1); // default: none
+    CHECK(items.at("badge").icon_cell == 5);
+}
+
+TEST_CASE("parse_inventory_icons defaults to development mode when absent") {
+    const InventoryIconSheet icons = parse_inventory_icons(kInventory);
+    CHECK_FALSE(icons.production);
+    CHECK(icons.sheet.empty());
+}
+
+TEST_CASE("parse_inventory_icons reads a production sheet") {
+    const char* yaml = R"YAML(
+icons:
+  mode: production
+  sheet: items/icons.png
+  columns: 8
+  rows: 4
+items:
+  key: { name: "k" }
+)YAML";
+    const InventoryIconSheet icons = parse_inventory_icons(yaml);
+    CHECK(icons.production);
+    CHECK(icons.sheet == "items/icons.png");
+    CHECK(icons.columns == 8);
+    CHECK(icons.rows == 4);
+}
+
+TEST_CASE("parse_inventory_icons rejects an invalid mode and an incomplete production sheet") {
+    CHECK(error_code([] { parse_inventory_icons("icons:\n  mode: sideways\nitems: {}\n"); }) ==
+          "inventory.icons-mode-invalid");
+    CHECK(error_code([] { parse_inventory_icons("icons:\n  mode: production\nitems: {}\n"); }) ==
+          "inventory.icons-sheet-missing");
+}
+
 TEST_CASE("InventoryModel add / remove / has / list / item") {
     InventoryModel inv;
     inv.set_definitions(parse_inventory(kInventory));

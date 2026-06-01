@@ -315,3 +315,160 @@ TEST_CASE("scumm panel ignores inventory arrow hitboxes when arrows are disabled
     const PanelIntent intent = panel.click({95.0f, 50.0f}, inventory, {});
     CHECK(intent.kind == PanelIntent::Kind::NONE);
 }
+
+namespace {
+
+// A v2 IU-style panel: text verbs, icon inventory, evidence indicator, and a
+// two-entry notebook. 100x100 design so click coords map 1:1 at runtime 100x100.
+std::string v2_panel_yaml() {
+    return R"yaml(
+scumm_panel:
+  design_size: [100, 100]
+  layout:
+    panel:
+      rect: [0, 0, 100, 100]
+      background:
+        type: solid
+        color: "#000000"
+    command_bar:
+      rect: [0, 0, 100, 10]
+    body:
+      rect: [0, 10, 100, 90]
+    verb_panel:
+      rect: [0, 0, 40, 40]
+      rows: 1
+      columns: 1
+      style: text
+    inventory_panel:
+      rect: [40, 0, 60, 40]
+      rows: 1
+      columns: 4
+      style: icons
+  content:
+    verbs: [look_at, talk_to, pick_up, use]
+  evidence_indicator:
+    enabled: true
+    rect: [0, 45, 40, 20]
+    label_key: evidencias
+    collected_state: notebook.evidence.collected
+    total_state: notebook.evidence.total
+  notebook:
+    enabled: true
+    rect: [0, 70, 100, 20]
+    scene: notebook
+    tab_state: notebook.initial_tab
+    entries:
+      - { label_key: notebook, tab: evidence }
+      - { label_key: hipotesis, tab: hypotheses }
+  skin:
+    # A skin with text styles but no "panel"/"arrows" children: the icon inventory
+    # needs no background variants or paging arrows. Regression: indexing
+    # skin["panel"]["background_variants"] must not throw yaml-cpp InvalidNode.
+    command_text:
+      size: 20
+      color: "#f2e0b0"
+    verb_text:
+      size: 18
+      color: "#9be29b"
+)yaml";
+}
+
+} // namespace
+
+TEST_CASE("scumm panel v2 config parses verb/inventory styles, evidence, and notebook") {
+    const ScummPanelConfig cfg = parse_scumm_panel_config(v2_panel_yaml(), "ui/panel.yml");
+
+    CHECK(cfg.layout.verb_style == VerbPanelStyle::TEXT);
+    CHECK(cfg.layout.inventory_style == InventoryStyle::ICONS);
+
+    CHECK(cfg.evidence_indicator.enabled);
+    CHECK(cfg.evidence_indicator.label_key == "evidencias");
+    CHECK(cfg.evidence_indicator.collected_state == "notebook.evidence.collected");
+    CHECK(cfg.evidence_indicator.total_state == "notebook.evidence.total");
+
+    CHECK(cfg.notebook.enabled);
+    CHECK(cfg.notebook.scene == "notebook");
+    CHECK(cfg.notebook.tab_state == "notebook.initial_tab");
+    REQUIRE(cfg.notebook.entries.size() == 2);
+    CHECK(cfg.notebook.entries[0].label_key == "notebook");
+    CHECK(cfg.notebook.entries[0].tab == "evidence");
+    CHECK(cfg.notebook.entries[1].label_key == "hipotesis");
+    CHECK(cfg.notebook.entries[1].tab == "hypotheses");
+}
+
+TEST_CASE("text verb style is not bound by the grid capacity") {
+    // 1x1 grid but four verbs: rejected for BUTTONS, accepted for TEXT.
+    std::string yaml = v2_panel_yaml();
+    const ScummPanelConfig text_cfg = parse_scumm_panel_config(yaml, "ui/panel.yml");
+    CHECK(text_cfg.content.verbs.size() == 4);
+
+    const std::string needle = "style: text";
+    const std::size_t pos = yaml.find(needle);
+    REQUIRE(pos != std::string::npos);
+    yaml.replace(pos, needle.size(), "style: buttons");
+    CHECK_THROWS_AS((void) parse_scumm_panel_config(yaml, "ui/panel.yml"), DataError);
+}
+
+TEST_CASE("scumm panel notebook zones emit OPEN_NOTEBOOK with the entry's tab") {
+    const ScummPanelConfig cfg = parse_scumm_panel_config(v2_panel_yaml(), "ui/panel.yml");
+    ScummPanel panel(cfg, {100, 100}, nullptr, nullptr);
+    const InventoryModel inventory; // empty
+
+    // Notebook area is body-relative {0,70,100,20} -> runtime {0,80,100,20}; a
+    // leading icon gutter (square, ~20 wide) sits at the left, and the two entries
+    // stack vertically to its right: top row = Cuaderno (evidence), bottom row =
+    // Hipótesis (hypotheses).
+    const PanelIntent top = panel.click({60.0f, 83.0f}, inventory, {});
+    CHECK(top.kind == PanelIntent::Kind::OPEN_NOTEBOOK);
+    CHECK(top.tab == "evidence");
+
+    const PanelIntent bottom = panel.click({60.0f, 93.0f}, inventory, {});
+    CHECK(bottom.kind == PanelIntent::Kind::OPEN_NOTEBOOK);
+    CHECK(bottom.tab == "hypotheses");
+
+    // A click inside the icon gutter (left of the entries) is not an entry.
+    const PanelIntent gutter = panel.click({5.0f, 85.0f}, inventory, {});
+    CHECK(gutter.kind != PanelIntent::Kind::OPEN_NOTEBOOK);
+}
+
+TEST_CASE("icon inventory pages with vertical arrows") {
+    ScummPanelConfig cfg = paging_panel_config(InventoryArrowMode::NONE);
+    cfg.layout.inventory_style = InventoryStyle::ICONS;
+    cfg.layout.inventory_panel.padding = {0.0f, 0.0f, 0.0f, 0.0f};
+    // inventory rect {20,0,80,90}, rows 1 x columns 2 -> capacity 2; three items
+    // need two pages.
+    ScummPanel panel(std::move(cfg), {100, 100}, nullptr, nullptr);
+    const InventoryModel inventory = inventory_with_three_items();
+
+    CommandState state;
+    // The next (down) arrow is the bottom half of the right-hand gutter.
+    PanelIntent intent = panel.click({92.0f, 75.0f}, inventory, state);
+    CHECK(intent.kind == PanelIntent::Kind::CHANGE_INVENTORY_PAGE);
+    CHECK(intent.page_index == 1);
+
+    // From page 1 the prev (up) arrow (top half) returns to page 0.
+    state.inventory_page_index = 1;
+    intent = panel.click({92.0f, 30.0f}, inventory, state);
+    CHECK(intent.kind == PanelIntent::Kind::CHANGE_INVENTORY_PAGE);
+    CHECK(intent.page_index == 0);
+
+    // A slot click on page 0 selects the first item.
+    intent = panel.click({30.0f, 50.0f}, inventory, {});
+    CHECK(intent.kind == PanelIntent::Kind::CLICK_INVENTORY);
+    CHECK(intent.item_id == "key");
+}
+
+TEST_CASE("scumm panel text verbs lay out horizontally and emit SELECT_VERB") {
+    const ScummPanelConfig cfg = parse_scumm_panel_config(v2_panel_yaml(), "ui/panel.yml");
+    ScummPanel panel(cfg, {100, 100}, nullptr, nullptr);
+    const InventoryModel inventory;
+
+    // Verb area {0,10,40,40}; four equal columns of width 10. Column 0 center x=5.
+    const PanelIntent first = panel.click({5.0f, 20.0f}, inventory, {});
+    CHECK(first.kind == PanelIntent::Kind::SELECT_VERB);
+    CHECK(first.verb == Verb::LOOK_AT);
+    // Column 3 center x=35 -> the fourth verb (use).
+    const PanelIntent fourth = panel.click({35.0f, 20.0f}, inventory, {});
+    CHECK(fourth.kind == PanelIntent::Kind::SELECT_VERB);
+    CHECK(fourth.verb == Verb::USE);
+}
