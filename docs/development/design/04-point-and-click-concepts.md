@@ -747,6 +747,24 @@ advances to `EXPECTING_PARAM2_*`. Left-clicking walkable floor with no verb
 selected walks the player. Right-click as an "examine" shortcut is a design-for
 input addition, not part of the MVP.
 
+### Panel presentation is data-driven
+
+The panel's *look* is fully configured by the optional `scumm_panel` YAML (see the
+[SCUMM panel config](06-data-formats.md#scumm-panel-config--uiscumm_panelyml)); the
+command model is independent of it. Beyond the classic framed verb grid + text
+inventory, a config may opt into (issue #172, defaults unchanged so `themummy`
+keeps the classic look):
+
+- **plain-text verbs** (`verb_panel.style: text`) — a reduced horizontal verb row
+  with no boxes, for a Thimbleweed/Monkey-Island feel;
+- **icon inventory** (`inventory_panel.style: icons`) — a fixed slot grid showing
+  item icons, no paging;
+- an **evidence indicator** (`{label} x/n`, fed by two state keys) and **notebook
+  access links** that push a game-specific deduction scene — the building blocks
+  of a hybrid SCUMM/deduction loop (Ingreso Urgente, *The Case of the Golden Idol*
+  style). The links emit `PanelIntent::OPEN_NOTEBOOK`; the notebook scene itself is
+  game code, not engine.
+
 ## Command argument types
 
 | Type | Meaning |

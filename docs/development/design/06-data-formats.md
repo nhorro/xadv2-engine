@@ -141,8 +141,8 @@ Coordinate rules:
 - `scumm_panel.design_size` defines the nominal coordinate system.
 - `layout.panel.rect` is in `design_size` coordinates.
 - `layout.command_bar.rect` and `layout.body.rect` are relative to the panel.
-- `layout.verb_panel.rect` and `layout.inventory_panel.rect` are relative to the
-  body.
+- `layout.verb_panel.rect`, `layout.inventory_panel.rect`,
+  `evidence_indicator.rect`, and `notebook.rect` are all relative to the body.
 - `layout.inventory_arrows.*.hitbox` is relative to the inventory panel.
 - `settings_button.position` is normalized within the panel: `[0, 0]` is the
   panel's top-left and `[1, 1]` is its bottom-right. `anchor` determines which
@@ -155,16 +155,19 @@ Top-level shape:
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `scumm_panel.design_size` | req | `[w, h]` | — | Positive design-space size. |
+| `scumm_panel.smooth` | opt | bool | SFML default | Font smoothing (linear filtering) for the panel fonts; `false` = crisp pixels. Applied to the shared font objects. |
 | `layout.panel.rect` | req | `[x, y, w, h]` | — | Complete panel rectangle. |
 | `layout.panel.background` | opt | map | solid dark fill | `type: solid`, `image`, or `nine_slice`; image paths resolve relative to this YAML file. |
 | `layout.command_bar.rect` | req | rect | — | Current command text region. |
 | `layout.body.rect` | req | rect | — | Parent region for verbs and inventory. |
-| `layout.verb_panel` | opt | grid | 3x3 classic grid | Grid rect, row/column count, padding, and cell gap. |
-| `layout.inventory_panel` | opt | grid | 2x4 classic grid | Inventory grid; page capacity is `rows * columns`. |
-| `layout.inventory_arrows.mode` | opt | enum | `draw` | `draw`, `background_variants`, or `none`. |
+| `layout.verb_panel` | opt | grid | 3x3 classic grid | Grid rect, row/column count, padding, and cell gap. Optional `style: buttons` (default) or `text`. |
+| `layout.inventory_panel` | opt | grid | 2x4 classic grid | Inventory grid; page capacity is `rows * columns`. Optional `style: text` (default) or `icons`. |
+| `layout.inventory_arrows.mode` | opt | enum | `draw` | `draw`, `background_variants`, or `none`. Ignored when `inventory_panel.style: icons`. |
 | `content.verbs` | opt | `[verb id]` | classic 9 verbs | Row-major verb order. Use canonical ids such as `open`, `look_at`, and `pick_up`; labels come from UI strings. |
+| `evidence_indicator` | opt | map | disabled | Optional `{label} x/n` readout (issue #172). See below. |
+| `notebook` | opt | map | disabled | Optional in-panel notebook access links (issue #172). See below. |
 | `settings_button` | opt | map | disabled | Optional Settings button. Supports `enabled`, normalized `position`, `anchor`, design-pixel `size`, `render_mode: panel | image`, `panel` label/style, and `image.normal` / `image.hovered`. |
-| `skin.command_text`, `skin.verb_text`, `skin.inventory_text` | opt | text style | built-in colors | `font`, `size`, `color`, `hover_color`, `disabled_color`, and `align`. |
+| `skin.command_text`, `skin.verb_text`, `skin.inventory_text` | opt | text style | built-in colors | `font`, `size`, `color`, `hover_color`, `disabled_color`, `align`, and an optional `outline_thickness` (design px, `0` = none) + `outline_color` (default black). The `evidence_indicator.text` / `notebook.text` styles take the same fields. |
 | `skin.panel.background_variants` | opt | map key -> path | none | Background images for arrow visibility/hover states. |
 
 Arrow modes:
@@ -187,6 +190,42 @@ Settings button:
   `SettingsScene` overlay through `SceneManager::open_settings()`. It does not
   select verbs, select inventory, page inventory, or mutate command state.
 
+Presentation styles (issue #172) — all default to the classic look, so an
+existing panel config (and the engine default used by `themummy`) is unchanged:
+
+- `layout.verb_panel.style: text` draws verbs as plain horizontal pixel-text
+  labels (no boxes); the selected verb takes the accent color. The grid
+  `rows`/`columns` capacity bound does not apply — verbs lay out in one row sized
+  by the rect. `style: buttons` (default) keeps the framed grid.
+- `layout.inventory_panel.style: icons` renders exactly `rows * columns` fixed
+  slots with a frame and, per held item, its `icon` (from `inventory.yaml`) or a
+  drawn placeholder glyph. There is no paging, so `inventory_arrows` is ignored.
+  `style: text` (default) keeps the localized-name list with paging.
+
+Evidence indicator (`evidence_indicator`) — a non-clickable `{label} x/n` readout
+for deduction-style games. The counts come from two engine state keys the game /
+notebook writes via `set_state`; an unset key reads as `0`.
+
+- `enabled` (default `false`), body-relative `rect`.
+- `label_key` — UI-strings key for the leading label (e.g. `evidencias`).
+- `collected_state`, `total_state` — `get_state` keys for the two counts.
+- optional `icon` (image path, else a drawn placeholder) and a `text` style.
+
+Notebook access (`notebook`) — one or more clickable links in the panel that open
+a notebook/deduction scene. Each entry opens the same `scene`, writing its `tab`
+hint to `tab_state` (via `set_state`) first so the scene can select its initial
+tab on construct.
+
+- `enabled` (default `false`), body-relative `rect` (entries split it evenly,
+  after an optional leading `icon`).
+- `scene` — manifest scene id to push (e.g. `notebook`).
+- `tab_state` — state key written with the clicked entry's `tab`.
+- `entries: [{ label_key, tab }]` — one link per entry; `label_key` is a
+  UI-strings key, `tab` is an opaque hint the target scene interprets.
+- optional `text` style.
+- Clicking a link is a UI navigation intent (`PanelIntent::OPEN_NOTEBOOK`):
+  `RoomScene` sets `tab_state` and pushes `scene`; it does not touch command state.
+
 Validation rejects malformed rectangles, non-positive grid sizes, too many verbs
 for the verb grid, unknown arrow/button modes, `background_variants` configs that
 provide neither `skin.panel.background_variants.normal` nor a panel background
@@ -206,7 +245,8 @@ language is persisted in the player settings file (see below).
 |-------|-----|------|---------|---------|
 | `version` | opt | int | 1 | Data-format version. |
 | `language` | req | string | — | Language tag, e.g. `es`. |
-| `verbs` | req | map verb id → string | — | Display label per verb. Keys are the verb ids: `look_at`, `talk_to`, `pick_up`, `use`, `give`, `open`, `close`, `push`, `pull`. |
+| `verbs` | req | map verb id → string | — | Display label per verb. Keys are the verb ids: `look_at`, `talk_to`, `pick_up`, `use`, `give`, `open`, `close`, `push`, `pull`. Used in the command bar. |
+| `verb_panel` | opt | map verb id → string | falls back to `verbs` | Short SCUMM-panel button labels (e.g. `talk_to: "Hablar"` while `verbs.talk_to` stays `"Hablar con"` for the command bar). |
 | `connectors` | req | map verb id → string | — | Two-operand connector per verb: `use` (e.g. `con`), `give` (e.g. `a`). |
 | `ui` | req | map key → string | — | Built-in UI labels. Menu (`new_game`, `continue`, `settings`, `settings_button`, `quit`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `settings`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `on`, `off`); the cutscene manual-continue hint (`manual_continue_hint`); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
 | `defaults` | req | map key → string | — | Engine last-resort captions, spoken when no game handler produced text for a verb. The loader requires the exact key set below — no missing keys, and (in dev) no unknown keys. |
@@ -626,16 +666,30 @@ spoken by `schneider`).
 Items are declared in `inventory.yaml`. Worked example:
 [04 — Point & click concepts](04-point-and-click-concepts.md).
 
-Top-level field: `items` (req), a map of item id → item.
+Top-level fields: `items` (req), a map of item id → item; and `icons` (opt), the
+icon source mode for the SCUMM panel's icon slots.
 
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `name` | req | string | — | Localized display name. |
-| `icon` | opt | frame id \| path | name as text | Design-for image drawn in the SCUMM panel. |
+| `icon` | opt | path | none | Individual icon PNG (development icon mode), scaled into the panel slot. |
+| `icon_cell` | opt | int | `-1` | Row-major, 0-based cell index into the shared sheet (production icon mode). |
 | `description` | opt | string | — | Optional examine text. |
 | `affordances` | req | `[verb]` | — | Verbs the UI may offer. |
 | `default_verb` | opt | verb | `look_at` | Verb on a plain click; must be `look_at` or in `affordances`. |
 | `combinable` | opt | bool | `false` | Whether `use` expects a second operand. |
+
+The optional `icons` block selects how the panel sources item icons (issue #172):
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `icons.mode` | opt | enum | `development` | `development` = one PNG per item (`item.icon`); `production` = a shared MxN sheet (`item.icon_cell`). |
+| `icons.sheet` | prod | path | — | Sheet texture, required when `mode: production`. |
+| `icons.columns`, `icons.rows` | prod | int | `1` | Sheet grid; the cell size is the texture size divided by the grid. Must be positive in production. |
+
+Development mode keeps the loose, any-size individual PNGs that are quick to
+iterate on; production packs everything into one texture (one GPU upload) and each
+item picks its cell by index.
 
 ## Inventory behavior — `inventory.lua`
 
