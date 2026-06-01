@@ -25,6 +25,23 @@ if not exist "%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" (
   exit /b 1
 )
 
+rem vcpkg.json deliberately ships without a builtin-baseline (no fixed SHA pinned),
+rem so the sfml 2.6.1 / lua 5.4.7 overrides cannot resolve until one is stamped in.
+rem Add the local vcpkg baseline once (mirrors CI's x-update-baseline step); skip if
+rem the manifest already carries one so re-runs stay idempotent.
+findstr /C:"builtin-baseline" "%REPO_DIR%\vcpkg.json" >nul
+if not errorlevel 1 goto baseline_done
+echo Stamping the local vcpkg baseline into vcpkg.json ...
+pushd "%REPO_DIR%"
+"%VCPKG_ROOT%\vcpkg.exe" x-update-baseline --add-initial-baseline
+if errorlevel 1 (
+  popd
+  echo Failed to stamp the vcpkg baseline into vcpkg.json.
+  exit /b 1
+)
+popd
+:baseline_done
+
 set "BUILD_DIR=%REPO_DIR%\build-windows"
 set "TRIPLET=x64-windows"
 
@@ -61,7 +78,7 @@ if errorlevel 1 exit /b 1
 
 echo.
 echo Built %CONFIG%:
-echo   "%BUILD_DIR%\%CONFIG%\themummy_demo.exe"
+echo   "%BUILD_DIR%\games\themummy\%CONFIG%\pac_themummy.exe"
 echo.
-echo Run from the repository root so games\themummy\config.yml resolves by default:
-echo   "%BUILD_DIR%\%CONFIG%\themummy_demo.exe"
+echo Run it from the repository root, pointing at the sample's manifest:
+echo   "%BUILD_DIR%\games\themummy\%CONFIG%\pac_themummy.exe" games\themummy\data\game.yaml
