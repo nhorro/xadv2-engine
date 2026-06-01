@@ -50,6 +50,21 @@ TEST_CASE("parse_strings reads blocks and caption() returns last-resort text") {
     CHECK(s.caption("missing") == "?missing"); // visible placeholder, not silent
 }
 
+TEST_CASE("verb_panel_label uses the short label when present, else falls back to verbs") {
+    std::string y = kValid;
+    // Add talk_to to verbs and a short panel override for it.
+    y.replace(y.find("  use: \"Usar\"\n"), 0, std::string("  talk_to: \"Hablar con\"\n"));
+    y += "verb_panel:\n  talk_to: \"Hablar\"\n";
+    const Strings s = parse_strings(y);
+    CHECK(s.verb_panel_label("talk_to") == "Hablar"); // short label overrides
+    CHECK(s.verb_label("talk_to") == "Hablar con");   // full label unchanged
+    CHECK(s.verb_panel_label("look_at") == "Mirar");  // no override -> verbs
+
+    // Absent `verb_panel` block entirely: always falls back to verbs.
+    const Strings d = parse_strings(kValid);
+    CHECK(d.verb_panel_label("look_at") == d.verb_label("look_at"));
+}
+
 TEST_CASE("parse_strings requires the core blocks") {
     auto drop = [](const std::string& block) {
         std::string y = kValid;

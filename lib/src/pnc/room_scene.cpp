@@ -178,7 +178,9 @@ void RoomScene::enter() {
     }
     if (!inventory_path_.empty()) {
         try {
-            inventory_.set_definitions(parse_inventory(ctx_.resources.read_text(inventory_path_)));
+            const std::string text = ctx_.resources.read_text(inventory_path_);
+            inventory_.set_definitions(parse_inventory(text));
+            inventory_.set_icon_sheet(parse_inventory_icons(text));
         } catch (const std::exception& e) {
             ctx_.log.error(std::string("RoomScene: inventory: ") + e.what());
         }
@@ -1123,6 +1125,14 @@ void RoomScene::handle_event(const sf::Event& event) {
             command_controller_.on_inventory_page_changed({intent.page_index});
         } else if (intent.kind == PanelIntent::Kind::OPEN_SETTINGS) {
             ctx_.scenes.open_settings();
+        } else if (intent.kind == PanelIntent::Kind::OPEN_NOTEBOOK) {
+            const ScummNotebookConfig& nb = panel_->config().notebook;
+            if (!nb.tab_state.empty()) {
+                ctx_.state.set(nb.tab_state, intent.tab);
+            }
+            if (!nb.scene.empty()) {
+                ctx_.scenes.push_scene(nb.scene);
+            }
         }
         sync_command_hover();
         return;
@@ -1764,7 +1774,34 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                 panel_->draw_options(target, ctx_.strings, labels, dialog_page_, hover_vp_);
             }
         } else {
-            panel_->draw(target, ctx_.strings, inventory_, command_controller_.state(), hover_vp_);
+            EvidenceProgress evidence;
+            const ScummEvidenceIndicator& ev = panel_->config().evidence_indicator;
+            if (ev.enabled) {
+                const auto read_count = [this](const std::string& key) -> int {
+                    if (key.empty()) {
+                        return 0;
+                    }
+                    const auto v = ctx_.state.get(key);
+                    if (!v) {
+                        return 0;
+                    }
+                    if (const double* d = std::get_if<double>(&*v)) {
+                        return static_cast<int>(*d);
+                    }
+                    if (const bool* b = std::get_if<bool>(&*v)) {
+                        return *b ? 1 : 0;
+                    }
+                    return 0;
+                };
+                evidence.collected = read_count(ev.collected_state);
+                evidence.total = read_count(ev.total_state);
+            }
+            panel_->draw(target,
+                         ctx_.strings,
+                         inventory_,
+                         command_controller_.state(),
+                         hover_vp_,
+                         evidence);
         }
     }
     if (view_state_ == ViewState::MENU) {
