@@ -179,7 +179,10 @@ std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
 
 } // namespace
 
-int run(const std::string& manifest_path, const SceneFactory& factory, const RunOptions& opts) {
+int run(const std::string& manifest_path,
+        const SceneFactory& factory,
+        const RunOptions& opts,
+        const ApplicationHooks& hooks) {
     Diagnostics log;
 
     // Resource backend (#109): prefer a `resources.pak` archive next to the
@@ -285,6 +288,17 @@ int run(const std::string& manifest_path, const SceneFactory& factory, const Run
                       settings_store,
                       thumbnail};
     bind_core_api(ctx);
+    if (hooks.configure) {
+        try {
+            hooks.configure(ctx, manifest);
+        } catch (const std::exception& e) {
+            log.error(std::string("application setup failed: ") + e.what());
+            return 1;
+        } catch (...) {
+            log.error("application setup failed: unknown exception");
+            return 1;
+        }
+    }
 
     scenes.set_builder([&](const std::string& id) -> std::unique_ptr<Scene> {
         const SceneDesc* desc = manifest.find_scene(id);

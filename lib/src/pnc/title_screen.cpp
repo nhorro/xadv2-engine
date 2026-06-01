@@ -9,6 +9,7 @@
 #include "engine/core/save_service.hpp"
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
+#include "engine/core/state_store.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/text_encoding.hpp"
 
@@ -150,6 +151,8 @@ void TitleScreen::trigger(Action action) {
         if (new_game_target_.empty()) {
             ctx_.log.warn("title: 'new_game' outcome is not wired in the manifest");
         } else {
+            ctx_.state.clear();
+            ctx_.saves.clear_staged();
             ctx_.scenes.goto_scene(new_game_target_);
         }
         break;

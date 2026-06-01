@@ -13,6 +13,7 @@
 #include "engine/pnc/debug_overlay.hpp"
 #include "engine/pnc/dialog.hpp"
 #include "engine/pnc/inventory.hpp"
+#include "engine/pnc/pause_overlay.hpp"
 #include "engine/pnc/room_renderer.hpp"
 #include "engine/pnc/room_runtime.hpp"
 #include "engine/pnc/scumm_panel.hpp"
@@ -198,17 +199,20 @@ private:
 
     // --- pause / save / load / settings menu (M5c/2; the picker is the
     // SaveLoadScene from issue #108) ---
-    enum class MenuAction { RESUME, OPEN_SAVE, OPEN_LOAD, OPEN_SETTINGS, QUIT_TO_TITLE };
+    enum class MenuAction { RESUME, OPEN_SAVE, OPEN_LOAD, PUSH_OVERLAY, OPEN_SETTINGS, QUIT_TO_TITLE };
     struct MenuButton {
         sf::FloatRect rect;
         MenuAction action;
+        std::string label;
+        std::string overlay_scene;
+        int order = 0;
         bool enabled = true;
     };
     [[nodiscard]] std::vector<MenuButton> menu_buttons() const;
     void handle_menu_event(const sf::Event& event);
     void draw_menu(sf::RenderTarget& target) const;
     void draw_ambient(sf::RenderTarget& target) const; // float_text labels (world space)
-    void trigger_menu(MenuAction action);
+    void trigger_menu(const MenuButton& button);
     void sync_command_hover();
     /// Route the player to a hotspot's approach point through the find_path seam:
     /// clamps an approach outside the walkable area to the nearest reachable point
@@ -285,6 +289,7 @@ private:
     std::string inventory_path_;
     std::string inventory_logic_;
     std::string logic_path_;
+    std::vector<PauseOverlayAction> pause_overlays_;
 
     const sf::Font* font_ = nullptr;
     Cast cast_;

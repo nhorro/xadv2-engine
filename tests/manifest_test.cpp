@@ -4,6 +4,7 @@
 #include <doctest/doctest.h>
 
 #include <string>
+#include <vector>
 
 using namespace pac::core;
 using pac::test::error_code;
@@ -137,6 +138,12 @@ TEST_CASE("nested scene parameters flatten into dotted keys") {
     CHECK(a->parameters.get_or("menu.position.y", "") == "0.7");
     CHECK(a->parameters.get_or("menu.options.new_game", "") == "intro");
     CHECK(a->parameters.get_or("menu.options.exit", "") == "QUIT");
+
+    SceneParams params;
+    params.set("pause_menu.overlays.notebook.scene", "notebook");
+    params.set("pause_menu.overlays.map.scene", "map");
+    params.set("pause_menu.overlays.map.label_key", "map");
+    CHECK(params.children("pause_menu.overlays") == std::vector<std::string>{"map", "notebook"});
 }
 
 TEST_CASE("optional cursor block is parsed") {

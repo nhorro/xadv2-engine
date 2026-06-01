@@ -90,7 +90,20 @@ default_language: es   # optional; defaults to the first entry
   `inventory_logic` (path), `rooms` (directory path), `start_room` (room id),
   `player` (req, cast character id — the persistent player avatar; appearance comes
   from this character's cast entry), `font` (opt path — speech and default panel
-  font), `scumm_panel` (opt path — YAML panel layout/skin config).
+  font), `scumm_panel` (opt path — YAML panel layout/skin config),
+  `pause_menu.overlays.<id>` (opt map — custom pause actions with `scene`,
+  `label_key`, and an `order` from 30 through 89). Custom actions push their
+  scene as a transparent or opaque overlay. Built-ins remain ordered at resume
+  0, save 10, load 20, settings 90, and quit-to-title 100.
+
+  ```yaml
+  pause_menu:
+    overlays:
+      notebook:
+        scene: notebook
+        label_key: notebook
+        order: 30
+  ```
 - `SettingsScene` — `background` (opt path — full-screen image scaled to the virtual
   resolution; a dark fill when omitted), `font` (opt path), `font_size` (opt int —
   menu-row text size; the title derives from it). Rows are navigable by keyboard
