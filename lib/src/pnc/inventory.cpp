@@ -45,12 +45,56 @@ std::map<std::string, InventoryItem> parse_inventory(const std::string& yaml_tex
         item.default_verb = def["default_verb"] ? def["default_verb"].as<std::string>() : "look_at";
         item.combinable = def["combinable"] ? def["combinable"].as<bool>() : false;
         item.icon = def["icon"] ? def["icon"].as<std::string>() : std::string();
+        item.icon_cell = def["icon_cell"] ? def["icon_cell"].as<int>() : -1;
         for (const YAML::Node& a : def["affordances"] ? def["affordances"] : YAML::Node()) {
             item.affordances.push_back(a.as<std::string>());
         }
         items.emplace(item.id, std::move(item));
     }
     return items;
+}
+
+InventoryIconSheet parse_inventory_icons(const std::string& yaml_text) {
+    YAML::Node root;
+    try {
+        root = YAML::Load(yaml_text);
+    } catch (const YAML::Exception& e) {
+        inventory_fail("inventory.invalid-yaml", std::string("invalid YAML: ") + e.what());
+    }
+
+    InventoryIconSheet icons; // defaults to development mode
+    const YAML::Node node = root["icons"];
+    if (!node) {
+        return icons;
+    }
+    if (!node.IsMap()) {
+        inventory_fail("inventory.icons-not-map", "'icons' must be a mapping", node);
+    }
+    const std::string mode = node["mode"] ? node["mode"].as<std::string>() : "development";
+    if (mode == "production") {
+        icons.production = true;
+    } else if (mode != "development") {
+        inventory_fail("inventory.icons-mode-invalid",
+                       "icons.mode must be 'development' or 'production'",
+                       node["mode"]);
+    }
+    icons.sheet = node["sheet"] ? node["sheet"].as<std::string>() : std::string();
+    icons.columns = node["columns"] ? node["columns"].as<int>() : 1;
+    icons.rows = node["rows"] ? node["rows"].as<int>() : 1;
+
+    if (icons.production) {
+        if (icons.sheet.empty()) {
+            inventory_fail("inventory.icons-sheet-missing",
+                           "production icon mode requires a 'sheet' image path",
+                           node);
+        }
+        if (icons.columns <= 0 || icons.rows <= 0) {
+            inventory_fail("inventory.icons-grid-invalid",
+                           "icons.columns and icons.rows must be positive",
+                           node);
+        }
+    }
+    return icons;
 }
 
 const InventoryItem* InventoryModel::item(const std::string& id) const {

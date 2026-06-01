@@ -54,6 +54,11 @@ std::string Strings::verb_label(const std::string& verb_id) const {
     return lookup(verbs, verb_id);
 }
 
+std::string Strings::verb_panel_label(const std::string& verb_id) const {
+    const auto it = verb_panel.find(verb_id);
+    return it != verb_panel.end() ? it->second : verb_label(verb_id);
+}
+
 std::string Strings::connector(const std::string& verb_id) const {
     return lookup(connectors, verb_id);
 }
@@ -82,6 +87,7 @@ Strings parse_strings(const std::string& yaml_text) {
         s.language = root["language"].as<std::string>();
     }
     s.verbs = read_string_map(root["verbs"]);
+    s.verb_panel = read_string_map(root["verb_panel"]); // optional, falls back to verbs
     s.connectors = read_string_map(root["connectors"]);
     s.ui = read_string_map(root["ui"]);
     s.defaults = read_string_map(root["defaults"]);

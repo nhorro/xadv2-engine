@@ -26,6 +26,12 @@ enum class InventoryArrowMode { DRAW, BACKGROUND_VARIANTS, NONE };
 enum class InventoryArrowPlacement { RIGHT, LEFT, BOTH };
 enum class ScummPanelAnchor { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT, CENTER };
 enum class ScummButtonRenderMode { PANEL, IMAGE };
+// Verb row presentation: BUTTONS = the framed grid (default, themummy); TEXT = plain
+// horizontal pixel-text labels with no boxes (issue #172).
+enum class VerbPanelStyle { BUTTONS, TEXT };
+// Inventory presentation: TEXT = the localized-name list (default); ICONS = fixed
+// rows*columns slots showing each held item's icon, no paging (issue #172).
+enum class InventoryStyle { TEXT, ICONS };
 
 struct ScummPanelBackground {
     ScummPanelBackgroundType type = ScummPanelBackgroundType::SOLID;
@@ -74,6 +80,10 @@ struct ScummPanelLayout {
         {619.0f, 0.0f, 24.0f, 56.0f},
         {645.0f, 0.0f, 24.0f, 56.0f},
     };
+    // Presentation styles (issue #172). Defaults preserve the classic layout so the
+    // engine default config (themummy) is unchanged; the IU panel opts into TEXT/ICONS.
+    VerbPanelStyle verb_style = VerbPanelStyle::BUTTONS;
+    InventoryStyle inventory_style = InventoryStyle::TEXT;
 };
 
 struct ScummCommandTemplates {
@@ -95,6 +105,11 @@ struct ScummTextStyle {
     sf::Color hover_color{248, 250, 255};
     sf::Color disabled_color{136, 136, 136};
     std::string align = "center";
+    // Optional text outline for legibility over busy backgrounds. 0 = none
+    // (default, classic look). Thickness is in design pixels and scales with the
+    // panel; the outline color defaults to black.
+    float outline_thickness = 0.0f;
+    sf::Color outline_color{0, 0, 0};
 };
 
 struct ScummArrowDrawSkin {
@@ -141,11 +156,49 @@ struct ScummSettingsButtonConfig {
     ScummSettingsButtonImageSkin image;
 };
 
+// Evidence progress readout (issue #172): "[icon] {label} x/n". The counts come from
+// two engine state keys the game/notebook writes via set_state (decoupled from the
+// game-specific notebook); unset keys read as 0. Rect is body-relative (like the verb
+// and inventory panels). Disabled by default.
+struct ScummEvidenceIndicator {
+    bool enabled = false;
+    sf::FloatRect rect; // relative to body_rect
+    std::string icon;   // optional image; a placeholder is drawn when empty
+    std::string label_key = "evidencias";
+    std::string collected_state; // get_state key for the collected count
+    std::string total_state;     // get_state key for the total count
+    ScummTextStyle text;
+};
+
+// One clickable notebook access zone (e.g. "Cuaderno" / "Hipótesis"); both open
+// `ScummNotebookConfig::scene`, passing `tab` via the `tab_state` key.
+struct ScummNotebookEntry {
+    std::string label_key;
+    std::string tab; // initial tab hint written to tab_state before opening the scene
+};
+
+// Notebook access in the panel (issue #172). Body-relative rect; disabled by default.
+struct ScummNotebookConfig {
+    bool enabled = false;
+    sf::FloatRect rect;    // relative to body_rect
+    std::string scene;     // manifest scene id to push (e.g. "notebook")
+    std::string tab_state; // set_state key written with the clicked entry's tab
+    std::string icon;      // optional image; a placeholder is drawn when empty
+    std::vector<ScummNotebookEntry> entries;
+    ScummTextStyle text;
+};
+
 struct ScummPanelConfig {
     ScummPanelLayout layout;
     ScummPanelContent content;
     ScummPanelSkin skin;
     ScummSettingsButtonConfig settings_button;
+    ScummEvidenceIndicator evidence_indicator;
+    ScummNotebookConfig notebook;
+    // Optional font smoothing (linear filtering) for the panel fonts. Unset =
+    // leave SFML's default; set `smooth: false` for crisp pixel text. Applied to
+    // the shared font objects, so it affects all users of those fonts.
+    std::optional<bool> font_smooth;
 };
 
 [[nodiscard]] ScummPanelConfig default_scumm_panel_config(sf::FloatRect panel_rect);
