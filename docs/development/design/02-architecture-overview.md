@@ -184,12 +184,20 @@ keyed by scene type.
 ### Startup sequence
 
 1. Load the game manifest.
-2. Create the window and the letterboxed virtual view.
-3. Initialize global services: resources, audio, settings, and scripting.
-4. Register built-in scene types.
-5. Register custom scene types, if the game provides any.
-6. Construct and enter the manifest's `entry` scene.
+2. Initialize global services: resources, audio, settings, and scripting.
+3. Install the core Lua API.
+4. Invoke the optional compiled-game `ApplicationHooks::configure` callback.
+5. Construct and enter the manifest's `entry` scene through the populated factory.
+6. Create the window and letterboxed virtual view.
 7. Run the fixed-timestep main loop.
+
+The executable populates the factory with built-in and custom scene types before
+calling `pac::core::run`. A compiled game uses
+`ApplicationHooks::configure(EngineContext&, const Manifest&)` to bind game-owned
+Lua APIs and initialize game-owned services after the core bindings exist but
+before any scene is constructed. The manifest argument lets game-local modules
+load declarative scene parameters during setup. An exception from this hook is a
+startup failure.
 
 ### Scenes vs. rooms
 
@@ -883,4 +891,3 @@ Risky implicit behavior:
 - allowing Lua scripts to depend on physical filesystem paths.
 
 In development builds, authoring errors should fail loudly with clear diagnostics.
-

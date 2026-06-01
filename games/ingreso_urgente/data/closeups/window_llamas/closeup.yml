@@ -1,0 +1,23 @@
+version: 1
+id: window_llamas
+background: closeups/window_llamas/background.png
+background_color: {r: 20, g: 16, b: 12}
+hotspots:
+  camelid1:
+    name: Camélido no identificado nro. 1
+    area: [{x: 438, y: 233}, {x: 442, y: 309}, {x: 499, y: 309}, {x: 509, y: 236}]
+  camelid2:
+    name: Camélido no identificado nro. 2
+    area: [{x: 492, y: 325}, {x: 485, y: 379}, {x: 553, y: 384}, {x: 557, y: 324}, {x: 557, y: 324}]
+  camelid3:
+    name: Camélido no identificado nro. 3
+    area: [{x: 562, y: 324}, {x: 560, y: 386}, {x: 618, y: 385}, {x: 608, y: 321}]
+  camelid4:
+    name: Camélido no identificado nro. 4
+    area: [{x: 663, y: 257}, {x: 665, y: 320}, {x: 709, y: 319}, {x: 710, y: 254}]
+  camelid5:
+    name: Camélido no identificado nro. 5
+    area: [{x: 688, y: 354}, {x: 695, y: 420}, {x: 755, y: 422}, {x: 755, y: 350}, {x: 755, y: 350}]
+  camelid6:
+    name: Camélido no identificado nro. 6
+    area: [{x: 745, y: 295}, {x: 746, y: 343}, {x: 788, y: 343}, {x: 791, y: 292}, {x: 791, y: 292}]

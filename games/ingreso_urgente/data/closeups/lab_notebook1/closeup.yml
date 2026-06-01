@@ -1,0 +1,20 @@
+version: 1
+id: lab_notebook1
+background: closeups/lab_notebook1/background.png
+background_color: {r: 20, g: 16, b: 12}
+hotspots:
+  osteology_header:
+    name: identificación de la ficha
+    area: [{x: 322, y: 152}, {x: 966, y: 128}, {x: 984, y: 250}, {x: 336, y: 282}]
+  trauma_observations:
+    name: observaciones traumáticas
+    area: [{x: 339, y: 337}, {x: 942, y: 311}, {x: 971, y: 433}, {x: 346, y: 457}]
+  no_cut_marks:
+    name: ausencia de marcas de corte
+    area: [{x: 346, y: 462}, {x: 763, y: 442}, {x: 763, y: 465}, {x: 349, y: 488}]
+  no_compression:
+    name: ausencia de compresión sedimentaria
+    area: [{x: 353, y: 495}, {x: 1060, y: 451}, {x: 1069, y: 484}, {x: 357, y: 522}]
+  preliminary_conclusion:
+    name: conclusión preliminar
+    area: [{x: 351, y: 547}, {x: 1004, y: 509}, {x: 1028, y: 575}, {x: 366, y: 614}]

@@ -1,0 +1,26 @@
+version: 1
+id: lab_chalkboard
+background: closeups/lab_chalkboard/background.png
+background_color: {r: 20, g: 16, b: 12}
+hotspots:
+  board_title:
+    name: encabezado del tablero
+    area: [{x: 474, y: 56}, {x: 851, y: 57}, {x: 852, y: 171}, {x: 473, y: 175}]
+  field_diary:
+    name: diario de campo
+    area: [{x: 182, y: 70}, {x: 382, y: 74}, {x: 383, y: 204}, {x: 188, y: 207}]
+  no_collapse_note:
+    name: nota de ausencia de derrumbe
+    area: [{x: 1043, y: 80}, {x: 1170, y: 79}, {x: 1171, y: 185}, {x: 1049, y: 187}]
+  primary_burial_note:
+    name: nota de hallazgo primario
+    area: [{x: 195, y: 490}, {x: 337, y: 486}, {x: 342, y: 633}, {x: 198, y: 634}]
+  no_cut_marks_note:
+    name: nota de fragmentos / sin marcas de corte
+    area: [{x: 1028, y: 328}, {x: 1175, y: 328}, {x: 1179, y: 482}, {x: 1029, y: 484}]
+  perimortem_note:
+    name: nota de trauma perimortem
+    area: [{x: 614, y: 507}, {x: 798, y: 508}, {x: 803, y: 647}, {x: 619, y: 645}]
+  site_map:
+    name: plano del sitio / posición del entierro
+    area: [{x: 561, y: 180}, {x: 832, y: 184}, {x: 840, y: 488}, {x: 567, y: 492}]

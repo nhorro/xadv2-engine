@@ -31,18 +31,52 @@ avatars:
 obstacles: []
 zones: []
 regions: {}
+
+# The box travels in from the exterior; configure() in hall.lua shows/hides it
+# per hall.cfg (starts hidden = CFG_EMPTY). Reuses the exterior box sprite
+# (paths resolve relative to the rooms dir, so `exterior/objects/box.png` finds
+# the same file); give it its own asset under hall/ later if you prefer. Tune
+# `position` (top-left) with the room editor.
+#
+# The mummy has no art/cast yet — add it when ready, either as an object here:
+#   mummy:
+#     sprite: hall/objects/mummy.png   # or characters/mummy/... + an NPC
+#     position: {x: 560, y: 360}
+#     z: auto
+#     visible: false
+# or as a spawned NPC (add a `mummy` cast entry, then spawn_npc in hall.lua).
+objects:
+  box:
+    sprite: exterior/objects/box.png
+    position: {x: 560, y: 360}
+    z: auto
+    scale: 0.614
+    visible: false
+
 hotspots:
+  box:
+    name: caja
+    bind: object:box
+    affordances:
+    - look_at
+    - open
+  # mummy hotspot (enable once the mummy object/NPC exists):
+  # mummy:
+  #   name: momia
+  #   bind: object:mummy   # or npc:mummy if spawned
+  #   affordances:
+  #   - look_at
   exterior_door:
     name: puerta
     area: [{x: 646, y: 140}, {x: 644, y: 403}, {x: 758, y: 399}, {x: 754, y: 137}]
     approach: at_exterior_door
     affordances:
     - look_at
-    - open
+    - use
   lab_door:
     name: puerta
     area: [{x: 1220, y: 113}, {x: 1227, y: 368}, {x: 1314, y: 369}, {x: 1311, y: 95}]
     approach: at_lab_door
     affordances:
     - look_at
-    - open
+    - use

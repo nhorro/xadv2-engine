@@ -47,7 +47,7 @@ scenes:
       menu:
         position: {x: 0.5, y: 0.8}
         options:
-          new_game: intro
+          new_game: act1_intro
           continue: room_view
           # Optional load-picker entry on the title (#108). Any non-empty
           # value enables it; the picker's actual goto target is set by the
@@ -78,13 +78,6 @@ scenes:
       font: fonts/DepartureMono-Regular.otf
       font_size: 22
 
-  - id: intro
-    type: Cutscene
-    parameters:
-      data: cutscenes/intro.yaml
-      on_finish: room_view
-      font: fonts/DepartureMono-Regular.otf
-
   - id: room_view
     type: RoomScene
     parameters:
@@ -92,42 +85,77 @@ scenes:
       rooms: rooms
       start_room: lab
       player: player
+      scumm_panel: ui/scumm_panel_default.yml
       font: fonts/DepartureMono-Regular.otf
       logic: scripts/game.lua
+      inventory: inventory/inventory.yaml
+      inventory_logic: inventory/inventory.lua
+      pause_menu:
+        overlays:
+          notebook:
+            scene: notebook
+            label_key: notebook
+            order: 30
 
+  - id: notebook
+    type: IngresoNotebook
+    parameters:
+      data: notebook/notebook.yaml
+
+  # -------------------------------------------------------------------------------
+  # ACTO I. 
+  # -------------------------------------------------------------------------------
+
+  # Cutscenes
+
+  - id: act1_intro
+    type: Cutscene
+    parameters:
+      data: cutscenes/act1_intro.yaml
+      on_finish: room_view
+      font: fonts/DepartureMono-Regular.otf
+
+  - id: act1_outro
+    type: Cutscene
+    parameters:
+      data: cutscenes/act1_outro.yaml
+      # act2_intro no existe aún, así que volvemos a room_view por ahora
+      on_finish: room_view
+      font: fonts/DepartureMono-Regular.otf
+  
   # Close-ups
   - id: window_llamas
     type: CloseUp
     parameters:
-      data: closeups/window_llamas.yml
-      logic: closeups/window_llamas.lua    # scripted hotspots (talk in steps, set state)
+      data: closeups/window_llamas/closeup.yml
+      logic: closeups/window_llamas/logic.lua    # scripted hotspots (talk in steps, set state)
       cast: cast.yaml                  # speech colours for talk()
       font: fonts/DepartureMono-Regular.otf        
   - id: lab_skull_closeup
     type: CloseUp
     parameters:
-      data: closeups/lab_skull.yml
-      logic: closeups/lab_skull.lua    # scripted hotspots (talk in steps, set state)
+      data: closeups/lab_skull/closeup.yml
+      logic: closeups/lab_skull/logic.lua    # scripted hotspots (talk in steps, set state)
       cast: cast.yaml                  # speech colours for talk()
       font: fonts/DepartureMono-Regular.otf
   - id: lab_chalkboard
     type: CloseUp
     parameters:
-      data: closeups/lab_chalkboard.yml
-      logic: closeups/lab_chalkboard.lua    # scripted hotspots (talk in steps, set state)
+      data: closeups/lab_chalkboard/closeup.yml
+      logic: closeups/lab_chalkboard/logic.lua    # scripted hotspots (talk in steps, set state)
       cast: cast.yaml                  # speech colours for talk()
       font: fonts/DepartureMono-Regular.otf
   - id: lab_notebook1
     type: CloseUp
     parameters:
-      data: closeups/lab_notebook1.yml
-      logic: closeups/lab_notebook1.lua    # scripted hotspots (talk in steps, set state)
+      data: closeups/lab_notebook1/closeup.yml
+      logic: closeups/lab_notebook1/logic.lua    # scripted hotspots (talk in steps, set state)
       cast: cast.yaml                  # speech colours for talk()
       font: fonts/DepartureMono-Regular.otf  
   - id: lab_notebook2
     type: CloseUp
     parameters:
-      data: closeups/lab_notebook2.yml
-      logic: closeups/lab_notebook2.lua    # scripted hotspots (talk in steps, set state)
+      data: closeups/lab_notebook2/closeup.yml
+      logic: closeups/lab_notebook2/logic.lua    # scripted hotspots (talk in steps, set state)
       cast: cast.yaml                  # speech colours for talk()
-      font: fonts/DepartureMono-Regular.otf      
+      font: fonts/DepartureMono-Regular.otf

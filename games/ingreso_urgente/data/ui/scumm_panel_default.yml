@@ -1,0 +1,123 @@
+scumm_panel:
+  design_size: [1280, 720]
+  # Font smoothing (linear filtering). true = softer text; false = crisp pixels.
+  smooth: true
+
+  # Ingreso Urgente panel (issue #172): a hybrid SCUMM/deduction bar — four plain
+  # text verbs, an evidence readout, four inventory icon slots (no paging), the
+  # notebook access links (Cuaderno | Hipótesis), and the settings gear.
+  #
+  # Coordinate rules:
+  # - panel.rect is in design_size coordinates.
+  # - command_bar.rect and body.rect are relative to panel.rect.
+  # - verb_panel/inventory_panel/evidence_indicator/notebook rects are relative to body.rect.
+  layout:
+    panel:
+      rect: [0, 612, 1280, 108]
+      padding: [10, 10, 10, 10]
+      background:
+        type: solid
+        color: "#1a181f"
+
+    command_bar:
+      rect: [0, 0, 1280, 32]   # full width: the settings gear moved to the body row
+      text_align: center
+
+    body:
+      rect: [10, 42, 1260, 56]
+      gap: 10
+
+    # Four verbs, drawn as plain horizontal labels (no boxes).
+    verb_panel:
+      rect: [0, 0, 360, 56]
+      rows: 1
+      columns: 4
+      style: text
+
+    # Four fixed inventory slots with item icons; no paging.
+    inventory_panel:
+      rect: [660, 0, 300, 56]
+      rows: 1
+      columns: 4
+      style: icons
+      cell_gap: [8, 0]
+
+  content:
+    verbs:
+      - look_at
+      - talk_to
+      - pick_up
+      - use
+
+  # Deduction-loop evidence progress. The counts come from state keys the game /
+  # notebook write (unset reads as 0); see issue #173.
+  evidence_indicator:
+    enabled: true
+    rect: [380, 0, 260, 56]
+    icon: evidence_icon.png   # relative to this YAML (ui/)
+    label_key: evidencias
+    collected_state: notebook.evidence.collected
+    total_state: notebook.evidence.total
+    text:
+      size: 18
+      color: "#f2e0b0"
+      align: left
+      outline_thickness: 2
+      outline_color: "#000000"
+
+  # Notebook access: both links open the notebook scene, picking the initial tab.
+  # Width trimmed to leave room for the settings gear at the far right of the row.
+  notebook:
+    enabled: true
+    rect: [980, 0, 200, 56]
+    icon: notebook_icon.png   # relative to this YAML (ui/)
+    scene: notebook
+    tab_state: notebook.initial_tab
+    entries:
+      - { label_key: notebook, tab: evidence }
+      - { label_key: hipotesis, tab: hypotheses }
+    text:
+      size: 17
+      color: "#e29be2"
+      hover_color: "#f8faff"
+      align: center
+      outline_thickness: 2
+      outline_color: "#000000"
+
+  # Settings gear: a square icon at the far right of the body row (like the
+  # evidence / notebook icons). Position is normalized within the panel; [0.967,
+  # 0.648] centers a 56x56 icon vertically in the body row, at the right edge.
+  settings_button:
+    enabled: true
+    position: [0.967, 0.648]
+    anchor: center
+    size: [56, 56]
+    render_mode: image
+    image:
+      normal: settings_icon.png   # relative to this YAML (ui/)
+
+  skin:
+    command_text:
+      size: 20
+      color: "#f2e0b0"
+      align: center
+      outline_thickness: 2
+      outline_color: "#000000"
+
+    verb_text:
+      size: 20
+      color: "#9be29b"
+      hover_color: "#f8faff"
+      disabled_color: "#888888"
+      align: center
+      outline_thickness: 2
+      outline_color: "#000000"
+
+    inventory_text:
+      size: 18
+      color: "#cad0e0"
+      hover_color: "#f8faff"
+      disabled_color: "#888888"
+      align: center
+      outline_thickness: 2
+      outline_color: "#000000"

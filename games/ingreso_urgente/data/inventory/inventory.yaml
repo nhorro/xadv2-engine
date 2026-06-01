@@ -1,0 +1,30 @@
+version: 1
+
+# Icon source mode for the SCUMM panel's inventory slots (issue #172):
+#   - development: one PNG per item (the item's `icon:` field). Fast to iterate;
+#     the images can be any size (scaled into the slot).
+#   - production:  a single MxN sheet texture; each item picks a `icon_cell:` index
+#     (row-major, 0-based), loaded as one texture. Example:
+#       icons:
+#         mode: production
+#         sheet: inventory/items/icons_sheet.png
+#         columns: 8
+#         rows: 4
+#     and per item: `icon_cell: 5`.
+icons:
+  mode: development
+
+items:
+  key:
+    name: "la llave"
+    affordances: [ look_at, use ]
+    combinable: true       # "use key with <something>"
+  notebook:
+    name: "el cuaderno"
+    affordances: [ look_at ]
+  thermo:
+    name: "termo"
+    description: "El termo y el mate. Tecnología de concentración de baja complejidad."
+    affordances: [ look_at, use ]
+    icon: inventory/items/stanley.png   # development: individual PNG
+    # icon_cell: 0                       # production: cell index into the sheet

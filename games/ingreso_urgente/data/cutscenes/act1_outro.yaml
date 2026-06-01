@@ -1,0 +1,42 @@
+# Intro cutscene for Ingreso Urgente. Manual mode — the player advances with
+# [enter] / click, or skips with [esc]. Replace the slides below with the
+# real opening. The hint text at the bottom-right is localized via
+# `strings.ui.manual_continue_hint`.
+
+version: 1
+advance_mode: manual
+
+defaults:
+  text_position: [0.5, 0.8]
+  text_align: center
+  text_style:
+    size: 30
+    color: "#E7E7E9"
+  image_position: [0.5, 0.45]
+  image_size: [0.7, 0.6]
+  image_fit: contain
+
+slides:  
+  - text: "Finalmente, Julia comenzó a escribir el informe para la Dra. Schneider, reconstruyendo con prudencia un fragmento de la historia de aquel cadáver."
+    text_style:
+      size: 28
+  - text: "Afuera, las llamas seguían pastando con una indiferencia profesional."
+    text_style:
+      size: 28      
+  - text: "Julia escribía."
+    text_style:
+      size: 28      
+  - text: "La Dra. Schneider revisaba un artículo por quinta vez."
+    text_style:
+      size: 28            
+  - text: "El instituto parecía entregado a una de esas tardes en las que nada importante ocurre, salvo el lento deterioro de una pava eléctrica y de varias carreras académicas."
+    text_style:
+      size: 28                  
+  - text: "Entonces, alguien llegó a la puerta con una entrega que nadie había solicitado."
+    text_style:
+      size: 28                        
+  - text: "FIN DEL PRIMER ACTO"
+    text_position: [0.5, 0.5]
+    text_style:
+      size: 48
+      color: "#F0D87A"      

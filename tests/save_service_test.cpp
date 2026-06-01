@@ -336,3 +336,23 @@ TEST_CASE("stage_pending_thumbnail drains exactly once") {
     // Drained — the next take returns an empty image.
     CHECK(svc.take_pending_thumbnail().getSize() == sf::Vector2u(0u, 0u));
 }
+
+TEST_CASE("clear_staged clears restore snapshot and thumbnail hand-offs") {
+    Diagnostics log = quiet();
+    TempDir td;
+    SaveService svc(td.path, log);
+
+    sf::Image img;
+    img.create(8u, 8u, sf::Color::Blue);
+    svc.stage_restore(make_rich_state());
+    svc.stage_pending_snap(make_rich_state());
+    svc.stage_pending_thumbnail(img);
+
+    svc.clear_staged();
+
+    CHECK_FALSE(svc.has_pending_restore());
+    CHECK_FALSE(svc.has_pending_snap());
+    CHECK_FALSE(svc.take_pending_restore().has_value());
+    CHECK_FALSE(svc.take_pending_snap().has_value());
+    CHECK(svc.take_pending_thumbnail().getSize() == sf::Vector2u(0u, 0u));
+}

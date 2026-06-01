@@ -19,6 +19,8 @@ public:
     void set(const std::string& key, StateValue value);
     std::optional<StateValue> get(const std::string& key) const;
     bool has(const std::string& key) const;
+    bool erase(const std::string& key);
+    std::size_t erase_prefix(const std::string& prefix);
     void clear();
     std::size_t size() const { return values_.size(); }
 
