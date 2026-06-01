@@ -22,17 +22,9 @@ items:
   notebook:
     name: "el cuaderno"
     affordances: [ look_at ]
-  # DEV: 12 termos (mismo ícono) para probar los 4 slots y el paginado del
-  # inventario (#172). Reemplazar por ítems reales cuando el inventario crezca.
-  thermo1:  { name: "termo 1",  affordances: [look_at, use], icon: inventory/items/stanley.png }
-  thermo2:  { name: "termo 2",  affordances: [look_at, use], icon: inventory/items/stanley.png }
-  thermo3:  { name: "termo 3",  affordances: [look_at, use], icon: inventory/items/stanley.png }
-  thermo4:  { name: "termo 4",  affordances: [look_at, use], icon: inventory/items/stanley.png }
-  thermo5:  { name: "termo 5",  affordances: [look_at, use], icon: inventory/items/stanley.png }
-  thermo6:  { name: "termo 6",  affordances: [look_at, use], icon: inventory/items/stanley.png }
-  thermo7:  { name: "termo 7",  affordances: [look_at, use], icon: inventory/items/stanley.png }
-  thermo8:  { name: "termo 8",  affordances: [look_at, use], icon: inventory/items/stanley.png }
-  thermo9:  { name: "termo 9",  affordances: [look_at, use], icon: inventory/items/stanley.png }
-  thermo10: { name: "termo 10", affordances: [look_at, use], icon: inventory/items/stanley.png }
-  thermo11: { name: "termo 11", affordances: [look_at, use], icon: inventory/items/stanley.png }
-  thermo12: { name: "termo 12", affordances: [look_at, use], icon: inventory/items/stanley.png }
+  thermo:
+    name: "termo"
+    description: "El termo y el mate. Tecnología de concentración de baja complejidad."
+    affordances: [ look_at, use ]
+    icon: inventory/items/stanley.png   # development: individual PNG
+    # icon_cell: 0                       # production: cell index into the sheet
