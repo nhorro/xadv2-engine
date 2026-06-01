@@ -15,9 +15,17 @@ Build instructions
 
 ### Windows
 
-~~~bash
-.\build-windows.bat
+Requires a [vcpkg](https://github.com/microsoft/vcpkg) checkout. Set `VCPKG_ROOT`
+to it (the script also auto-detects a sibling `..\vcpkg`), then:
+
+~~~bat
+.\build-windows.bat            REM Debug; pass Release for an optimized build
 ~~~
+
+This stamps the vcpkg baseline, vcpkg-installs SFML 2.6 / yaml-cpp / Lua 5.4
+(sol2 and doctest stay header-only), and builds the sample. For the IDE / CMake
+preset flow that CI uses (`cmake --preset windows-msvc`), see the Windows section
+of [CLAUDE.md](CLAUDE.md).
 
 Docker
 ------
