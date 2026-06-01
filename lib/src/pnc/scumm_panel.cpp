@@ -66,11 +66,49 @@ void place_text(sf::Text& text, sf::FloatRect rect, const std::string& align, fl
     } else if (align == "right") {
         x = rect.left + rect.width - bounds.width - inset - bounds.left;
     }
-    text.setPosition(x, rect.top + (rect.height - bounds.height) / 2.0f - bounds.top);
+
+    // Vertical centering uses string-independent metrics, not this label's glyph
+    // bounds: otherwise a word with a descender ("Agarrar") or none ("Mirar") would
+    // sit at a different height than its neighbors. A fixed probe with both an
+    // ascender and a descender gives every label the same baseline.
+    float ref_top = bounds.top;
+    float ref_height = bounds.height;
+    if (const sf::Font* font = text.getFont()) {
+        sf::Text probe("Ag", *font, text.getCharacterSize());
+        probe.setStyle(text.getStyle());
+        probe.setOutlineThickness(text.getOutlineThickness());
+        const sf::FloatRect pb = probe.getLocalBounds();
+        ref_top = pb.top;
+        ref_height = pb.height;
+    }
+    text.setPosition(x, rect.top + (rect.height - ref_height) / 2.0f - ref_top);
 }
 
 void center_text(sf::Text& text, sf::FloatRect rect) {
     place_text(text, rect, "center");
+}
+
+// A small filled triangle pointing up or down, inset within `rect`. Shared by the
+// dialog paging arrows and the icon-inventory paging arrows so they look identical.
+void draw_v_arrow(sf::RenderTarget& target, sf::FloatRect rect, bool up, sf::Color color) {
+    const float inset = rect.width * 0.2f;
+    const float l = rect.left + inset;
+    const float r = rect.left + rect.width - inset;
+    const float t = rect.top + inset;
+    const float b = rect.top + rect.height - inset;
+    sf::ConvexShape tri;
+    tri.setPointCount(3);
+    if (up) {
+        tri.setPoint(0, {(l + r) / 2.0f, t});
+        tri.setPoint(1, {r, b});
+        tri.setPoint(2, {l, b});
+    } else {
+        tri.setPoint(0, {l, t});
+        tri.setPoint(1, {r, t});
+        tri.setPoint(2, {(l + r) / 2.0f, b});
+    }
+    tri.setFillColor(color);
+    target.draw(tri);
 }
 
 } // namespace
@@ -172,6 +210,27 @@ ScummPanel::ScummPanel(ScummPanelConfig config,
     inventory_font_ = load_font(config_.skin.inventory_text.font);
     arrow_font_ = load_font(config_.skin.arrows_draw.font);
     settings_font_ = load_font(config_.settings_button.panel.font);
+    evidence_font_ = load_font(config_.evidence_indicator.text.font);
+    notebook_font_ = load_font(config_.notebook.text.font);
+
+    // Optional font smoothing. The fonts live in the shared ResourceCache and are
+    // returned const; smoothing is a render hint on the font object, so a const_cast
+    // is safe here. Affects every user of the same font (intended: a global look).
+    if (config_.font_smooth.has_value()) {
+        const bool smooth = *config_.font_smooth;
+        for (const sf::Font* f : {command_font_,
+                                  verb_font_,
+                                  inventory_font_,
+                                  arrow_font_,
+                                  settings_font_,
+                                  evidence_font_,
+                                  notebook_font_,
+                                  font_}) {
+            if (f != nullptr) {
+                const_cast<sf::Font*>(f)->setSmooth(smooth);
+            }
+        }
+    }
 }
 
 bool ScummPanel::contains(sf::Vector2f p) const {
@@ -194,6 +253,17 @@ const sf::Font* ScummPanel::font_or_default(const sf::Font* configured) const {
 unsigned ScummPanel::scaled_text_size(unsigned design_size) const {
     const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
     return std::max(1u, static_cast<unsigned>(std::lround(static_cast<float>(design_size) * sy)));
+}
+
+void ScummPanel::apply_text_style(sf::Text& text,
+                                  const ScummTextStyle& style,
+                                  sf::Color fill) const {
+    text.setFillColor(fill);
+    if (style.outline_thickness > 0.0f) {
+        const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
+        text.setOutlineThickness(style.outline_thickness * sy);
+        text.setOutlineColor(style.outline_color);
+    }
 }
 
 sf::FloatRect ScummPanel::panel_child(sf::FloatRect rect) const {
@@ -224,6 +294,23 @@ std::vector<ScummPanel::VerbCell> ScummPanel::verb_cells() const {
     std::vector<VerbCell> cells;
     const ScummGridLayout& grid = config_.layout.verb_panel;
     const sf::FloatRect area = padded(body_child(grid.rect), grid.padding);
+
+    // TEXT style: a single horizontal row of equal-width clickable cells, one per
+    // verb (no grid capacity, no boxes — the label is drawn plainly in draw()).
+    if (config_.layout.verb_style == VerbPanelStyle::TEXT) {
+        const std::size_t n = config_.content.verbs.size();
+        if (n == 0) {
+            return cells;
+        }
+        const float cell_w = area.width / static_cast<float>(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            cells.push_back(
+                {config_.content.verbs[i],
+                 {area.left + static_cast<float>(i) * cell_w, area.top, cell_w, area.height}});
+        }
+        return cells;
+    }
+
     const float sx = static_cast<float>(runtime_size_.x) / config_.layout.design_size.x;
     const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
     const float gap_x = grid.cell_gap.x * sx;
@@ -305,6 +392,74 @@ sf::FloatRect ScummPanel::inventory_area() const {
     return body_child(config_.layout.inventory_panel.rect);
 }
 
+ScummPanel::IconInventoryLayout ScummPanel::icon_inventory_layout() const {
+    IconInventoryLayout out;
+    const ScummGridLayout& grid = config_.layout.inventory_panel;
+    const sf::FloatRect area = padded(inventory_area(), grid.padding);
+    const float sx = static_cast<float>(runtime_size_.x) / config_.layout.design_size.x;
+    const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
+
+    // Reserve a right-hand gutter for the stacked up/down paging arrows; the slots
+    // share the rest. The gutter is reserved whether or not paging is currently
+    // needed, so slot positions stay stable as the inventory fills up.
+    const float gutter = std::min(area.width * 0.16f, area.height * 0.6f);
+    const float arrow_gap = gutter * 0.2f;
+    const float slots_w = std::max(1.0f, area.width - gutter - arrow_gap);
+    out.prev_arrow = {area.left + area.width - gutter, area.top, gutter, area.height * 0.5f};
+    out.next_arrow = {area.left + area.width - gutter,
+                      area.top + area.height * 0.5f,
+                      gutter,
+                      area.height * 0.5f};
+
+    const float gap_x = grid.cell_gap.x * sx;
+    const float gap_y = grid.cell_gap.y * sy;
+    const float cell_w = (slots_w - gap_x * static_cast<float>(std::max(0, grid.columns - 1))) /
+                         static_cast<float>(grid.columns);
+    const float cell_h = (area.height - gap_y * static_cast<float>(std::max(0, grid.rows - 1))) /
+                         static_cast<float>(grid.rows);
+    const int capacity = inventory_capacity();
+    for (int i = 0; i < capacity; ++i) {
+        const int col = i % grid.columns;
+        const int row = i / grid.columns;
+        out.slots.push_back({area.left + static_cast<float>(col) * (cell_w + gap_x),
+                             area.top + static_cast<float>(row) * (cell_h + gap_y),
+                             cell_w,
+                             cell_h});
+    }
+    return out;
+}
+
+sf::FloatRect ScummPanel::evidence_indicator_area() const {
+    return body_child(config_.evidence_indicator.rect);
+}
+
+sf::FloatRect ScummPanel::notebook_area() const {
+    return body_child(config_.notebook.rect);
+}
+
+std::vector<ScummPanel::NotebookCell> ScummPanel::notebook_cells() const {
+    std::vector<NotebookCell> cells;
+    const ScummNotebookConfig& nb = config_.notebook;
+    if (nb.entries.empty()) {
+        return cells;
+    }
+    sf::FloatRect area = notebook_area();
+    // A leading icon (image or placeholder) reserves a square gutter on the left;
+    // the entries stack vertically (one row each) to its right.
+    const float icon_w = area.height;
+    const float gap = icon_w * 0.18f;
+    area.left += icon_w + gap;
+    area.width -= icon_w + gap;
+    const float cell_h = area.height / static_cast<float>(nb.entries.size());
+    for (std::size_t i = 0; i < nb.entries.size(); ++i) {
+        cells.push_back(
+            {nb.entries[i].label_key,
+             nb.entries[i].tab,
+             {area.left, area.top + static_cast<float>(i) * cell_h, area.width, cell_h}});
+    }
+    return cells;
+}
+
 sf::FloatRect ScummPanel::command_bar_area() const {
     return panel_child(config_.layout.command_bar_rect);
 }
@@ -354,25 +509,62 @@ PanelIntent ScummPanel::click(sf::Vector2f p,
                               const InventoryModel& inventory,
                               const CommandState& command_state) const {
     if (config_.settings_button.enabled && settings_button_area().contains(p)) {
-        return {PanelIntent::Kind::OPEN_SETTINGS, Verb::LOOK_AT, {}, 0};
+        return {PanelIntent::Kind::OPEN_SETTINGS, Verb::LOOK_AT, {}, 0, {}};
+    }
+    if (config_.notebook.enabled) {
+        for (const NotebookCell& cell : notebook_cells()) {
+            if (cell.rect.contains(p)) {
+                return {PanelIntent::Kind::OPEN_NOTEBOOK, Verb::LOOK_AT, {}, 0, cell.tab};
+            }
+        }
     }
     for (const VerbCell& cell : verb_cells()) {
         if (cell.rect.contains(p)) {
-            return {PanelIntent::Kind::SELECT_VERB, cell.verb, {}, 0};
+            return {PanelIntent::Kind::SELECT_VERB, cell.verb, {}, 0, {}};
         }
     }
     const int page = clamped_inventory_page(inventory, command_state.inventory_page_index);
+    const int pages = inventory_page_count(inventory);
+
+    if (config_.layout.inventory_style == InventoryStyle::ICONS) {
+        const IconInventoryLayout layout = icon_inventory_layout();
+        if (pages > 1) {
+            if (layout.prev_arrow.contains(p) && page > 0) {
+                return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE, Verb::LOOK_AT, {}, page - 1, {}};
+            }
+            if (layout.next_arrow.contains(p) && page < pages - 1) {
+                return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE, Verb::LOOK_AT, {}, page + 1, {}};
+            }
+        }
+        const int capacity = inventory_capacity();
+        const int first = page * capacity;
+        for (std::size_t i = 0; i < layout.slots.size(); ++i) {
+            const int item_index = first + static_cast<int>(i);
+            if (item_index >= static_cast<int>(inventory.list().size())) {
+                break;
+            }
+            if (layout.slots[i].contains(p)) {
+                return {PanelIntent::Kind::CLICK_INVENTORY,
+                        Verb::LOOK_AT,
+                        inventory.list()[static_cast<std::size_t>(item_index)],
+                        0,
+                        {}};
+            }
+        }
+        return {};
+    }
+
     if (config_.layout.inventory_arrows.mode != InventoryArrowMode::NONE) {
         if (arrow_previous_area().contains(p) && page > 0) {
-            return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE, Verb::LOOK_AT, {}, page - 1};
+            return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE, Verb::LOOK_AT, {}, page - 1, {}};
         }
-        if (arrow_next_area().contains(p) && page < inventory_page_count(inventory) - 1) {
-            return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE, Verb::LOOK_AT, {}, page + 1};
+        if (arrow_next_area().contains(p) && page < pages - 1) {
+            return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE, Verb::LOOK_AT, {}, page + 1, {}};
         }
     }
     for (const InventoryCell& cell : inventory_cells(inventory, page)) {
         if (cell.rect.contains(p)) {
-            return {PanelIntent::Kind::CLICK_INVENTORY, Verb::LOOK_AT, cell.item_id, 0};
+            return {PanelIntent::Kind::CLICK_INVENTORY, Verb::LOOK_AT, cell.item_id, 0, {}};
         }
     }
     return {};
@@ -552,21 +744,56 @@ void ScummPanel::draw_backdrop(sf::RenderTarget& target,
 
 void ScummPanel::draw_image_in_rect(sf::RenderTarget& target,
                                     const std::string& image,
-                                    sf::FloatRect rect) const {
+                                    sf::FloatRect rect,
+                                    sf::IntRect src) const {
     if (!resources_ || image.empty()) {
         return;
     }
     try {
         const sf::Texture& texture = resources_->texture(image);
-        const sf::Vector2u size = texture.getSize();
         sf::Sprite sprite(texture);
+        float src_w = static_cast<float>(texture.getSize().x);
+        float src_h = static_cast<float>(texture.getSize().y);
+        if (src.width > 0 && src.height > 0) {
+            sprite.setTextureRect(src);
+            src_w = static_cast<float>(src.width);
+            src_h = static_cast<float>(src.height);
+        }
         sprite.setPosition(rect.left, rect.top);
-        sprite.setScale(rect.width / static_cast<float>(size.x),
-                        rect.height / static_cast<float>(size.y));
+        sprite.setScale(rect.width / src_w, rect.height / src_h);
         target.draw(sprite);
     } catch (const std::exception&) {
         // Optional button art falls back to no image.
     }
+}
+
+bool ScummPanel::draw_item_icon(sf::RenderTarget& target,
+                                const InventoryItem& item,
+                                const InventoryIconSheet& sheet,
+                                sf::FloatRect dest) const {
+    if (!resources_) {
+        return false;
+    }
+    try {
+        if (sheet.production && item.icon_cell >= 0 && !sheet.sheet.empty()) {
+            const sf::Texture& tex = resources_->texture(sheet.sheet);
+            const int cols = std::max(1, sheet.columns);
+            const int rows = std::max(1, sheet.rows);
+            const int cw = static_cast<int>(tex.getSize().x) / cols;
+            const int ch = static_cast<int>(tex.getSize().y) / rows;
+            const int col = item.icon_cell % cols;
+            const int row = item.icon_cell / cols;
+            draw_image_in_rect(target, sheet.sheet, dest, sf::IntRect(col * cw, row * ch, cw, ch));
+            return true;
+        }
+        if (!sheet.production && !item.icon.empty()) {
+            draw_image_in_rect(target, item.icon, dest);
+            return true;
+        }
+    } catch (const std::exception&) {
+        // Missing/invalid art falls back to the placeholder glyph.
+    }
+    return false;
 }
 
 void ScummPanel::draw_inventory_arrows(sf::RenderTarget& target,
@@ -635,99 +862,293 @@ void ScummPanel::draw(sf::RenderTarget& target,
                       const pac::core::Strings& strings,
                       const InventoryModel& inventory,
                       const CommandState& command_state,
-                      sf::Vector2f cursor) const {
+                      sf::Vector2f cursor,
+                      EvidenceProgress evidence) const {
     draw_backdrop(target, &inventory, &command_state, cursor);
 
     if (const sf::Font* command_font = font_or_default(command_font_)) {
         sf::Text bar(pac::core::utf8(command_state.preview_text),
                      *command_font,
                      scaled_text_size(config_.skin.command_text.size));
-        bar.setFillColor(config_.skin.command_text.color);
+        apply_text_style(bar, config_.skin.command_text, config_.skin.command_text.color);
         place_text(bar, command_bar_area(), config_.skin.command_text.align);
         target.draw(bar);
     }
 
     const sf::Font* verb_font = font_or_default(verb_font_);
-    for (const VerbCell& cell : verb_cells()) {
-        const bool selected =
-            command_state.selected_verb && *command_state.selected_verb == cell.verb;
-        const bool hot = cell.rect.contains(cursor);
-        sf::RectangleShape box(sf::Vector2f(cell.rect.width, cell.rect.height));
-        box.setPosition(cell.rect.left, cell.rect.top);
-        box.setFillColor(selected ? theme_.verb_selected
-                                  : (hot ? theme_.verb_hover : theme_.verb_default));
-        box.setOutlineThickness(1.0f);
-        box.setOutlineColor(theme_.verb_outline);
-        target.draw(box);
-
+    if (config_.layout.verb_style == VerbPanelStyle::TEXT) {
+        // Plain horizontal labels, no boxes; the selected verb takes the amber
+        // accent color so it reads as active without a frame.
         if (verb_font) {
-            sf::Text label(pac::core::utf8(strings.verb_label(std::string(verb_id(cell.verb)))),
-                           *verb_font,
-                           scaled_text_size(config_.skin.verb_text.size));
-            label.setFillColor(selected ? theme_.verb_text_active
-                                        : (hot ? config_.skin.verb_text.hover_color
-                                               : config_.skin.verb_text.color));
-            place_text(label, cell.rect, config_.skin.verb_text.align);
-            target.draw(label);
+            for (const VerbCell& cell : verb_cells()) {
+                const bool selected =
+                    command_state.selected_verb && *command_state.selected_verb == cell.verb;
+                const bool hot = cell.rect.contains(cursor);
+                sf::Text label(
+                    pac::core::utf8(strings.verb_panel_label(std::string(verb_id(cell.verb)))),
+                    *verb_font,
+                    scaled_text_size(config_.skin.verb_text.size));
+                apply_text_style(label,
+                                 config_.skin.verb_text,
+                                 selected ? theme_.verb_selected
+                                          : (hot ? config_.skin.verb_text.hover_color
+                                                 : config_.skin.verb_text.color));
+                place_text(label, cell.rect, config_.skin.verb_text.align);
+                target.draw(label);
+            }
         }
-    }
-
-    const int inactive_start = static_cast<int>(config_.content.verbs.size());
-    const int verb_capacity = config_.layout.verb_panel.rows * config_.layout.verb_panel.columns;
-    if (inactive_start < verb_capacity) {
-        const ScummGridLayout& grid = config_.layout.verb_panel;
-        const sf::FloatRect area = padded(body_child(grid.rect), grid.padding);
-        const float sx = static_cast<float>(runtime_size_.x) / config_.layout.design_size.x;
-        const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
-        const float gap_x = grid.cell_gap.x * sx;
-        const float gap_y = grid.cell_gap.y * sy;
-        const float cell_w =
-            (area.width - gap_x * static_cast<float>(std::max(0, grid.columns - 1))) /
-            static_cast<float>(grid.columns);
-        const float cell_h =
-            (area.height - gap_y * static_cast<float>(std::max(0, grid.rows - 1))) /
-            static_cast<float>(grid.rows);
-        sf::Color inactive = theme_.verb_default;
-        inactive.a = 96;
-        for (int i = inactive_start; i < verb_capacity; ++i) {
-            const int col = i % grid.columns;
-            const int row = i / grid.columns;
-            const sf::FloatRect rect{area.left + static_cast<float>(col) * (cell_w + gap_x),
-                                     area.top + static_cast<float>(row) * (cell_h + gap_y),
-                                     cell_w - 2.0f,
-                                     cell_h - 2.0f};
-            sf::RectangleShape box(sf::Vector2f(rect.width, rect.height));
-            box.setPosition(rect.left, rect.top);
-            box.setFillColor(inactive);
+    } else {
+        for (const VerbCell& cell : verb_cells()) {
+            const bool selected =
+                command_state.selected_verb && *command_state.selected_verb == cell.verb;
+            const bool hot = cell.rect.contains(cursor);
+            sf::RectangleShape box(sf::Vector2f(cell.rect.width, cell.rect.height));
+            box.setPosition(cell.rect.left, cell.rect.top);
+            box.setFillColor(selected ? theme_.verb_selected
+                                      : (hot ? theme_.verb_hover : theme_.verb_default));
             box.setOutlineThickness(1.0f);
-            box.setOutlineColor(config_.skin.verb_text.disabled_color);
+            box.setOutlineColor(theme_.verb_outline);
             target.draw(box);
+
+            if (verb_font) {
+                sf::Text label(
+                    pac::core::utf8(strings.verb_panel_label(std::string(verb_id(cell.verb)))),
+                    *verb_font,
+                    scaled_text_size(config_.skin.verb_text.size));
+                apply_text_style(label,
+                                 config_.skin.verb_text,
+                                 selected ? theme_.verb_text_active
+                                          : (hot ? config_.skin.verb_text.hover_color
+                                                 : config_.skin.verb_text.color));
+                place_text(label, cell.rect, config_.skin.verb_text.align);
+                target.draw(label);
+            }
+        }
+
+        const int inactive_start = static_cast<int>(config_.content.verbs.size());
+        const int verb_capacity =
+            config_.layout.verb_panel.rows * config_.layout.verb_panel.columns;
+        if (inactive_start < verb_capacity) {
+            const ScummGridLayout& grid = config_.layout.verb_panel;
+            const sf::FloatRect area = padded(body_child(grid.rect), grid.padding);
+            const float sx = static_cast<float>(runtime_size_.x) / config_.layout.design_size.x;
+            const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
+            const float gap_x = grid.cell_gap.x * sx;
+            const float gap_y = grid.cell_gap.y * sy;
+            const float cell_w =
+                (area.width - gap_x * static_cast<float>(std::max(0, grid.columns - 1))) /
+                static_cast<float>(grid.columns);
+            const float cell_h =
+                (area.height - gap_y * static_cast<float>(std::max(0, grid.rows - 1))) /
+                static_cast<float>(grid.rows);
+            sf::Color inactive = theme_.verb_default;
+            inactive.a = 96;
+            for (int i = inactive_start; i < verb_capacity; ++i) {
+                const int col = i % grid.columns;
+                const int row = i / grid.columns;
+                const sf::FloatRect rect{area.left + static_cast<float>(col) * (cell_w + gap_x),
+                                         area.top + static_cast<float>(row) * (cell_h + gap_y),
+                                         cell_w - 2.0f,
+                                         cell_h - 2.0f};
+                sf::RectangleShape box(sf::Vector2f(rect.width, rect.height));
+                box.setPosition(rect.left, rect.top);
+                box.setFillColor(inactive);
+                box.setOutlineThickness(1.0f);
+                box.setOutlineColor(config_.skin.verb_text.disabled_color);
+                target.draw(box);
+            }
         }
     }
 
-    const sf::Font* inventory_font = font_or_default(inventory_font_);
-    const int page = clamped_inventory_page(inventory, command_state.inventory_page_index);
-    for (const InventoryCell& cell : inventory_cells(inventory, page)) {
-        const bool hot = cell.rect.contains(cursor);
-        if (hot) {
-            sf::RectangleShape hl(sf::Vector2f(cell.rect.width, cell.rect.height - 2.0f));
-            hl.setPosition(cell.rect.left, cell.rect.top);
-            hl.setFillColor(theme_.inventory_hover_bg);
-            target.draw(hl);
+    if (config_.layout.inventory_style == InventoryStyle::ICONS) {
+        draw_inventory_icons(target, inventory, command_state, cursor);
+    } else {
+        const sf::Font* inventory_font = font_or_default(inventory_font_);
+        const int page = clamped_inventory_page(inventory, command_state.inventory_page_index);
+        for (const InventoryCell& cell : inventory_cells(inventory, page)) {
+            const bool hot = cell.rect.contains(cursor);
+            if (hot) {
+                sf::RectangleShape hl(sf::Vector2f(cell.rect.width, cell.rect.height - 2.0f));
+                hl.setPosition(cell.rect.left, cell.rect.top);
+                hl.setFillColor(theme_.inventory_hover_bg);
+                target.draw(hl);
+            }
+            const InventoryItem* item = inventory.item(cell.item_id);
+            if (inventory_font) {
+                sf::Text text(pac::core::utf8(item ? item->name : cell.item_id),
+                              *inventory_font,
+                              scaled_text_size(config_.skin.inventory_text.size));
+                apply_text_style(text,
+                                 config_.skin.inventory_text,
+                                 hot ? config_.skin.inventory_text.hover_color
+                                     : config_.skin.inventory_text.color);
+                place_text(text, cell.rect, config_.skin.inventory_text.align);
+                target.draw(text);
+            }
         }
-        const InventoryItem* item = inventory.item(cell.item_id);
-        if (inventory_font) {
-            sf::Text text(pac::core::utf8(item ? item->name : cell.item_id),
+        draw_inventory_arrows(target, inventory, command_state, cursor);
+    }
+
+    draw_evidence_indicator(target, strings, evidence);
+    draw_notebook(target, strings, cursor);
+    draw_settings_button(target, strings, cursor);
+}
+
+void ScummPanel::draw_inventory_icons(sf::RenderTarget& target,
+                                      const InventoryModel& inventory,
+                                      const CommandState& command_state,
+                                      sf::Vector2f cursor) const {
+    const IconInventoryLayout layout = icon_inventory_layout();
+    const std::vector<std::string>& items = inventory.list();
+    const sf::Font* inventory_font = font_or_default(inventory_font_);
+    const int capacity = inventory_capacity();
+    const int page = clamped_inventory_page(inventory, command_state.inventory_page_index);
+    const int first = page * capacity;
+
+    for (std::size_t i = 0; i < layout.slots.size(); ++i) {
+        const sf::FloatRect rect = layout.slots[i];
+        const int item_index = first + static_cast<int>(i);
+        const bool has_item = item_index < static_cast<int>(items.size());
+        const bool hot = has_item && rect.contains(cursor);
+
+        sf::RectangleShape frame(sf::Vector2f(rect.width, rect.height));
+        frame.setPosition(rect.left, rect.top);
+        frame.setFillColor(hot ? theme_.inventory_hover_bg : theme_.verb_default);
+        frame.setOutlineThickness(1.0f);
+        frame.setOutlineColor(theme_.verb_outline);
+        target.draw(frame);
+
+        if (!has_item) {
+            continue;
+        }
+        const std::string& item_id = items[static_cast<std::size_t>(item_index)];
+        const InventoryItem* item = inventory.item(item_id);
+        // Inset the art a little inside the frame.
+        const float inset = std::min(rect.width, rect.height) * 0.12f;
+        const sf::FloatRect art{rect.left + inset,
+                                rect.top + inset,
+                                rect.width - 2.0f * inset,
+                                rect.height - 2.0f * inset};
+        const bool drew = item && draw_item_icon(target, *item, inventory.icon_sheet(), art);
+        if (!drew && inventory_font) {
+            // Placeholder: the item name's first glyph, centered.
+            const std::string& label = item ? item->name : item_id;
+            const std::string glyph = label.empty() ? std::string("?") : label.substr(0, 1);
+            sf::Text text(pac::core::utf8(glyph),
                           *inventory_font,
                           scaled_text_size(config_.skin.inventory_text.size));
-            text.setFillColor(hot ? config_.skin.inventory_text.hover_color
-                                  : config_.skin.inventory_text.color);
-            place_text(text, cell.rect, config_.skin.inventory_text.align);
+            apply_text_style(text, config_.skin.inventory_text, config_.skin.inventory_text.color);
+            center_text(text, rect);
             target.draw(text);
         }
     }
-    draw_inventory_arrows(target, inventory, command_state, cursor);
-    draw_settings_button(target, strings, cursor);
+
+    // Vertical paging arrows (same look as the dialog arrows), only when needed.
+    const int pages = inventory_page_count(inventory);
+    if (pages > 1) {
+        const bool prev = page > 0;
+        const bool next = page < pages - 1;
+        const sf::Color disabled = config_.skin.inventory_text.disabled_color;
+        const auto arrow_color = [&](sf::FloatRect rect, bool enabled) {
+            if (!enabled) {
+                return disabled;
+            }
+            return rect.contains(cursor) ? config_.skin.inventory_text.hover_color
+                                         : config_.skin.inventory_text.color;
+        };
+        draw_v_arrow(target, layout.prev_arrow, true, arrow_color(layout.prev_arrow, prev));
+        draw_v_arrow(target, layout.next_arrow, false, arrow_color(layout.next_arrow, next));
+    }
+}
+
+void ScummPanel::draw_evidence_indicator(sf::RenderTarget& target,
+                                         const pac::core::Strings& strings,
+                                         EvidenceProgress evidence) const {
+    const ScummEvidenceIndicator& ev = config_.evidence_indicator;
+    if (!ev.enabled) {
+        return;
+    }
+    sf::FloatRect area = evidence_indicator_area();
+    // Leading icon (image, else a small placeholder square), left of the text.
+    const float icon_w = area.height;
+    const sf::FloatRect icon_rect{area.left, area.top, icon_w, area.height};
+    if (!ev.icon.empty()) {
+        draw_image_in_rect(target, ev.icon, icon_rect);
+    } else {
+        const float inset = icon_w * 0.18f;
+        sf::RectangleShape glyph(sf::Vector2f(icon_w - 2.0f * inset, area.height - 2.0f * inset));
+        glyph.setPosition(icon_rect.left + inset, icon_rect.top + inset);
+        glyph.setFillColor(ev.text.color);
+        target.draw(glyph);
+    }
+    area.left += icon_w + icon_w * 0.25f;
+    area.width -= icon_w + icon_w * 0.25f;
+
+    const sf::Font* font = font_or_default(evidence_font_);
+    if (!font) {
+        return;
+    }
+    // Stack the label on top and the "x/y" count below it.
+    const sf::FloatRect label_rect{area.left, area.top, area.width, area.height * 0.5f};
+    const sf::FloatRect count_rect{area.left,
+                                   area.top + area.height * 0.5f,
+                                   area.width,
+                                   area.height * 0.5f};
+    sf::Text label(pac::core::utf8(strings.ui_label(ev.label_key)),
+                   *font,
+                   scaled_text_size(ev.text.size));
+    apply_text_style(label, ev.text, ev.text.color);
+    place_text(label, label_rect, ev.text.align);
+    target.draw(label);
+
+    const std::string count =
+        std::to_string(evidence.collected) + "/" + std::to_string(evidence.total);
+    sf::Text count_text(pac::core::utf8(count), *font, scaled_text_size(ev.text.size));
+    apply_text_style(count_text, ev.text, ev.text.color);
+    place_text(count_text, count_rect, ev.text.align);
+    target.draw(count_text);
+}
+
+void ScummPanel::draw_notebook(sf::RenderTarget& target,
+                               const pac::core::Strings& strings,
+                               sf::Vector2f cursor) const {
+    const ScummNotebookConfig& nb = config_.notebook;
+    if (!nb.enabled) {
+        return;
+    }
+    // Leading icon (image, else a drawn placeholder square), left of the entries.
+    const sf::FloatRect area = notebook_area();
+    const sf::FloatRect icon_rect{area.left, area.top, area.height, area.height};
+    if (!nb.icon.empty()) {
+        draw_image_in_rect(target, nb.icon, icon_rect);
+    } else {
+        const float inset = icon_rect.height * 0.16f;
+        sf::RectangleShape glyph(
+            sf::Vector2f(icon_rect.width - 2.0f * inset, icon_rect.height - 2.0f * inset));
+        glyph.setPosition(icon_rect.left + inset, icon_rect.top + inset);
+        glyph.setFillColor(sf::Color::Transparent);
+        glyph.setOutlineThickness(2.0f);
+        glyph.setOutlineColor(nb.text.color);
+        target.draw(glyph);
+        // A spine line to read as a little book/notebook.
+        sf::RectangleShape spine(sf::Vector2f(2.0f, icon_rect.height - 2.0f * inset));
+        spine.setPosition(icon_rect.left + icon_rect.width * 0.5f - 1.0f, icon_rect.top + inset);
+        spine.setFillColor(nb.text.color);
+        target.draw(spine);
+    }
+    const sf::Font* font = font_or_default(notebook_font_);
+    if (!font) {
+        return;
+    }
+    for (const NotebookCell& cell : notebook_cells()) {
+        const bool hot = cell.rect.contains(cursor);
+        sf::Text text(pac::core::utf8(strings.ui_label(cell.label_key)),
+                      *font,
+                      scaled_text_size(nb.text.size));
+        apply_text_style(text, nb.text, hot ? nb.text.hover_color : nb.text.color);
+        place_text(text, cell.rect, nb.text.align);
+        target.draw(text);
+    }
 }
 
 sf::FloatRect ScummPanel::options_area() const {
@@ -790,7 +1211,8 @@ void ScummPanel::draw_options(sf::RenderTarget& target,
         float y = row.rect.top;
         for (const std::string& line : row.lines) {
             sf::Text text(pac::core::utf8(line), *option_font, size);
-            text.setFillColor(color);
+            // Dialog options reuse the verb-text outline config for legibility.
+            apply_text_style(text, config_.skin.verb_text, color);
             const sf::FloatRect b = text.getLocalBounds();
             text.setPosition(row.rect.left - b.left, y);
             target.draw(text);
@@ -799,31 +1221,14 @@ void ScummPanel::draw_options(sf::RenderTarget& target,
     }
 
     // Small vertical paging arrows, shown only when more than one page exists.
-    const auto draw_arrow = [&](sf::FloatRect rect, bool up, bool hot) {
-        const float inset = rect.width * 0.2f;
-        const float l = rect.left + inset;
-        const float r = rect.left + rect.width - inset;
-        const float t = rect.top + inset;
-        const float b = rect.top + rect.height - inset;
-        sf::ConvexShape tri;
-        tri.setPointCount(3);
-        if (up) {
-            tri.setPoint(0, {(l + r) / 2.0f, t});
-            tri.setPoint(1, {r, b});
-            tri.setPoint(2, {l, b});
-        } else {
-            tri.setPoint(0, {l, t});
-            tri.setPoint(1, {r, t});
-            tri.setPoint(2, {(l + r) / 2.0f, b});
-        }
-        tri.setFillColor(hot ? theme_.verb_text_hover : theme_.verb_text);
-        target.draw(tri);
+    const auto arrow_color = [&](sf::FloatRect rect) {
+        return rect.contains(cursor) ? theme_.verb_text_hover : theme_.verb_text;
     };
     if (layout.has_prev) {
-        draw_arrow(layout.prev_arrow, true, layout.prev_arrow.contains(cursor));
+        draw_v_arrow(target, layout.prev_arrow, true, arrow_color(layout.prev_arrow));
     }
     if (layout.has_next) {
-        draw_arrow(layout.next_arrow, false, layout.next_arrow.contains(cursor));
+        draw_v_arrow(target, layout.next_arrow, false, arrow_color(layout.next_arrow));
     }
     draw_settings_button(target, strings, cursor);
 }

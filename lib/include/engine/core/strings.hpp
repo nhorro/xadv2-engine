@@ -15,6 +15,10 @@ class Strings {
 public:
     std::string language;
     std::map<std::string, std::string> verbs;
+    /// Optional short verb labels for the SCUMM panel buttons (e.g. `talk_to` ->
+    /// "Hablar"), when the full `verbs` label ("Hablar con") is too long for a
+    /// button but still wanted in the command bar. Falls back to `verbs`.
+    std::map<std::string, std::string> verb_panel;
     std::map<std::string, std::string> connectors;
     std::map<std::string, std::string> ui;
     /// Engine last-resort captions, fired when no game handler produced text for a
@@ -25,6 +29,8 @@ public:
     /// Lookups return the mapped value, or a visible `?key` placeholder when the
     /// key is missing, so absent strings are obvious rather than silent.
     std::string verb_label(const std::string& verb_id) const;
+    /// Short SCUMM-panel label: `verb_panel[id]` when present, else `verb_label`.
+    std::string verb_panel_label(const std::string& verb_id) const;
     std::string connector(const std::string& verb_id) const;
     std::string ui_label(const std::string& key) const;
     std::string caption(const std::string& key) const;
