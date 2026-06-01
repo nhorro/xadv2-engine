@@ -181,6 +181,16 @@ NotebookDefinitions parse_notebook_yaml(const std::string& text) {
     if (out.ui.font_size == 0) {
         fail("notebook.invalid-font-size", "ui.font_size must be positive");
     }
+    if (const YAML::Node text_node = ui["text"]) {
+        out.ui.text.outline_thickness =
+            optionalFloat(text_node, "outline_thickness", out.ui.text.outline_thickness);
+        if (out.ui.text.outline_thickness < 0.0f) {
+            fail("notebook.invalid-outline-thickness",
+                 "ui.text.outline_thickness must not be negative");
+        }
+        out.ui.text.outline_color =
+            color(text_node["outline_color"], out.ui.text.outline_color, "ui.text.outline_color");
+    }
     if (const YAML::Node pages = ui["pages"]) {
         out.ui.left_page = rect(pages["left"], out.ui.left_page, "ui.pages.left");
         out.ui.right_page = rect(pages["right"], out.ui.right_page, "ui.pages.right");

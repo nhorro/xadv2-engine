@@ -3,22 +3,25 @@ ui:
   background: notebook/notebook.png
   font: notebook/VT323-Regular.ttf
   font_size: 19
+  text:
+    outline_thickness: 0.65
+    outline_color: [244, 232, 196, 180]
   pages:
-    left: { x: 125, y: 175, width: 400, height: 450 }
-    right: { x: 655, y: 180, width: 500, height: 445 }
+    left: { x: 110, y: 100, width: 480, height: 545 }
+    right: { x: 696, y: 100, width: 540, height: 545 }
   tabs:
     font_size: 24
-    idle_color: [92, 72, 50, 190]
-    hover_color: [70, 52, 35, 255]
+    idle_color: [70, 52, 35, 255]
+    hover_color: [92, 72, 50, 190]
     selected_color: [45, 34, 25, 255]
     evidence:
       label: "Evidencias"
-      position: { x: 220, y: 116 }
-      hitbox: { x: 205, y: 110, width: 160, height: 40 }
+      position: { x: 132, y: 24 }
+      hitbox: { x: 112, y: 14, width: 254, height: 54 }
     hypotheses:
       label: "Hipótesis"
-      position: { x: 420, y: 116 }
-      hitbox: { x: 405, y: 110, width: 190, height: 40 }
+      position: { x: 380, y: 24 }
+      hitbox: { x: 370, y: 6, width: 254, height: 54 }
   close:
     label: "X"
     position: { x: 1120, y: 96 }

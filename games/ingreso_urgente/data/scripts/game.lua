@@ -82,8 +82,13 @@ function game.on_start()
 
   -- DEV
   -- Dev: uncomment to jump to a later beat for testing.
-  -- set_state("lab.julia_intro_seen", true)
+  set_state("lab.julia_intro_seen", true)
   -- set_state("lab.cfg", 2)      -- CFG_PUZZLE   Julia + Dr. Schneider, skull-trauma puzzle
+
+  -- DEV: 12 termos para probar los 4 slots de inventario y el paginado (#172).
+  for i = 1, 12 do
+    add_item("thermo" .. i)
+  end
 end
 
 -- Shared verb fallbacks: run when a hotspot/item has no handler for a valid verb.

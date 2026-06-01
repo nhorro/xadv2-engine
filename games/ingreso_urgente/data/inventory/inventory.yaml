@@ -1,0 +1,38 @@
+version: 1
+
+# Icon source mode for the SCUMM panel's inventory slots (issue #172):
+#   - development: one PNG per item (the item's `icon:` field). Fast to iterate;
+#     the images can be any size (scaled into the slot).
+#   - production:  a single MxN sheet texture; each item picks a `icon_cell:` index
+#     (row-major, 0-based), loaded as one texture. Example:
+#       icons:
+#         mode: production
+#         sheet: inventory/items/icons_sheet.png
+#         columns: 8
+#         rows: 4
+#     and per item: `icon_cell: 5`.
+icons:
+  mode: development
+
+items:
+  key:
+    name: "la llave"
+    affordances: [ look_at, use ]
+    combinable: true       # "use key with <something>"
+  notebook:
+    name: "el cuaderno"
+    affordances: [ look_at ]
+  # DEV: 12 termos (mismo ícono) para probar los 4 slots y el paginado del
+  # inventario (#172). Reemplazar por ítems reales cuando el inventario crezca.
+  thermo1:  { name: "termo 1",  affordances: [look_at, use], icon: inventory/items/stanley.png }
+  thermo2:  { name: "termo 2",  affordances: [look_at, use], icon: inventory/items/stanley.png }
+  thermo3:  { name: "termo 3",  affordances: [look_at, use], icon: inventory/items/stanley.png }
+  thermo4:  { name: "termo 4",  affordances: [look_at, use], icon: inventory/items/stanley.png }
+  thermo5:  { name: "termo 5",  affordances: [look_at, use], icon: inventory/items/stanley.png }
+  thermo6:  { name: "termo 6",  affordances: [look_at, use], icon: inventory/items/stanley.png }
+  thermo7:  { name: "termo 7",  affordances: [look_at, use], icon: inventory/items/stanley.png }
+  thermo8:  { name: "termo 8",  affordances: [look_at, use], icon: inventory/items/stanley.png }
+  thermo9:  { name: "termo 9",  affordances: [look_at, use], icon: inventory/items/stanley.png }
+  thermo10: { name: "termo 10", affordances: [look_at, use], icon: inventory/items/stanley.png }
+  thermo11: { name: "termo 11", affordances: [look_at, use], icon: inventory/items/stanley.png }
+  thermo12: { name: "termo 12", affordances: [look_at, use], icon: inventory/items/stanley.png }

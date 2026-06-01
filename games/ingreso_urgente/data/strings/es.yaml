@@ -12,6 +12,11 @@ verbs:
   push:    "Empujar"
   pull:    "Tirar"
 
+# Short labels for the SCUMM panel buttons (the full `verbs` label is still used
+# in the command bar). e.g. the panel shows "Hablar" but the bar builds "Hablar con X".
+verb_panel:
+  talk_to: "Hablar"
+
 connectors:
   use: "con"
   give: "a"
@@ -25,6 +30,8 @@ ui:
   quit:     "Salir"
   pause:    "Pausa"
   notebook: "Cuaderno"
+  hipotesis: "Hipótesis"
+  evidencias: "Evidencias"
   resume:   "Continuar"
   save_game: "Guardar"
   load_game: "Cargar"

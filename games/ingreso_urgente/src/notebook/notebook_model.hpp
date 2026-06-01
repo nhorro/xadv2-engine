@@ -50,10 +50,16 @@ struct NotebookUiClose {
     std::string scene;
 };
 
+struct NotebookUiText {
+    float outline_thickness = 0.0f;
+    NotebookUiColor outline_color{0, 0, 0, 0};
+};
+
 struct NotebookUi {
     std::string background;
     std::string font;
     unsigned font_size = 19;
+    NotebookUiText text;
     NotebookUiRect left_page{125.0f, 175.0f, 400.0f, 450.0f};
     NotebookUiRect right_page{655.0f, 180.0f, 500.0f, 445.0f};
     unsigned tab_font_size = 24;

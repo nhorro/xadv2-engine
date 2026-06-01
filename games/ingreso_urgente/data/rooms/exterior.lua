@@ -83,7 +83,7 @@ room.hotspots = {
         look_at = function()
             return "La puerta de ingreso al instituto."
         end,
-        open = function()
+        use = function()
             -- play_sound("sfx/door_open.ogg")
             change_room("hall", "from_exterior")
         end,

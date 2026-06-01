@@ -36,7 +36,7 @@ hotspots:
     approach: at_door
     affordances:
     - look_at
-    - open
+    - use
   skull_bones:
     name: restos de cráneo y huesos
     area: [{x: 78, y: 425}, {x: 146, y: 386}, {x: 282, y: 399}, {x: 202, y: 449}]
@@ -96,8 +96,6 @@ hotspots:
     affordances:
     - look_at
     - use
-    - open
-    - close
   kettle:
     name: pava silbadora
     area: [{x: 946, y: 270}, {x: 961, y: 246}, {x: 990, y: 241}, {x: 989, y: 287}, {x: 952, y: 291}]
@@ -110,8 +108,6 @@ hotspots:
     - look_at
     - pick_up
     - use
-    - open
-    - close
   dustbin:
     name: cesto de residuos
     area: [{x: 599, y: 406}, {x: 602, y: 458}, {x: 623, y: 463}, {x: 651, y: 451}, {x: 647, y: 410}, {x: 621, y: 399}]

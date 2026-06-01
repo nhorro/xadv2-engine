@@ -110,6 +110,9 @@ ui:
   background: b
   font: f
   font_size: 17
+  text:
+    outline_thickness: 0.75
+    outline_color: [12, 13, 14, 15]
   pages:
     left: { x: 10, y: 20, width: 300, height: 400 }
     right: { x: 500, y: 30, width: 350, height: 390 }
@@ -138,6 +141,9 @@ evidences: []
 hypotheses: []
 )YAML");
     CHECK(defs.ui.font_size == 17);
+    CHECK(defs.ui.text.outline_thickness == doctest::Approx(0.75f));
+    CHECK(defs.ui.text.outline_color.r == 12);
+    CHECK(defs.ui.text.outline_color.a == 15);
     CHECK(defs.ui.left_page.x == doctest::Approx(10.0f));
     CHECK(defs.ui.right_page.width == doctest::Approx(350.0f));
     CHECK(defs.ui.tab_font_size == 28);
@@ -169,6 +175,19 @@ ui:
   background: b
   font: f
   close: { action: goto }
+evidence_sections: []
+evidences: []
+hypotheses: []
+)YAML"));
+}
+
+TEST_CASE("notebook YAML rejects negative text outline thickness") {
+    CHECK_THROWS(parse_notebook_yaml(R"YAML(
+version: 1
+ui:
+  background: b
+  font: f
+  text: { outline_thickness: -1 }
 evidence_sections: []
 evidences: []
 hypotheses: []
@@ -349,6 +368,13 @@ TEST_CASE("headless notebook UI controller changes tabs sections hypotheses and 
     CHECK_FALSE(ui.sectionOpen("observations"));
     ui.nextHypothesis(model, 1);
     CHECK(ui.hypothesisIndex() == 1);
+    ui.toggleClassificationSelector("one");
+    CHECK(ui.classificationSelectorOpen("one"));
+    ui.toggleClassificationSelector("two");
+    CHECK_FALSE(ui.classificationSelectorOpen("one"));
+    CHECK(ui.classificationSelectorOpen("two"));
+    ui.nextHypothesis(model, 1);
+    CHECK_FALSE(ui.classificationSelectorOpen("two"));
     ui.requestClose();
     CHECK(ui.closeRequested());
 }
@@ -368,6 +394,12 @@ TEST_CASE("notebook evidence layout wraps titles and clamps scrollbar positions"
     CHECK(metrics.thumbHeight(450.0f) == doctest::Approx(225.0f));
     CHECK(metrics.thumbTop(225.0f, 175.0f, 450.0f) == doctest::Approx(287.5f));
     CHECK(metrics.scrollFromThumbTop(287.5f, 175.0f, 450.0f) == doctest::Approx(225.0f));
+}
+
+TEST_CASE("notebook combo labels truncate with ellipsis without splitting UTF-8") {
+    CHECK(truncateNotebookText(nullptr, "abcdefghi", 10, 34.0f) == "abc...");
+    CHECK(truncateNotebookText(nullptr, "ábcdefghi", 10, 34.0f) == "ábc...");
+    CHECK(truncateNotebookText(nullptr, "corto", 10, 34.0f) == "corto");
 }
 
 TEST_CASE("act I notebook integration scripts compile in embedded Lua") {

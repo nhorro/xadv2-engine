@@ -72,11 +72,11 @@ hotspots:
     approach: at_exterior_door
     affordances:
     - look_at
-    - open
+    - use
   lab_door:
     name: puerta
     area: [{x: 1220, y: 113}, {x: 1227, y: 368}, {x: 1314, y: 369}, {x: 1311, y: 95}]
     approach: at_lab_door
     affordances:
     - look_at
-    - open
+    - use

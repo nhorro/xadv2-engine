@@ -27,6 +27,10 @@ class NotebookModel;
 struct NotebookUiClose;
 
 std::vector<std::string> wrapNotebookWords(const std::string& value, std::size_t max_chars);
+std::string truncateNotebookText(const sf::Font* font,
+                                 const std::string& value,
+                                 unsigned font_size,
+                                 float max_width);
 
 struct NotebookScrollMetrics {
     float content_height = 0.0f;
@@ -47,13 +51,25 @@ public:
 
     explicit NotebookUiController(const NotebookModel& model);
     Tab tab() const { return tab_; }
-    void setTab(Tab tab) { tab_ = tab; }
+    void setTab(Tab tab) {
+        tab_ = tab;
+        closeClassificationSelector();
+    }
     bool sectionOpen(const std::string& id) const;
     void toggleSection(const std::string& id);
     const std::string& selectedEvidence() const { return selected_evidence_; }
     void selectEvidence(std::string id) { selected_evidence_ = std::move(id); }
     std::size_t hypothesisIndex() const { return hypothesis_index_; }
     void nextHypothesis(const NotebookModel& model, int delta);
+    bool classificationSelectorOpen(const std::string& subject) const {
+        return open_classification_subject_ == subject;
+    }
+    const std::string& openClassificationSubject() const { return open_classification_subject_; }
+    void toggleClassificationSelector(const std::string& subject) {
+        open_classification_subject_ =
+            classificationSelectorOpen(subject) ? std::string() : subject;
+    }
+    void closeClassificationSelector() { open_classification_subject_.clear(); }
     void requestClose() { close_requested_ = true; }
     bool closeRequested() const { return close_requested_; }
 
@@ -62,6 +78,7 @@ private:
     std::map<std::string, bool> sections_;
     std::string selected_evidence_;
     std::size_t hypothesis_index_ = 0;
+    std::string open_classification_subject_;
     bool close_requested_ = false;
 };
 

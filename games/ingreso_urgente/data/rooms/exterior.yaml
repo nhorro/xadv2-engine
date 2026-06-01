@@ -69,7 +69,7 @@ hotspots:
     approach: at_door
     affordances:
     - look_at
-    - open
+    - use
   # box/truck hotspots bind to their objects (no fixed `area`) so they are
   # inactive whenever the object is hidden (hit region = the object's sprite
   # bounds). Re-add an explicit `area` only if you want a hit region different

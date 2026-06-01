@@ -1,14 +1,14 @@
 #include "notebook/notebook_scene.hpp"
 
-#include "notebook/notebook_model.hpp"
-
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
 #include "engine/core/scene_manager.hpp"
+#include "engine/core/state_store.hpp"
 #include "engine/core/text_encoding.hpp"
+#include "notebook/notebook_model.hpp"
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/Image.hpp>
@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <variant>
 
 namespace ingreso::notebook {
 namespace {
@@ -28,6 +29,12 @@ constexpr float kListRowPadding = 6.0f;
 constexpr float kScrollbarWidth = 7.0f;
 constexpr float kScrollbarGutter = 14.0f;
 constexpr float kScrollbarMinThumbHeight = 34.0f;
+constexpr float kClassificationRowHeight = 55.0f;
+constexpr float kClassificationSelectorOffset = 225.0f;
+constexpr float kClassificationSelectorWidth = 150.0f;
+constexpr float kClassificationDropdownRowHeight = 28.0f;
+constexpr float kRightPageComboMargin = 12.0f;
+constexpr float kRightPageComboWidth = 360.0f;
 
 bool hit(float x, float y, float left, float top, float width, float height) {
     return x >= left && x <= left + width && y >= top && y <= top + height;
@@ -47,7 +54,8 @@ float listLineHeight(const NotebookUi& ui) {
 
 std::size_t charsForWidth(float width, unsigned font_size) {
     return std::max<std::size_t>(
-        1, static_cast<std::size_t>(width / (static_cast<float>(font_size) * 0.56f)));
+        1,
+        static_cast<std::size_t>(width / (static_cast<float>(font_size) * 0.56f)));
 }
 
 float scrollbarLeft(const NotebookUi& ui) {
@@ -56,20 +64,25 @@ float scrollbarLeft(const NotebookUi& ui) {
 
 void text(sf::RenderTarget& target,
           const sf::Font* font,
+          const NotebookUi& ui,
           const std::string& value,
           float x,
           float y,
           unsigned size = 22,
-          sf::Color color = sf::Color(54, 45, 37)) {
-    if (!font) return;
+          sf::Color fill_color = sf::Color(54, 45, 37)) {
+    if (!font)
+        return;
     sf::Text drawable(pac::core::utf8(value), *font, size);
-    drawable.setFillColor(color);
+    drawable.setFillColor(fill_color);
+    drawable.setOutlineThickness(ui.text.outline_thickness);
+    drawable.setOutlineColor(color(ui.text.outline_color));
     drawable.setPosition(x, y);
     target.draw(drawable);
 }
 
 void button(sf::RenderTarget& target,
             const sf::Font* font,
+            const NotebookUi& ui,
             const std::string& label,
             float x,
             float y,
@@ -79,15 +92,19 @@ void button(sf::RenderTarget& target,
             bool enabled = true) {
     sf::RectangleShape box({width, 28.0f});
     box.setPosition(x, y);
-    box.setFillColor(!enabled ? sf::Color(216, 207, 184, 100)
-                              : (selected ? sf::Color(214, 192, 146, 190)
-                                          : sf::Color(244, 232, 196, 150)));
+    box.setFillColor(
+        !enabled ? sf::Color(216, 207, 184, 100)
+                 : (selected ? sf::Color(214, 192, 146, 190) : sf::Color(244, 232, 196, 150)));
     box.setOutlineColor(enabled ? sf::Color(92, 72, 50) : sf::Color(120, 110, 95, 100));
     box.setOutlineThickness(1.0f);
     target.draw(box);
     text(target,
          font,
-         label,
+         ui,
+         truncateNotebookText(font,
+                              label,
+                              font_size,
+                              std::max(0.0f, width - 14.0f - 2.0f * ui.text.outline_thickness)),
          x + 7.0f,
          y + 2.0f,
          font_size,
@@ -97,6 +114,41 @@ void button(sf::RenderTarget& target,
 std::string labelForEvidence(const NotebookModel& model, const std::string& id) {
     const Evidence* e = model.evidence(id);
     return e ? e->title : "Vacia";
+}
+
+sf::FloatRect classificationSelectorRect(const NotebookUi& ui, float row_y) {
+    return {ui.left_page.x + kClassificationSelectorOffset,
+            row_y,
+            std::min(kClassificationSelectorWidth,
+                     std::max(1.0f,
+                              ui.left_page.width - kClassificationSelectorOffset -
+                                  kRightPageComboMargin)),
+            kClassificationDropdownRowHeight};
+}
+
+sf::FloatRect classificationOptionRect(const NotebookUi& ui, float row_y, std::size_t index) {
+    sf::FloatRect rect = classificationSelectorRect(ui, row_y);
+    rect.top += kClassificationDropdownRowHeight * static_cast<float>(index + 1);
+    return rect;
+}
+
+sf::FloatRect rightPageComboRect(const NotebookUi& ui, float row_y) {
+    return {ui.right_page.x + kRightPageComboMargin,
+            row_y,
+            std::min(kRightPageComboWidth,
+                     std::max(1.0f, ui.right_page.width - 2.0f * kRightPageComboMargin)),
+            kClassificationDropdownRowHeight};
+}
+
+std::string classificationLabel(const NotebookModel& model,
+                                const Hypothesis& hypothesis,
+                                const ClassificationSubject& subject) {
+    for (const auto& option : subject.options) {
+        if (model.hasClassification(hypothesis.id, subject.id, option.id)) {
+            return option.label;
+        }
+    }
+    return "Vacia";
 }
 
 struct EvidenceListRow {
@@ -130,9 +182,11 @@ EvidenceListLayout evidenceListLayout(const NotebookModel& model, const Notebook
         add(EvidenceListRow::Kind::Section,
             section.id,
             std::string(ui.sectionOpen(section.id) ? "[-] " : "[+] ") + section.label);
-        if (!ui.sectionOpen(section.id)) continue;
+        if (!ui.sectionOpen(section.id))
+            continue;
         for (const auto& evidence : model.definitions().evidences) {
-            if (evidence.section != section.id || !model.hasEvidence(evidence.id)) continue;
+            if (evidence.section != section.id || !model.hasEvidence(evidence.id))
+                continue;
             add(EvidenceListRow::Kind::Evidence,
                 evidence.id,
                 std::string(evidence.id == ui.selectedEvidence() ? "> " : "  ") + evidence.title);
@@ -187,12 +241,41 @@ std::vector<std::string> wrapNotebookWords(const std::string& value, std::size_t
                 lines.push_back(line);
                 line.clear();
             }
-            if (!line.empty()) line += ' ';
+            if (!line.empty())
+                line += ' ';
             line += word;
         }
-        if (!line.empty()) lines.push_back(line);
+        if (!line.empty())
+            lines.push_back(line);
     }
     return lines;
+}
+
+std::string truncateNotebookText(const sf::Font* font,
+                                 const std::string& value,
+                                 unsigned font_size,
+                                 float max_width) {
+    const auto as_utf8 = [](const sf::String& text) {
+        const auto bytes = text.toUtf8();
+        return std::string(bytes.begin(), bytes.end());
+    };
+    const auto width = [font, font_size](const sf::String& text) {
+        if (font) {
+            return sf::Text(text, *font, font_size).getLocalBounds().width;
+        }
+        return static_cast<float>(text.getSize()) * static_cast<float>(font_size) * 0.56f;
+    };
+
+    sf::String text = pac::core::utf8(value);
+    if (width(text) <= max_width)
+        return value;
+    const sf::String ellipsis = "...";
+    while (!text.isEmpty()) {
+        text.erase(text.getSize() - 1);
+        if (width(text + ellipsis) <= max_width)
+            return as_utf8(text + ellipsis);
+    }
+    return width(ellipsis) <= max_width ? "..." : std::string();
 }
 
 float NotebookScrollMetrics::maxScroll() const {
@@ -202,14 +285,17 @@ float NotebookScrollMetrics::clamp(float scroll) const {
     return std::clamp(scroll, 0.0f, maxScroll());
 }
 float NotebookScrollMetrics::thumbHeight(float track_height) const {
-    if (content_height <= 0.0f || content_height <= viewport_height) return track_height;
+    if (content_height <= 0.0f || content_height <= viewport_height)
+        return track_height;
     return std::max(kScrollbarMinThumbHeight, track_height * viewport_height / content_height);
 }
 float NotebookScrollMetrics::thumbTop(float scroll, float track_top, float track_height) const {
     const float travel = track_height - thumbHeight(track_height);
     return maxScroll() <= 0.0f ? track_top : track_top + travel * clamp(scroll) / maxScroll();
 }
-float NotebookScrollMetrics::scrollFromThumbTop(float thumb_top, float track_top, float track_height) const {
+float NotebookScrollMetrics::scrollFromThumbTop(float thumb_top,
+                                                float track_top,
+                                                float track_height) const {
     const float travel = track_height - thumbHeight(track_height);
     return travel <= 0.0f ? 0.0f : clamp((thumb_top - track_top) * maxScroll() / travel);
 }
@@ -225,14 +311,16 @@ void routeNotebookClose(const NotebookUiClose& close, pac::core::SceneManager& s
 namespace {
 
 std::string markdownText(std::string value) {
-    for (std::size_t pos = value.find("**"); pos != std::string::npos; pos = value.find("**", pos)) {
+    for (std::size_t pos = value.find("**"); pos != std::string::npos;
+         pos = value.find("**", pos)) {
         value.erase(pos, 2);
     }
     return value;
 }
 
 std::string status(const NotebookModel& model, const Hypothesis& h) {
-    if (model.isHypothesisComplete(h.id)) return "Completa";
+    if (model.isHypothesisComplete(h.id))
+        return "Completa";
     return model.countHypothesisSupports(h.id) == 0 ? "Vacia" : "Incompleta";
 }
 
@@ -255,6 +343,7 @@ public:
                     const float indent = row.kind == EvidenceListRow::Kind::Evidence ? 12.0f : 0.0f;
                     text(target,
                          font,
+                         style,
                          line,
                          style.left_page.x + indent,
                          y,
@@ -266,20 +355,23 @@ public:
         }
         drawScrollbar(target, style, layout.scroll, scroll);
         const Evidence* selected = model.evidence(ui.selectedEvidence());
-        if (!selected || !model.hasEvidence(selected->id)) return;
+        if (!selected || !model.hasEvidence(selected->id))
+            return;
         const unsigned title_size = style.font_size + 8;
         float title_y = style.right_page.y;
         for (const std::string& line :
-             wrapNotebookWords(selected->title, charsForWidth(style.right_page.width, title_size))) {
-            text(target, font, line, style.right_page.x, title_y, title_size);
+             wrapNotebookWords(selected->title,
+                               charsForWidth(style.right_page.width, title_size))) {
+            text(target, font, style, line, style.right_page.x, title_y, title_size);
             title_y += static_cast<float>(title_size) + 1.0f;
         }
         float note_y = title_y + 22.0f;
         for (const std::string& line :
              wrapNotebookWords(markdownText(selected->note),
                                charsForWidth(style.right_page.width, style.font_size))) {
-            if (note_y >= style.right_page.y + style.right_page.height) break;
-            text(target, font, line, style.right_page.x, note_y, style.font_size);
+            if (note_y >= style.right_page.y + style.right_page.height)
+                break;
+            text(target, font, style, line, style.right_page.x, note_y, style.font_size);
             note_y += listLineHeight(style);
         }
         if (!selected->image.empty()) {
@@ -290,9 +382,8 @@ public:
                 const float max_width = style.right_page.width * 0.55f;
                 const float max_height = style.right_page.height * 0.36f;
                 if (size.x && size.y) {
-                    const float scale =
-                        std::min(max_width / static_cast<float>(size.x),
-                                 max_height / static_cast<float>(size.y));
+                    const float scale = std::min(max_width / static_cast<float>(size.x),
+                                                 max_height / static_cast<float>(size.y));
                     sprite.setScale(scale, scale);
                     const float width = static_cast<float>(size.x) * scale;
                     const float height = static_cast<float>(size.y) * scale;
@@ -309,53 +400,93 @@ public:
 class HypothesisTemplateView {
 public:
     virtual ~HypothesisTemplateView() = default;
-    virtual void draw(sf::RenderTarget&, const sf::Font*, const NotebookModel&, const Hypothesis&) const = 0;
+    virtual void draw(sf::RenderTarget&,
+                      const sf::Font*,
+                      const NotebookModel&,
+                      const Hypothesis&,
+                      const NotebookUiController&) const = 0;
 };
 
 class ClassificationTemplateView : public HypothesisTemplateView {
 public:
-    void draw(sf::RenderTarget& target, const sf::Font* font, const NotebookModel& model,
-              const Hypothesis& h) const override {
+    void draw(sf::RenderTarget& target,
+              const sf::Font* font,
+              const NotebookModel& model,
+              const Hypothesis& h,
+              const NotebookUiController& controller) const override {
         const NotebookUi& ui = model.definitions().ui;
         float y = ui.left_page.y + 45.0f;
         for (const auto& subject : h.subjects) {
-            text(target, font, subject.label, ui.left_page.x + 50.0f, y, ui.font_size + 1);
-            float x = ui.left_page.x + 245.0f;
-            for (const auto& option : subject.options) {
-                button(target, font, option.label, x, y, 115.0f,
-                       model.hasClassification(h.id, subject.id, option.id),
-                       ui.font_size > 1 ? ui.font_size - 1 : 1);
-                x += 125.0f;
-            }
+            text(target, font, ui, subject.label, ui.left_page.x + 50.0f, y, ui.font_size + 1);
+            const sf::FloatRect selector = classificationSelectorRect(ui, y);
+            button(target,
+                   font,
+                   ui,
+                   classificationLabel(model, h, subject) + "  v",
+                   selector.left,
+                   selector.top,
+                   selector.width,
+                   controller.classificationSelectorOpen(subject.id),
+                   ui.font_size > 1 ? ui.font_size - 1 : 1);
             for (std::size_t slot = 0; slot < subject.support_slots; ++slot) {
                 const std::string selected = model.classificationSupport(h.id, subject.id, slot);
                 const bool enabled = model.hasClassificationCandidates(h.id, subject.id);
+                const sf::FloatRect support =
+                    rightPageComboRect(ui, y + static_cast<float>(slot) * 31.0f);
                 button(target,
                        font,
+                       ui,
                        "Apoyo: " + (enabled ? labelForEvidence(model, selected) : "Sin evidencias"),
-                       ui.right_page.x + 105.0f,
-                       y + static_cast<float>(slot) * 31.0f,
-                       std::max(1.0f, ui.right_page.width - 105.0f),
+                       support.left,
+                       support.top,
+                       support.width,
                        false,
                        ui.font_size > 1 ? ui.font_size - 1 : 1,
                        enabled);
             }
-            y += std::max(55.0f, 31.0f * static_cast<float>(subject.support_slots) + 8.0f);
+            y += std::max(kClassificationRowHeight,
+                          31.0f * static_cast<float>(subject.support_slots) + 8.0f);
+        }
+
+        y = ui.left_page.y + 45.0f;
+        for (const auto& subject : h.subjects) {
+            if (controller.classificationSelectorOpen(subject.id)) {
+                for (std::size_t index = 0; index < subject.options.size(); ++index) {
+                    const auto& option = subject.options[index];
+                    const sf::FloatRect rect = classificationOptionRect(ui, y, index);
+                    button(target,
+                           font,
+                           ui,
+                           option.label,
+                           rect.left,
+                           rect.top,
+                           rect.width,
+                           model.hasClassification(h.id, subject.id, option.id),
+                           ui.font_size > 1 ? ui.font_size - 1 : 1);
+                }
+                return;
+            }
+            y += std::max(kClassificationRowHeight,
+                          31.0f * static_cast<float>(subject.support_slots) + 8.0f);
         }
     }
 };
 
 class ArgumentTemplateView : public HypothesisTemplateView {
 public:
-    void draw(sf::RenderTarget& target, const sf::Font* font, const NotebookModel& model,
-              const Hypothesis& h) const override {
+    void draw(sf::RenderTarget& target,
+              const sf::Font* font,
+              const NotebookModel& model,
+              const Hypothesis& h,
+              const NotebookUiController&) const override {
         const NotebookUi& ui = model.definitions().ui;
         float y = ui.left_page.y + 45.0f;
-        text(target, font, "Conclusion", ui.left_page.x + 50.0f, y, ui.font_size + 3);
+        text(target, font, ui, "Conclusion", ui.left_page.x + 50.0f, y, ui.font_size + 3);
         y += 34.0f;
         for (const auto& conclusion : h.conclusions) {
             button(target,
                    font,
+                   ui,
                    conclusion.label,
                    ui.left_page.x + 65.0f,
                    y,
@@ -368,18 +499,21 @@ public:
         for (const auto& premise : h.premises) {
             text(target,
                  font,
+                 ui,
                  premise.label + (premise.required ? " *" : ""),
                  ui.left_page.x + 65.0f,
                  y + 3.0f,
                  ui.font_size > 1 ? ui.font_size - 1 : 1);
             const bool enabled = model.hasArgumentCandidates(h.id, premise.id);
+            const sf::FloatRect support = rightPageComboRect(ui, y);
             button(target,
                    font,
+                   ui,
                    enabled ? labelForEvidence(model, model.hypothesisEvidence(h.id, premise.id))
                            : "Sin evidencias",
-                   ui.right_page.x + 5.0f,
-                   y,
-                   std::max(1.0f, ui.right_page.width - 5.0f),
+                   support.left,
+                   support.top,
+                   support.width,
                    false,
                    ui.font_size > 1 ? ui.font_size - 1 : 1,
                    enabled);
@@ -390,21 +524,46 @@ public:
 
 class HypothesisPage {
 public:
-    static void draw(sf::RenderTarget& target, const sf::Font* font, const NotebookModel& model,
+    static void draw(sf::RenderTarget& target,
+                     const sf::Font* font,
+                     const NotebookModel& model,
                      const NotebookUiController& ui) {
-        if (model.definitions().hypotheses.empty()) return;
+        if (model.definitions().hypotheses.empty())
+            return;
         const NotebookUi& style = model.definitions().ui;
         const Hypothesis& h = model.definitions().hypotheses[ui.hypothesisIndex()];
-        text(target, font, "<", style.left_page.x + 5.0f, style.left_page.y - 1.0f, style.font_size + 9);
-        text(target, font, h.title, style.left_page.x + 55.0f, style.left_page.y + 3.0f, style.font_size + 6);
-        text(target, font, ">", style.right_page.x + style.right_page.width - 45.0f, style.right_page.y - 6.0f,
+        text(target,
+             font,
+             style,
+             "<",
+             style.left_page.x + 5.0f,
+             style.left_page.y - 1.0f,
              style.font_size + 9);
-        text(target, font, status(model, h), style.right_page.x + style.right_page.width - 205.0f,
-             style.right_page.y, style.font_size);
+        text(target,
+             font,
+             style,
+             h.title,
+             style.left_page.x + 55.0f,
+             style.left_page.y + 3.0f,
+             style.font_size + 6);
+        text(target,
+             font,
+             style,
+             ">",
+             style.right_page.x + style.right_page.width - 45.0f,
+             style.right_page.y - 6.0f,
+             style.font_size + 9);
+        text(target,
+             font,
+             style,
+             status(model, h),
+             style.right_page.x + style.right_page.width - 205.0f,
+             style.right_page.y,
+             style.font_size);
         if (h.type == HypothesisTemplate::Classification) {
-            ClassificationTemplateView().draw(target, font, model, h);
+            ClassificationTemplateView().draw(target, font, model, h, ui);
         } else {
-            ArgumentTemplateView().draw(target, font, model, h);
+            ArgumentTemplateView().draw(target, font, model, h, ui);
         }
     }
 };
@@ -412,7 +571,8 @@ public:
 } // namespace
 
 NotebookUiController::NotebookUiController(const NotebookModel& model) {
-    for (const auto& section : model.definitions().sections) sections_[section.id] = true;
+    for (const auto& section : model.definitions().sections)
+        sections_[section.id] = true;
     for (const auto& evidence : model.definitions().evidences) {
         if (model.hasEvidence(evidence.id)) {
             selected_evidence_ = evidence.id;
@@ -429,9 +589,12 @@ void NotebookUiController::toggleSection(const std::string& id) {
 }
 void NotebookUiController::nextHypothesis(const NotebookModel& model, int delta) {
     const std::size_t count = model.definitions().hypotheses.size();
-    if (!count) return;
-    hypothesis_index_ = static_cast<std::size_t>((static_cast<int>(hypothesis_index_) + delta + static_cast<int>(count)) %
-                                                 static_cast<int>(count));
+    if (!count)
+        return;
+    hypothesis_index_ = static_cast<std::size_t>(
+        (static_cast<int>(hypothesis_index_) + delta + static_cast<int>(count)) %
+        static_cast<int>(count));
+    closeClassificationSelector();
 }
 
 NotebookScene::NotebookScene(pac::core::EngineContext& ctx,
@@ -450,13 +613,26 @@ NotebookScene::NotebookScene(pac::core::EngineContext& ctx,
     if (!background_.loadFromImage(image)) {
         throw std::runtime_error("notebook: could not create keyed background texture");
     }
+
+    // Honor the panel's initial-tab hint (issue #172): the SCUMM bar's "Cuaderno"
+    // and "Hipótesis" links write this state key before pushing the notebook scene.
+    if (const auto tab = ctx_.state.get("notebook.initial_tab")) {
+        if (const std::string* s = std::get_if<std::string>(&*tab)) {
+            ui_.setTab(*s == "hypotheses" ? NotebookUiController::Tab::Hypotheses
+                                          : NotebookUiController::Tab::Evidence);
+        }
+    }
 }
 
 void NotebookScene::handle_event(const sf::Event& event) {
     const NotebookUi& ui = model_.definitions().ui;
-    if (event.type == sf::Event::KeyReleased && event.key.code == sf::Keyboard::Escape) ui_.requestClose();
-    if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Right) ui_.requestClose();
-    if (event.type == sf::Event::MouseWheelScrolled && ui_.tab() == NotebookUiController::Tab::Evidence) {
+    if (event.type == sf::Event::KeyReleased && event.key.code == sf::Keyboard::Escape)
+        ui_.requestClose();
+    if (event.type == sf::Event::MouseButtonReleased &&
+        event.mouseButton.button == sf::Mouse::Right)
+        ui_.requestClose();
+    if (event.type == sf::Event::MouseWheelScrolled &&
+        ui_.tab() == NotebookUiController::Tab::Evidence) {
         setEvidenceScroll(evidence_scroll_ - event.mouseWheelScroll.delta * 45.0f);
         return;
     }
@@ -469,7 +645,8 @@ void NotebookScene::handle_event(const sf::Event& event) {
         } else if (hit(x, y, ui.hypotheses_tab.hitbox)) {
             hovered_tab_ = NotebookUiController::Tab::Hypotheses;
         }
-        if (!dragging_scrollbar_) return;
+        if (!dragging_scrollbar_)
+            return;
         const NotebookScrollMetrics metrics = evidenceScrollMetrics();
         setEvidenceScroll(metrics.scrollFromThumbTop(y - scrollbar_drag_offset_,
                                                      ui.left_page.y,
@@ -488,7 +665,8 @@ void NotebookScene::handle_event(const sf::Event& event) {
         handleScrollbarPress(static_cast<float>(event.mouseButton.y));
         return;
     }
-    if (event.type != sf::Event::MouseButtonReleased || event.mouseButton.button != sf::Mouse::Left) return;
+    if (event.type != sf::Event::MouseButtonReleased || event.mouseButton.button != sf::Mouse::Left)
+        return;
     if (scrollbar_pressed_) {
         scrollbar_pressed_ = false;
         dragging_scrollbar_ = false;
@@ -496,11 +674,16 @@ void NotebookScene::handle_event(const sf::Event& event) {
     }
     const float x = static_cast<float>(event.mouseButton.x);
     const float y = static_cast<float>(event.mouseButton.y);
-    if (hit(x, y, ui.close.hitbox)) return ui_.requestClose();
-    if (hit(x, y, ui.evidence_tab.hitbox)) return ui_.setTab(NotebookUiController::Tab::Evidence);
-    if (hit(x, y, ui.hypotheses_tab.hitbox)) return ui_.setTab(NotebookUiController::Tab::Hypotheses);
-    if (ui_.tab() == NotebookUiController::Tab::Evidence) handleEvidenceClick(x, y);
-    else handleHypothesisClick(x, y);
+    if (hit(x, y, ui.close.hitbox))
+        return ui_.requestClose();
+    if (hit(x, y, ui.evidence_tab.hitbox))
+        return ui_.setTab(NotebookUiController::Tab::Evidence);
+    if (hit(x, y, ui.hypotheses_tab.hitbox))
+        return ui_.setTab(NotebookUiController::Tab::Hypotheses);
+    if (ui_.tab() == NotebookUiController::Tab::Evidence)
+        handleEvidenceClick(x, y);
+    else
+        handleHypothesisClick(x, y);
 }
 void NotebookScene::update(float) {
     if (ui_.closeRequested() && !close_dispatched_) {
@@ -532,11 +715,13 @@ void NotebookScene::handleScrollbarPress(float y) {
 }
 void NotebookScene::handleEvidenceClick(float x, float y) {
     const NotebookUiRect& page = model_.definitions().ui.left_page;
-    if (!hit(x, y, page)) return;
+    if (!hit(x, y, page))
+        return;
     const EvidenceListLayout layout = evidenceListLayout(model_, ui_);
     for (const EvidenceListRow& row : layout.rows) {
         const float row_y = page.y + row.top - evidence_scroll_;
-        if (!hit(x, y, page.x, row_y, page.width, row.height)) continue;
+        if (!hit(x, y, page.x, row_y, page.width, row.height))
+            continue;
         if (row.kind == EvidenceListRow::Kind::Section) {
             ui_.toggleSection(row.id);
             setEvidenceScroll(evidence_scroll_);
@@ -557,38 +742,59 @@ void NotebookScene::handleHypothesisClick(float x, float y) {
             45.0f,
             45.0f))
         return ui_.nextHypothesis(model_, 1);
-    if (model_.definitions().hypotheses.empty()) return;
+    if (model_.definitions().hypotheses.empty())
+        return;
     const Hypothesis& h = model_.definitions().hypotheses[ui_.hypothesisIndex()];
     float row_y = ui.left_page.y + 45.0f;
     if (h.type == HypothesisTemplate::Classification) {
+        if (!ui_.openClassificationSubject().empty()) {
+            for (const auto& subject : h.subjects) {
+                if (!ui_.classificationSelectorOpen(subject.id)) {
+                    row_y += std::max(kClassificationRowHeight,
+                                      31.0f * static_cast<float>(subject.support_slots) + 8.0f);
+                    continue;
+                }
+                for (std::size_t index = 0; index < subject.options.size(); ++index) {
+                    if (classificationOptionRect(ui, row_y, index).contains(x, y)) {
+                        model_.setClassification(h.id, subject.id, subject.options[index].id);
+                        ui_.closeClassificationSelector();
+                        return;
+                    }
+                }
+                break;
+            }
+            row_y = ui.left_page.y + 45.0f;
+        }
         for (const auto& subject : h.subjects) {
-            float option_x = ui.left_page.x + 245.0f;
-            for (const auto& option : subject.options) {
-                if (hit(x, y, option_x, row_y, 115.0f, 28.0f)) model_.setClassification(h.id, subject.id, option.id);
-                option_x += 125.0f;
+            if (classificationSelectorRect(ui, row_y).contains(x, y)) {
+                ui_.toggleClassificationSelector(subject.id);
+                return;
             }
             for (std::size_t slot = 0; slot < subject.support_slots; ++slot)
                 if (model_.hasClassificationCandidates(h.id, subject.id) &&
-                    hit(x,
-                        y,
-                        ui.right_page.x + 105.0f,
-                        row_y + static_cast<float>(slot) * 31.0f,
-                        std::max(1.0f, ui.right_page.width - 105.0f),
-                        28.0f))
+                    rightPageComboRect(ui, row_y + static_cast<float>(slot) * 31.0f)
+                        .contains(x, y))
                     model_.cycleClassificationSupport(h.id, subject.id, slot);
-            row_y += std::max(55.0f, 31.0f * static_cast<float>(subject.support_slots) + 8.0f);
+            row_y += std::max(kClassificationRowHeight,
+                              31.0f * static_cast<float>(subject.support_slots) + 8.0f);
         }
+        ui_.closeClassificationSelector();
     } else {
         row_y += 34.0f;
         for (const auto& conclusion : h.conclusions) {
-            if (hit(x, y, ui.left_page.x + 65.0f, row_y, std::max(1.0f, ui.left_page.width - 65.0f), 28.0f))
+            if (hit(x,
+                    y,
+                    ui.left_page.x + 65.0f,
+                    row_y,
+                    std::max(1.0f, ui.left_page.width - 65.0f),
+                    28.0f))
                 model_.setConclusion(h.id, conclusion.id);
             row_y += 34.0f;
         }
         row_y += 14.0f;
         for (const auto& premise : h.premises) {
             if (model_.hasArgumentCandidates(h.id, premise.id) &&
-                hit(x, y, ui.right_page.x + 5.0f, row_y, std::max(1.0f, ui.right_page.width - 5.0f), 28.0f))
+                rightPageComboRect(ui, row_y).contains(x, y))
                 model_.cycleArgumentEvidence(h.id, premise.id);
             row_y += 34.0f;
         }
@@ -598,16 +804,20 @@ void NotebookScene::draw(sf::RenderTarget& target) const {
     sf::Sprite bg(background_);
     const auto size = background_.getSize();
     const auto vres = ctx_.display.virtual_resolution();
-    if (size.x && size.y) bg.setScale(static_cast<float>(vres.x) / size.x, static_cast<float>(vres.y) / size.y);
+    if (size.x && size.y)
+        bg.setScale(static_cast<float>(vres.x) / size.x, static_cast<float>(vres.y) / size.y);
     target.draw(bg);
     const NotebookUi& ui = model_.definitions().ui;
     const auto tab_color = [&](NotebookUiController::Tab tab) {
-        if (ui_.tab() == tab) return color(ui.tab_selected);
-        if (hovered_tab_ && *hovered_tab_ == tab) return color(ui.tab_hover);
+        if (ui_.tab() == tab)
+            return color(ui.tab_selected);
+        if (hovered_tab_ && *hovered_tab_ == tab)
+            return color(ui.tab_hover);
         return color(ui.tab_idle);
     };
     text(target,
          font_,
+         ui,
          ui.evidence_tab.label,
          ui.evidence_tab.position.x,
          ui.evidence_tab.position.y,
@@ -615,6 +825,7 @@ void NotebookScene::draw(sf::RenderTarget& target) const {
          tab_color(NotebookUiController::Tab::Evidence));
     text(target,
          font_,
+         ui,
          ui.hypotheses_tab.label,
          ui.hypotheses_tab.position.x,
          ui.hypotheses_tab.position.y,
@@ -622,6 +833,7 @@ void NotebookScene::draw(sf::RenderTarget& target) const {
          tab_color(NotebookUiController::Tab::Hypotheses));
     text(target,
          font_,
+         ui,
          ui.close.label,
          ui.close.position.x,
          ui.close.position.y,

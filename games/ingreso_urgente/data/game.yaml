@@ -26,7 +26,7 @@ settings:
     sfx_volume: 0.8
 
 #entry: title
-entry: notebook
+entry: room_view
 
 development:
   edit_mode: false
@@ -85,9 +85,11 @@ scenes:
       rooms: rooms
       start_room: lab
       player: player
-      #scumm_panel: ui/scumm_panel_default.yml
+      scumm_panel: ui/scumm_panel_default.yml
       font: fonts/DepartureMono-Regular.otf
       logic: scripts/game.lua
+      inventory: inventory/inventory.yaml
+      inventory_logic: inventory/inventory.lua
       pause_menu:
         overlays:
           notebook:
