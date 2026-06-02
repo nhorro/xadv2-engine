@@ -1,6 +1,6 @@
 version: 1
 id: lab_notebook2
-background: closeups/lab_notebook2/background.png
+background: background.png
 background_color: {r: 20, g: 16, b: 12}
 hotspots:
   context_header:

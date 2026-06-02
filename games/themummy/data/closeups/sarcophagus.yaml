@@ -6,7 +6,7 @@ id: sarcophagus_closeup
 
 # Full-screen background. Reuses the cart art; background_color shows through any
 # transparent border when the image is scaled to the virtual resolution.
-background: rooms/b/background/01.png
+background: /rooms/b/background/01.png
 background_color: { r: 20, g: 16, b: 12 }
 
 hotspots:

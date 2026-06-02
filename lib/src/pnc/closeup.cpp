@@ -1,6 +1,7 @@
 #include "engine/pnc/closeup.hpp"
 
 #include "core/load_error_yaml.hpp"
+#include "engine/core/resource_source.hpp"
 #include "engine/pnc/data_error.hpp"
 
 #include <yaml-cpp/yaml.h>
@@ -22,6 +23,30 @@ geom::Point parse_point(const YAML::Node& node) {
     return {node["x"].as<float>(), node["y"].as<float>()};
 }
 
+// Resolve a `background` value against the close-up YAML's location:
+//   - empty logical_path  -> use raw (headless tests)
+//   - leading '/'         -> resources-root-relative (drop the slash)
+//   - otherwise           -> relative to the YAML's directory
+// The result is validated as a logical path.
+std::string
+resolve_background(const std::string& raw, const std::string& logical_path, const YAML::Node& at) {
+    if (logical_path.empty()) {
+        return raw;
+    }
+    std::string resolved;
+    if (!raw.empty() && raw.front() == '/') {
+        resolved = raw.substr(1);
+    } else {
+        resolved = pac::core::logical_join(pac::core::logical_dir(logical_path), raw);
+    }
+    if (!pac::core::is_valid_logical_path(resolved)) {
+        closeup_fail("closeup.background-path-invalid",
+                     "'background: " + raw + "' did not resolve to a valid logical path",
+                     at);
+    }
+    return resolved;
+}
+
 geom::Polygon parse_polygon(const YAML::Node& node) {
     geom::Polygon poly;
     for (const YAML::Node& p : node) {
@@ -41,7 +66,9 @@ const CloseUpHotspot* CloseUpData::hotspot_at(geom::Point p) const {
     return nullptr;
 }
 
-CloseUpData parse_closeup(const std::string& yaml_text, const std::string& expected_id) {
+CloseUpData parse_closeup(const std::string& yaml_text,
+                          const std::string& expected_id,
+                          const std::string& logical_path) {
     YAML::Node root;
     try {
         root = YAML::Load(yaml_text);
@@ -70,7 +97,8 @@ CloseUpData parse_closeup(const std::string& yaml_text, const std::string& expec
                      "close-up '" + data.id + "': a 'background' image is required",
                      root);
     }
-    data.background = root["background"].as<std::string>();
+    data.background =
+        resolve_background(root["background"].as<std::string>(), logical_path, root["background"]);
 
     if (const YAML::Node color = root["background_color"]) {
         data.background_color = sf::Color(color["r"].as<unsigned>(),

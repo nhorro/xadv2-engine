@@ -61,7 +61,7 @@ void CloseUpScene::enter() {
         return;
     }
     try {
-        data_ = parse_closeup(ctx_.resources.read_text(data_path_));
+        data_ = parse_closeup(ctx_.resources.read_text(data_path_), {}, data_path_);
         loaded_ = true;
     } catch (const std::exception& e) {
         ctx_.log.error(std::string("CloseUp: ") + e.what());

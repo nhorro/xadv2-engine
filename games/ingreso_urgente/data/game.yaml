@@ -25,8 +25,8 @@ settings:
     music_volume: 0.8
     sfx_volume: 0.8
 
-#entry: title
-entry: room_view
+entry: title
+#entry: room_view   # dev: boot straight into the room
 
 development:
   edit_mode: false
@@ -111,14 +111,14 @@ scenes:
   - id: act1_intro
     type: Cutscene
     parameters:
-      data: cutscenes/act1_intro.yaml
+      data: cutscenes/act1/intro.yaml
       on_finish: room_view
       font: fonts/DepartureMono-Regular.otf
 
   - id: act1_outro
     type: Cutscene
     parameters:
-      data: cutscenes/act1_outro.yaml
+      data: cutscenes/act1/outro.yaml
       # act2_intro no existe aún, así que volvemos a room_view por ahora
       on_finish: room_view
       font: fonts/DepartureMono-Regular.otf
@@ -127,8 +127,8 @@ scenes:
   - id: window_llamas
     type: CloseUp
     parameters:
-      data: closeups/window_llamas/closeup.yml
-      logic: closeups/window_llamas/logic.lua    # scripted hotspots (talk in steps, set state)
+      data: closeups/lab_window_llamas/closeup.yml
+      logic: closeups/lab_window_llamas/logic.lua    # scripted hotspots (talk in steps, set state)
       cast: cast.yaml                  # speech colours for talk()
       font: fonts/DepartureMono-Regular.otf        
   - id: lab_skull_closeup
