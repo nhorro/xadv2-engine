@@ -406,12 +406,37 @@ TEST_CASE("act I notebook integration scripts compile in embedded Lua") {
     pac::core::Diagnostics log = quiet();
     pac::core::Scripting scripting(log);
     const char* scripts[] = {
-        "games/ingreso_urgente/data/closeups/window_llamas/logic.lua",
+        "games/ingreso_urgente/data/closeups/lab_window_llamas/logic.lua",
         "games/ingreso_urgente/data/closeups/lab_skull/logic.lua",
         "games/ingreso_urgente/data/closeups/lab_chalkboard/logic.lua",
         "games/ingreso_urgente/data/closeups/lab_notebook1/logic.lua",
         "games/ingreso_urgente/data/closeups/lab_notebook2/logic.lua",
         "games/ingreso_urgente/data/dialogs/skull_trauma_cause.lua",
+    };
+    for (const char* logical : scripts) {
+        const std::string path = std::string(PAC_SOURCE_DIR) + "/" + logical;
+        INFO(path);
+        CHECK(scripting.lua().load_file(path).valid());
+    }
+}
+
+TEST_CASE("room scripts and per-act modules compile in embedded Lua") {
+    pac::core::Diagnostics log = quiet();
+    pac::core::Scripting scripting(log);
+    const char* scripts[] = {
+        "games/ingreso_urgente/data/rooms/_act_flow.lua",
+        "games/ingreso_urgente/data/rooms/lab.lua",
+        "games/ingreso_urgente/data/rooms/lab/_act1_intro.lua",
+        "games/ingreso_urgente/data/rooms/lab/_act2_puzzle.lua",
+        "games/ingreso_urgente/data/rooms/lab/_act3_alone.lua",
+        "games/ingreso_urgente/data/rooms/hall.lua",
+        "games/ingreso_urgente/data/rooms/hall/_act1_empty.lua",
+        "games/ingreso_urgente/data/rooms/hall/_act2_box_closed.lua",
+        "games/ingreso_urgente/data/rooms/hall/_act3_mummy.lua",
+        "games/ingreso_urgente/data/rooms/exterior.lua",
+        "games/ingreso_urgente/data/rooms/exterior/_act1_empty.lua",
+        "games/ingreso_urgente/data/rooms/exterior/_act2_delivery.lua",
+        "games/ingreso_urgente/data/rooms/exterior/_act3_box.lua",
     };
     for (const char* logical : scripts) {
         const std::string path = std::string(PAC_SOURCE_DIR) + "/" + logical;
