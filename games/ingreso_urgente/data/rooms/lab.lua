@@ -1,27 +1,32 @@
 -- Lab room behaviour. Static layout lives in lab.yaml.
 --
--- ROOM CONFIGURATIONS (shared convention documented in scripts/game.lua)
--- The lab is shown in one of three configurations, read from the global state
--- key "lab.cfg" and (re)built in on_load by configure():
+-- Per-act split (shared convention in scripts/game.lua, helper rooms/_act_flow.lua):
+-- per-act presence + enter beats live in rooms/lab/_act<N>.lua, dispatched by the
+-- flow helper. Read from the global key "lab.cfg":
 --
---   CFG_INTRO   Julia alone; the opening monologue.
---   CFG_PUZZLE  Julia + Dr. Schneider; the skull-trauma puzzle is active
---               (4 close-ups feed findings, then her dialog tree).
---   CFG_ALONE   Schneider has left; Julia alone again.
+--   CFG_INTRO   1  Julia alone; the opening monologue (act1 on_first_enter).
+--   CFG_PUZZLE  2  Julia + Dr. Schneider; the skull-trauma puzzle is active.
+--   CFG_ALONE   3  Schneider has left; Julia alone again.
 --
--- configure(c) uses only INSTANT calls (spawn/despawn, show/hide) so it is safe
--- to run every load. The STORY BEATS below (intro, arrival, exit) are blocking
--- and must run inside spawn(); each ends by advancing "lab.cfg".
+-- The cross-act TRANSITIONS (schneider_arrives / schneider_leaves) and the shared
+-- pre-puzzle helpers + hotspots stay here; they are not per-act "enter" logic.
 
-local room = {}
+local flow = include("rooms/_act_flow.lua")
 
 local CFG_INTRO = 1
 local CFG_PUZZLE = 2
 local CFG_ALONE = 3
 
+-- 1-based, indexed by "lab.cfg".
+local acts = {
+    include("rooms/lab/_act1_intro.lua"),
+    include("rooms/lab/_act2_puzzle.lua"),
+    include("rooms/lab/_act3_alone.lua"),
+}
+
+local room = {}
+
 local function cfg()
-    -- Story default: Julia starts alone. If you need to dogfood the puzzle,
-    -- temporarily replace CFG_INTRO with CFG_PUZZLE.
     return get_state("lab.cfg") or CFG_INTRO
 end
 
@@ -34,100 +39,17 @@ local function puzzle_enabled()
 end
 
 --------------------------------------------------------------------------------
--- Configuration setup (INSTANT calls only — no wait/talk/move_to here).
--- Exhaustive + idempotent: spawn what belongs, despawn the rest.
---------------------------------------------------------------------------------
-local function configure(c)
-    if c == CFG_PUZZLE then
-        -- Schneider is present for the puzzle. The walk-in animation is the
-        -- schneider_arrives() beat; this is only for restoring an already-set state.
-        spawn_npc("schneider", "schneider_start", "left")
-        set_state("act1.schneider_present", true)
-        set_state("act1.puzzle_enabled", true)
-
-        -- TEMP: seed the puzzle "findings" so the dialog's observation options
-        -- appear before the close-ups set them. Remove this once each close-up
-        -- handler calls set_state("finding.<x>", true).
-        -- set_state("finding.radial_fractures", true)
-        -- set_state("finding.no_cut_marks", true)
-        -- set_state("finding.no_collapse", true)
-        -- set_state("finding.primary_burial", true)
-        -- set_state("finding.heavy_lithic_object", true)
-        -- set_state("finding.perimortem_possible", true)
-    else
-        -- CFG_INTRO and CFG_ALONE: nobody in the lab but Julia (the player).
-        despawn_npc("schneider")
-        if c == CFG_INTRO then
-            set_state("act1.schneider_present", false)
-            set_state("act1.puzzle_enabled", false)
-        end
-    end
-end
-
---------------------------------------------------------------------------------
 -- Story beats / transitions (BLOCKING — always call inside spawn()).
 --------------------------------------------------------------------------------
 
 -- "¡CLICK!" floating over the bluetooth speaker whenever it is toggled on/off.
+-- Global so the act-1 intro beat (rooms/lab/_act1_intro.lua) can reuse it.
 -- Guarded so the scene still runs before engine PR #165 (float_text) is merged +
 -- synced; once it is, drop the `if float_text` guard.
-local function speaker_click()
+function speaker_click()
     if float_text then
         float_text("¡CLICK!", "bluetooth_speaker", { color = { r = 255, g = 230, b = 120 }, duration = 1.2 })
     end
-end
-
--- CFG_INTRO: Julia introduces herself. The player then gets control and must
--- begin examining the La Matilde materials before the window distraction is enabled.
-function intro()
-    block_input()
-
-    avatar("player"):face("left")
-    wait(2)
-    avatar("player"):face("right")
-    wait(2)
-
-    avatar("player"):move_to("player_start")
-    avatar("player"):face("down")
-    wait(2)
-
-    talk("player", "Ah. Hola.")
-    talk("player", "No esperaba que ya hubiera alguien mirando.")
-    talk("player", "Soy Julia. Becaria nueva del Instituto Arqueológico Serra Ventana.")
-    talk("player", "Hoy empiezo con tareas de clasificación bajo supervisión de la Dra. Schneider.")
-    talk("player", "Me dijeron que es estricta.")
-    talk("player", "Después me aclararon que 'estricta' era una forma amable de decirlo.")
-    talk("player", "Así que debería estar trabajando.")
-
-    talk("player",
-        "Pero por esa ventana a veces se ven llamas. Y alpacas. Y otros animales que en la ciudad no suelen circular con tanta libertad institucional.")
-
-    talk("player",
-        "Además tengo una facilidad bastante desarrollada para distraerme de mis obligaciones.")
-
-    talk("player", "A las que debería volver.")
-    talk("player", "O empezar.")
-    talk("player", "Porque, técnicamente, todavía no produje nada defendible ante una comisión evaluadora.")
-
-    avatar("player"):move_to("at_desk")
-    avatar("player"):face("up")
-    talk("player", "Para clasificar restos arqueológicos necesito música.")
-    talk("player", "No sé si es metodológicamente válido, pero mejora mi predisposición laboral.")
-
-    speaker_click() -- enciende el parlante
-    play_music("music/seretuarqueologo.mp3")
-    wait(2)
-
-    avatar("player"):face("down")
-    wait(1)
-
-    avatar("player"):move_to("at_skull_bones")
-    avatar("player"):face("up")
-    talk("player", "Bien. La Matilde. Unidad 7B. Capa 3. Entierro 1.")
-    talk("player", "Tengo que preparar un informe preliminar antes de que la Dra. Schneider descubra que todavía no empecé.")
-
-    set_state("lab.julia_intro_seen", true)
-    unblock_input()
 end
 
 -- CFG_PUZZLE: Dr. Schneider walks in from the door and stays for the puzzle.
@@ -194,13 +116,12 @@ end
 
 --------------------------------------------------------------------------------
 function room.on_load()
-    configure(cfg())
+    -- Per-act presence + first-enter / re-enter beat (act1's intro is its
+    -- on_first_enter, gated by the flow's "lab.act1.seen").
+    flow.enter("lab", acts)
 
-    if cfg() == CFG_INTRO and not get_state("lab.julia_intro_seen") then
-         spawn(function() intro() end)
-    end
-
-    -- Arm while Julia is alone, or when the cue was persisted before reload.
+    -- Arm the Schneider arrival watcher while Julia is alone, or when the cue was
+    -- persisted before reload.
     if cfg() == CFG_INTRO or get_state("lab.schneider_cue") then
         arm_schneider_cue()
     end
@@ -208,14 +129,8 @@ end
 
 function room.on_unload() end
 
--- room.on_zone_enter = function(zone)
---   if zone == "to_hall" then
---     change_room("hall", "from_study")
---   end
--- end
-
 --------------------------------------------------------------------------------
--- Pre-puzzle transition helpers
+-- Pre-puzzle transition helpers (shared by the hotspots below).
 --------------------------------------------------------------------------------
 
 local function mark_context_glanced()
@@ -273,10 +188,10 @@ end
 room.hotspots = {
     window = {
         look_at = function()
-            maybe_open_window()            
+            maybe_open_window()
         end,
         use = function()
-            maybe_open_window()            
+            maybe_open_window()
         end,
     },
 
@@ -299,7 +214,7 @@ room.hotspots = {
     },
 
     skull_bones = {
-        look_at = function()            
+        look_at = function()
             if not puzzle_enabled() then
                 talk("player", "Bien. La Matilde. Entierro 1.")
                 talk("player", "Cráneo con lesión visible, fragmentos asociados y una cantidad de silencio bastante poco colaborativa.")
@@ -307,14 +222,14 @@ room.hotspots = {
                 set_state("act1.bones_glanced", true)
             else
                 open_closeup("lab_skull_closeup")
-            end            
+            end
         end,
         use = function()
             if not puzzle_enabled() then
                 talk("player", "No. Manipular evidencia antes de revisar el contexto es una forma bastante rápida de dejar de ser becaria.")
             else
                 talk("player", "Mejor observar antes de tocar. Sobre todo si Schneider está mirando.")
-            end            
+            end
         end,
     },
 
@@ -327,7 +242,6 @@ room.hotspots = {
             else
                 open_closeup("lab_chalkboard")
             end
-            
         end,
         use = function()
             if not puzzle_enabled() then
@@ -336,7 +250,6 @@ room.hotspots = {
             else
                 open_closeup("lab_chalkboard")
             end
-            
         end,
     },
 
@@ -349,7 +262,6 @@ room.hotspots = {
             else
                 open_closeup("lab_notebook1")
             end
-            
         end,
         use = function()
             if not puzzle_enabled() then
@@ -358,7 +270,6 @@ room.hotspots = {
             else
                 open_closeup("lab_notebook1")
             end
-            
         end,
     },
 
@@ -371,7 +282,6 @@ room.hotspots = {
             else
                 open_closeup("lab_notebook2")
             end
-            
         end,
         use = function()
             if not puzzle_enabled() then
@@ -380,7 +290,6 @@ room.hotspots = {
             else
                 open_closeup("lab_notebook2")
             end
-            
         end,
     },
 
@@ -397,9 +306,8 @@ room.hotspots = {
             if not schneider_present() then
                 talk("player", "Todavía no. Primero debería producir algo que pueda sobrevivir a una pregunta de Schneider.")
             else
-            start_dialog("skull_trauma_cause", "schneider")
+                start_dialog("skull_trauma_cause", "schneider")
             end
-            
         end,
     },
 
@@ -410,24 +318,21 @@ room.hotspots = {
         use = function()
             -- play_sound("sfx/door_open.ogg")
             change_room("hall", "from_lab")
-
         end,
     },
 
-    
     computer = {
         look_at = function()
             return "La computadora de escritorio. No tiene acceso a internet, pero al menos no es un dinosaurio."
         end,
 
         use = function()
-            
             if not get_state("case.schneider_dialog_done") then
-                 return "Primero tengo que poder defender la hipótesis."
+                return "Primero tengo que poder defender la hipótesis."
             end
 
             -- Preparar el informe en la compu cierra el Acto 1
-            start_cutscene("act1_outro")            
+            start_cutscene("act1_outro")
         end,
     },
 }

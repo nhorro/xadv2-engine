@@ -1,49 +1,40 @@
 -- Hall room behaviour. Static layout lives in hall.yaml.
 --
--- ROOM CONFIGURATIONS (shared convention documented in scripts/game.lua)
--- Read from the global state key "hall.cfg", rebuilt in on_load by configure():
+-- Per-act split (shared convention in scripts/game.lua, helper rooms/_act_flow.lua):
+-- per-act presence lives in rooms/hall/_act<N>.lua, dispatched by the flow helper.
+-- Read from the global key "hall.cfg":
 --
---   CFG_EMPTY       Nobody, nothing.
---   CFG_BOX_CLOSED  The closed box sits in the hall (moved in from outside).
---   CFG_MUMMY       The mummy — it was inside the box.
+--   CFG_EMPTY       1  Nobody, nothing.
+--   CFG_BOX_CLOSED  2  The closed box sits in the hall (carried in from outside).
+--   CFG_MUMMY       3  The mummy — it was inside the box.
 --
--- Extra actors (e.g. Dr. Schneider coming to inspect) combine freely with the
--- box/mummy: spawn/despawn them inside the story beats, between cutscenes.
---
--- REQUIRED YAML CHANGES (hall.yaml) before the show/hide + spawn calls work:
---   * Add a `box` object (and an "open box" variant or a `mummy` — object or
---     spawned NPC) under `objects:`.
---   * If `mummy` is a spawned NPC, add its cast entry + an npc-bound hotspot;
---     add the room points the beats move actors to (e.g. at_mummy).
+-- Extra actors (e.g. Dr. Schneider inspecting) combine freely with the box/mummy:
+-- spawn/despawn them inside the story beats, between cutscenes.
 
-local room = {}
+local flow = include("rooms/_act_flow.lua")
 
 local CFG_EMPTY = 1
 local CFG_BOX_CLOSED = 2
 local CFG_MUMMY = 3
 
-local function cfg()
-    return get_state("hall.cfg") or CFG_EMPTY
+-- 1-based, indexed by "hall.cfg".
+local acts = {
+    include("rooms/hall/_act1_empty.lua"),
+    include("rooms/hall/_act2_box_closed.lua"),
+    include("rooms/hall/_act3_mummy.lua"),
+}
+
+local room = {}
+
+function room.on_load()
+    flow.enter("hall", acts)
 end
 
---------------------------------------------------------------------------------
--- Configuration setup (INSTANT calls only). Exhaustive + idempotent.
---------------------------------------------------------------------------------
-local function configure(c)
-    if c == CFG_BOX_CLOSED then
-        show_object("box")
-        -- despawn_npc("mummy")
-    elseif c == CFG_MUMMY then
-        hide_object("box") -- or swap to an "open box" object / region state
-        -- spawn_npc("mummy", "at_mummy", "down")
-    else -- CFG_EMPTY
-        hide_object("box")
-        -- despawn_npc("mummy")
-    end
-end
+function room.on_unload() end
 
 --------------------------------------------------------------------------------
--- Story beats (BLOCKING — run inside spawn()).
+-- Transitions between acts (BLOCKING, global so cutscenes/other rooms can drive
+-- them). Advance "hall.cfg", then rebuild presence with flow.configure (INSTANT).
 --------------------------------------------------------------------------------
 
 -- The box is carried in from the exterior: EMPTY -> BOX_CLOSED.
@@ -51,7 +42,7 @@ function box_arrives()
     block_input()
     -- show_text("Trasladaron la caja al pasillo del instituto.")
     set_state("hall.cfg", CFG_BOX_CLOSED)
-    configure(CFG_BOX_CLOSED)
+    flow.configure("hall", acts)
     unblock_input()
 end
 
@@ -60,7 +51,7 @@ function mummy_revealed()
     block_input()
     -- show_text("La caja se abrió sola. Adentro había una momia.")
     set_state("hall.cfg", CFG_MUMMY)
-    configure(CFG_MUMMY)
+    flow.configure("hall", acts)
     unblock_input()
 end
 
@@ -78,18 +69,6 @@ function schneider_inspects_mummy()
 end
 
 --------------------------------------------------------------------------------
-function room.on_load()
-    configure(cfg())
-end
-
-function room.on_unload() end
-
--- room.on_zone_enter = function(zone)
---   if zone == "to_hall" then
---     change_room("hall", "from_study")
---   end
--- end
-
 room.hotspots = {
     lab_door = {
         look_at = function()
@@ -113,7 +92,7 @@ room.hotspots = {
     -- Once a `box` / `mummy` object (or npc) exists, add handlers here:
     -- box = {
     --   look_at = function() return "La caja del envío urgente, todavía cerrada." end,
-    --   open    = function() mummy_revealed(); return "" end,
+    --   use     = function() mummy_revealed(); return "" end,
     -- },
     -- mummy = {
     --   look_at = function() return "Una momia. Definitivamente no estaba en el inventario." end,
