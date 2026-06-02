@@ -61,7 +61,13 @@ public:
     /// Save-thumbnail capture (issue #119) is only meaningful while the room
     /// shows uncluttered gameplay — the COMMAND state. DIALOG / MENU / BLOCKED
     /// frames carry overlays the player wouldn't want immortalized in a save.
-    bool wants_thumbnail() const override { return view_state_ == ViewState::COMMAND; }
+    /// Also skip while a change_room fade is on screen: the autosave fires at the
+    /// end of the fade-out, so capturing during it would darken the thumbnail
+    /// (the fade is a black quad over everything). Gating on a clear screen keeps
+    /// `ctx.thumbnail` on the last non-faded gameplay frame.
+    bool wants_thumbnail() const override {
+        return view_state_ == ViewState::COMMAND && room_fade_.alpha255() == 0;
+    }
 
     // --- genre Lua API targets (invoked by the bound script globals) ---
     void api_change_room(const std::string& id, const std::string& entry_point);
