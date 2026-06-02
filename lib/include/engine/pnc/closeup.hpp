@@ -24,7 +24,7 @@ struct CloseUpHotspot {
 struct CloseUpData {
     int version = 1;
     std::string id;
-    std::string background; // full-screen background image (logical path)
+    std::string background; // full-screen background image (resolved logical path)
     sf::Color background_color = sf::Color::Black;
     std::vector<CloseUpHotspot> hotspots;
 
@@ -36,6 +36,14 @@ struct CloseUpData {
 /// `closeup-loader`) on malformed input. When `expected_id` is non-empty it must
 /// match the YAML `id` (the filename-vs-id check); pass it empty to skip (e.g.
 /// headless tests feeding raw text).
-CloseUpData parse_closeup(const std::string& yaml_text, const std::string& expected_id = {});
+///
+/// `background` resolves relative to `logical_path`'s directory (the close-up YAML
+/// file), so a co-located image is just `background: background.png`. A leading
+/// `/` makes it resources-root-relative instead (`/rooms/b/bg.png`), for sharing
+/// an asset from another directory. When `logical_path` is empty the value is used
+/// verbatim (back-compat for headless tests).
+CloseUpData parse_closeup(const std::string& yaml_text,
+                          const std::string& expected_id = {},
+                          const std::string& logical_path = {});
 
 } // namespace pac::pnc

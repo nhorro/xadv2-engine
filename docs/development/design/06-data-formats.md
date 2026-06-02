@@ -557,7 +557,7 @@ level:
 |-------|-----|------|---------|---------|
 | `version` | opt | int | `1` | Format version. |
 | `id` | req | string | — | Stable close-up id. |
-| `background` | req | path | — | Full-screen background image (scaled to the virtual resolution). |
+| `background` | req | path | — | Full-screen background image (scaled to the virtual resolution). Resolved **relative to this YAML file's directory** (a co-located image is just `background.png`); a leading `/` makes it resources-root-relative (`/rooms/b/bg.png`) for sharing an asset from elsewhere. |
 | `background_color` | opt | `{r, g, b, a?}` | black | Fill shown behind a transparent background. |
 | `hotspots` | opt | map | — | Examinable regions (see below). |
 
