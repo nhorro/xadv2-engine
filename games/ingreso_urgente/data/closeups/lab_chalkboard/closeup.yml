@@ -1,6 +1,6 @@
 version: 1
 id: lab_chalkboard
-background: closeups/lab_chalkboard/background.png
+background: background.png
 background_color: {r: 20, g: 16, b: 12}
 hotspots:
   board_title:
