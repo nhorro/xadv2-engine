@@ -5,6 +5,9 @@ function M.configure(c)
     spawn_npc("delivery_guy", "delivery_guy_start", "down")
     show_object("truck")
     show_object("box")
+    -- Truck + box now block the floor.
+    enable_obstacle("box_block")
+    enable_obstacle("truck_block")
 end
 
 -- First time the player sees the delivery: the guy hails them.

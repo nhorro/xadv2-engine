@@ -1,8 +1,8 @@
 -- Hall room behaviour. Static layout lives in hall.yaml.
 --
--- Per-act split (shared convention in scripts/game.lua, helper rooms/_act_flow.lua):
--- per-act presence lives in rooms/hall/_act<N>.lua, dispatched by the flow helper.
--- Read from the global key "hall.cfg":
+-- Per-configuration split (convention in scripts/game.lua, helper
+-- rooms/_room_flow.lua): each config's presence lives in
+-- rooms/hall/<act>/<role>.lua, dispatched by the flow helper. Read "hall.cfg":
 --
 --   CFG_EMPTY       1  Nobody, nothing.
 --   CFG_BOX_CLOSED  2  The closed box sits in the hall (carried in from outside).
@@ -11,29 +11,29 @@
 -- Extra actors (e.g. Dr. Schneider inspecting) combine freely with the box/mummy:
 -- spawn/despawn them inside the story beats, between cutscenes.
 
-local flow = include("rooms/_act_flow.lua")
+local flow = include("rooms/_room_flow.lua")
 
 local CFG_EMPTY = 1
 local CFG_BOX_CLOSED = 2
 local CFG_MUMMY = 3
 
 -- 1-based, indexed by "hall.cfg".
-local acts = {
-    include("rooms/hall/_act1_empty.lua"),
-    include("rooms/hall/_act2_box_closed.lua"),
-    include("rooms/hall/_act3_mummy.lua"),
+local configs = {
+    include("rooms/hall/act1/empty.lua"),
+    include("rooms/hall/act1/box_closed.lua"),
+    include("rooms/hall/act1/mummy.lua"),
 }
 
 local room = {}
 
 function room.on_load()
-    flow.enter("hall", acts)
+    flow.enter("hall", configs)
 end
 
 function room.on_unload() end
 
 --------------------------------------------------------------------------------
--- Transitions between acts (BLOCKING, global so cutscenes/other rooms can drive
+-- Transitions between configs (BLOCKING, global so cutscenes/other rooms can drive
 -- them). Advance "hall.cfg", then rebuild presence with flow.configure (INSTANT).
 --------------------------------------------------------------------------------
 
@@ -42,7 +42,7 @@ function box_arrives()
     block_input()
     -- show_text("Trasladaron la caja al pasillo del instituto.")
     set_state("hall.cfg", CFG_BOX_CLOSED)
-    flow.configure("hall", acts)
+    flow.configure("hall", configs)
     unblock_input()
 end
 
@@ -51,7 +51,7 @@ function mummy_revealed()
     block_input()
     -- show_text("La caja se abrió sola. Adentro había una momia.")
     set_state("hall.cfg", CFG_MUMMY)
-    flow.configure("hall", acts)
+    flow.configure("hall", configs)
     unblock_input()
 end
 
