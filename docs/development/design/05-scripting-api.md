@@ -642,9 +642,29 @@ as `start_dialog` and command execution, which manage room-view state automatica
 | Function | Parameters | Returns | Meaning |
 |----------|------------|---------|---------|
 | `resource_path(rel)` | logical path | logical resource id | Normalize or validate a logical resource path. |
+| `include(logical)` | logical path | the script's return value (or nil) | Load + run a Lua resource in the shared state and return its value. |
 
 `resource_path` does not return a platform filesystem path. It returns a logical
 resource id suitable for the engine resource layer.
+
+`include` lets a script be split across files — the sandbox has no `require`, and
+`dofile` would bypass the resource layer (and the release `.pak`). It runs the
+file every call (no caching) and returns whatever the file `return`s, so a module
+can expose a table:
+
+```lua
+-- rooms/lab.lua
+local flow = include("rooms/_act_flow.lua")
+local acts = { include("rooms/lab/_act1.lua"), include("rooms/lab/_act2.lua") }
+function room.on_load() flow.enter("lab", acts) end
+```
+
+This is the basis of the **per-act room convention**: split a room whose behaviour
+changes per act into one module per act (`configure` for instant presence,
+`on_first_enter` / `on_reenter` for one-time vs returning beats), dispatched by the
+shared `rooms/_act_flow.lua` helper. A copy-paste template lives under
+`games/<game>/design_files/templates/room_acts/`, with `rooms/exterior.lua` as the
+worked example.
 
 ## Error handling
 

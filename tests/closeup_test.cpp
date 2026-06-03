@@ -46,6 +46,22 @@ TEST_CASE("parse_closeup reads background and hotspots with actions") {
     CHECK(c.hotspot_at({500.0f, 500.0f}) == nullptr);
 }
 
+TEST_CASE("parse_closeup resolves background relative to the close-up YAML path") {
+    const char* yaml = "id: lab_chalkboard\nbackground: background.png\n";
+    // Co-located: relative to the YAML's directory.
+    CHECK(parse_closeup(yaml, {}, "closeups/lab_chalkboard/closeup.yml").background ==
+          "closeups/lab_chalkboard/background.png");
+    // Leading '/' escapes to a resources-root-relative path (shared asset).
+    CHECK(parse_closeup("id: x\nbackground: /rooms/b/bg.png\n", {}, "closeups/x/closeup.yml")
+              .background == "rooms/b/bg.png");
+    // No logical_path -> verbatim (headless tests).
+    CHECK(parse_closeup(yaml).background == "background.png");
+    // A path that can't resolve to a valid logical path is rejected.
+    CHECK(error_code([] {
+              parse_closeup("id: x\nbackground: ../escape.png\n", {}, "closeups/x/closeup.yml");
+          }) == "closeup.background-path-invalid");
+}
+
 TEST_CASE("parse_closeup enforces id/background and hotspot geometry with stable codes") {
     CHECK(error_code([] { parse_closeup("background: a.png\n"); }) == "closeup.id-missing");
     CHECK(error_code([] { parse_closeup("id: x\n"); }) == "closeup.background-missing");
