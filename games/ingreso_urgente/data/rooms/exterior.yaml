@@ -29,9 +29,12 @@ avatars:
   start: player_start
   orientation: down
   player: true
+# Named so configure() in exterior.lua can toggle them with the box/truck per act
+# (#143). Start disabled: CFG_EMPTY has nothing on the floor, so the walking area
+# is fully clear until the delivery shows up.
 obstacles:
-- [{x: 367, y: 390}, {x: 365, y: 354}, {x: 460, y: 354}, {x: 461, y: 390}]
-- [{x: 739, y: 490}, {x: 740, y: 469}, {x: 1235, y: 466}, {x: 1244, y: 485}]
+- { id: box_block,   enabled: false, area: [{x: 367, y: 390}, {x: 365, y: 354}, {x: 460, y: 354}, {x: 461, y: 390}] }
+- { id: truck_block, enabled: false, area: [{x: 739, y: 490}, {x: 740, y: 469}, {x: 1235, y: 466}, {x: 1244, y: 485}] }
 zones: []
 regions: {}
 

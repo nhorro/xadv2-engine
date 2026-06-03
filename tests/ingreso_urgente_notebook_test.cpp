@@ -424,19 +424,19 @@ TEST_CASE("room scripts and per-act modules compile in embedded Lua") {
     pac::core::Diagnostics log = quiet();
     pac::core::Scripting scripting(log);
     const char* scripts[] = {
-        "games/ingreso_urgente/data/rooms/_act_flow.lua",
+        "games/ingreso_urgente/data/rooms/_room_flow.lua",
         "games/ingreso_urgente/data/rooms/lab.lua",
-        "games/ingreso_urgente/data/rooms/lab/_act1_intro.lua",
-        "games/ingreso_urgente/data/rooms/lab/_act2_puzzle.lua",
-        "games/ingreso_urgente/data/rooms/lab/_act3_alone.lua",
+        "games/ingreso_urgente/data/rooms/lab/act1/intro.lua",
+        "games/ingreso_urgente/data/rooms/lab/act1/puzzle.lua",
+        "games/ingreso_urgente/data/rooms/lab/act1/alone.lua",
         "games/ingreso_urgente/data/rooms/hall.lua",
-        "games/ingreso_urgente/data/rooms/hall/_act1_empty.lua",
-        "games/ingreso_urgente/data/rooms/hall/_act2_box_closed.lua",
-        "games/ingreso_urgente/data/rooms/hall/_act3_mummy.lua",
+        "games/ingreso_urgente/data/rooms/hall/act1/empty.lua",
+        "games/ingreso_urgente/data/rooms/hall/act1/box_closed.lua",
+        "games/ingreso_urgente/data/rooms/hall/act1/mummy.lua",
         "games/ingreso_urgente/data/rooms/exterior.lua",
-        "games/ingreso_urgente/data/rooms/exterior/_act1_empty.lua",
-        "games/ingreso_urgente/data/rooms/exterior/_act2_delivery.lua",
-        "games/ingreso_urgente/data/rooms/exterior/_act3_box.lua",
+        "games/ingreso_urgente/data/rooms/exterior/act1/empty.lua",
+        "games/ingreso_urgente/data/rooms/exterior/act1/delivery.lua",
+        "games/ingreso_urgente/data/rooms/exterior/act1/box.lua",
     };
     for (const char* logical : scripts) {
         const std::string path = std::string(PAC_SOURCE_DIR) + "/" + logical;

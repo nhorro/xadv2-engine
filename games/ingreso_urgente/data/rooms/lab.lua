@@ -1,27 +1,29 @@
 -- Lab room behaviour. Static layout lives in lab.yaml.
 --
--- Per-act split (shared convention in scripts/game.lua, helper rooms/_act_flow.lua):
--- per-act presence + enter beats live in rooms/lab/_act<N>.lua, dispatched by the
--- flow helper. Read from the global key "lab.cfg":
+-- Per-configuration split (convention in scripts/game.lua, helper
+-- rooms/_room_flow.lua): each config's presence + enter beats live in
+-- rooms/lab/<act>/<role>.lua, dispatched by the flow helper. Read from "lab.cfg".
 --
---   CFG_INTRO   1  Julia alone; the opening monologue (act1 on_first_enter).
+-- ACT 1 configs:
+--   CFG_INTRO   1  Julia alone; the opening monologue (config on_first_enter).
 --   CFG_PUZZLE  2  Julia + Dr. Schneider; the skull-trauma puzzle is active.
 --   CFG_ALONE   3  Schneider has left; Julia alone again.
+-- Acts 2/3 will append more configs (4, 5, ...) under rooms/lab/act2/, etc.
 --
--- The cross-act TRANSITIONS (schneider_arrives / schneider_leaves) and the shared
--- pre-puzzle helpers + hotspots stay here; they are not per-act "enter" logic.
+-- The cross-config TRANSITIONS (schneider_arrives / schneider_leaves) and the
+-- shared pre-puzzle helpers + hotspots stay here; they are not per-config setup.
 
-local flow = include("rooms/_act_flow.lua")
+local flow = include("rooms/_room_flow.lua")
 
 local CFG_INTRO = 1
 local CFG_PUZZLE = 2
 local CFG_ALONE = 3
 
 -- 1-based, indexed by "lab.cfg".
-local acts = {
-    include("rooms/lab/_act1_intro.lua"),
-    include("rooms/lab/_act2_puzzle.lua"),
-    include("rooms/lab/_act3_alone.lua"),
+local configs = {
+    include("rooms/lab/act1/intro.lua"),
+    include("rooms/lab/act1/puzzle.lua"),
+    include("rooms/lab/act1/alone.lua"),
 }
 
 local room = {}
@@ -43,13 +45,11 @@ end
 --------------------------------------------------------------------------------
 
 -- "¡CLICK!" floating over the bluetooth speaker whenever it is toggled on/off.
--- Global so the act-1 intro beat (rooms/lab/_act1_intro.lua) can reuse it.
+-- Global so the INTRO config's intro beat (rooms/lab/act1/intro.lua) can reuse it.
 -- Guarded so the scene still runs before engine PR #165 (float_text) is merged +
 -- synced; once it is, drop the `if float_text` guard.
 function speaker_click()
-    if float_text then
-        float_text("¡CLICK!", "bluetooth_speaker", { color = { r = 255, g = 230, b = 120 }, duration = 1.2 })
-    end
+    float_text("¡CLICK!", "bluetooth_speaker", { color = { r = 255, g = 230, b = 120 }, duration = 1.2 })    
 end
 
 -- CFG_PUZZLE: Dr. Schneider walks in from the door and stays for the puzzle.
@@ -116,9 +116,9 @@ end
 
 --------------------------------------------------------------------------------
 function room.on_load()
-    -- Per-act presence + first-enter / re-enter beat (act1's intro is its
-    -- on_first_enter, gated by the flow's "lab.act1.seen").
-    flow.enter("lab", acts)
+    -- Per-config presence + first-enter / re-enter beat (the INTRO config's intro
+    -- is its on_first_enter, gated by the flow's "lab.cfg1.seen").
+    flow.enter("lab", configs)
 
     -- Arm the Schneider arrival watcher while Julia is alone, or when the cue was
     -- persisted before reload.
