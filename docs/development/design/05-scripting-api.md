@@ -177,11 +177,42 @@ return room
 
 | Hook | Called when |
 |------|-------------|
-| `on_load()` | Room has been loaded and initialized. |
-| `on_unload()` | Room is about to be unloaded. |
+| `on_load()` | The room has been (re)loaded and initialized — runs on **every entry** (see below). |
+| `on_unload()` | The room is about to be unloaded (on leaving it, and on hot-reload). |
 | `on_screen_edge(edge)` | Player reaches a room screen edge (`left`/`right`/`top`/`bottom`); all four fire. |
 | `on_zone_enter(zone)` | Player enters a zone polygon. |
 | `on_zone_exit(zone)` | Player exits a zone polygon. |
+
+**`on_load` is the per-entry hook (there is no separate `on_enter`).** Every
+`change_room` into a room — and a save restore — *re-runs the room's `.lua` from
+scratch* (rebuilding its `room` table) and then calls `on_load()`. So:
+
+- it fires **each time the player enters**, not once per game;
+- it takes **no arguments** — the `change_room(id, entry_point)` entry point is
+  used by the engine to seat the player, but is not passed to `on_load`;
+- a room's Lua **locals and closures are transient** — they are rebuilt on every
+  entry and never saved. Persist facts only through `set_state` / `set_room_state`
+  / inventory / region state (see *State and persistence* below). To distinguish a
+  first visit from a return, gate on a saved flag (the per-configuration room
+  helper `rooms/_room_flow.lua` does exactly this).
+
+#### `game.on_start()` — one-time world-state init
+
+`game.lua`'s optional `on_start()` runs **once, only when a new game begins**
+(driven by `RoomScene`, before the start room's `on_load`). It is **skipped on
+Continue / Load** so it never clobbers a restored save. Seed initial `set_state`
+values here; see *Global game logic*.
+
+#### State and persistence
+
+Persistent state is the engine-owned **`GameState`** — a single struct that is the
+only thing a save serializes: the current scene/room, player pose, inventory, the
+flat `set_state`/`get_state` map (`global_state`), per-room state, and per-room
+region / hotspot / object / layer / obstacle flags. There is **no per-scene
+`save()`/`restore()`**: `RoomScene` materializes the whole `GameState` snapshot and
+applies a restore (the MVP saves only while in `RoomScene`). Authors never touch
+`GameState` directly — they write through `set_state` / `set_room_state` /
+inventory / region APIs, and the engine folds those into the snapshot.
 
 ### Hotspot handler signatures
 
@@ -654,17 +685,19 @@ can expose a table:
 
 ```lua
 -- rooms/lab.lua
-local flow = include("rooms/_act_flow.lua")
-local acts = { include("rooms/lab/_act1.lua"), include("rooms/lab/_act2.lua") }
-function room.on_load() flow.enter("lab", acts) end
+local flow = include("rooms/_room_flow.lua")
+local configs = { include("rooms/lab/act1/intro.lua"), include("rooms/lab/act1/puzzle.lua") }
+function room.on_load() flow.enter("lab", configs) end
 ```
 
-This is the basis of the **per-act room convention**: split a room whose behaviour
-changes per act into one module per act (`configure` for instant presence,
-`on_first_enter` / `on_reenter` for one-time vs returning beats), dispatched by the
-shared `rooms/_act_flow.lua` helper. A copy-paste template lives under
-`games/<game>/design_files/templates/room_acts/`, with `rooms/exterior.lua` as the
-worked example.
+This is the basis of the **per-configuration room convention**: a room is shown in
+one of several configurations (the `<room>.cfg` integer; a story act just appends
+more). Split each config into its own module (`configure` for instant presence,
+`on_first_enter` / `on_reenter` for one-time vs returning beats), grouped by act in
+subdirs (`rooms/<room>/act1/<role>.lua`), dispatched by the shared
+`rooms/_room_flow.lua` helper. Hotspots stay centralized in the room entry. A
+copy-paste template lives under `games/<game>/design_files/templates/room_configs/`,
+with `rooms/lab.lua` as the worked example.
 
 ## Error handling
 
