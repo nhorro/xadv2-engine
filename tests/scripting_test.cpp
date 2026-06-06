@@ -311,6 +311,66 @@ end)
     CHECK(s.run_string("assert(survives == false)"));
 }
 
+// M9 #186: `on_room_resume(fn)` hands a beat from a close-up back to its room —
+// the close-up runs while the room is frozen beneath the overlay, so it cannot
+// play blocking choreography itself. The load-bearing guarantee is lifetime:
+// RoomScene captures `fn` as a sol::function while the close-up scope is live;
+// the close-up then leaves and its scope is cancelled; the beat must still fire
+// later, spawned (via the same spawn_call seam as #183) in the ROOM scope. Scope
+// cancellation reaps running tasks, not Lua values, so a registry-anchored
+// function and the upvalues it closed over survive — even under GC pressure (the
+// live_threads anchor, PR #171). The RoomScene fire gate that calls this is
+// exercised by the sample game; here we characterize the scripting-level contract.
+TEST_CASE("on_room_resume: a beat captured in a cancelled scope still fires in the room scope") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    sol::state& L = s.lua();
+
+    // Stand in for RoomScene::Lua::pending_resume — the C++-side anchor that keeps
+    // the handed-back beat alive across the close-up teardown.
+    sol::function pending;
+
+    // Inside the close-up scope, register a beat. It closes over a close-up local
+    // (the strongest lifetime case) and blocks (wait), like a real arrival beat.
+    const ScopeId closeup = s.open_scope();
+    s.set_current_scope(closeup);
+    L.script("fired = 0");
+    pending = L.script(R"LUA(
+local captured = 41 -- a close-up upvalue the beat closes over
+return function()
+  wait(0.25)
+  fired = captured + 1
+end
+)LUA")
+                  .get<sol::function>();
+    s.set_current_scope(s.global_scope());
+
+    // The close-up leaves: cancel its scope (CloseUpScene::leave), then churn GC.
+    s.cancel_scope(closeup);
+    CHECK(s.active_task_count(closeup) == 0);
+    for (int i = 0; i < 5; ++i) {
+        L["collectgarbage"]("collect");
+    }
+
+    // Back in the live, ticking room: fire the pending beat in the ROOM scope,
+    // exactly as RoomScene::update does once the close-up has popped.
+    const ScopeId room = s.open_scope();
+    s.set_current_scope(room);
+    const auto call = spawn_call(s, pending);
+    s.set_current_scope(s.global_scope());
+    CHECK_FALSE(call.done);                // it yielded on wait(0.25)
+    CHECK(s.is_task_alive(call.task_id));  // survived the close-up teardown + GC
+    CHECK(s.active_task_count(room) == 1); // and lives in the room scope, not the dead one
+
+    // Drain it under continued GC pressure.
+    for (int i = 0; i < 100 && s.is_task_alive(call.task_id); ++i) {
+        L["collectgarbage"]("collect");
+        s.update(0.016f);
+    }
+    CHECK_FALSE(s.is_task_alive(call.task_id));
+    CHECK(s.run_string("assert(fired == 42, 'got ' .. fired)"));
+}
+
 // M9 #183 / PR #171: a flood of auto-spawned handlers that each yield once must
 // not crash under GC pressure. The scheduler's `live_threads` anchor keeps each
 // fresh task's lua thread alive through the spawn/resume churn, and the

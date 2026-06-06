@@ -465,6 +465,17 @@ room's `.yaml` + `.lua`.
   `show_object`/`hide_object`, etc. This is the supported animation workaround (an NPC
   enters/leaves "off-screen"). Blocking room moves (`avatar(id):move_to`) are **not**
   available here — the room is not ticking, so they would never finish.
+- **Deferring a blocking room beat — `on_room_resume(fn)` (M9 #186).** When backing
+  out should play a *blocking* beat (Schneider walks in and speaks), the close-up
+  cannot run it (the room is frozen) and a hand-rolled "leave a flag, poll for it in
+  the room" watcher is the kind of plumbing a screenplay shouldn't carry. Instead the
+  close-up hands the beat back: `on_room_resume(fn)` registers `fn` against the room
+  beneath, and the engine runs it the moment that room is the live, ticking scene
+  again — once, in the room's scope, blocking input until it finishes (exactly like a
+  `cutscene { ... }` fired from a verb handler). `fn` is usually a room beat (a global
+  `cutscene`-wrapped function), so the close-up just names it. It fires within a frame
+  of the close-up closing, so it is **not** part of `GameState` (its state effects
+  persist normally); a room change before it fires drops it.
 
 ```lua
 -- closeups/lab_skull.lua
@@ -477,6 +488,13 @@ return {
       set_state("lab.read_skull", true)
     end,
   },
+  on_exit = function()
+    -- Backing out turns Julia around to find Schneider already walking in. The
+    -- close-up can't run that blocking beat itself, so hand it to the live room:
+    if get_state("lab.read_skull") then
+      on_room_resume(schneider_arrives) -- a cutscene { ... } beat defined in lab.lua
+    end
+  end,
 }
 ```
 
@@ -531,6 +549,14 @@ other blocking primitive directly:
 Beyond these dispatch sites, the `cutscene { ... }` block (M9 #184) also
 spawns its body so a scripted beat doesn't have to wrap itself in
 `spawn(...)`. See *Cutscene blocks* in §Hotspot handler signatures above.
+
+`on_room_resume(fn)` (M9 #186) is the **cross-scope** variant: a close-up's
+`on_exit` (a direct hook) can't block, so it registers `fn`, and the engine
+fires it later through the same auto-spawn seam — in the **room's** scope, not
+the close-up's. Because the close-up scope is torn down before `fn` runs, `fn`
+(and any upvalues it closes over) lives only by being held on the engine side;
+this is safe by construction — scope cancellation reaps running *tasks*, not Lua
+*values*. See §Close-up scripts.
 
 The following hooks stay **direct** (non-coroutine), so blocking calls inside
 them must still be wrapped in `spawn(...)` (or assigned a `cutscene`-wrapped
@@ -639,6 +665,7 @@ each call yielding until the page finishes or is skipped.
 | `current_room()` | — | room id | Return current room id. |
 | `open_closeup(scene_id)` | `CloseUp` scene id | — | Open an examine view as an overlay over the room; it pops back here on Esc / right-click (design 04 §CloseUp). |
 | `start_cutscene(scene_id)` | manifest scene id | — | Leave the room for a manifest scene (typically a `Cutscene` / `StoryText`) — e.g. an act-closing cutscene fired from a verb handler. Unlike `open_closeup` this **replaces** the room (it does not pop back); the target scene's own `on_finish` decides where to go next. Persistent `GameState` survives; the live room is unloaded. |
+| `on_room_resume(fn)` | a function (usually a `cutscene`-wrapped beat) | — | Defer a blocking room beat until the room is the live, ticking scene again — the bridge a **close-up** uses (from its `on_exit`) to hand a beat back to its frozen room (design §Close-up scripts). `fn` runs **once**, in the room's scope, blocking input until it finishes. Transient: it fires within a frame of the close-up closing, so it is not saved in `GameState`; a room change before it fires drops it. |
 | `camera_look_at(target)` | target | — | Snap camera to target and suspend follow. |
 | `camera_go_to(target)` | target | — | Tween camera to target, yield until done, and suspend follow. |
 | `camera_follow_player()` | — | — | Resume following the player. |
