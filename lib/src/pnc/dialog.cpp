@@ -82,6 +82,21 @@ struct DialogRuntime::Impl {
         current_node = id;
         chosen_raw = -1;
 
+        // A node-level `run` fires synchronously the moment the node is entered,
+        // before its NPC line is spoken — the dialog counterpart of a room's
+        // `on_load` or a close-up's `on_enter`. Use it for synchronous side
+        // effects (record a fact, give/take an item) that should happen however
+        // the node was reached; a blocking or control-flow beat belongs on an
+        // option `run` (spawned as a coroutine task) or a `cutscene`. A failing
+        // `run` is logged and does not abort the dialog (design 04).
+        if (sol::optional<sol::protected_function> run = node["run"]; run) {
+            const sol::protected_function_result r = (*run)();
+            if (!r.valid()) {
+                const sol::error e = r;
+                log_error(std::string("node 'run' error: ") + e.what());
+            }
+        }
+
         npc_lines.clear();
         npc_index = 0;
         if (sol::object npc = node["npc"]; npc.valid()) {

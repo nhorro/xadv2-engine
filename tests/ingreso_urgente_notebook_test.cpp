@@ -617,3 +617,50 @@ TEST_CASE("Schneider puzzle dialog expands and walks to the winning conclusion")
     CHECK(d.ended());
     CHECK(state.get("case.schneider_dialog_done") == pac::core::StateValue{true});
 }
+
+// Regression for the node-`run` fix: delivery_guy.lua records facts with a *node*
+// `run` (ask_package sets delivery.knows_package; sign_form sets delivery.signed),
+// and its "offer to sign" topic unlocks only once knows_package is set. Walking the
+// real file proves node runs now fire on entry — the unlock was silently dead before.
+TEST_CASE("delivery_guy node `run`s fire on entry and unlock the sign-form topic") {
+    pac::core::Diagnostics log = quiet();
+    pac::core::Scripting s(log);
+    pac::core::StateStore state;
+    bind_dialog_state(s, state);
+    // The hub offers a pen option gated on has_item; stub it away (no inventory).
+    s.lua().set_function("has_item", [](const std::string&) { return false; });
+    s.lua().set_function("remove_item", [](const std::string&) {});
+
+    pac::core::FilesystemResourceSource source(std::string(PAC_SOURCE_DIR) +
+                                               "/games/ingreso_urgente/data");
+    pac::core::ResourceCache resources(source, log);
+
+    DialogTestHost host;
+    auto dopt = pac::pnc::DialogRuntime::start(s, resources, log, "delivery_guy", host.host());
+    REQUIRE(dopt.has_value());
+    pac::pnc::DialogRuntime& d = *dopt;
+
+    // The dialog's on_enter ran at start.
+    CHECK(state.get("delivery.met") == pac::core::StateValue{true});
+
+    advance_to_choice(d, host); // intro -> hub
+    // Before asking, the package is unknown and the sign-form topic is hidden.
+    CHECK_FALSE(state.get("delivery.knows_package").has_value());
+    CHECK_FALSE(has_option(d, "Dejámelo, yo lo firmo."));
+
+    // Ask what the package is -> enters ask_package, whose node `run` records the fact.
+    choose_text(d, "¿Qué traés?");
+    advance_to_choice(d, host);
+    CHECK(state.get("delivery.knows_package") == pac::core::StateValue{true});
+    // ...which unlocks the offer-to-sign topic on the hub.
+    REQUIRE(has_option(d, "Dejámelo, yo lo firmo."));
+
+    // Signing enters sign_form, whose node `run` records delivery.signed, then ends.
+    choose_text(d, "Dejámelo, yo lo firmo.");
+    for (int i = 0; i < 12 && !d.ended(); ++i) {
+        host.speaking = false;
+        d.update();
+    }
+    CHECK(d.ended());
+    CHECK(state.get("delivery.signed") == pac::core::StateValue{true});
+}
