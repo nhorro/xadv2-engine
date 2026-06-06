@@ -691,8 +691,11 @@ spoken by `schneider`).
 | *(node id)* | — | node | — | Each remaining key is a node. |
 
 **`node`:** `npc` (string or `[string]`), and either `options` (`[option]`) or
-`to` (node id / `END`). In a `dialog { ... }` tree a node may also carry `topics`
-(`[topic]`, expanded into options + response nodes — see below).
+`to` (node id / `END`). A node may also carry `run` (a function fired
+**synchronously on entry**, before the NPC line — for synchronous side effects like
+recording a fact; an option `run` is the coroutine-spawned, blocking-capable form).
+In a `dialog { ... }` tree a node may also carry `topics` (`[topic]`, expanded into
+options + response nodes — see below).
 
 **`option`** (a list whose first element is the player line):
 
@@ -701,7 +704,7 @@ spoken by `schneider`).
 | `[1]` | req | string | — | Player line text. |
 | `to` | req | node id \| `END` | — | Next node. |
 | `when` | opt | function → bool | always | Visibility condition. |
-| `run` | opt | function | — | Code run **when the option is selected** (a `run` on a node is not executed). |
+| `run` | opt | function | — | Code run **when the option is selected** (spawned as a coroutine task; a *node* `run` fires on entry instead — see node fields). |
 | `once` | opt | bool | `false` | Option disappears after use (persisted by `(node_id, option_index)`). |
 | `silent` | opt | bool | `false` | Player line is not spoken aloud. |
 

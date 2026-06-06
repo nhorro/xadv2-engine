@@ -483,9 +483,23 @@ return {
 
 Dialog callbacks may use the same API as room scripts.
 
-> **`run` fires on the option, not the node.** An option's `run` runs the moment
-> the player chooses it (before following `to`). A `run` written on a *node* is
-> not executed — record facts on the option that leads into the node instead.
+A node may carry a `run = function() ... end`. It fires **synchronously when the
+node is entered** — however the conversation reached it — before the NPC line is
+spoken; it is the dialog counterpart of a room's `on_load`. Use it for synchronous
+side effects (record a fact, give/take an item):
+
+```lua
+ask_package = {
+  npc = { "Una caja. Pesada, sin remitente claro." },
+  run = function() set_state("delivery.knows_package", true) end,  -- on entry
+  to  = "hub",
+}
+```
+
+An **option** `run` differs: it fires the moment that reply is *chosen* (before
+following `to`) and is spawned as a coroutine task, so blocking primitives (`talk`,
+`wait`, `move_to`) work inside it. A node `run` is a direct call — for a blocking
+or control-flow beat (`change_room`), put it on an option `run` or a `cutscene`.
 
 ### Topic shorthand — `dialog { ... }` + `topic`
 
@@ -667,7 +681,7 @@ other blocking primitive directly:
 - room hotspot verb handlers (`room.hotspots.<id>.<verb>`);
 - inventory item verb handlers (`inventory.<id>.<verb>`);
 - `game.fallbacks.<verb>`;
-- dialog option `run` actions (a `run` on a node is not executed — see §Dialog scripts);
+- dialog option `run` actions (a *node* `run` is a direct call, not spawned — see §Dialog scripts);
 - close-up hotspot handlers (`closeup.hotspots.<id>`).
 
 Beyond these dispatch sites, the `cutscene { ... }` block (M9 #184) also
@@ -688,7 +702,7 @@ function):
 
 - `room.on_load` / `room.on_unload`;
 - `room.on_zone_enter` / `room.on_zone_exit` / `room.on_screen_edge`;
-- dialog `on_enter` / `on_exit`;
+- dialog `on_enter` / `on_exit` and a dialog **node** `run` (fires on entry);
 - close-up `on_enter` / `on_exit`;
 - `game.on_start`.
 
