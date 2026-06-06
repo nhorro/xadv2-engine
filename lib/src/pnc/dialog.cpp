@@ -290,6 +290,83 @@ std::optional<DialogRuntime> DialogRuntime::start(pac::core::Scripting& scriptin
         ~EndGuard() { lua["END"] = prev; }
     } guard{lua, prev_end};
 
+    // Dialog authoring sugar (#187): `dialog { ... }` expands `topic` declarations
+    // into the standard tree (a hub option + a response node) before the validator
+    // and runtime ever see it — pure Lua, no runtime change. Defined once and left
+    // PERSISTENT (unlike the per-load END sentinel): the generated `when`/`run`
+    // closures and `uttered()` are called *during* the conversation, long after
+    // this load returns, and the author's own predicates call `uttered()` too, so
+    // these globals must outlive the load. Idempotent; guarded so we compile once.
+    if (sol::object d = lua["dialog"]; !d.is<sol::function>()) {
+        scripting.run_string(R"LUA(
+-- uttered(id): has the topic with this id been stated yet? (engine-derived flag,
+-- reserved __uttered.* key; persists like any set_state). Used by cross-topic
+-- predicates, e.g. has_basic_observations() = uttered("a") and uttered("b").
+function uttered(id) return get_state("__uttered." .. id) == true end
+
+-- topic "id" { requires=, after=, player=, npc=, run= } -> a descriptor consumed
+-- by dialog{} below. Curried so `topic "id" { ... }` reads as one declaration.
+function topic(id)
+  return function(spec)
+    return { __topic = true, id = id, requires = spec.requires, after = spec.after,
+             player = spec.player, npc = spec.npc, run = spec.run }
+  end
+end
+
+-- A topic option is visible iff: its `requires` holds (a state-key string or a
+-- predicate function), every topic in `after` has been uttered, and it has not
+-- itself been uttered yet (so each claim is offered once).
+local function topic_visible(t)
+  local req = t.requires
+  if type(req) == "function" then
+    if not req() then return false end
+  elseif type(req) == "string" then
+    if get_state(req) ~= true then return false end
+  end
+  local after = t.after
+  if type(after) == "string" then
+    if not uttered(after) then return false end
+  elseif type(after) == "table" then
+    for _, dep in ipairs(after) do
+      if not uttered(dep) then return false end
+    end
+  end
+  return not uttered(t.id)
+end
+
+-- dialog(tree): expand every node that carries a `topics` list into plain options
+-- + response nodes, then return the standard tree. Topic options are placed before
+-- the node's existing raw `options` (preserving the authored order); the response
+-- node routes back to its hub. Files without topics need no dialog{} wrapper.
+function dialog(tree)
+  for key, node in pairs(tree) do
+    if type(node) == "table" and node.topics then
+      local merged = {}
+      for _, t in ipairs(node.topics) do
+        merged[#merged + 1] = {
+          t.player,
+          when = function() return topic_visible(t) end,
+          run = function()
+            set_state("__uttered." .. t.id, true)
+            if t.run then t.run() end
+          end,
+          to = t.id,
+        }
+        tree[t.id] = { npc = t.npc, to = key }
+      end
+      for _, o in ipairs(node.options or {}) do
+        merged[#merged + 1] = o
+      end
+      node.options = merged
+      node.topics = nil
+    end
+  end
+  return tree
+end
+)LUA",
+                             "=dialog_sugar");
+    }
+
     sol::load_result chunk = lua.load(code, "@" + logical);
     if (!chunk.valid()) {
         const sol::error e = chunk;
