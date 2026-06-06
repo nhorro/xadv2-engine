@@ -34,6 +34,7 @@
 #include <sol/sol.hpp>
 
 #include <algorithm>
+#include <map>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -77,6 +78,16 @@ struct RoomScene::Lua {
     bool game_valid = false;
     pac::core::Scripting* scripting = nullptr; // for auto-spawn (M9 #183)
     pac::core::Diagnostics* log = nullptr;
+
+    // M9 #186: deferred room beats registered via `on_room_resume(fn)`, keyed by
+    // the room they were registered for. Fired once (via the same spawn_call seam
+    // as #183/#184) when that room is the live, ticking scene again — the bridge
+    // a close-up uses to hand a blocking beat back to its frozen room. Held as a
+    // sol::function (registry-anchored, so the close-up scope teardown can't
+    // invalidate it); transient — it fires within a frame of the close-up closing,
+    // so there is no save window and it stays out of GameState. Kept in the pimpl
+    // so sol2 never reaches room_scene.hpp.
+    std::map<std::string, sol::function> pending_resume;
 
     VerbResult call_inventory(const std::string& item,
                               const std::string& verb,
@@ -627,6 +638,26 @@ end
         }
         awaiting_handler_task_ = tid;
     });
+    // M9 #186 on_room_resume(fn): defer a room beat until this room is the live,
+    // ticking scene again. The intended caller is a close-up's on_exit — it runs
+    // while the room is frozen beneath the overlay and so cannot play blocking
+    // choreography itself; it hands `fn` (typically a `cutscene { ... }`) back to
+    // the room. The room beneath is still alive (just covered), so `this` and
+    // `current_room_id_` are valid; we record `fn` against that room and fire it
+    // from update() once the room ticks again (see the fire block there). The fn
+    // is anchored as a sol::function, so the close-up scope teardown — which
+    // cancels running tasks but not Lua values — leaves it intact.
+    L.set_function("on_room_resume", [this](sol::function fn) {
+        if (!fn.valid()) {
+            ctx_.log.error("on_room_resume: expected a function");
+            return;
+        }
+        if (lua_->pending_resume.count(current_room_id_)) {
+            ctx_.log.warn("on_room_resume: overwriting a pending beat for room '" +
+                          current_room_id_ + "'");
+        }
+        lua_->pending_resume[current_room_id_] = std::move(fn);
+    });
     L.set_function("set_room_view_state", [this](std::string name) {
         if (name == "command") {
             view_state_ = ViewState::COMMAND;
@@ -968,6 +999,12 @@ void RoomScene::unload_room() {
     // see a stale task id and call finish_execution on the freshly-reset
     // builder).
     awaiting_handler_task_.reset();
+    // A deferred on_room_resume beat (M9 #186) is scoped to the room it was
+    // registered against; a room change drops it (it does not survive into the
+    // next room — close-ups, its only caller, never change rooms).
+    if (lua_) {
+        lua_->pending_resume.clear();
+    }
     view_state_ = ViewState::COMMAND;
 }
 
@@ -1713,6 +1750,32 @@ void RoomScene::update(float dt) {
             pend.last_dest = route_to(dec.repath_to);
         }
         // Wait: keep walking the current path.
+    }
+    // M9 #186: a deferred on_room_resume(fn) beat fires now that this room is the
+    // live, ticking scene again (update() only runs on the top scene, so reaching
+    // here means the close-up that registered it has popped). Fire only from a
+    // settled COMMAND view — not mid room-change and not while another auto-spawned
+    // beat is still draining — so beats don't stack. We route through the same
+    // spawn_call seam as a verb handler (#183/#184): a `cutscene { ... }` wrapper
+    // arms awaiting_handler_task_ itself via _cutscene_arm; a plain blocking fn
+    // yields and hands us its task id. Either way the room blocks until it drains.
+    if (lua_ && view_state_ == ViewState::COMMAND && !change_pending_ && !change_armed_ &&
+        !awaiting_handler_task_) {
+        if (const auto it = lua_->pending_resume.find(current_room_id_);
+            it != lua_->pending_resume.end()) {
+            const sol::function fn = it->second;
+            lua_->pending_resume.erase(it);
+            const pac::core::ScopeId prev = ctx_.scripting.current_scope();
+            ctx_.scripting.set_current_scope(room_scope_);
+            const pac::core::SpawnCallResult call = pac::core::spawn_call(ctx_.scripting, fn);
+            ctx_.scripting.set_current_scope(prev);
+            if (!call.done) {
+                awaiting_handler_task_ = call.task_id;
+            }
+            if (awaiting_handler_task_) {
+                view_state_ = ViewState::BLOCKED;
+            }
+        }
     }
     // Auto-spawned handler (M9 #183) drained: restore COMMAND, finish the
     // command, sync hover. The task may have changed scene (start_dialog,
@@ -2712,8 +2775,13 @@ bool RoomScene::restore(const pac::core::GameState& state) {
     }
     view_state_ = ViewState::COMMAND;
     // A handler task awaited from the previous session is dead post-restore (its
-    // room scope is gone); drop the id so update() doesn't try to drain it.
+    // room scope is gone); drop the id so update() doesn't try to drain it. Any
+    // deferred on_room_resume beat (M9 #186) is transient too — restored saves
+    // never carry one (it fires within a frame of registration) — so clear it.
     awaiting_handler_task_.reset();
+    if (lua_) {
+        lua_->pending_resume.clear();
+    }
     command_controller_.reset();
     speech_.skip();
 
