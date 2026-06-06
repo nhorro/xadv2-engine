@@ -56,7 +56,8 @@ function speaker_click()
 end
 
 -- CFG_PUZZLE: Dr. Schneider walks in from the door and stays for the puzzle.
--- Triggered after the llamas close-up asks for "lab.schneider_cue".
+-- Handed back by the llamas close-up via on_room_resume(schneider_arrives) (#186),
+-- so it plays once the lab is the live, ticking room again.
 schneider_arrives = cutscene(function()
     set_state("lab.cfg", CFG_PUZZLE)
     set_state("act1.schneider_present", true)
@@ -100,30 +101,15 @@ function schneider_leaves()
 end
 
 -- The llamas close-up can't run blocking room choreography (the room is frozen
--- under the overlay), so it leaves a cue in state. Once we are back in the live,
--- ticking room this watcher plays Schneider's arrival beat. Armed from on_load.
-local function arm_schneider_cue()
-    spawn(function()
-        while not get_state("lab.schneider_cue") do
-            wait(0.1)
-        end
-        set_state("lab.schneider_cue", false)
-        wait(0.1) -- let the close-up finish closing before the beat starts
-        schneider_arrives()
-    end)
-end
+-- under the overlay), so it hands the arrival beat back with on_room_resume(...)
+-- from its on_exit (#186); the engine plays schneider_arrives() the moment the
+-- live lab room is ticking again. No cue flag, no watcher loop to arm here.
 
 --------------------------------------------------------------------------------
 function room.on_load()
     -- Per-config presence + first-enter / re-enter beat (the INTRO config's intro
     -- is its on_first_enter, gated by the flow's "lab.cfg1.seen").
     flow.enter("lab", configs)
-
-    -- Arm the Schneider arrival watcher while Julia is alone, or when the cue was
-    -- persisted before reload.
-    if cfg() == CFG_INTRO or get_state("lab.schneider_cue") then
-        arm_schneider_cue()
-    end
 end
 
 function room.on_unload() end

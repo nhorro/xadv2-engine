@@ -155,9 +155,10 @@ return {
     -- (Assumes the lab started without Schneider — i.e. lab.cfg was CFG_INTRO.)
     if count_identified() >= NEEDED then
       set_state("lab.cfg", CFG_PUZZLE)
-      -- Leave a cue; the lab plays schneider_arrives() once we're back in the
-      -- live room (a close-up can't run the beat's blocking moves/talk).
-      set_state("lab.schneider_cue", true)
+      -- A close-up can't run the beat's blocking moves/talk (the room is frozen
+      -- beneath the overlay), so hand it back: on_room_resume(...) plays the lab's
+      -- schneider_arrives() the moment the live room is ticking again (#186).
+      on_room_resume(schneider_arrives)
     end
   end,
 
