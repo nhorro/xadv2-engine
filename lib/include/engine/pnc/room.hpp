@@ -148,6 +148,40 @@ struct Perspective {
     float bottom_scale = 1.0f;
 };
 
+/// One declarative room configuration (#185): which managed NPCs / objects /
+/// obstacles are present while the room is in this config. Entering or
+/// transitioning to a config reconciles the room *exhaustively* — every id in the
+/// room's managed set (the union across all configs, see RoomConfigs) is turned ON
+/// iff this config names it, OFF otherwise. So an "empty" config is `present: {}`.
+/// The optional first-enter / re-enter BEATS live in Lua under
+/// `room.configs[<id>]` ({ on_first_enter = fn, on_reenter = fn }), keyed by this
+/// same id — static presence in YAML, behavior in Lua.
+struct RoomConfig {
+    std::string id;
+    struct Npc {
+        std::string at; // start point name (must be a room point)
+        std::string facing = "down";
+    };
+    std::map<std::string, Npc> npcs;    // NPCs present in this config
+    std::vector<std::string> objects;   // object ids shown in this config
+    std::vector<std::string> obstacles; // obstacle ids enabled in this config
+};
+
+/// A room's `configs:` block (#185). `start` is the config a fresh game begins the
+/// room in (the engine then tracks the live value in GameState, replacing the
+/// hand-managed `"<room>.cfg"` integer). The `managed_*` unions name every id any
+/// config controls, so reconciling one config can turn the rest off.
+struct RoomConfigs {
+    std::string start;
+    std::vector<std::string> order; // config ids in declaration order
+    std::map<std::string, RoomConfig> by_id;
+    std::vector<std::string> managed_npcs;
+    std::vector<std::string> managed_objects;
+    std::vector<std::string> managed_obstacles;
+
+    const RoomConfig* find(const std::string& id) const;
+};
+
 /// Parsed static room definition (`rooms/<id>.yaml`). Headless and testable; the
 /// behavior lives in `rooms/<id>.lua`.
 struct RoomData {
@@ -165,6 +199,7 @@ struct RoomData {
     std::vector<WalkBehind> walkbehinds;
     std::vector<RoomAvatarPlacement> avatars;
     std::optional<Perspective> perspective;
+    std::optional<RoomConfigs> configs; // declarative configurations (#185)
 
     const geom::Point* point(const std::string& name) const;
     bool is_walkable(geom::Point p) const;

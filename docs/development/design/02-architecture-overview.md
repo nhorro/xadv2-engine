@@ -701,13 +701,20 @@ GameState {
     player: { x, y, facing, appearance_id }
   }
   inventory          : list<item_id>
-  global_state       : map<string, Value>                  # set_state
+  global_state       : map<string, Value>                  # set_state (+ engine-reserved __* keys)
   room_state         : map<room_id, map<string, Value>>    # all rooms, not only loaded
   region_states      : map<room_id, map<region_id, state_id>>
   dialog_flags       : map<dialog_id, consumed once-options>
   save_version       : int
 }
 ```
+
+- The live **room configuration** per room and its per-(room, config) first-enter
+  flags (issue #185) are engine-owned, not author-owned: they fold into
+  `global_state` under reserved `__config.*` keys (the same mechanism as dialog
+  `once` flags under `__dialog.*`), so they round-trip through a save with no
+  separate field. Authors read/write them only via `current_room_config` /
+  `set_room_config` — never the raw keys.
 
 - `room_state[room_id]` persists whether or not the room is loaded;
   `set_room_state` writes to the current room's entry, created lazily and never

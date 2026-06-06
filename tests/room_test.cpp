@@ -269,6 +269,91 @@ objects:
     CHECK_FALSE(room.object_moving("cart"));
 }
 
+TEST_CASE("parse_room reads declarative configs + managed-set unions (#185)") {
+    const char* yaml = R"YAML(
+id: lab
+points:
+  schneider_start: { x: 100, y: 200 }
+objects:
+  box:   { sprite: o/box.png }
+  truck: { sprite: o/truck.png }
+obstacles:
+  - { id: box_block,   area: [{x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: 1}] }
+  - { id: truck_block, area: [{x: 2, y: 0}, {x: 3, y: 0}, {x: 3, y: 1}] }
+configs:
+  start: intro
+  intro:
+    present: {}
+  puzzle:
+    present:
+      npcs:
+        schneider: { at: schneider_start, facing: left }
+      objects: [box, truck]
+      obstacles: [box_block, truck_block]
+  box_only:
+    present:
+      objects: [box]
+      obstacles: [box_block]
+)YAML";
+    const RoomData r = parse_room(yaml);
+    REQUIRE(r.configs.has_value());
+    const RoomConfigs& c = *r.configs;
+    CHECK(c.start == "intro");
+    CHECK(c.order.size() == 3);
+
+    // intro is exhaustively empty: presence reconcile turns everything off.
+    const RoomConfig* intro = c.find("intro");
+    REQUIRE(intro);
+    CHECK(intro->npcs.empty());
+    CHECK(intro->objects.empty());
+    CHECK(intro->obstacles.empty());
+
+    // puzzle names an NPC (with at/facing) plus objects + obstacles.
+    const RoomConfig* puzzle = c.find("puzzle");
+    REQUIRE(puzzle);
+    REQUIRE(puzzle->npcs.count("schneider") == 1);
+    CHECK(puzzle->npcs.at("schneider").at == "schneider_start");
+    CHECK(puzzle->npcs.at("schneider").facing == "left");
+    CHECK(puzzle->objects == std::vector<std::string>{"box", "truck"});
+    CHECK(puzzle->obstacles == std::vector<std::string>{"box_block", "truck_block"});
+
+    // Managed sets = sorted-unique union across all configs.
+    CHECK(c.managed_npcs == std::vector<std::string>{"schneider"});
+    CHECK(c.managed_objects == std::vector<std::string>{"box", "truck"});
+    CHECK(c.managed_obstacles == std::vector<std::string>{"box_block", "truck_block"});
+
+    CHECK(c.find("missing") == nullptr);
+}
+
+TEST_CASE("parse_room rejects malformed configs with stable codes (#185)") {
+    auto with = [](const std::string& configs) {
+        return "id: r\npoints:\n  p: { x: 0, y: 0 }\nobjects:\n  box: { sprite: o/b.png }\n"
+               "obstacles:\n  - { id: blk, area: [{x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: 1}] }\n" +
+               configs;
+    };
+    CHECK(error_code([&] { parse_room(with("configs: 5\n")); }) == "room.configs-not-map");
+    CHECK(error_code([&] { parse_room(with("configs:\n  a: { present: {} }\n")); }) ==
+          "room.config-start-missing");
+    CHECK(error_code([&] { parse_room(with("configs:\n  start: zzz\n  a: {}\n")); }) ==
+          "room.config-start-unknown");
+    CHECK(error_code([&] { parse_room(with("configs:\n  start: a\n  a: { present: 5 }\n")); }) ==
+          "room.config-present-not-map");
+    CHECK(error_code([&] {
+              parse_room(with(
+                  "configs:\n  start: a\n  a: { present: { npcs: { n: { facing: up } } } }\n"));
+          }) == "room.config-npc-at-missing");
+    CHECK(error_code([&] {
+              parse_room(
+                  with("configs:\n  start: a\n  a: { present: { npcs: { n: { at: ghost } } } }\n"));
+          }) == "room.config-npc-point-unknown");
+    CHECK(error_code([&] {
+              parse_room(with("configs:\n  start: a\n  a: { present: { objects: [ghost] } }\n"));
+          }) == "room.config-object-unknown");
+    CHECK(error_code([&] {
+              parse_room(with("configs:\n  start: a\n  a: { present: { obstacles: [ghost] } }\n"));
+          }) == "room.config-obstacle-unknown");
+}
+
 TEST_CASE("parse_room rejects malformed rooms") {
     CHECK_THROWS_AS(parse_room("version: 1\n"), DataError); // no id
     CHECK_THROWS_AS(parse_room("id: x\nhotspots:\n  h: { name: n }\n"),
@@ -575,6 +660,64 @@ TEST_CASE("call_hotspot reports in_flight when the handler yields, then drains")
     }
     CHECK_FALSE(scripting.is_task_alive(*use.in_flight));
     CHECK(scripting.run_string("assert(_G.slow_done == true)"));
+
+    fs::remove_all(root);
+}
+
+// M9 #185: the engine drives the per-config first-enter / re-enter beat by
+// looking it up under `room.configs[<id>].<hook>` and auto-spawning it (same seam
+// as a verb handler), so a presence-only config or a config without that hook is a
+// clean no-op, and a blocking beat reports `in_flight` for the room to block on.
+TEST_CASE("call_config_beat dispatches per-config beats, no-ops when absent (#185)") {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "pac_call_config_beat_test";
+    fs::remove_all(root);
+    fs::create_directories(root / "rooms");
+    std::ofstream(root / "rooms" / "r.lua") << R"LUA(
+        return {
+          configs = {
+            intro = {
+              -- a blocking first-enter beat (yields), like a cutscene monologue
+              on_first_enter = function() wait(0.3); _G.intro_ran = true end,
+            },
+            puzzle = {
+              on_reenter = function() _G.puzzle_reenter = true end, -- silent, no yield
+            },
+            -- `alone` has no Lua entry at all (presence-only config).
+          },
+        }
+    )LUA";
+
+    pac::core::Diagnostics log(pac::core::LogLevel::ERROR);
+    pac::core::FilesystemResourceSource source(root.string());
+    pac::core::ResourceCache resources(source, log);
+    pac::core::Scripting scripting(log);
+
+    RoomRuntime room(parse_room("id: r\n"));
+    room.load_behavior(scripting, resources, "rooms/r.lua", log);
+
+    // Blocking first-enter beat -> handled, in_flight, then drains.
+    const VerbResult intro = room.call_config_beat("intro", "on_first_enter");
+    CHECK(intro.handled);
+    REQUIRE(intro.in_flight.has_value());
+    CHECK(scripting.is_task_alive(*intro.in_flight));
+    for (int i = 0; i < 100 && scripting.is_task_alive(*intro.in_flight); ++i) {
+        scripting.update(0.016f);
+    }
+    CHECK(scripting.run_string("assert(_G.intro_ran == true)"));
+
+    // The hook a config doesn't define -> not handled (the engine just skips it).
+    CHECK_FALSE(room.call_config_beat("intro", "on_reenter").handled);
+
+    // A silent (non-yielding) re-enter beat -> handled, no in_flight.
+    const VerbResult re = room.call_config_beat("puzzle", "on_reenter");
+    CHECK(re.handled);
+    CHECK_FALSE(re.in_flight.has_value());
+    CHECK(scripting.run_string("assert(_G.puzzle_reenter == true)"));
+
+    // A presence-only config (no Lua entry) and an unknown config -> no-op.
+    CHECK_FALSE(room.call_config_beat("alone", "on_first_enter").handled);
+    CHECK_FALSE(room.call_config_beat("ghost", "on_first_enter").handled);
 
     fs::remove_all(root);
 }
