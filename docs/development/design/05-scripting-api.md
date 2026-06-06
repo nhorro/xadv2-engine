@@ -272,6 +272,64 @@ something, a watcher in `on_load` — but writing a verb handler no longer
 needs it. See *Coroutine rules* below for which hooks remain direct (non-
 coroutine) calls.
 
+#### Cutscene blocks
+
+A scripted beat — an NPC walking in and saying a few lines, the opening
+monologue of a room, a transition between configurations — used to mean a
+ritual: `block_input()` at the top, `unblock_input()` at the bottom, every
+line as `talk("speaker", "...")`, every gesture as `avatar("id"):method(...)`.
+The `cutscene { ... }` wrapper (M9 #184) collapses that into something that
+reads like a screenplay:
+
+```lua
+schneider_arrives = cutscene(function()
+    set_state("lab.cfg", CFG_PUZZLE)
+    spawn_npc("schneider", "at_door", "down")
+    move("schneider", "schneider_start")
+    face("schneider", "left")
+    say("schneider", "Serrategui.")
+    say("player",    "Dra. Schneider.")
+    move("schneider", "at_desk")
+    face("schneider", "up")
+    say("schneider", "Interesante. Había asumido que era una falla eléctrica.")
+    stop_music()
+    -- ...
+end)
+```
+
+`cutscene(body)` returns a wrapper function. Calling the wrapper:
+
+1. Spawns `body` as a coroutine task in the current scope (the room scope
+   when called from a verb handler / `on_first_enter` / a free function
+   inside a room script).
+2. Marks the room view as `blocked` for the duration of the body — input is
+   suppressed and the SCUMM panel won't accept new commands until the beat
+   finishes.
+3. Returns immediately. The wrapper itself never blocks; the body runs
+   asynchronously in the spawned task.
+
+When the body finishes — or is cancelled by `change_room` / room unload —
+the engine restores the `command` view state from the C++ side, so even an
+interrupted cutscene leaves the room responsive. (Lua cleanup doesn't run
+on scope cancellation, so a `finally` in Lua wouldn't be enough.)
+
+Inside a cutscene body (and elsewhere — they're plain Lua globals), three
+flat verbs mirror the most common stage directions:
+
+| Verb | Equivalent to | Use for |
+|------|---------------|---------|
+| `say(speaker, text)` | `talk(speaker, text)` | A line of dialogue. |
+| `move(id, target)` | `avatar(id):move_to(target)` | Walk an avatar to a point. |
+| `face(id, dir)` | `avatar(id):face(dir)` | Turn an avatar to face `"up"` / `"right"` / `"down"` / `"left"`. |
+
+The full `avatar(id):method` API stays available for less common gestures
+(`:look_at`, `:play`, `:play_until_end`, `:anchor`, `:position`).
+
+A cutscene is composable with the per-configuration room helper:
+`on_first_enter = cutscene(function() ... end)` — the flow helper still
+spawns it, the outer task just arms the cutscene and dies; the inner body
+runs as the real beat.
+
 ## Global game logic
 
 `game.lua` contains shared behavior that is not local to one room:
@@ -470,8 +528,13 @@ other blocking primitive directly:
 - dialog node `run` callbacks and dialog option `run` actions;
 - close-up hotspot handlers (`closeup.hotspots.<id>`).
 
+Beyond these dispatch sites, the `cutscene { ... }` block (M9 #184) also
+spawns its body so a scripted beat doesn't have to wrap itself in
+`spawn(...)`. See *Cutscene blocks* in §Hotspot handler signatures above.
+
 The following hooks stay **direct** (non-coroutine), so blocking calls inside
-them must still be wrapped in `spawn(...)`:
+them must still be wrapped in `spawn(...)` (or assigned a `cutscene`-wrapped
+function):
 
 - `room.on_load` / `room.on_unload`;
 - `room.on_zone_enter` / `room.on_zone_exit` / `room.on_screen_edge`;
