@@ -483,6 +483,80 @@ return {
 
 Dialog callbacks may use the same API as room scripts.
 
+> **`run` fires on the option, not the node.** An option's `run` runs the moment
+> the player chooses it (before following `to`). A `run` written on a *node* is
+> not executed — record facts on the option that leads into the node instead.
+
+### Topic shorthand — `dialog { ... }` + `topic`
+
+A common shape is a **hub**: one menu the player keeps returning to, with topics
+that appear only once the player has the right evidence, are said once, then route
+back to the hub. Written by hand each topic costs an option (with `when`/`run`/`to`)
+*plus* a separate response node — the two halves drift apart and the screenplay
+disappears under bookkeeping. Wrap the tree in `dialog { ... }` and declare those
+topics with `topic`, which keeps the player's line and the reply together:
+
+```lua
+return dialog {
+  start = "hub",
+
+  hub = {
+    npc = "Empiece por lo observable. ¿Qué puede sostener?",
+
+    topics = {
+      topic "fracture" {
+        requires = "finding.radial_fractures",   -- visible once this state is true
+        player   = "Hay una lesión focal con fracturas radiales.",
+        npc      = { "Bien. Eso sí es una observación útil." },
+      },
+      topic "discard_blade" {
+        after  = "fracture",                      -- ...or: once another topic was said
+        player = "Una herramienta filosa no explica el patrón.",
+        npc    = { "De acuerdo. Apunta a impacto, no a filo." },
+      },
+    },
+
+    -- Raw options still live alongside topics in the same node.
+    options = {
+      { "Después seguimos.", to = END },
+    },
+  },
+}
+```
+
+`dialog { ... }` expands every node that carries a `topics` list — before the
+validator or runtime ever see it — into the standard form: each `topic` becomes a
+hub option (placed ahead of the node's own `options`) plus a response node that
+routes back to the hub. It is pure Lua sugar; a tree with no `topics` needs no
+`dialog{}` wrapper (see `dialogs/delivery_guy.lua` for the plain form).
+
+A `topic "id" { ... }` takes:
+
+| Field | Req | Meaning |
+|-------|-----|---------|
+| `id`  | yes | The topic id (the string before the `{ }`). Becomes the response node's id, so it must not collide with another node. |
+| `player` | yes | The line Julia says — the option's text. |
+| `npc` | yes | The reply: one line or a `{ }` list, like any node's `npc`. |
+| `requires` | opt | Visible only when this holds: a **state-key string** (`get_state(key) == true`) or a **predicate function** returning a bool. |
+| `after` | opt | Visible only after another topic was stated: a topic `id`, or a list of ids (all must be uttered). |
+| `run` | opt | Extra action when the topic is chosen, after it is marked uttered. |
+
+Each topic is offered **once**: stating it sets a reserved `__uttered.<id>` flag
+(persisted like any `set_state`, surviving save/load), and the topic hides itself
+once uttered. Read that flag with `uttered(id)` to gate later topics or build
+cross-topic predicates without hand-maintained `argument.*_stated` flags:
+
+```lua
+local function has_basics()
+  return uttered("fracture") and uttered("no_cut_marks") and uttered("no_collapse")
+end
+-- then:  topic "possible_fall" { requires = has_basics, ... }
+```
+
+`requires` and `after` compose: a topic with both appears only when its `requires`
+holds *and* every `after` topic has been uttered. The worked example is the
+Schneider puzzle, `dialogs/skull_trauma_cause.lua`.
+
 ## Close-up scripts
 
 A close-up (`CloseUp` scene, design 04 §CloseUp) becomes **scripted** when its scene
@@ -593,7 +667,7 @@ other blocking primitive directly:
 - room hotspot verb handlers (`room.hotspots.<id>.<verb>`);
 - inventory item verb handlers (`inventory.<id>.<verb>`);
 - `game.fallbacks.<verb>`;
-- dialog node `run` callbacks and dialog option `run` actions;
+- dialog option `run` actions (a `run` on a node is not executed — see §Dialog scripts);
 - close-up hotspot handlers (`closeup.hotspots.<id>`).
 
 Beyond these dispatch sites, the `cutscene { ... }` block (M9 #184) also

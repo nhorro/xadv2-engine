@@ -1,14 +1,20 @@
 #include "engine/core/diagnostics.hpp"
+#include "engine/core/resource_cache.hpp"
+#include "engine/core/resource_source.hpp"
 #include "engine/core/scripting.hpp"
+#include "engine/core/state_store.hpp"
 #include "engine/pnc/dialog.hpp"
 #include "pnc/dialog_internal.hpp"
 
 #include <doctest/doctest.h>
 #include <sol/sol.hpp>
 
+#include <filesystem>
+#include <fstream>
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 using pac::core::Diagnostics;
@@ -715,4 +721,154 @@ TEST_CASE("dialog with a missing node id ends cleanly instead of crashing") {
     DialogRuntime d = build(s, log, host, tree);
     CHECK(d.ended());
     CHECK(host.npc.empty());
+}
+
+// M9 #187: the `dialog { ... }` / `topic` sugar. Goes through the real
+// DialogRuntime::start (which defines the sugar prelude), so it exercises the
+// expansion + the validator + the runtime together. Binds minimal get_state /
+// set_state over a StateStore (the sugar's only engine dependency).
+namespace {
+void bind_state(Scripting& s, pac::core::StateStore& store) {
+    sol::state& L = s.lua();
+    L.set_function("get_state", [&store, &L](const std::string& key) -> sol::object {
+        const auto v = store.get(key);
+        if (!v) {
+            return sol::make_object(L, sol::lua_nil);
+        }
+        return std::visit([&L](const auto& x) { return sol::make_object(L, x); }, *v);
+    });
+    L.set_function("set_state", [&store](const std::string& key, sol::object value) {
+        if (value.is<bool>()) {
+            store.set(key, value.as<bool>());
+        } else if (value.is<double>()) {
+            store.set(key, value.as<double>());
+        } else if (value.is<std::string>()) {
+            store.set(key, value.as<std::string>());
+        }
+    });
+}
+
+bool spoke(const TestHost& host, const std::string& line) {
+    for (const std::string& s : host.npc) {
+        if (s == line) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool has_option(const DialogRuntime& d, const std::string& text) {
+    for (const DialogOption& o : d.options()) {
+        if (o.text == text) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Clear the speech bubble and pump update() until the dialog awaits a choice or
+// ends — the test's stand-in for the player clicking through the spoken lines.
+void advance_to_choice(DialogRuntime& d, TestHost& host) {
+    for (int i = 0; i < 50; ++i) {
+        if (d.state() == DialogRuntime::State::AWAITING_CHOICE || d.ended()) {
+            return;
+        }
+        host.speaking = false;
+        d.update();
+    }
+    FAIL("dialog did not settle on a choice");
+}
+
+// Pick the visible option whose text matches (the topic constructor's generated
+// options are addressed by the player line, like any other).
+void choose_text(DialogRuntime& d, const std::string& text) {
+    const std::vector<DialogOption> opts = d.options();
+    for (std::size_t i = 0; i < opts.size(); ++i) {
+        if (opts[i].text == text) {
+            d.choose(static_cast<int>(i));
+            return;
+        }
+    }
+    FAIL("no visible option with text: " << text);
+}
+} // namespace
+
+TEST_CASE("dialog topic{} expands with requires / after gating, once-per-claim, uttered()") {
+    namespace fs = std::filesystem;
+    Diagnostics log = quiet();
+    Scripting s(log);
+    pac::core::StateStore state;
+    bind_state(s, state);
+
+    const fs::path root = fs::temp_directory_path() / "pac_dialog_topic_test";
+    fs::remove_all(root);
+    fs::create_directories(root / "dialogs");
+    std::ofstream(root / "dialogs" / "schneider.lua") << R"LUA(
+        -- cross-topic predicate built on the uttered() helper
+        local function basics() return uttered("frac") and uttered("cuts") end
+        return dialog {
+          start = "hub",
+          hub = {
+            npc = "Que puede sostener?",
+            topics = {
+              topic "frac" { requires = "finding.frac",
+                             player = "Fracturas radiales.", npc = { "Bien.", "Util." } },
+              topic "cuts" { requires = "finding.cuts",
+                             player = "Sin marcas de corte.", npc = "Correcto." },
+              topic "discard" { after = "cuts",
+                                player = "El filo no explica el patron.", npc = "De acuerdo." },
+            },
+            options = {
+              { "Fue asesinato.", when = basics, to = "overstated" },
+              { "Despues seguimos.", to = END },
+            },
+          },
+          overstated = { npc = "No. Demasiado comodo.", to = "hub" },
+        }
+    )LUA";
+
+    pac::core::FilesystemResourceSource source(root.string());
+    pac::core::ResourceCache resources(source, log);
+    TestHost host;
+
+    // Both findings discovered up front, so frac + cuts are offerable from the
+    // first hub; discard / overstated still gated on topics being uttered.
+    state.set("finding.frac", true);
+    state.set("finding.cuts", true);
+
+    auto dopt = DialogRuntime::start(s, resources, log, "schneider", host.host());
+    REQUIRE(dopt.has_value());
+    DialogRuntime& d = *dopt;
+    advance_to_choice(d, host);
+
+    // requires holds for frac/cuts; discard hidden (cuts not uttered); overstated
+    // hidden (basics() false). The raw exit is always there.
+    CHECK(has_option(d, "Fracturas radiales."));
+    CHECK(has_option(d, "Sin marcas de corte."));
+    CHECK_FALSE(has_option(d, "El filo no explica el patron."));
+    CHECK_FALSE(has_option(d, "Fue asesinato."));
+    CHECK(has_option(d, "Despues seguimos."));
+
+    // State the "cuts" claim. The generated option speaks the player line, marks
+    // the topic uttered, plays the response node, and routes back to the hub.
+    choose_text(d, "Sin marcas de corte.");
+    advance_to_choice(d, host);
+    CHECK(state.get("__uttered.cuts") == pac::core::StateValue{true});
+    CHECK(host.player.back() == "Sin marcas de corte.");
+    CHECK(spoke(host, "Correcto."));  // the generated response node was played
+    CHECK(d.current_node() == "hub"); // ...and routed back to the hub
+
+    // cuts is now consumed (offered once); discard unlocks (after = "cuts").
+    CHECK_FALSE(has_option(d, "Sin marcas de corte."));
+    CHECK(has_option(d, "El filo no explica el patron."));
+    CHECK(has_option(d, "Fracturas radiales."));  // still available
+    CHECK_FALSE(has_option(d, "Fue asesinato.")); // basics() needs frac too
+
+    // State "frac" -> basics() now true, so the raw overstated option appears.
+    choose_text(d, "Fracturas radiales.");
+    advance_to_choice(d, host);
+    CHECK(state.get("__uttered.frac") == pac::core::StateValue{true});
+    CHECK(has_option(d, "Fue asesinato."));
+
+    fs::remove_all(root);
 }
