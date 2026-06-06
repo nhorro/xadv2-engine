@@ -36,14 +36,10 @@
 --  nodo. Por eso este archivo está envuelto en `return dialog { ... }`.
 -- =============================================================================
 
-local function flag(name)
-  return get_state(name) == true
-end
-
-local function set_flag(name)
-  set_state(name, true)
-end
-
+-- Los flags booleanos del caso viven en `facts.<ns>.<name>` (ver facts.yaml):
+-- se leen como `facts.case.report_ready` y se escriben como
+-- `facts.case.report_ready = true`. El contador de intentos no es un flag, así
+-- que sigue en get_state/set_state.
 local function attempts()
   return get_state("case.schneider_attempts") or 0
 end
@@ -77,7 +73,7 @@ return dialog {
   start = "intro",
 
   on_enter = function()
-    set_flag("schneider.met")
+    facts.schneider.met = true
   end,
 
   on_exit = function()
@@ -216,11 +212,11 @@ return dialog {
         "Entonces fue asesinado.",
         when = function()
           return has_basic_observations()
-             and not flag("argument.murder_overstated")
+             and not facts.argument.murder_overstated
         end,
         run = function()
           add_attempt()
-          set_flag("argument.murder_overstated")
+          facts.argument.murder_overstated = true
         end,
         to = "murder_overstated",
       },
@@ -229,11 +225,11 @@ return dialog {
         "El objeto lítico podría ser el arma.",
         when = function()
           return uttered("heavy_object")
-             and not flag("argument.weapon_overstated")
+             and not facts.argument.weapon_overstated
         end,
         run = function()
           add_attempt()
-          set_flag("argument.weapon_overstated")
+          facts.argument.weapon_overstated = true
         end,
         to = "weapon_overstated",
       },
@@ -246,8 +242,8 @@ return dialog {
         -- `run` corre al elegir la opción (no al entrar al nodo): acá se marca el
         -- caso como sostenido.
         run = function()
-          set_flag("case.blunt_trauma_supported")
-          set_flag("case.report_ready")
+          facts.case.blunt_trauma_supported = true
+          facts.case.report_ready = true
         end,
         to = "correct_hypothesis",
       },
@@ -343,7 +339,7 @@ return dialog {
       {
         "Entendido. Redacto el informe.",
         run = function()
-          set_flag("case.schneider_dialog_done")
+          facts.case.schneider_dialog_done = true
         end,
         to = END,
       },

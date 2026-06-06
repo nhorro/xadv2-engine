@@ -36,6 +36,7 @@ add_executable(pac_core_tests
     animation_test.cpp
     shader_effect_test.cpp
     state_store_test.cpp
+    facts_test.cpp
     scripting_test.cpp
     room_test.cpp
     cast_test.cpp

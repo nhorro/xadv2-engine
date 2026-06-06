@@ -219,6 +219,21 @@ engine-owned too (stored under reserved `__config.*` keys, like dialog `once`
 flags), so they persist with no save-format change — authors use
 `set_room_config` / `current_room_config`, never those keys.
 
+#### Declared facts — `facts.<ns>.<name>` (typo guard)
+
+`set_state("finding.radial_fractures", true)` works, but so does `set_state("finding.radial_fractres", true)` (a dropped letter) — it just sets a *different* key, and every condition that reads the correct one stays silently false forever. A game with dozens of flag keys has no central list and no spell-check.
+
+Declare the flags in an optional **`facts.yaml`** (see [06 § Facts](06-data-formats.md)), grouped into namespaces, and read/write them through the `facts` global:
+
+```lua
+if facts.act1.bones_glanced then ... end      -- read  (false if unset)
+facts.act1.context_glanced = true             -- write (persists like set_state)
+```
+
+`facts.<ns>.<name>` is sugar over `get_state` / `set_state` on the dotted key `"<ns>.<name>"` — a fact persists, saves, and interoperates with `get_state` exactly as before (so a topic's `requires = "finding.radial_fractures"` still names the same fact). The win is the **typo guard**: in a development build, reading or writing a key *not* declared in `facts.yaml` logs a warning naming the offending key. In a clean release build the access still works — a missing declaration never blocks shipping. The guard is loud in a Debug build and can be opted into in a Release build with `development.show_state: true`.
+
+`facts.yaml` is optional and additive: without it, `facts.<ns>.<name>` behaves as plain state sugar with no guard, and `get_state` / `set_state` keep working untouched. Only **boolean flags** belong in `facts.yaml`; numeric counters (e.g. an attempts tally) and dynamic keys (`"llamas." .. id .. ".done"`) stay on `get_state` / `set_state`. Engine-owned reserved keys (`__config.*`, `__dialog.*`, `__uttered.*`) are never facts.
+
 ### Room configurations
 
 A room is usually shown in one of a few discrete **configurations** — which actors

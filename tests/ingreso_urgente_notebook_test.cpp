@@ -1,5 +1,7 @@
 #include "engine/core/diagnostics.hpp"
+#include "engine/core/facts.hpp"
 #include "engine/core/game_state.hpp"
+#include "engine/core/lua_api.hpp"
 #include "engine/core/manifest.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
@@ -565,6 +567,16 @@ TEST_CASE("Schneider puzzle dialog expands and walks to the winning conclusion")
                                                "/games/ingreso_urgente/data");
     pac::core::ResourceCache resources(source, log);
 
+    // The dialog records the case state through `facts.case.*`; bind the proxy
+    // over the game's real facts.yaml, in dev mode, and assert the dialog touches
+    // only declared facts (no typo-guard warnings).
+    std::vector<std::string> fact_warnings;
+    const pac::core::FactsRegistry facts =
+        pac::core::FactsRegistry::parse(resources.read_text("facts.yaml"));
+    pac::core::bind_facts(s, facts, /*dev_warn=*/true, [&](const std::string& m) {
+        fact_warnings.push_back(m);
+    });
+
     DialogTestHost host;
     auto dopt =
         pac::pnc::DialogRuntime::start(s, resources, log, "skull_trauma_cause", host.host());
@@ -616,6 +628,7 @@ TEST_CASE("Schneider puzzle dialog expands and walks to the winning conclusion")
     }
     CHECK(d.ended());
     CHECK(state.get("case.schneider_dialog_done") == pac::core::StateValue{true});
+    CHECK(fact_warnings.empty()); // the dialog used only declared facts
 }
 
 // Regression for the node-`run` fix: delivery_guy.lua records facts with a *node*
