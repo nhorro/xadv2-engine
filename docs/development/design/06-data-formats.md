@@ -691,7 +691,8 @@ spoken by `schneider`).
 | *(node id)* | — | node | — | Each remaining key is a node. |
 
 **`node`:** `npc` (string or `[string]`), and either `options` (`[option]`) or
-`to` (node id / `END`).
+`to` (node id / `END`). In a `dialog { ... }` tree a node may also carry `topics`
+(`[topic]`, expanded into options + response nodes — see below).
 
 **`option`** (a list whose first element is the player line):
 
@@ -700,9 +701,29 @@ spoken by `schneider`).
 | `[1]` | req | string | — | Player line text. |
 | `to` | req | node id \| `END` | — | Next node. |
 | `when` | opt | function → bool | always | Visibility condition. |
-| `run` | opt | function | — | Code run when selected. |
+| `run` | opt | function | — | Code run **when the option is selected** (a `run` on a node is not executed). |
 | `once` | opt | bool | `false` | Option disappears after use (persisted by `(node_id, option_index)`). |
 | `silent` | opt | bool | `false` | Player line is not spoken aloud. |
+
+**Topic shorthand (`dialog { ... }` + `topic`).** Wrapping the returned table in
+`dialog { ... }` lets a node carry a `topics` list instead of repeating the
+hub-option-plus-response-node pattern by hand; the wrapper expands it to the
+standard form (option + response node routing back to the hub) before validation.
+Pure Lua sugar — see [05 §Topic shorthand](05-scripting-api.md). A node's optional
+`topics` field is a list of `topic "id" { ... }` descriptors:
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `id` | req | node id | — | The string before the `{ }`; becomes the response node id (must not collide with another node). |
+| `player` | req | string | — | Player line — the generated option's text. |
+| `npc` | req | string \| `[string]` | — | The reply, as a node's `npc`. |
+| `requires` | opt | state-key string \| function → bool | always | Offered only when the key is `true` / the predicate returns true. |
+| `after` | opt | topic id \| `[topic id]` | — | Offered only after the named topic(s) were uttered. |
+| `run` | opt | function | — | Extra action when chosen, after the topic is marked uttered. |
+
+Stating a topic sets the reserved `__uttered.<id>` flag (persisted like any
+`set_state`); the topic then hides itself (offered once). Read it with
+`uttered(id)` to gate later topics or build cross-topic predicates.
 
 ## Inventory — `inventory.yaml`
 

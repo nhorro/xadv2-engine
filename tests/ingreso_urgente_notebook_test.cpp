@@ -1,11 +1,14 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/game_state.hpp"
 #include "engine/core/manifest.hpp"
+#include "engine/core/resource_cache.hpp"
+#include "engine/core/resource_source.hpp"
 #include "engine/core/save_service.hpp"
 #include "engine/core/scene.hpp"
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scripting.hpp"
 #include "engine/core/state_store.hpp"
+#include "engine/pnc/dialog.hpp"
 #include "notebook/notebook_model.hpp"
 #include "notebook/notebook_module.hpp"
 #include "notebook/notebook_scene.hpp"
@@ -20,6 +23,8 @@
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <variant>
+#include <vector>
 
 using namespace ingreso::notebook;
 
@@ -435,4 +440,180 @@ TEST_CASE("room scripts and per-config beat modules compile in embedded Lua") {
         INFO(path);
         CHECK(scripting.lua().load_file(path).valid());
     }
+}
+
+// =====================================================================
+//  Schneider puzzle dialog — content walkthrough (#187)
+// =====================================================================
+//
+// The puzzle dialog (dialogs/skull_trauma_cause.lua) was rewritten with the
+// `dialog { ... }` / `topic` shorthand. `load_file` above only *compiles* it;
+// it never runs `dialog{}`, so the expansion + validator are exercised here by
+// driving the real file through `DialogRuntime::start` and walking the full
+// winning path. A headless stand-in for the player clicking through the scene.
+namespace {
+
+// A no-render dialog host: it records spoken lines and lets the test clear the
+// bubble so the runtime advances. Mirrors the engine-side host minimally.
+struct DialogTestHost {
+    std::vector<std::string> npc;
+    std::vector<std::string> player;
+    bool speaking = false;
+    std::set<std::pair<std::string, int>> consumed;
+
+    pac::pnc::DialogHost host() {
+        pac::pnc::DialogHost h;
+        h.speak_npc = [this](const std::string& t) {
+            npc.push_back(t);
+            speaking = true;
+        };
+        h.speak_player = [this](const std::string& t) {
+            player.push_back(t);
+            speaking = true;
+        };
+        h.is_speaking = [this]() { return speaking; };
+        h.is_option_consumed = [this](const std::string& node, int idx) {
+            return consumed.count({node, idx}) > 0;
+        };
+        h.mark_option_consumed = [this](const std::string& node, int idx) {
+            consumed.insert({node, idx});
+        };
+        return h;
+    }
+};
+
+void bind_dialog_state(pac::core::Scripting& s, pac::core::StateStore& store) {
+    sol::state& L = s.lua();
+    L.set_function("get_state", [&store, &L](const std::string& key) -> sol::object {
+        const auto v = store.get(key);
+        if (!v) {
+            return sol::make_object(L, sol::lua_nil);
+        }
+        return std::visit([&L](const auto& x) { return sol::make_object(L, x); }, *v);
+    });
+    L.set_function("set_state", [&store](const std::string& key, sol::object value) {
+        if (value.is<bool>()) {
+            store.set(key, value.as<bool>());
+        } else if (value.is<double>()) {
+            store.set(key, value.as<double>());
+        } else if (value.is<std::string>()) {
+            store.set(key, value.as<std::string>());
+        }
+    });
+}
+
+void advance_to_choice(pac::pnc::DialogRuntime& d, DialogTestHost& host) {
+    for (int i = 0; i < 80; ++i) {
+        if (d.state() == pac::pnc::DialogRuntime::State::AWAITING_CHOICE || d.ended()) {
+            return;
+        }
+        host.speaking = false;
+        d.update();
+    }
+    FAIL("dialog did not settle on a choice");
+}
+
+bool has_option(const pac::pnc::DialogRuntime& d, const std::string& text) {
+    for (const pac::pnc::DialogOption& o : d.options()) {
+        if (o.text == text) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void choose_text(pac::pnc::DialogRuntime& d, const std::string& text) {
+    for (const pac::pnc::DialogOption& o : d.options()) {
+        if (o.text == text) {
+            d.choose(o.index);
+            return;
+        }
+    }
+    FAIL("no visible option with text: " << text);
+}
+
+// State a claim from the hub and return to the hub.
+void state_claim(pac::pnc::DialogRuntime& d, DialogTestHost& host, const std::string& line) {
+    REQUIRE(has_option(d, line));
+    choose_text(d, line);
+    advance_to_choice(d, host);
+}
+
+} // namespace
+
+TEST_CASE("Schneider puzzle dialog expands and walks to the winning conclusion") {
+    pac::core::Diagnostics log = quiet();
+    pac::core::Scripting s(log);
+    pac::core::StateStore state;
+    bind_dialog_state(s, state);
+
+    // The notebook predicates the dialog consults to gate the final hypothesis.
+    s.lua().set_function("get_hypothesis_conclusion", [](const std::string& id) -> std::string {
+        return id == "matilde_trauma" ? "blunt_perimortem" : "";
+    });
+    s.lua().set_function("is_hypothesis_complete",
+                         [](const std::string& id) { return id == "matilde_trauma"; });
+
+    // Findings the player has already gathered in the room/close-ups: these are
+    // the `requires` keys that make the observation topics appear.
+    state.set("finding.radial_fractures", true);
+    state.set("finding.no_cut_marks", true);
+    state.set("finding.no_collapse", true);
+    state.set("finding.perimortem_possible", true);
+
+    pac::core::FilesystemResourceSource source(std::string(PAC_SOURCE_DIR) +
+                                               "/games/ingreso_urgente/data");
+    pac::core::ResourceCache resources(source, log);
+
+    DialogTestHost host;
+    auto dopt =
+        pac::pnc::DialogRuntime::start(s, resources, log, "skull_trauma_cause", host.host());
+    // start() ran dialog{} expansion AND the validator on the result: a non-null
+    // runtime proves the rewritten tree is well-formed (no dangling `to`, no id
+    // collision between a topic and a raw node, START present).
+    REQUIRE(dopt.has_value());
+    pac::pnc::DialogRuntime& d = *dopt;
+
+    advance_to_choice(d, host); // past the multi-line intro into the hub
+    REQUIRE(d.current_node() == "hub");
+
+    // Traps are gated until the basic observations are on the table.
+    CHECK_FALSE(has_option(d, "Entonces fue asesinado."));
+    // `after`-gated discards are not yet offered.
+    CHECK_FALSE(has_option(d, "Una herramienta filosa no explica bien el patrón."));
+
+    // State the three basic observations (each a generated topic option).
+    state_claim(d, host, "El cráneo muestra una lesión focal con fracturas radiales.");
+    state_claim(d, host, "No se ven marcas de corte en la superficie ósea.");
+    state_claim(d,
+                host,
+                "El registro contextual no muestra derrumbe ni compresión sedimentaria clara.");
+
+    // Stated topics do not reappear; the murder trap is now available.
+    CHECK_FALSE(has_option(d, "No se ven marcas de corte en la superficie ósea."));
+    CHECK(has_option(d, "Entonces fue asesinado."));
+
+    // The discards unlocked via `after =` their observations.
+    CHECK(has_option(d, "Una herramienta filosa no explica bien el patrón."));
+    state_claim(d, host, "Una herramienta filosa no explica bien el patrón.");
+    state_claim(d, host, "El derrumbe o la compresión sedimentaria no parecen suficientes.");
+    state_claim(d, host, "La lesión podría ser perimortem, no una rotura seca tardía.");
+
+    // With observations + discards + perimortem + a complete blunt-perimortem
+    // hypothesis, the defensible conclusion becomes available.
+    REQUIRE(has_option(d, "La conclusión defendible es trauma contundente perimortem."));
+    choose_text(d, "La conclusión defendible es trauma contundente perimortem.");
+    advance_to_choice(d, host);
+    CHECK(d.current_node() == "after_solution");
+    CHECK(state.get("case.report_ready") == pac::core::StateValue{true});
+    CHECK(state.get("case.blunt_trauma_supported") == pac::core::StateValue{true});
+
+    // Close the case.
+    choose_text(d, "Entendido. Redacto el informe.");
+    for (int i = 0; i < 10 && !d.ended(); ++i) {
+        host.speaking = false;
+        d.update();
+    }
+    CHECK(d.ended());
+    CHECK(state.get("case.schneider_dialog_done") == pac::core::StateValue{true});
 }
