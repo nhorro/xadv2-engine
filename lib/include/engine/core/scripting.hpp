@@ -65,8 +65,14 @@ public:
     /// The current speaker-less text page (for a cutscene scene to draw), or "".
     const std::string& current_text() const;
 
-private:
+    /// Sol-aware accessor for the pimpl, used by `scripting_sol.hpp`. The Impl
+    /// type is defined only in `scripting.cpp`, so this is meaningful only to
+    /// TUs that include both this header and the Impl definition (in practice:
+    /// `scripting.cpp` itself, via the `spawn_call` free function).
     struct Impl;
+    Impl* sol_impl();
+
+private:
     std::unique_ptr<Impl> impl_;
 };
 

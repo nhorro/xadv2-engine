@@ -1,7 +1,9 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/scripting.hpp"
+#include "engine/core/scripting_sol.hpp"
 
 #include <doctest/doctest.h>
+#include <sol/sol.hpp>
 
 using namespace pac::core;
 
@@ -163,4 +165,100 @@ TEST_CASE("scheduler: a long-lived coroutine survives compaction + heavy GC") {
         s.update(0.016f);
     }
     CHECK(s.active_task_count() == 0); // both ran to completion, no crash
+}
+
+// M9 #183: `spawn_call` resumes a fresh task to its first yield/completion and
+// captures the synchronous string return, so a verb handler that just does
+// `return "caption"` keeps today's "return-value-becomes-caption" semantics
+// while a handler that yields hands control back to the scheduler.
+TEST_CASE("spawn_call: synchronous return is captured; yielding leaves the task in flight") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    sol::state& L = s.lua();
+
+    // (a) Returns a string -> done with string_return. (Note: a synchronously-
+    // completed task is still in `tasks` until the next update() sweeps it,
+    // marked Wait::DONE; consumers (the dispatch sites) only poll is_task_alive
+    // when `done == false`, so the sweep-deferred state is irrelevant to them.)
+    sol::function f_str = L.script("return function() return 'Una cosa.' end").get<sol::function>();
+    auto r_str = spawn_call(s, f_str);
+    CHECK(r_str.done);
+    REQUIRE(r_str.string_return.has_value());
+    CHECK(*r_str.string_return == "Una cosa.");
+    s.update(0.0f);
+    CHECK_FALSE(s.is_task_alive(r_str.task_id)); // swept after one tick
+
+    // (b) Returns nothing -> done, no string_return.
+    sol::function f_void = L.script("return function() end").get<sol::function>();
+    auto r_void = spawn_call(s, f_void);
+    CHECK(r_void.done);
+    CHECK_FALSE(r_void.string_return.has_value());
+
+    // (c) Yields via wait() -> not done, task still alive, drains over time.
+    sol::function f_yield =
+        L.script("return function() wait(0.5); _G.f_yield_done = true end").get<sol::function>();
+    auto r_yield = spawn_call(s, f_yield);
+    CHECK_FALSE(r_yield.done);
+    CHECK(s.is_task_alive(r_yield.task_id));
+    s.update(0.6f); // timer elapses + final resume
+    CHECK_FALSE(s.is_task_alive(r_yield.task_id));
+    CHECK(s.run_string("assert(_G.f_yield_done == true)"));
+
+    // (d) First arg is forwarded positionally.
+    sol::function f_arg =
+        L.script("return function(x) return 'got:' .. x end").get<sol::function>();
+    auto r_arg = spawn_call(s, f_arg, std::string("alpha"));
+    CHECK(r_arg.done);
+    REQUIRE(r_arg.string_return.has_value());
+    CHECK(*r_arg.string_return == "got:alpha");
+
+    // (e) Two args are forwarded positionally (game.fallbacks shape).
+    sol::function f_ab =
+        L.script("return function(a, b) return a .. '+' .. b end").get<sol::function>();
+    auto r_ab = spawn_call(s, f_ab, std::string("x"), std::string("y"));
+    CHECK(r_ab.done);
+    REQUIRE(r_ab.string_return.has_value());
+    CHECK(*r_ab.string_return == "x+y");
+
+    // (f) Errors are logged + treated as done (no string_return).
+    sol::function f_err = L.script("return function() error('boom') end").get<sol::function>();
+    auto r_err = spawn_call(s, f_err);
+    CHECK(r_err.done);
+    CHECK_FALSE(r_err.string_return.has_value());
+}
+
+// M9 #183 / PR #171: a flood of auto-spawned handlers that each yield once must
+// not crash under GC pressure. The scheduler's `live_threads` anchor keeps each
+// fresh task's lua thread alive through the spawn/resume churn, and the
+// inline-first-resume path used by spawn_call must obey the same invariant.
+TEST_CASE("spawn_call: click-storm soak under heavy GC") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    sol::state& L = s.lua();
+
+    // Handler yields once via wait(0.0), then sets a counter so we can verify
+    // all tasks ran to completion. Force a full GC before each spawn so the
+    // freshly-allocated lua thread is exercised under the same pressure that
+    // surfaced PR #171's SEGV.
+    L.script("counter = 0");
+    sol::function handler =
+        L.script("return function() wait(0.0); counter = counter + 1 end").get<sol::function>();
+
+    constexpr int N = 200;
+    for (int i = 0; i < N; ++i) {
+        L["collectgarbage"]("collect");
+        auto r = spawn_call(s, handler);
+        CHECK_FALSE(r.done); // wait(0.0) yields
+        CHECK(s.is_task_alive(r.task_id));
+    }
+    // Drain every task: tick the scheduler until the queue empties. Each tick
+    // forces another full GC (via PAC_GC_STRESS-style stress) by running it
+    // explicitly from Lua, so we exercise the live_threads anchor through the
+    // DONE sweep that follows.
+    for (int i = 0; i < 1000 && s.active_task_count() > 0; ++i) {
+        L["collectgarbage"]("collect");
+        s.update(0.001f);
+    }
+    CHECK(s.active_task_count() == 0);
+    CHECK(s.run_string("assert(counter == 200, 'got ' .. counter)"));
 }

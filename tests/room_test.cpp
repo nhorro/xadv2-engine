@@ -530,3 +530,51 @@ TEST_CASE("call_hotspot reports handled vs. no-handler (default-caption gating)"
 
     fs::remove_all(root);
 }
+
+// M9 #183: an auto-spawned hotspot handler that yields (talk/wait/move_to)
+// reports `in_flight = <task id>` so the dispatcher (`RoomScene::
+// dispatch_and_feedback`) can defer `finish_execution` until the task drains.
+// The synchronous return-string-as-caption rule is preserved by the test
+// above; this test covers the yield path that didn't exist before #183.
+TEST_CASE("call_hotspot reports in_flight when the handler yields, then drains") {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "pac_call_hotspot_yield_test";
+    fs::remove_all(root);
+    fs::create_directories(root / "rooms");
+    std::ofstream(root / "rooms" / "r.lua") << R"LUA(
+        return {
+          hotspots = {
+            slow = {
+              -- yields via wait, then sets a flag. After #183 this handler does
+              -- NOT need to wrap itself in `spawn(...)` -- the dispatch site
+              -- auto-spawns it.
+              use = function() wait(0.5); _G.slow_done = true end,
+            },
+          },
+        }
+    )LUA";
+
+    pac::core::Diagnostics log(pac::core::LogLevel::ERROR);
+    pac::core::FilesystemResourceSource source(root.string());
+    pac::core::ResourceCache resources(source, log);
+    pac::core::Scripting scripting(log);
+
+    RoomRuntime room(parse_room("id: r\n"));
+    room.load_behavior(scripting, resources, "rooms/r.lua", log);
+
+    const VerbResult use = room.call_hotspot("slow", "use");
+    CHECK(use.handled);
+    CHECK_FALSE(use.caption.has_value()); // yielded -> no synchronous caption
+    REQUIRE(use.in_flight.has_value());
+    CHECK(scripting.is_task_alive(*use.in_flight));
+
+    // Drive the scheduler past the wait; the task should drain and the flag
+    // should be set in Lua-land.
+    for (int i = 0; i < 100 && scripting.is_task_alive(*use.in_flight); ++i) {
+        scripting.update(0.016f);
+    }
+    CHECK_FALSE(scripting.is_task_alive(*use.in_flight));
+    CHECK(scripting.run_string("assert(_G.slow_done == true)"));
+
+    fs::remove_all(root);
+}
