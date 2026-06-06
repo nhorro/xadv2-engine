@@ -227,6 +227,90 @@ TEST_CASE("spawn_call: synchronous return is captured; yielding leaves the task 
     CHECK_FALSE(r_err.string_return.has_value());
 }
 
+// M9 #184: the `cutscene(body)` wrapper spawns the body in the current scope,
+// arms the C++ drain hook with the task id, and returns immediately so the
+// caller (a verb handler / a flow-helper-spawned outer task / direct call from
+// a beat) doesn't block. The room-view-state flip + restore is C++-side; this
+// test exercises the Lua wrapper's shape using a stub `_cutscene_arm` that
+// just captures the id, plus a real scheduler that drains the body.
+TEST_CASE("cutscene wrapper: spawns body, arms drain hook, drains under scope cancel") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    sol::state& L = s.lua();
+
+    // Define the same wrapper RoomScene installs in its prelude — keeping this
+    // close to the production code makes the test a true characterization, not
+    // a re-implementation.
+    L.script(R"LUA(
+function cutscene(body)
+  return function(...)
+    local args = { ... }
+    local tid = spawn(function() body(table.unpack(args)) end)
+    _cutscene_arm(tid)
+  end
+end
+)LUA");
+
+    // Stub the arm hook: capture the armed task id so the test can assert it.
+    TaskId armed = 0;
+    L.set_function("_cutscene_arm", [&armed](TaskId tid) { armed = tid; });
+
+    // (a) A cutscene whose body yields. The wrapper call returns immediately;
+    // the body task is alive in the scheduler with the armed id; drain works
+    // under GC pressure (live_threads anchor, PR #171).
+    L.script("counter = 0");
+    sol::function beat = L.script(R"LUA(
+return cutscene(function()
+  wait(0.5)
+  counter = counter + 1
+end)
+)LUA")
+                             .get<sol::function>();
+    beat();
+    CHECK(armed != 0);
+    CHECK(s.is_task_alive(armed));
+    for (int i = 0; i < 100 && s.is_task_alive(armed); ++i) {
+        L["collectgarbage"]("collect");
+        s.update(0.016f);
+    }
+    CHECK_FALSE(s.is_task_alive(armed));
+    CHECK(s.run_string("assert(counter == 1, 'got ' .. counter)"));
+
+    // (b) Args forwarded through the wrapper, so a handler shaped like
+    // `door.use = cutscene(function(item) ... end)` receives `item` (the
+    // operand the #183 dispatch path passes in) inside the body.
+    sol::function with_arg =
+        L.script("return cutscene(function(x) seen = x end)").get<sol::function>();
+    with_arg(std::string("hello"));
+    for (int i = 0; i < 100 && s.is_task_alive(armed); ++i) {
+        s.update(0.016f);
+    }
+    CHECK(s.run_string("assert(seen == 'hello')"));
+
+    // (c) cancel_scope mid-body kills the cutscene task as a normal scope-tied
+    // task. In production, RoomScene::update detects the dead task via
+    // is_task_alive(awaiting_handler_task_) and restores COMMAND from C++,
+    // since scope cancellation does NOT run Lua cleanup (design 05 §Coroutine
+    // rules). Here we just check the cancel + alive bookkeeping.
+    const ScopeId sc = s.open_scope();
+    s.set_current_scope(sc);
+    L.script("survives = false");
+    sol::function long_beat = L.script(R"LUA(
+return cutscene(function()
+  wait(100.0)
+  survives = true
+end)
+)LUA")
+                                  .get<sol::function>();
+    long_beat();
+    s.set_current_scope(s.global_scope());
+    CHECK(s.is_task_alive(armed));
+    s.cancel_scope(sc); // simulate change_room mid-cutscene
+    CHECK_FALSE(s.is_task_alive(armed));
+    s.update(200.0f); // would have fired the body's `survives = true`
+    CHECK(s.run_string("assert(survives == false)"));
+}
+
 // M9 #183 / PR #171: a flood of auto-spawned handlers that each yield once must
 // not crash under GC pressure. The scheduler's `live_threads` anchor keeps each
 // fresh task's lua thread alive through the spawn/resume churn, and the
