@@ -41,54 +41,53 @@ local function puzzle_enabled()
 end
 
 --------------------------------------------------------------------------------
--- Story beats / transitions (BLOCKING — always call inside spawn()).
+-- Story beats / transitions. Wrapped in cutscene { ... } (#184) so the body
+-- reads like a screenplay: no block_input/unblock_input ritual, flat
+-- say/move/face verbs instead of avatar(id):method chains. Calling the beat
+-- spawns it; the room view stays BLOCKED until the beat drains. Restoration is
+-- C++-side, so a change_room mid-beat clears it cleanly even though scope
+-- cancellation skips Lua cleanup (design 05 §Coroutine rules).
 --------------------------------------------------------------------------------
 
 -- "¡CLICK!" floating over the bluetooth speaker whenever it is toggled on/off.
 -- Global so the INTRO config's intro beat (rooms/lab/act1/intro.lua) can reuse it.
--- Guarded so the scene still runs before engine PR #165 (float_text) is merged +
--- synced; once it is, drop the `if float_text` guard.
 function speaker_click()
-    float_text("¡CLICK!", "bluetooth_speaker", { color = { r = 255, g = 230, b = 120 }, duration = 1.2 })    
+    float_text("¡CLICK!", "bluetooth_speaker", { color = { r = 255, g = 230, b = 120 }, duration = 1.2 })
 end
 
 -- CFG_PUZZLE: Dr. Schneider walks in from the door and stays for the puzzle.
 -- Triggered after the llamas close-up asks for "lab.schneider_cue".
-function schneider_arrives()
-    block_input()
-
+schneider_arrives = cutscene(function()
     set_state("lab.cfg", CFG_PUZZLE)
     set_state("act1.schneider_present", true)
     set_state("act1.puzzle_enabled", true)
 
     spawn_npc("schneider", "at_door", "down")
-    avatar("schneider"):move_to("schneider_start")
-    avatar("schneider"):face("left")
+    move("schneider", "schneider_start")
+    face("schneider", "left")
 
-    talk("schneider", "Serrategui.")
-    talk("player", "Dra. Schneider.")
+    say("schneider", "Serrategui.")
+    say("player", "Dra. Schneider.")
 
-    talk("schneider", "¿Eso es música?")
-    avatar("schneider"):move_to("at_desk")
-    avatar("schneider"):face("up")
-    talk("schneider", "Interesante. Había asumido que era una falla eléctrica.")
+    say("schneider", "¿Eso es música?")
+    move("schneider", "at_desk")
+    face("schneider", "up")
+    say("schneider", "Interesante. Había asumido que era una falla eléctrica.")
 
     stop_music()
     speaker_click() -- apaga el parlante
 
-    avatar("schneider"):move_to("schneider_start")
-    avatar("schneider"):face("left")
+    move("schneider", "schneider_start")
+    face("schneider", "left")
 
-    talk("schneider", "Necesito sus observaciones sobre los restos de La Matilde antes del mediodía.")
-    talk("player", "Sí. Estaba empezando.")
-    talk("schneider", "Eso espero.")
-    talk("schneider", "La ficha preliminar ya existe. No necesito que la lea en voz alta.")
-    talk("schneider", "Necesito saber si puede defenderla.")
-    talk("schneider", "Una hipótesis no mejora por estar dicha con entusiasmo.")
-    talk("schneider", "Mejor si viene acompañada de evidencia.")
-
-    unblock_input()
-end
+    say("schneider", "Necesito sus observaciones sobre los restos de La Matilde antes del mediodía.")
+    say("player", "Sí. Estaba empezando.")
+    say("schneider", "Eso espero.")
+    say("schneider", "La ficha preliminar ya existe. No necesito que la lea en voz alta.")
+    say("schneider", "Necesito saber si puede defenderla.")
+    say("schneider", "Una hipótesis no mejora por estar dicha con entusiasmo.")
+    say("schneider", "Mejor si viene acompañada de evidencia.")
+end)
 
 -- CFG_ALONE: a short text "cutscene" sends Schneider away again.
 function schneider_leaves()
