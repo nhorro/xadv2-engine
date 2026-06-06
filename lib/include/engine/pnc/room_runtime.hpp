@@ -137,6 +137,13 @@ public:
                             const std::string& verb,
                             std::optional<std::string> operand = std::nullopt);
 
+    /// Spawn the current config's optional beat — `configs.<config_id>.<hook>`,
+    /// where `hook` is "on_first_enter" / "on_reenter" — as an auto-spawned task
+    /// (#183), so it may block (talk/move_to/wait) like a verb handler. Returns
+    /// `in_flight` when it yields (the caller blocks input until it drains), or an
+    /// empty result when the config/hook is absent or it ran synchronously. (#185)
+    VerbResult call_config_beat(const std::string& config_id, const std::string& hook);
+
 private:
     struct Behavior;
     void seed_runtime_state();

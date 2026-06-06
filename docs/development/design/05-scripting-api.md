@@ -193,8 +193,8 @@ scratch* (rebuilding its `room` table) and then calls `on_load()`. So:
 - a room's Lua **locals and closures are transient** — they are rebuilt on every
   entry and never saved. Persist facts only through `set_state` / `set_room_state`
   / inventory / region state (see *State and persistence* below). To distinguish a
-  first visit from a return, gate on a saved flag (the per-configuration room
-  helper `rooms/_room_flow.lua` does exactly this).
+  first visit from a return, gate on a saved flag — or use a **room configuration**
+  (below), whose `on_first_enter` / `on_reenter` beats the engine gates for you.
 
 #### `game.on_start()` — one-time world-state init
 
@@ -213,6 +213,56 @@ region / hotspot / object / layer / obstacle flags. There is **no per-scene
 applies a restore (the MVP saves only while in `RoomScene`). Authors never touch
 `GameState` directly — they write through `set_state` / `set_room_state` /
 inventory / region APIs, and the engine folds those into the snapshot.
+
+The live **room configuration** + its per-(room, config) first-enter flags are
+engine-owned too (stored under reserved `__config.*` keys, like dialog `once`
+flags), so they persist with no save-format change — authors use
+`set_room_config` / `current_room_config`, never those keys.
+
+### Room configurations
+
+A room is usually shown in one of a few discrete **configurations** — which actors
+and objects are present (Julia alone vs. Julia + Dr. Schneider; an empty exterior
+vs. one with a delivery truck). **Presence is declared in the room's YAML**
+`configs:` block (see [06 § Room YAML](06-data-formats.md)); the engine tracks the
+live config in `GameState` and *reconciles presence on every entry* — spawning /
+despawning NPCs, showing / hiding objects, enabling / disabling obstacles to match.
+There is no `"<room>.cfg"` integer to manage and no flow helper to call.
+
+The room script supplies only the **behavior** half: optional first-enter /
+re-enter *beats*, under `room.configs[<id>]`, keyed by the same ids as the YAML.
+
+```lua
+local room = {}
+
+-- Presence (who/what is in each config) lives in rooms/lab.yaml. Here: only the
+-- configs that have a beat. The engine runs on_first_enter the first time the room
+-- is entered in that config, on_reenter on later entries (it gates the "seen" flag
+-- for you), each auto-spawned so it can block (talk/move/wait) like a cutscene.
+room.configs = {
+  intro = {
+    on_first_enter = cutscene(function()
+      say("player", "Ah. Hola. No esperaba que ya hubiera alguien mirando.")
+      -- ... the opening monologue ...
+    end),
+  },
+}
+
+-- A transition beat switches config. set_room_config reconciles the live room's
+-- presence at once; for another room it records the value, applied when that room
+-- next loads (so a beat in the lab can stage the hall's next config).
+schneider_leaves = cutscene(function()
+  say("schneider", "Eso espero.")
+  set_room_config("lab", "alone")   -- the reconcile despawns Schneider
+end)
+
+return room
+```
+
+| Call | Meaning |
+|------|---------|
+| `set_room_config(room_id, config_id)` | Switch a room's configuration. The live room reconciles presence immediately (and counts this as the config's reveal, so a later re-entry runs `on_reenter`, not `on_first_enter`); another room just records the value, reconciled when it next loads. |
+| `current_room_config(room_id?)` | The room's live config id (defaults to the current room). Use it instead of `get_state("<room>.cfg")` — e.g. `if current_room_config("lab") == "puzzle" then …`. |
 
 ### Hotspot handler signatures
 
@@ -663,6 +713,8 @@ each call yielding until the page finishes or is skipped.
 |----------|------------|---------|---------|
 | `change_room(id, entry_point?)` | room id, optional point id | — | Load another room inside `RoomScene`. |
 | `current_room()` | — | room id | Return current room id. |
+| `set_room_config(room_id, config_id)` | room id, config id | — | Switch a room's [configuration](#room-configurations) (#185). Live room: reconcile presence now; another room: record it, applied on its next load. |
+| `current_room_config(room_id?)` | optional room id | config id | The room's live config id (defaults to the current room); `""` for a room without `configs:`. |
 | `open_closeup(scene_id)` | `CloseUp` scene id | — | Open an examine view as an overlay over the room; it pops back here on Esc / right-click (design 04 §CloseUp). |
 | `start_cutscene(scene_id)` | manifest scene id | — | Leave the room for a manifest scene (typically a `Cutscene` / `StoryText`) — e.g. an act-closing cutscene fired from a verb handler. Unlike `open_closeup` this **replaces** the room (it does not pop back); the target scene's own `on_finish` decides where to go next. Persistent `GameState` survives; the live room is unloaded. |
 | `on_room_resume(fn)` | a function (usually a `cutscene`-wrapped beat) | — | Defer a blocking room beat until the room is the live, ticking scene again — the bridge a **close-up** uses (from its `on_exit`) to hand a beat back to its frozen room (design §Close-up scripts). `fn` runs **once**, in the room's scope, blocking input until it finishes. Transient: it fires within a frame of the close-up closing, so it is not saved in `GameState`; a room change before it fires drops it. |

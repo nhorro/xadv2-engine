@@ -408,4 +408,31 @@ VerbResult RoomRuntime::call_hotspot(const std::string& hotspot_id,
     return res;
 }
 
+VerbResult RoomRuntime::call_config_beat(const std::string& config_id, const std::string& hook) {
+    if (!behavior_ || !behavior_->valid || !behavior_->scripting) {
+        return {};
+    }
+    sol::optional<sol::table> configs = behavior_->table["configs"];
+    if (!configs) {
+        return {}; // room .lua declares no config beats
+    }
+    sol::optional<sol::table> cfg = (*configs)[config_id];
+    if (!cfg) {
+        return {}; // presence-only config (declared in YAML, no Lua beats)
+    }
+    sol::optional<sol::function> fn = (*cfg)[hook];
+    if (!fn) {
+        return {}; // this config has no beat for this hook
+    }
+    // Auto-spawn like a verb handler (#183): a `cutscene { ... }` beat arms the
+    // BLOCKED drain itself; a plain blocking beat yields and hands back its task id.
+    const pac::core::SpawnCallResult call = pac::core::spawn_call(*behavior_->scripting, *fn);
+    VerbResult res;
+    res.handled = true;
+    if (!call.done) {
+        res.in_flight = call.task_id;
+    }
+    return res;
+}
+
 } // namespace pac::pnc
