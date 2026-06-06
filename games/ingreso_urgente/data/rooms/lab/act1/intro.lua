@@ -11,56 +11,56 @@ end
 -- First time the player enters the lab: Julia introduces herself, turns on the
 -- music, and is told (by herself) to start classifying the La Matilde materials.
 -- `speaker_click` is a global helper defined in lab.lua (shared with the arrival
--- beat). Runs inside spawn() via the flow helper.
-function M.on_first_enter()
-    block_input()
-
-    avatar("player"):face("left")
+-- beat). Wrapped in cutscene { ... } (#184): the body reads like a screenplay,
+-- the room view stays BLOCKED until the beat drains, and the flow helper still
+-- calls this through spawn() — the outer task just arms the inner cutscene and
+-- dies immediately.
+M.on_first_enter = cutscene(function()
+    face("player", "left")
     wait(2)
-    avatar("player"):face("right")
-    wait(2)
-
-    avatar("player"):move_to("player_start")
-    avatar("player"):face("down")
+    face("player", "right")
     wait(2)
 
-    talk("player", "Ah. Hola.")
-    talk("player", "No esperaba que ya hubiera alguien mirando.")
-    talk("player", "Soy Julia. Becaria nueva del Instituto Arqueológico Serra Ventana.")
-    talk("player", "Hoy empiezo con tareas de clasificación bajo supervisión de la Dra. Schneider.")
-    talk("player", "Me dijeron que es estricta.")
-    talk("player", "Después me aclararon que 'estricta' era una forma amable de decirlo.")
-    talk("player", "Así que debería estar trabajando.")
+    move("player", "player_start")
+    face("player", "down")
+    wait(2)
 
-    talk("player",
+    say("player", "Ah. Hola.")
+    say("player", "No esperaba que ya hubiera alguien mirando.")
+    say("player", "Soy Julia. Becaria nueva del Instituto Arqueológico Serra Ventana.")
+    say("player", "Hoy empiezo con tareas de clasificación bajo supervisión de la Dra. Schneider.")
+    say("player", "Me dijeron que es estricta.")
+    say("player", "Después me aclararon que 'estricta' era una forma amable de decirlo.")
+    say("player", "Así que debería estar trabajando.")
+
+    say("player",
         "Pero por esa ventana a veces se ven llamas. Y alpacas. Y otros animales que en la ciudad no suelen circular con tanta libertad institucional.")
 
-    talk("player",
+    say("player",
         "Además tengo una facilidad bastante desarrollada para distraerme de mis obligaciones.")
 
-    talk("player", "A las que debería volver.")
-    talk("player", "O empezar.")
-    talk("player", "Porque, técnicamente, todavía no produje nada defendible ante una comisión evaluadora.")
+    say("player", "A las que debería volver.")
+    say("player", "O empezar.")
+    say("player", "Porque, técnicamente, todavía no produje nada defendible ante una comisión evaluadora.")
 
-    avatar("player"):move_to("at_desk")
-    avatar("player"):face("up")
-    talk("player", "Para clasificar restos arqueológicos necesito música.")
-    talk("player", "No sé si es metodológicamente válido, pero mejora mi predisposición laboral.")
+    move("player", "at_desk")
+    face("player", "up")
+    say("player", "Para clasificar restos arqueológicos necesito música.")
+    say("player", "No sé si es metodológicamente válido, pero mejora mi predisposición laboral.")
 
     speaker_click() -- enciende el parlante
     play_music("music/seretuarqueologo.mp3")
     wait(2)
 
-    avatar("player"):face("down")
+    face("player", "down")
     wait(1)
 
-    avatar("player"):move_to("at_skull_bones")
-    avatar("player"):face("up")
-    talk("player", "Bien. La Matilde. Unidad 7B. Capa 3. Entierro 1.")
-    talk("player", "Tengo que preparar un informe preliminar antes de que la Dra. Schneider descubra que todavía no empecé.")
+    move("player", "at_skull_bones")
+    face("player", "up")
+    say("player", "Bien. La Matilde. Unidad 7B. Capa 3. Entierro 1.")
+    say("player", "Tengo que preparar un informe preliminar antes de que la Dra. Schneider descubra que todavía no empecé.")
 
     set_state("lab.julia_intro_seen", true)
-    unblock_input()
-end
+end)
 
 return M

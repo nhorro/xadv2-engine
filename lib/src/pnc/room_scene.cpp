@@ -308,14 +308,34 @@ void RoomScene::enter() {
     // instead of overwriting each other (design 05: talk "yields until done"). On
     // the main thread — a plain on_load / verb handler that is not a coroutine — it
     // stays fire-and-forget so those existing call sites keep working.
+    //
+    // M9 #184 also defines the screenplay-shaped aliases (`say` / `move` / `face`)
+    // and the `cutscene { ... }` block here, in the same prelude — they all rely on
+    // `talk` / `spawn` / `avatar(id):method` being already bound, and on the
+    // C++-side `_cutscene_arm` being set above. `cutscene(body)` returns a wrapper
+    // that, when called, spawns the body in the current scope, captures its task
+    // id, and arms the drain seam. The wrapper itself returns immediately, so a
+    // hotspot handler `use = cutscene(function() ... end)` behaves like any other
+    // auto-spawned handler that yielded — the dispatcher (#183) defers the SCUMM
+    // panel's finish_execution until update() sees the cutscene task drain.
     ctx_.scripting.run_string(R"LUA(
 function talk(speaker, text)
   local ev = _talk_start(speaker, text)
   local _, ismain = coroutine.running()
   if ev and ev ~= "" and not ismain then wait_event(ev) end
 end
+function say(speaker, text) return talk(speaker, text) end
+function move(id, target) return avatar(id):move_to(target) end
+function face(id, dir) return avatar(id):face(dir) end
+function cutscene(body)
+  return function(...)
+    local args = { ... }
+    local tid = spawn(function() body(table.unpack(args)) end)
+    _cutscene_arm(tid)
+  end
+end
 )LUA",
-                              "=talk");
+                              "=room_lua_prelude");
     L.set_function("start_dialog",
                    [this](std::string dialog_id, sol::optional<std::string> speaker) {
                        api_start_dialog(dialog_id, speaker.value_or(dialog_id));
@@ -593,6 +613,19 @@ end
         if (view_state_ == ViewState::BLOCKED) {
             view_state_ = ViewState::COMMAND;
         }
+    });
+    // M9 #184 cutscene { ... } block. The Lua-side `cutscene(body)` wrapper
+    // (defined below) calls back into `_cutscene_arm` with the spawned task id;
+    // we set BLOCKED and reuse the auto-spawn drain seam (#183) so when the
+    // task ends — whether by completion OR scope cancellation (change_room,
+    // unload_room) — update() restores COMMAND from C++. The restoration MUST
+    // be C++-side because scope cancellation does not run Lua cleanup (per
+    // design 05 §Coroutine rules), so a Lua `finally` is not an option.
+    L.set_function("_cutscene_arm", [this](pac::core::TaskId tid) {
+        if (view_state_ == ViewState::COMMAND) {
+            view_state_ = ViewState::BLOCKED;
+        }
+        awaiting_handler_task_ = tid;
     });
     L.set_function("set_room_view_state", [this](std::string name) {
         if (name == "command") {
@@ -1345,6 +1378,14 @@ void RoomScene::dispatch_and_feedback(const Command& cmd) {
     // (the room-scope teardown also clears awaiting_handler_task_).
     if (result.in_flight) {
         awaiting_handler_task_ = *result.in_flight;
+        view_state_ = ViewState::BLOCKED;
+        return;
+    }
+    // M9 #184: a synchronously-completed handler may still have armed a
+    // separate in-flight task via `cutscene(...)` (its wrapper calls
+    // _cutscene_arm before returning). Treat it like the yielded case —
+    // defer finish_execution to the drain logic below.
+    if (awaiting_handler_task_) {
         view_state_ = ViewState::BLOCKED;
         return;
     }
