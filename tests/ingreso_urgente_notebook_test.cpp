@@ -1,7 +1,3 @@
-#include "notebook/notebook_model.hpp"
-#include "notebook/notebook_module.hpp"
-#include "notebook/notebook_scene.hpp"
-
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/game_state.hpp"
 #include "engine/core/manifest.hpp"
@@ -10,6 +6,9 @@
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scripting.hpp"
 #include "engine/core/state_store.hpp"
+#include "notebook/notebook_model.hpp"
+#include "notebook/notebook_module.hpp"
+#include "notebook/notebook_scene.hpp"
 
 #include <doctest/doctest.h>
 #include <sol/sol.hpp>
@@ -228,9 +227,8 @@ TEST_CASE("authored ingreso urgente notebook YAML parses") {
 }
 
 TEST_CASE("authored ingreso urgente manifest declares notebook definitions path") {
-    const pac::core::Manifest manifest =
-        pac::core::load_manifest(std::string(PAC_SOURCE_DIR) +
-                                 "/games/ingreso_urgente/data/game.yaml");
+    const pac::core::Manifest manifest = pac::core::load_manifest(
+        std::string(PAC_SOURCE_DIR) + "/games/ingreso_urgente/data/game.yaml");
     const pac::core::SceneDesc* notebook = manifest.find_scene("notebook");
     REQUIRE(notebook != nullptr);
     CHECK(notebook->type == "IngresoNotebook");
@@ -420,23 +418,17 @@ TEST_CASE("act I notebook integration scripts compile in embedded Lua") {
     }
 }
 
-TEST_CASE("room scripts and per-act modules compile in embedded Lua") {
+TEST_CASE("room scripts and per-config beat modules compile in embedded Lua") {
     pac::core::Diagnostics log = quiet();
     pac::core::Scripting scripting(log);
+    // Per #185 the per-config presence files + the _room_flow helper are gone
+    // (presence is declarative in each room's YAML `configs:`). Only the room
+    // scripts and the surviving per-config BEAT module (the lab intro) remain.
     const char* scripts[] = {
-        "games/ingreso_urgente/data/rooms/_room_flow.lua",
         "games/ingreso_urgente/data/rooms/lab.lua",
         "games/ingreso_urgente/data/rooms/lab/act1/intro.lua",
-        "games/ingreso_urgente/data/rooms/lab/act1/puzzle.lua",
-        "games/ingreso_urgente/data/rooms/lab/act1/alone.lua",
         "games/ingreso_urgente/data/rooms/hall.lua",
-        "games/ingreso_urgente/data/rooms/hall/act1/empty.lua",
-        "games/ingreso_urgente/data/rooms/hall/act1/box_closed.lua",
-        "games/ingreso_urgente/data/rooms/hall/act1/mummy.lua",
         "games/ingreso_urgente/data/rooms/exterior.lua",
-        "games/ingreso_urgente/data/rooms/exterior/act1/empty.lua",
-        "games/ingreso_urgente/data/rooms/exterior/act1/delivery.lua",
-        "games/ingreso_urgente/data/rooms/exterior/act1/box.lua",
     };
     for (const char* logical : scripts) {
         const std::string path = std::string(PAC_SOURCE_DIR) + "/" + logical;

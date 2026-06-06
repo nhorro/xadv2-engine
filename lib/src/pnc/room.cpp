@@ -19,6 +19,11 @@ const geom::Point* RoomData::point(const std::string& name) const {
     return it != points.end() ? &it->second : nullptr;
 }
 
+const RoomConfig* RoomConfigs::find(const std::string& id) const {
+    const auto it = by_id.find(id);
+    return it != by_id.end() ? &it->second : nullptr;
+}
+
 bool RoomData::is_walkable(geom::Point p) const {
     if (!geom::point_in_polygon(p, walkable)) {
         return false;
@@ -369,6 +374,117 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                       persp);
         }
         room.perspective = p;
+    }
+
+    // Declarative configurations (#185): presence (managed NPCs / objects /
+    // obstacles) per symbolic config id. Parsed last so references resolve against
+    // the already-parsed points / objects / obstacles. Behavior beats live in Lua.
+    if (const YAML::Node cfgs = root["configs"]) {
+        if (!cfgs.IsMap()) {
+            room_fail("room.configs-not-map",
+                      "room '" + room.id + "': 'configs' must be a mapping",
+                      cfgs);
+        }
+        if (!cfgs["start"]) {
+            room_fail("room.config-start-missing",
+                      "room '" + room.id + "': 'configs' needs a 'start' config id",
+                      cfgs);
+        }
+        RoomConfigs rc;
+        rc.start = cfgs["start"].as<std::string>();
+        for (const auto& kv : cfgs) {
+            const std::string key = kv.first.as<std::string>();
+            if (key == "start") {
+                continue; // reserved key, not a config
+            }
+            const YAML::Node& body = kv.second;
+            RoomConfig c;
+            c.id = key;
+            if (const YAML::Node present = body["present"]) {
+                if (!present.IsMap()) {
+                    room_fail("room.config-present-not-map",
+                              "room '" + room.id + "': config '" + key +
+                                  "' has a non-mapping 'present'",
+                              present);
+                }
+                for (const auto& nkv : present["npcs"] ? present["npcs"] : YAML::Node()) {
+                    const std::string npc_id = nkv.first.as<std::string>();
+                    RoomConfig::Npc npc;
+                    if (!nkv.second["at"]) {
+                        room_fail("room.config-npc-at-missing",
+                                  "room '" + room.id + "': config '" + key + "' npc '" + npc_id +
+                                      "' needs an 'at' point",
+                                  nkv.second);
+                    }
+                    npc.at = nkv.second["at"].as<std::string>();
+                    if (!room.point(npc.at)) {
+                        room_fail("room.config-npc-point-unknown",
+                                  "room '" + room.id + "': config '" + key + "' npc '" + npc_id +
+                                      "' at unknown point '" + npc.at + "'",
+                                  nkv.second);
+                    }
+                    npc.facing =
+                        nkv.second["facing"] ? nkv.second["facing"].as<std::string>() : "down";
+                    c.npcs[npc_id] = std::move(npc);
+                }
+                for (const YAML::Node& o : present["objects"] ? present["objects"] : YAML::Node()) {
+                    const std::string oid = o.as<std::string>();
+                    if (room.objects.find(oid) == room.objects.end()) {
+                        room_fail("room.config-object-unknown",
+                                  "room '" + room.id + "': config '" + key +
+                                      "' lists unknown object '" + oid + "'",
+                                  o);
+                    }
+                    c.objects.push_back(oid);
+                }
+                for (const YAML::Node& o :
+                     present["obstacles"] ? present["obstacles"] : YAML::Node()) {
+                    const std::string oid = o.as<std::string>();
+                    const bool found =
+                        std::any_of(room.obstacles.begin(),
+                                    room.obstacles.end(),
+                                    [&](const Obstacle& ob) { return ob.id == oid; });
+                    if (!found) {
+                        room_fail("room.config-obstacle-unknown",
+                                  "room '" + room.id + "': config '" + key +
+                                      "' lists unknown obstacle '" + oid +
+                                      "' (only obstacles with an 'id' can be config-managed)",
+                                  o);
+                    }
+                    c.obstacles.push_back(oid);
+                }
+            }
+            rc.order.push_back(key);
+            rc.by_id[key] = std::move(c);
+        }
+        if (!rc.find(rc.start)) {
+            room_fail("room.config-start-unknown",
+                      "room '" + room.id + "': start config '" + rc.start + "' is not defined",
+                      cfgs["start"]);
+        }
+        // Managed sets = union of every id any config controls, so reconciling one
+        // config turns the others' actors off. Dedup via a sorted unique pass.
+        auto union_of = [&](auto picker) {
+            std::vector<std::string> all;
+            for (const auto& [id, c] : rc.by_id) {
+                picker(c, all);
+            }
+            std::sort(all.begin(), all.end());
+            all.erase(std::unique(all.begin(), all.end()), all.end());
+            return all;
+        };
+        rc.managed_npcs = union_of([](const RoomConfig& c, std::vector<std::string>& out) {
+            for (const auto& [id, npc] : c.npcs) {
+                out.push_back(id);
+            }
+        });
+        rc.managed_objects = union_of([](const RoomConfig& c, std::vector<std::string>& out) {
+            out.insert(out.end(), c.objects.begin(), c.objects.end());
+        });
+        rc.managed_obstacles = union_of([](const RoomConfig& c, std::vector<std::string>& out) {
+            out.insert(out.end(), c.obstacles.begin(), c.obstacles.end());
+        });
+        room.configs = std::move(rc);
     }
 
     return room;

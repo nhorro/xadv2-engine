@@ -26,6 +26,21 @@ avatars:
   start: intro_window
   orientation: left
   player: true
+
+# Declarative configurations (#185). Presence per config; the first-enter /
+# re-enter beats live in lab.lua under `room.configs`. The engine tracks the live
+# config (was the hand-managed "lab.cfg" integer) and reconciles on entry.
+configs:
+  start: intro
+  intro:                       # Julia alone; the opening monologue
+    present: {}
+  puzzle:                      # Julia + Dr. Schneider; the skull-trauma puzzle
+    present:
+      npcs:
+        schneider: { at: schneider_start, facing: left }
+  alone:                       # Schneider has left; Julia alone again
+    present: {}
+
 obstacles: []
 zones: []
 regions: {}

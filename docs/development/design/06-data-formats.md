@@ -348,7 +348,8 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `regions` | opt | map | — | Changeable background parts (see below). |
 | `objects` | opt | map | — | Active sprites placed in the room (see below). |
 | `hotspots` | opt | map | — | Interactive areas + verb handlers (see below). |
-| `avatars` | opt | `[avatar]` | — | Player placement + NPCs present at load (see below). |
+| `avatars` | opt | `[avatar]` | — | Player placement + NPCs *always* present at load (see below). Config-managed NPCs are spawned by `configs`, not here. |
+| `configs` | opt | `{start, <id>: config}` | — | Declarative **configurations** — which NPCs/objects/obstacles are present per named room state (see below). |
 
 **`background.layers`** — `[layer]`:
 
@@ -424,6 +425,48 @@ source activates the hotspot.
 | `start` | req | point id | — | Placement point. |
 | `orientation` | opt | `up`/`right`/`down`/`left` | `down` | Initial facing. |
 | `player` | opt | bool | `false` | Marks the player's placement entry (does not create the player; see [player vs NPC avatars](04-point-and-click-concepts.md)). |
+
+**`configs`** (issue #185) — a room is shown in one of a few discrete
+**configurations** (which actors/objects are present). Declare them here; the
+engine tracks the live config in `GameState` (no author-managed `"<room>.cfg"`
+state) and **reconciles presence on every entry**. The optional first-enter /
+re-enter *beats* live in Lua under `room.configs[<id>]` — see
+[05 § Room configurations](05-scripting-api.md).
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `start` | req | config id | — | The config a **new game** begins the room in. |
+| `<id>` | — | `{present?}` | — | One configuration, keyed by a symbolic id (`intro`, `puzzle`, …). |
+
+Each config's **`present`** lists what is ON in that config. Reconciliation is
+**exhaustive**: the engine forms the *managed set* = the union of every id named
+across all of the room's configs, and on entry turns **on** exactly what the
+current config names and **off** the rest. So an empty config is `present: {}` and
+needs no explicit "hide everything".
+
+| `present` key | Type | Meaning |
+|-----|------|---------|
+| `npcs` | map id → `{at, facing?}` | NPCs spawned in this config. `at` is a room **point**; `facing` (default `down`) the initial orientation. A managed NPC absent from a config is despawned there. |
+| `objects` | `[object id]` | Object ids **shown** in this config (managed objects not listed are hidden). |
+| `obstacles` | `[obstacle id]` | Named obstacle ids **enabled** in this config (managed obstacles not listed are disabled). Only obstacles with an `id` can be config-managed. |
+
+```yaml
+configs:
+  start: intro
+  intro:                 # Julia alone — managed set all off
+    present: {}
+  puzzle:                # Julia + Dr. Schneider
+    present:
+      npcs:
+        schneider: { at: schneider_start, facing: left }
+  alone:                 # Schneider has left again
+    present: {}
+```
+
+The loader fails (`room.config-*`) on a missing/unknown `start`, an unknown
+point/object/obstacle reference, or an NPC entry without `at`. Configs compose with
+ad-hoc `spawn_npc`/`despawn_npc` inside beats — a temporary actor added after the
+reconcile lives until the next config change reconciles back to the declared set.
 
 **Shaders** (on a layer, region, object, or [appearance](#cast--castyaml)) — see [03 § Shaders](03-2d-game-concepts.md) for the model. A **shader ref** is either a string (shorthand for `{source: <string>}`) or a mapping:
 

@@ -140,6 +140,14 @@ public:
     void api_spawn_npc(const std::string& id, geom::Point start, const std::string& orientation);
     void api_despawn_npc(const std::string& id);
     [[nodiscard]] std::string api_current_room() const { return current_room_id_; }
+
+    // Declarative room configurations (#185). `set_room_config` is the transition
+    // primitive (replaces the hand-managed `set_state("<room>.cfg", N)` + flow
+    // helper): for the live room it reconciles presence at once; for another room
+    // it records the value, reconciled when that room next loads.
+    // `current_room_config` reads a room's config id (replaces `get_state` checks).
+    void api_set_room_config(const std::string& room_id, const std::string& config_id);
+    [[nodiscard]] std::string api_current_room_config(const std::string& room_id) const;
     [[nodiscard]] InventoryModel& inventory() { return inventory_; }
     [[nodiscard]] ViewState view_state() const { return view_state_; }
 
@@ -167,6 +175,14 @@ private:
     void unload_room();
     void seat_player(const std::string& entry_point);
     void spawn_room_npcs();
+    // Declarative configs (#185). `apply_room_config` resolves the room's effective
+    // config (persisted value, else its `start`), persists it, reconciles presence,
+    // and returns the id ("" for a room without `configs:`). `reconcile_to_config`
+    // applies one config's exhaustive presence. `run_config_beat` spawns the
+    // matching first-enter / re-enter beat (blocking input until it drains).
+    std::string apply_room_config();
+    void reconcile_to_config(const std::string& config_id);
+    void run_config_beat(const std::string& config_id);
     [[nodiscard]] std::optional<Avatar> make_avatar(const std::string& character_id);
     /// Resolve a cast character id to its live avatar: the persistent player when
     /// `id` is the player character, else a room NPC, else nullptr. Re-resolved on

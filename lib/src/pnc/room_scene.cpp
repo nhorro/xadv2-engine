@@ -56,6 +56,18 @@ bool is_moving_bind(const std::string& bind) {
     return bind.starts_with("npc:") || bind.starts_with("object:");
 }
 
+// Engine-reserved global-state keys backing declarative configs (#185): the live
+// config id per room and a per-(room,config) "seen" flag for first-enter tracking.
+// Folded into GameState's global store like the `__dialog.*` once-flags, so they
+// persist across save/load with no save-format change. Authors never touch them —
+// they use `set_room_config` / `current_room_config` instead.
+std::string config_cur_key(const std::string& room) {
+    return "__config." + room + ".cur";
+}
+std::string config_seen_key(const std::string& room, const std::string& config) {
+    return "__config." + room + "." + config + ".seen";
+}
+
 std::optional<pac::core::StateValue> to_state_value(const sol::object& v) {
     if (v.is<bool>()) {
         return pac::core::StateValue{v.as<bool>()};
@@ -277,6 +289,13 @@ void RoomScene::enter() {
         api_change_room(id, e.value_or(""));
     });
     L.set_function("current_room", [this]() { return api_current_room(); });
+    // Declarative room configs (#185): the transition primitive + the read accessor.
+    L.set_function("set_room_config", [this](std::string room_id, std::string config_id) {
+        api_set_room_config(room_id, config_id);
+    });
+    L.set_function("current_room_config", [this](sol::optional<std::string> room_id) {
+        return api_current_room_config(room_id.value_or(current_room_id_));
+    });
     L.set_function("set_region_state",
                    [this](std::string id, std::string s) { api_set_region_state(id, s); });
     L.set_function("get_region_state", [this](std::string id) { return api_get_region_state(id); });
@@ -801,7 +820,14 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     spawn_room_npcs();
     build_object_sprites();
 
+    // Declarative configs (#185): reconcile presence to the room's effective config
+    // BEFORE on_load (so the hook sees the resolved room), then run on_load, then
+    // the config's first-enter / re-enter beat. Both run while the room scope is
+    // current, so the spawned beat is room-scoped. A room without `configs:` skips
+    // all of this (apply_room_config returns "").
+    const std::string config_id = apply_room_config();
     room_->call_hook("on_load");
+    run_config_beat(config_id);
     ctx_.scripting.set_current_scope(ctx_.scripting.global_scope());
 }
 
@@ -2405,6 +2431,123 @@ void RoomScene::api_despawn_npc(const std::string& id) {
     if (room_) {
         room_->remove_npc(id);
     }
+}
+
+// --- declarative room configs (#185) ---
+
+std::string RoomScene::apply_room_config() {
+    if (!room_ || !room_->data().configs) {
+        return ""; // a room without `configs:` behaves exactly as before
+    }
+    const RoomConfigs& cfgs = *room_->data().configs;
+    // Effective config: the persisted live value, else the room's `start`. A
+    // stale/unknown persisted id (e.g. a renamed config in a newer build) falls
+    // back to `start` rather than leaving the room un-reconciled.
+    std::string cur;
+    if (const auto v = ctx_.state.get(config_cur_key(current_room_id_));
+        v && std::holds_alternative<std::string>(*v)) {
+        cur = std::get<std::string>(*v);
+    }
+    if (cur.empty() || !cfgs.find(cur)) {
+        cur = cfgs.start;
+    }
+    ctx_.state.set(config_cur_key(current_room_id_), pac::core::StateValue{cur});
+    reconcile_to_config(cur);
+    return cur;
+}
+
+void RoomScene::reconcile_to_config(const std::string& config_id) {
+    if (!room_ || !room_->data().configs) {
+        return;
+    }
+    const RoomConfigs& cfgs = *room_->data().configs;
+    const RoomConfig* c = cfgs.find(config_id);
+    if (!c) {
+        return;
+    }
+    const RoomData& d = room_->data();
+    // NPCs: spawn those this config names (only if absent, so an actor a beat
+    // already walked in isn't teleported), despawn every other managed NPC.
+    for (const std::string& id : cfgs.managed_npcs) {
+        const auto it = c->npcs.find(id);
+        if (it != c->npcs.end()) {
+            if (!room_->npc(id)) {
+                if (const geom::Point* p = d.point(it->second.at)) {
+                    api_spawn_npc(id, *p, it->second.facing);
+                }
+            }
+        } else {
+            api_despawn_npc(id);
+        }
+    }
+    // Objects / obstacles: exhaustive show/enable iff named in this config.
+    for (const std::string& id : cfgs.managed_objects) {
+        const bool show = std::find(c->objects.begin(), c->objects.end(), id) != c->objects.end();
+        api_show_object(id, show);
+    }
+    for (const std::string& id : cfgs.managed_obstacles) {
+        const bool enabled =
+            std::find(c->obstacles.begin(), c->obstacles.end(), id) != c->obstacles.end();
+        room_->set_obstacle_enabled(id, enabled);
+    }
+}
+
+void RoomScene::run_config_beat(const std::string& config_id) {
+    if (config_id.empty() || !room_ || !room_->data().configs) {
+        return;
+    }
+    const std::string seen_key = config_seen_key(current_room_id_, config_id);
+    bool seen = false;
+    if (const auto v = ctx_.state.get(seen_key); v && std::holds_alternative<bool>(*v)) {
+        seen = std::get<bool>(*v);
+    }
+    // First load in this config runs on_first_enter (once); later loads run
+    // on_reenter. Mark seen now so a beat that itself changes room can't re-trigger
+    // the first-enter on the way back.
+    if (!seen) {
+        ctx_.state.set(seen_key, pac::core::StateValue{true});
+    }
+    const VerbResult beat =
+        room_->call_config_beat(config_id, seen ? "on_reenter" : "on_first_enter");
+    if (beat.in_flight) {
+        awaiting_handler_task_ = *beat.in_flight;
+    }
+    // A cutscene-wrapped beat arms awaiting_handler_task_ via _cutscene_arm even
+    // when its wrapper completes synchronously; either way, block until it drains.
+    if (awaiting_handler_task_) {
+        view_state_ = ViewState::BLOCKED;
+    }
+}
+
+void RoomScene::api_set_room_config(const std::string& room_id, const std::string& config_id) {
+    const bool live = room_id == current_room_id_ && room_ && room_->data().configs.has_value();
+    if (live && !room_->data().configs->find(config_id)) {
+        ctx_.log.error("set_room_config('" + room_id + "', '" + config_id +
+                       "'): no such config in room '" + room_id + "'");
+        return;
+    }
+    ctx_.state.set(config_cur_key(room_id), pac::core::StateValue{config_id});
+    if (live) {
+        // The live room: reconcile presence now. Count this in-room transition as
+        // "seen" — the beat that called set_room_config IS the config's reveal, so
+        // a later re-entry should run on_reenter, not on_first_enter.
+        ctx_.state.set(config_seen_key(room_id, config_id), pac::core::StateValue{true});
+        reconcile_to_config(config_id);
+    }
+    // For another room the value is recorded only; apply_room_config reconciles it
+    // when that room next loads (so on_first_enter still fires there the first time).
+}
+
+std::string RoomScene::api_current_room_config(const std::string& room_id) const {
+    if (const auto v = ctx_.state.get(config_cur_key(room_id));
+        v && std::holds_alternative<std::string>(*v)) {
+        return std::get<std::string>(*v);
+    }
+    // Not set yet: for the live room fall back to its declared start config.
+    if (room_id == current_room_id_ && room_ && room_->data().configs) {
+        return room_->data().configs->start;
+    }
+    return "";
 }
 
 void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string& speaker_id) {

@@ -5,85 +5,38 @@
 --                          the engine's default caption from `strings.defaults`).
 --
 --==============================================================================
--- ROOM CONFIGURATION CONVENTION (skeleton — arrange the beats per the script)
+-- ROOM CONFIGURATIONS (#185)
 --==============================================================================
--- Each room is shown in one of a few discrete *configurations*: which actors
--- and objects are present, plus scenery state. The current configuration of a
--- room is a global saved-state integer keyed "<room>.cfg":
+-- Each room is shown in one of a few discrete *configurations* (which actors /
+-- objects are present). These are now DECLARED in each room's YAML under
+-- `configs:` and tracked by the engine — no "<room>.cfg" integer to seed here.
 --
---     get_state("lab.cfg")  set_state("lab.cfg", N)   -- lab
---     get_state("hall.cfg")                            -- hall
---     get_state("exterior.cfg")                        -- exterior
+--   lab       intro / puzzle / alone
+--   exterior  empty / delivery / box
+--   hall      empty / box_closed / mummy
 --
--- Why GLOBAL state (not set_room_state): a beat in one room often advances
--- another room's config (accepting the box in the exterior makes it appear in
--- the hall), and global state survives save/load and room unload. Room state
--- can only be read/written for the *current* room.
---
--- Each room file declares named CFG_* constants and two layers of code:
---
---   1. configure(c)  -- INSTANT calls only (spawn_npc/despawn_npc, show_object/
---                       hide_object, set_layer_visible, set_region_state).
---                       Exhaustive + idempotent: it spawns what belongs in `c`
---                       and despawns/hides the rest, so on_load can rebuild any
---                       config from scratch. NPC presence is NOT persisted (it
---                       is re-derived every load); object/layer visibility IS.
---
---   2. story beats   -- BLOCKING sequences (wait/talk/move_to/show_text). They
---                       must run inside spawn(). Each beat plays its cutscene/
---                       dialog, then set_state("<room>.cfg", NEXT) + configure().
---
---   on_load() simply calls configure(cfg()); a beat (or the intro) is triggered
---   explicitly where the script calls for it.
---
--- Planned configurations (see design_files/STORY_AND_PUZZLES.md for the script):
---
---   lab.cfg       1 INTRO      Julia alone, opening monologue
---                 2 PUZZLE     Julia + Dr. Schneider, skull-trauma puzzle
---                 3 ALONE      Schneider has left, Julia alone again
---
---   exterior.cfg  1 EMPTY      nobody
---                 2 DELIVERY   delivery guy + truck + box
---                 3 BOX        box only (truck left once the box was accepted)
---
---   hall.cfg      1 EMPTY      nobody
---                 2 BOX_CLOSED the closed box
---                 3 MUMMY      the mummy (was inside the box)
---                              + guests spawned/despawned between cutscenes
---
--- A "text cutscene" inside a room is just show_text(...) (a speaker-less page)
--- inside a beat — used e.g. to make Dr. Schneider appear/disappear off-screen.
---
--- TODO (data): exterior.yaml — move `box`/`truck` from layers to objects and
--- make `delivery_guy` a spawned NPC (not a declared avatar); hall.yaml — add a
--- `box` object and the `mummy` (object or NPC). See each room file's header.
+-- A beat switches config with `set_room_config("<room>", "<id>")` (it reconciles
+-- presence and, for another room, takes effect when that room next loads); read
+-- the live config with `current_room_config("<room>")`. The first-enter / re-enter
+-- beats live in each room's `.lua` under `room.configs`. See design 06 §Room YAML.
 --==============================================================================
 
 local game = {}
 
 -- Initial world state for a NEW game. Runs once when the game starts, BEFORE the
--- start room's on_load (so each room's on_load reads the config set here), and is
--- SKIPPED on Continue/Load, so it never overwrites a save. Values per the table
--- above; keep them in sync with each room file's CFG_* constants.
+-- start room's on_load, and is SKIPPED on Continue/Load so it never overwrites a
+-- save. Room configs default to each YAML's `start:` — seed only game-wide flags.
 function game.on_start()
-  set_state("lab.cfg", 1)      -- CFG_INTRO   Julia alone, opening monologue
-  set_state("exterior.cfg", 1) -- CFG_EMPTY   nobody outside yet
-  set_state("hall.cfg", 1)     -- CFG_EMPTY   nobody in the hall yet
-
-  
-
-  -- transición previa al puzzle formal 
+  -- Pre-puzzle progress flags (not config-derived): the lab's window distraction
+  -- gate. schneider_present / puzzle_enabled are derived from the lab config now.
   set_state("act1.bones_glanced", false)
   set_state("act1.context_glanced", false)
   set_state("act1.thermo_checked", false)
   set_state("act1.window_distraction_enabled", false)
-  set_state("act1.schneider_present", false)
-  set_state("act1.puzzle_enabled", false)
 
-  -- DEV
-  -- Dev: uncomment to jump to a later beat for testing.
+  -- DEV: uncomment to jump straight into the puzzle for testing (skips the intro).
   -- set_state("lab.julia_intro_seen", true)
-  -- set_state("lab.cfg", 2)      -- CFG_PUZZLE   Julia + Dr. Schneider, skull-trauma puzzle
+  -- set_room_config("lab", "puzzle")
 end
 
 -- Shared verb fallbacks: run when a hotspot/item has no handler for a valid verb.

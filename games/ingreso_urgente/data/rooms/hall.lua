@@ -1,71 +1,47 @@
 -- Hall room behaviour. Static layout lives in hall.yaml.
 --
--- Per-configuration split (convention in scripts/game.lua, helper
--- rooms/_room_flow.lua): each config's presence lives in
--- rooms/hall/<act>/<role>.lua, dispatched by the flow helper. Read "hall.cfg":
+-- Configurations (#185) are declared in hall.yaml under `configs:` (presence: the
+-- box), keyed by a symbolic id. The engine reconciles presence on entry:
 --
---   CFG_EMPTY       1  Nobody, nothing.
---   CFG_BOX_CLOSED  2  The closed box sits in the hall (carried in from outside).
---   CFG_MUMMY       3  The mummy — it was inside the box.
+--   empty       Nobody, nothing.
+--   box_closed  The closed box sits in the hall (carried in from outside).
+--   mummy       The mummy — it was inside the box (its art/cast still TODO).
 --
--- Extra actors (e.g. Dr. Schneider inspecting) combine freely with the box/mummy:
--- spawn/despawn them inside the story beats, between cutscenes.
-
-local flow = include("rooms/_room_flow.lua")
-
-local CFG_EMPTY = 1
-local CFG_BOX_CLOSED = 2
-local CFG_MUMMY = 3
-
--- 1-based, indexed by "hall.cfg".
-local configs = {
-    include("rooms/hall/act1/empty.lua"),
-    include("rooms/hall/act1/box_closed.lua"),
-    include("rooms/hall/act1/mummy.lua"),
-}
+-- `set_room_config("hall", <id>)` switches config. Extra actors (e.g. Dr.
+-- Schneider inspecting) combine freely with the standing config via spawn/despawn
+-- inside the beats below.
 
 local room = {}
 
-function room.on_load()
-    flow.enter("hall", configs)
-end
-
-function room.on_unload() end
+-- (No per-config beats yet — presence-only. Add `room.configs = { ... }` here when
+-- a config wants a first-enter / re-enter line.)
 
 --------------------------------------------------------------------------------
--- Transitions between configs (BLOCKING, global so cutscenes/other rooms can drive
--- them). Advance "hall.cfg", then rebuild presence with flow.configure (INSTANT).
+-- Transitions between configs (global so cutscenes / other rooms can drive them).
 --------------------------------------------------------------------------------
 
--- The box is carried in from the exterior: EMPTY -> BOX_CLOSED.
+-- The box is carried in from the exterior: empty -> box_closed.
 function box_arrives()
-    block_input()
-    -- show_text("Trasladaron la caja al pasillo del instituto.")
-    set_state("hall.cfg", CFG_BOX_CLOSED)
-    flow.configure("hall", configs)
-    unblock_input()
+    set_room_config("hall", "box_closed")
 end
 
--- The box is opened and the mummy emerges: BOX_CLOSED -> MUMMY.
+-- The box is opened and the mummy emerges: box_closed -> mummy.
 function mummy_revealed()
-    block_input()
-    -- show_text("La caja se abrió sola. Adentro había una momia.")
-    set_state("hall.cfg", CFG_MUMMY)
-    flow.configure("hall", configs)
-    unblock_input()
+    set_room_config("hall", "mummy")
 end
 
 -- Narration + a guest actor: time passes, then Dr. Schneider inspects the mummy.
--- Shows how a temporary NPC combines with the standing config.
+-- Shows how a temporary NPC combines with the standing config (spawn/despawn is
+-- still available alongside the declarative presence).
 function schneider_inspects_mummy()
-    block_input()
+    -- block_input()
     -- show_text("La momia permaneció durante horas, hasta que la Dra. Schneider se acercó al pasillo para inspeccionarla.")
     -- spawn_npc("schneider", "from_lab", "left")
     -- avatar("schneider"):move_to("at_mummy")
     -- avatar("schneider"):face("up")
     -- talk("schneider", "Imposible. Esto no estaba catalogado...")
     -- despawn_npc("schneider")
-    unblock_input()
+    -- unblock_input()
 end
 
 --------------------------------------------------------------------------------
