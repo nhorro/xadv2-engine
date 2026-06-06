@@ -78,6 +78,7 @@ add_library(pac_engine STATIC
     src/core/scene_manager.cpp
     src/core/screen_fade.cpp
     src/core/state_store.cpp
+    src/core/facts.cpp
     src/core/scripting.cpp
     src/core/lua_api.cpp
     src/core/user_data.cpp

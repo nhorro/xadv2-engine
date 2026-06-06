@@ -91,20 +91,20 @@ end
 --------------------------------------------------------------------------------
 
 local function mark_context_glanced()
-    set_state("act1.context_glanced", true)
+    facts.act1.context_glanced = true
 end
 
 local function thermo_can_be_used()
-    return get_state("act1.bones_glanced") and get_state("act1.context_glanced")
+    return facts.act1.bones_glanced and facts.act1.context_glanced
 end
 
 local function use_thermo()
-    if not get_state("act1.bones_glanced") then
+    if not facts.act1.bones_glanced then
         talk("player", "Primero los restos. Después el mate. Intentemos sostener una civilización mínima.")
         return
     end
 
-    if not get_state("act1.context_glanced") then
+    if not facts.act1.context_glanced then
         talk("player", "Podría tomar mate, sí.")
         talk("player", "Pero antes debería mirar aunque sea una evidencia que no tenga bombilla.")
         return
@@ -121,16 +121,16 @@ local function use_thermo()
     talk("player", "...")
     talk("player", "Bueno. Una clasificación rápida.")
 
-    set_state("act1.thermo_checked", true)
-    set_state("act1.window_distraction_enabled", true)
+    facts.act1.thermo_checked = true
+    facts.act1.window_distraction_enabled = true
 end
 
 local function maybe_open_window()
-    if not get_state("act1.window_distraction_enabled") then
+    if not facts.act1.window_distraction_enabled then
         talk("player", "La ventana está peligrosamente cerca de convertirse en una excusa.")
-        if not get_state("act1.bones_glanced") then
+        if not facts.act1.bones_glanced then
             talk("player", "Primero los restos.")
-        elseif not get_state("act1.context_glanced") then
+        elseif not facts.act1.context_glanced then
             talk("player", "Y después el contexto. Schneider no aprobaría una fuga sin fundamentación.")
         else
             talk("player", "Quizá después de revisar el termo.")
@@ -157,7 +157,7 @@ room.hotspots = {
     -- after you call use_thermo() from whichever existing hotspot you prefer.
     stanley_clone_therm = {
         look_at = function()
-            if get_state("act1.thermo_checked") then
+            if facts.act1.thermo_checked then
                 return "El termo ya cumplió su función: acercarme peligrosamente a la ventana."
             end
             return "El termo y el mate. Tecnología de concentración de baja complejidad y resultados variables."
@@ -174,7 +174,7 @@ room.hotspots = {
                 talk("player", "Bien. La Matilde. Entierro 1.")
                 talk("player", "Cráneo con lesión visible, fragmentos asociados y una cantidad de silencio bastante poco colaborativa.")
                 talk("player", "Antes de escribir cualquier cosa, necesito ordenar qué estoy mirando.")
-                set_state("act1.bones_glanced", true)
+                facts.act1.bones_glanced = true
             else
                 open_closeup("lab_skull_closeup")
             end
@@ -282,7 +282,7 @@ room.hotspots = {
         end,
 
         use = function()
-            if not get_state("case.schneider_dialog_done") then
+            if not facts.case.schneider_dialog_done then
                 return "Primero tengo que poder defender la hipótesis."
             end
 

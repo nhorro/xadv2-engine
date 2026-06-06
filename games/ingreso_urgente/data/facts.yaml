@@ -1,0 +1,66 @@
+# =============================================================================
+#  FACTS — the central inventory of this game's boolean state flags (issue #188)
+# =============================================================================
+#
+#  Every flag the scripts remember with `facts.<ns>.<name>` is declared here,
+#  grouped by namespace. The point is a typo guard: in a development build
+#  (manifest `development.show_state: true`), reading or writing a flag that is
+#  NOT in this list logs a loud warning — so `facts.finding.radial_fractres`
+#  (note the missing 'u') is caught immediately instead of silently staying
+#  false forever. In a release build the access still works; nothing is blocked.
+#
+#  This file is OPTIONAL. A game without it keeps using `get_state`/`set_state`
+#  and `facts.<ns>.<name>` exactly as before, just without the guard.
+#
+#  Only boolean flags belong here. Two kinds of key stay on plain
+#  `get_state`/`set_state` (they are not declared facts):
+#    - counters / text:   case.schneider_attempts (a number)
+#    - dynamic keys:       llamas.<id>.done / llamas.<id>.label (the id varies)
+# =============================================================================
+
+version: 1
+
+namespaces:
+
+  # Act 1 progression beats (set in the lab and its close-ups).
+  act1:
+    - bones_glanced
+    - context_glanced
+    - thermo_checked
+    - window_distraction_enabled
+
+  # Observations the player has gathered from the evidence close-ups. These are
+  # the `requires` keys the Schneider puzzle topics gate on.
+  finding:
+    - radial_fractures
+    - no_cut_marks
+    - no_collapse
+    - primary_burial
+    - heavy_lithic_object
+    - perimortem_possible
+
+  # Claims the player has overstated to Dra. Schneider (the puzzle's "traps").
+  argument:
+    - murder_overstated
+    - weapon_overstated
+
+  # State of the trauma case / the report.
+  case:
+    - blunt_trauma_supported
+    - report_ready
+    - schneider_dialog_done
+
+  # Has the player met / spoken with Dra. Schneider.
+  schneider:
+    - met
+
+  # Lab room beats.
+  lab:
+    - julia_intro_seen
+
+  # The delivery-guy encounter at the entrance.
+  delivery:
+    - met
+    - knows_package
+    - signed
+    - has_pen

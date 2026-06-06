@@ -772,6 +772,36 @@ handlers using the same handler naming as room hotspots.
 For two-operand commands whose first operand is an inventory item, inventory
 handlers are checked before the second operand's hotspot handler.
 
+## Facts — `facts.yaml`
+
+Optional. The central inventory of the game's boolean state-flag keys, enabling
+the `facts.<ns>.<name>` typo guard (issue #188; see
+[05 § Declared facts](05-scripting-api.md)). A missing file leaves the proxy
+working as plain `get_state`/`set_state` sugar with the guard off, so a game opts
+in simply by shipping this file. Auto-discovered at the resource root as
+`facts.yaml`.
+
+```yaml
+version: 1
+namespaces:
+  act1:    [bones_glanced, context_glanced, thermo_checked]
+  finding: [radial_fractures, no_cut_marks, no_collapse]
+  case:    [report_ready, schneider_dialog_done]
+```
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `version` | opt | int | `1` | Format version. |
+| `namespaces` | req | map | — | Maps each namespace id to a sequence of flag names. Each `<ns>: [<name>, ...]` pair declares the facts `<ns>.<name>`. |
+
+Validation (loud, on load): `namespaces` must be a mapping of id → sequence;
+namespace and key names must be non-empty; a duplicate `<ns>.<name>` is an error.
+Declare **boolean flags** only — numeric counters and dynamic keys
+(`"llamas." .. id .. ".done"`) stay on `get_state`/`set_state` and are not
+declared. The guard is active in development builds (and in Release when
+`development.show_state` is set); a key outside this registry warns but still
+reads/writes, so release is never blocked.
+
 ## Player settings — `settings.yaml`
 
 Player-facing preferences, persisted in the per-user **config** location (not the
