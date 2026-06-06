@@ -205,7 +205,14 @@ private:
 
     // --- pause / save / load / settings menu (M5c/2; the picker is the
     // SaveLoadScene from issue #108) ---
-    enum class MenuAction { RESUME, OPEN_SAVE, OPEN_LOAD, PUSH_OVERLAY, OPEN_SETTINGS, QUIT_TO_TITLE };
+    enum class MenuAction {
+        RESUME,
+        OPEN_SAVE,
+        OPEN_LOAD,
+        PUSH_OVERLAY,
+        OPEN_SETTINGS,
+        QUIT_TO_TITLE
+    };
     struct MenuButton {
         sf::FloatRect rect;
         MenuAction action;
@@ -324,6 +331,10 @@ private:
     pac::core::ScopeId room_scope_ = 0;
     pac::core::ScopeId dialog_scope_ = 0;
     pac::core::TaskId run_task_ = 0;
+    // Auto-spawned verb / hotspot / inventory / game-fallback handler that
+    // yielded (M9 #183). While set, the view is BLOCKED and update() polls
+    // is_task_alive; when the task drains, finish_execution + restore COMMAND.
+    std::optional<pac::core::TaskId> awaiting_handler_task_;
 
     // Persistent state across room changes — all folded into GameState by snap().
     std::map<std::string, std::map<std::string, pac::core::StateValue>> room_state_;

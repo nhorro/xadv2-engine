@@ -244,6 +244,34 @@ acts and speaks via `talk(...)` without returning text still shows that line. Th
 **and** did not speak during the command. (So `talk("julia", "...")` with no
 `return` shows the line, not the fallback.)
 
+#### Handlers are auto-spawned
+
+Hotspot handlers, inventory item handlers, `game.fallbacks` entries, dialog
+option `run` callbacks, and close-up hotspot handlers are run as coroutine
+tasks in the relevant scope (room / dialog / close-up), so they can use
+blocking primitives — `talk`, `wait`, `avatar(id):move_to`,
+`avatar(id):play_until_end`, `show_text` — **without an explicit `spawn(...)`
+wrapper**. Past code that wrapped itself in `spawn` for that reason
+(`use = function() spawn(use_thermo) end`) reduces to `use = use_thermo`.
+
+- If the handler returns before yielding, its return value is the caption,
+  matching the synchronous semantics above.
+- If the handler yields, it takes responsibility for the command — the
+  fallback caption is suppressed, the SCUMM panel stays disabled, and input
+  is blocked until the task drains. A second click during that window is
+  silently ignored.
+- If the handler calls `change_room` (or anything else that ends the room
+  scope), the in-flight task is cancelled along with the rest of the scope;
+  any code after the `change_room` call will not run. This matches the
+  behaviour of an explicit `spawn(function() ... change_room(); after() end)`
+  today — the `after()` likewise never fires.
+
+The `spawn(...)` global stays available for **explicit** background tasks —
+the off-screen nag loop a close-up runs while the player is identifying
+something, a watcher in `on_load` — but writing a verb handler no longer
+needs it. See *Coroutine rules* below for which hooks remain direct (non-
+coroutine) calls.
+
 ## Global game logic
 
 `game.lua` contains shared behavior that is not local to one room:
@@ -432,19 +460,54 @@ return {
 Blocking calls must run inside a spawned task or inside an engine-invoked script
 context that is already coroutine-enabled.
 
-`talk` is the one exception that degrades gracefully: inside a coroutine task it
-yields until the line is dismissed (so consecutive lines play in sequence instead
-of overwriting each other), but called on the main thread — directly in a plain
-hook such as `on_load`, or in a verb handler — it shows the line fire-and-forget
-rather than erroring. To play several lines in order, still wrap them in `spawn`.
+The engine **auto-spawns** these script-author entry points (M9 #183), so a
+handler can use `talk`, `wait`, `avatar(id):move_to`, `show_text`, and any
+other blocking primitive directly:
 
-Valid:
+- room hotspot verb handlers (`room.hotspots.<id>.<verb>`);
+- inventory item verb handlers (`inventory.<id>.<verb>`);
+- `game.fallbacks.<verb>`;
+- dialog node `run` callbacks and dialog option `run` actions;
+- close-up hotspot handlers (`closeup.hotspots.<id>`).
+
+The following hooks stay **direct** (non-coroutine), so blocking calls inside
+them must still be wrapped in `spawn(...)`:
+
+- `room.on_load` / `room.on_unload`;
+- `room.on_zone_enter` / `room.on_zone_exit` / `room.on_screen_edge`;
+- dialog `on_enter` / `on_exit`;
+- close-up `on_enter` / `on_exit`;
+- `game.on_start`.
+
+`talk` is the one blocking primitive that degrades gracefully on the main
+thread: called directly from a non-coroutine hook it shows the line
+fire-and-forget rather than erroring. To play several lines in order from
+such a hook, still wrap them in `spawn`.
+
+Valid (auto-spawned handler — no wrapper needed):
 
 ```lua
-spawn(function()
-  talk("julia", "Voy hasta la puerta.")
-  avatar("julia"):move_to("at_door")
-end)
+room.hotspots = {
+  termo = {
+    use = function()
+      avatar("player"):move_to("at_desk")
+      talk("player", "Cargo el mate.")
+      wait(0.5)
+      talk("player", "Listo.")
+    end,
+  },
+}
+```
+
+Valid (explicit spawn for a background task inside a non-coroutine hook):
+
+```lua
+function room.on_load()
+  spawn(function()
+    talk("julia", "Voy hasta la puerta.")
+    avatar("julia"):move_to("at_door")
+  end)
+end
 ```
 
 Invalid in plain initialization code:

@@ -3,6 +3,7 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/scripting.hpp"
+#include "engine/core/scripting_sol.hpp"
 
 #include <sol/sol.hpp>
 
@@ -14,6 +15,7 @@ namespace pac::pnc {
 struct RoomRuntime::Behavior {
     sol::table table;
     sol::state* state = nullptr;
+    pac::core::Scripting* scripting = nullptr; // for auto-spawn (M9 #183)
     pac::core::Diagnostics* log = nullptr;
     bool valid = false;
 };
@@ -306,6 +308,7 @@ void RoomRuntime::load_behavior(pac::core::Scripting& scripting,
                                 pac::core::Diagnostics& log) {
     behavior_ = std::make_unique<Behavior>();
     behavior_->state = &scripting.lua();
+    behavior_->scripting = &scripting;
     behavior_->log = &log;
 
     std::string code;
@@ -371,7 +374,7 @@ void RoomRuntime::call_zone_hook(const std::string& hook, const std::string& zon
 VerbResult RoomRuntime::call_hotspot(const std::string& hotspot_id,
                                      const std::string& verb,
                                      std::optional<std::string> operand) {
-    if (!behavior_ || !behavior_->valid) {
+    if (!behavior_ || !behavior_->valid || !behavior_->scripting) {
         return {};
     }
     sol::optional<sol::table> hotspots = behavior_->table["hotspots"];
@@ -382,22 +385,27 @@ VerbResult RoomRuntime::call_hotspot(const std::string& hotspot_id,
     if (!hs) {
         return {};
     }
-    sol::optional<sol::protected_function> fn = (*hs)[verb];
+    sol::optional<sol::function> fn = (*hs)[verb];
     if (!fn) {
         return {}; // no handler for this verb -> caller may show the default caption
     }
-    // A handler exists: from here it is responsible, so `handled` is true even if
-    // it errors or returns nothing (it may have opened a close-up, changed state,
-    // spoken via talk(), ...).
-    const sol::protected_function_result r = operand ? (*fn)(*operand) : (*fn)();
-    if (!r.valid()) {
-        const sol::error err = r;
-        behavior_->log->error(std::string("hotspot '" + hotspot_id + "." + verb + "' error: ") +
-                              err.what());
-        return {true, std::nullopt};
+    // A handler exists: from here it is responsible. Auto-spawn (M9 #183) so the
+    // handler can `talk` / `move_to` / `wait` without an explicit `spawn()`
+    // wrapper. `spawn_call` resumes inline to the first yield or completion: if
+    // it completes synchronously, its return value is the caption (today's
+    // semantics); if it yielded, `in_flight` carries the task id and the
+    // dispatcher (`RoomScene::dispatch_and_feedback`) defers finish_execution
+    // until the task drains.
+    const pac::core::SpawnCallResult call =
+        pac::core::spawn_call(*behavior_->scripting, *fn, operand);
+    VerbResult res;
+    res.handled = true;
+    if (call.done) {
+        res.caption = call.string_return;
+    } else {
+        res.in_flight = call.task_id;
     }
-    sol::optional<std::string> caption = r;
-    return {true, caption ? std::optional<std::string>(*caption) : std::nullopt};
+    return res;
 }
 
 } // namespace pac::pnc
