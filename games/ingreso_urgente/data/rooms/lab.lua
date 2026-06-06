@@ -205,12 +205,10 @@ room.hotspots = {
             end
             return "El termo y el mate. Tecnología de concentración de baja complejidad y resultados variables."
         end,
-        use = function()
-            -- use_thermo() bloquea (move_to / wait / varios talk). Los handlers de
-            -- verbo corren en el hilo principal, así que la secuencia debe ir en
-            -- spawn() para correr como corutina (si no: "yield from outside a coroutine").
-            spawn(use_thermo)
-        end,
+        -- Verb handlers son auto-spawned (#183): los blocking primitives
+        -- (talk/move_to/wait) andan sin envoltorio spawn(). Asignamos la función
+        -- al verbo directamente.
+        use = use_thermo,
     },
 
     skull_bones = {

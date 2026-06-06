@@ -3,11 +3,13 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/script_handle.hpp"
+#include "engine/core/scripting_sol.hpp"
 
 #include <sol/sol.hpp>
 
 #include <algorithm>
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -123,6 +125,69 @@ struct Scripting::Impl {
     // is no longer scheduled. Call for every task removal (DONE sweep + cancel).
     void release_thread(TaskId id) { live_threads[id] = sol::lua_nil; }
 
+    /// Outcome of a single coroutine resume, for callers (currently
+    /// `spawn_call`) that need to know whether the task ran to completion and,
+    /// if so, what it returned as its first value.
+    struct ResumeOutcome {
+        bool done = true;                               // true if the task is no longer scheduled
+        std::optional<std::string> first_string_return; // first return value if it was a string
+    };
+
+    // Post-resume bookkeeping: interpret the coroutine's status + yield value
+    // and write the task's next wait state. Used by both the per-tick `resume`
+    // and by `spawn_call`'s inline first-resume. `id` is the task to re-resolve
+    // (the call may have invalidated any pre-resume Task pointer by spawning
+    // new tasks and growing the vector). Returns whether the task completed
+    // and the first string return value, if any.
+    ResumeOutcome
+    interpret_resume(TaskId id, sol::coroutine& co, const sol::protected_function_result& r) {
+        ResumeOutcome out;
+        Task* t = find(id);
+        if (!t) {
+            return out;
+        }
+        if (!r.valid()) {
+            const sol::error err = r;
+            log.error(std::string("script error: ") + err.what());
+            t->wait = Wait::DONE;
+            return out;
+        }
+        if (co.status() != sol::call_status::yielded) {
+            t->wait = Wait::DONE;
+            if (r.return_count() > 0) {
+                sol::object v(r[0]);
+                if (v.is<std::string>()) {
+                    out.first_string_return = v.as<std::string>();
+                }
+            }
+            return out;
+        }
+        out.done = false;
+        sol::object req_obj =
+            (r.return_count() > 0) ? sol::object(r[0]) : sol::object(sol::lua_nil);
+        if (!req_obj.is<sol::table>()) {
+            t->wait = Wait::READY; // bare yield -> reschedule
+            return out;
+        }
+        const sol::table req = req_obj.as<sol::table>();
+        const std::string kind = req.get_or("kind", std::string("ready"));
+        if (kind == "timer") {
+            t->wait = Wait::TIMER;
+            t->timer = static_cast<float>(req.get_or("seconds", 0.0));
+        } else if (kind == "event") {
+            t->wait = Wait::EVENT;
+            t->event_name = req.get_or("name", std::string());
+        } else if (kind == "text") {
+            t->wait = Wait::TEXT;
+            t->timer = static_cast<float>(req.get_or("seconds", 0.0));
+            current_text = req.get_or("text", std::string());
+            text_owner = t->id;
+        } else {
+            t->wait = Wait::READY;
+        }
+        return out;
+    }
+
     // Resumes by id, never by reference: t.co(arg) below can run Lua that calls
     // spawn(), which push_back()s into `tasks` and may reallocate it. A held
     // Task& would dangle for the rest of this function (use-after-free), so we
@@ -144,46 +209,34 @@ struct Scripting::Impl {
         const sol::protected_function_result r = co(arg);
 
         current_scope = previous;
+        interpret_resume(id, co, r); // updates t->wait; per-tick path ignores return
+    }
 
-        // The resume may have reallocated `tasks`; re-resolve before any write.
-        t = find(id);
+    /// Spawn `fn` and resume it once, inline, to its first yield or completion.
+    /// `arg0` / `arg1` (when set) are passed positionally to the function;
+    /// trailing nullopts are omitted so a zero-arg handler sees no args and
+    /// `select('#', ...)` matches today's direct-call semantics. On completion
+    /// the first string return is captured. Used by the dispatch sites (M9
+    /// #183) so verb handlers don't have to wrap themselves in `spawn(...)`.
+    SpawnCallResult
+    spawn_call(sol::function fn, std::optional<std::string> arg0, std::optional<std::string> arg1) {
+        SpawnCallResult out;
+        out.task_id = spawn(fn, current_scope);
+        Task* t = find(out.task_id);
         if (!t) {
-            return;
+            return out; // unreachable: spawn just pushed it
         }
-
-        if (!r.valid()) {
-            const sol::error err = r;
-            log.error(std::string("script error: ") + err.what());
-            t->wait = Wait::DONE;
-            return;
-        }
-        if (co.status() != sol::call_status::yielded) {
-            t->wait = Wait::DONE; // coroutine returned
-            return;
-        }
-
-        sol::object req_obj =
-            (r.return_count() > 0) ? sol::object(r[0]) : sol::object(sol::lua_nil);
-        if (!req_obj.is<sol::table>()) {
-            t->wait = Wait::READY; // bare yield -> reschedule
-            return;
-        }
-        const sol::table req = req_obj.as<sol::table>();
-        const std::string kind = req.get_or("kind", std::string("ready"));
-        if (kind == "timer") {
-            t->wait = Wait::TIMER;
-            t->timer = static_cast<float>(req.get_or("seconds", 0.0));
-        } else if (kind == "event") {
-            t->wait = Wait::EVENT;
-            t->event_name = req.get_or("name", std::string());
-        } else if (kind == "text") {
-            t->wait = Wait::TEXT;
-            t->timer = static_cast<float>(req.get_or("seconds", 0.0));
-            current_text = req.get_or("text", std::string());
-            text_owner = t->id;
-        } else {
-            t->wait = Wait::READY;
-        }
+        const ScopeId previous = current_scope;
+        current_scope = t->scope;
+        // Copy the coroutine handle before the call: the call may run Lua that
+        // calls spawn(), reallocating `tasks` and invalidating `t`.
+        sol::coroutine co = t->co;
+        const sol::protected_function_result r = arg1 ? co(*arg0, *arg1) : arg0 ? co(*arg0) : co();
+        current_scope = previous;
+        const ResumeOutcome dec = interpret_resume(out.task_id, co, r);
+        out.done = dec.done;
+        out.string_return = dec.first_string_return;
+        return out;
     }
 
     void update(float dt) {
@@ -367,6 +420,21 @@ void Scripting::emit(ScopeId scope, const std::string& name) {
 
 const std::string& Scripting::current_text() const {
     return impl_->current_text;
+}
+
+Scripting::Impl* Scripting::sol_impl() {
+    return impl_.get();
+}
+
+// Sol-aware free seam (declared in scripting_sol.hpp). Routes through the same
+// spawn() + resume() path the scheduler uses, so the spawned task is anchored in
+// `live_threads` (PR #171) and obeys the scope discipline (cancelled when its
+// scope ends).
+SpawnCallResult spawn_call(Scripting& s,
+                           sol::function fn,
+                           std::optional<std::string> arg0,
+                           std::optional<std::string> arg1) {
+    return s.sol_impl()->spawn_call(std::move(fn), std::move(arg0), std::move(arg1));
 }
 
 } // namespace pac::core

@@ -12,6 +12,7 @@
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
 #include "engine/core/scripting.hpp"
+#include "engine/core/scripting_sol.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/text_encoding.hpp"
 #include "engine/core/thumbnail.hpp"
@@ -74,53 +75,59 @@ struct RoomScene::Lua {
     bool inventory_valid = false;
     sol::table game_table;
     bool game_valid = false;
+    pac::core::Scripting* scripting = nullptr; // for auto-spawn (M9 #183)
     pac::core::Diagnostics* log = nullptr;
 
     VerbResult call_inventory(const std::string& item,
                               const std::string& verb,
                               std::optional<std::string> operand) {
-        if (!inventory_valid) {
+        if (!inventory_valid || !scripting) {
             return {};
         }
         sol::optional<sol::table> t = inventory_table[item];
         if (!t) {
             return {};
         }
-        sol::optional<sol::protected_function> fn = (*t)[verb];
+        sol::optional<sol::function> fn = (*t)[verb];
         if (!fn) {
             return {};
         }
-        const sol::protected_function_result r = operand ? (*fn)(*operand) : (*fn)();
-        if (!r.valid()) {
-            const sol::error e = r;
-            log->error(std::string("inventory '" + item + "." + verb + "' error: ") + e.what());
-            return {true, std::nullopt};
+        // Auto-spawn (M9 #183) so an inventory `use(target)` can `talk` /
+        // `move_to` / `wait` without an explicit `spawn()` wrapper.
+        const pac::core::SpawnCallResult call = pac::core::spawn_call(*scripting, *fn, operand);
+        VerbResult res;
+        res.handled = true;
+        if (call.done) {
+            res.caption = call.string_return;
+        } else {
+            res.in_flight = call.task_id;
         }
-        sol::optional<std::string> cap = r;
-        return {true, cap ? std::optional<std::string>(*cap) : std::nullopt};
+        return res;
     }
 
     VerbResult
     call_game(const std::string& verb, const std::string& a, std::optional<std::string> b) {
-        if (!game_valid) {
+        if (!game_valid || !scripting) {
             return {};
         }
         sol::optional<sol::table> fallbacks = game_table["fallbacks"];
         if (!fallbacks) {
             return {};
         }
-        sol::optional<sol::protected_function> fn = (*fallbacks)[verb];
+        sol::optional<sol::function> fn = (*fallbacks)[verb];
         if (!fn) {
             return {};
         }
-        const sol::protected_function_result r = b ? (*fn)(a, *b) : (*fn)(a);
-        if (!r.valid()) {
-            const sol::error e = r;
-            log->error(std::string("game fallback '" + verb + "' error: ") + e.what());
-            return {true, std::nullopt};
+        // Auto-spawn (M9 #183). game.fallbacks take 1-2 operands (a / a+b).
+        const pac::core::SpawnCallResult call = pac::core::spawn_call(*scripting, *fn, a, b);
+        VerbResult res;
+        res.handled = true;
+        if (call.done) {
+            res.caption = call.string_return;
+        } else {
+            res.in_flight = call.task_id;
         }
-        sol::optional<std::string> cap = r;
-        return {true, cap ? std::optional<std::string>(*cap) : std::nullopt};
+        return res;
     }
 
     /// Run game.lua's optional `on_start()` once-per-new-game world-state
@@ -218,6 +225,7 @@ void RoomScene::enter() {
 
     lua_ = std::make_unique<Lua>();
     lua_->log = &ctx_.log;
+    lua_->scripting = &ctx_.scripting;
 
     sol::state& L = ctx_.scripting.lua();
     auto load_table = [&](const std::string& logical) -> std::optional<sol::table> {
@@ -921,6 +929,12 @@ void RoomScene::unload_room() {
     // can't fire into the new room (e.g. a zone hook changed rooms mid-walk).
     pending_approach_.reset();
     pending_moving_approach_.reset();
+    // An auto-spawned handler task (M9 #183) was cancelled by the room scope
+    // teardown above. The next room's enter() resets the command controller,
+    // so just drop the awaiting id (otherwise update() in the new room would
+    // see a stale task id and call finish_execution on the freshly-reset
+    // builder).
+    awaiting_handler_task_.reset();
     view_state_ = ViewState::COMMAND;
 }
 
@@ -1324,6 +1338,16 @@ void RoomScene::dispatch_and_feedback(const Command& cmd) {
         command_controller_.finish_execution();
         return;
     }
+    // Auto-spawned handler that yielded (M9 #183): it took responsibility, so
+    // suppress the fallback caption, block input until it drains, and defer
+    // finish_execution to update() — which polls is_task_alive. The task is
+    // scoped to the room, so a `change_room` mid-handler cancels it cleanly
+    // (the room-scope teardown also clears awaiting_handler_task_).
+    if (result.in_flight) {
+        awaiting_handler_task_ = *result.in_flight;
+        view_state_ = ViewState::BLOCKED;
+        return;
+    }
     sf::Color color(230, 230, 230);
     float gap = 48.0f;
     if (const Character* c = cast_.character(player_char_)) {
@@ -1648,6 +1672,19 @@ void RoomScene::update(float dt) {
             pend.last_dest = route_to(dec.repath_to);
         }
         // Wait: keep walking the current path.
+    }
+    // Auto-spawned handler (M9 #183) drained: restore COMMAND, finish the
+    // command, sync hover. The task may have changed scene (start_dialog,
+    // change_room) — in that case view_state_ is already non-COMMAND, the
+    // room scope was reaped, and the awaited id no longer resolves; clear it
+    // either way. Also clears if the room scope was cancelled out from under
+    // us (room change while running).
+    if (awaiting_handler_task_ && !ctx_.scripting.is_task_alive(*awaiting_handler_task_)) {
+        awaiting_handler_task_.reset();
+        if (view_state_ == ViewState::BLOCKED) {
+            view_state_ = ViewState::COMMAND;
+        }
+        command_controller_.finish_execution();
     }
     // Returning to COMMAND (e.g. a cutscene unblocking) resumes camera follow
     // after a scripted override (issue #25).
@@ -2633,6 +2670,9 @@ bool RoomScene::restore(const pac::core::GameState& state) {
         run_task_ = 0;
     }
     view_state_ = ViewState::COMMAND;
+    // A handler task awaited from the previous session is dead post-restore (its
+    // room scope is gone); drop the id so update() doesn't try to drain it.
+    awaiting_handler_task_.reset();
     command_controller_.reset();
     speech_.skip();
 
