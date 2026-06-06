@@ -723,6 +723,71 @@ TEST_CASE("dialog with a missing node id ends cleanly instead of crashing") {
     CHECK(host.npc.empty());
 }
 
+TEST_CASE("a node `run` fires synchronously on entry (start node, content node, pass-through)") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    s.lua()["start_ran"] = false;
+    s.lua()["secret_ran"] = false;
+    s.lua()["bumped"] = false;
+    TestHost host;
+    LoadedTree tree = load_tree(s, log, R"lua(
+        return {
+            start = "intro",
+            intro = {
+                npc = "Hola.",
+                run = function() start_ran = true end,    -- fires at dialog start
+                options = {
+                    { "Contame.", to = "secret" },
+                    { "Empujá.", to = "bump" },
+                },
+            },
+            secret = {
+                npc = "Un secreto.",
+                run = function() secret_ran = true end,    -- fires on entry, before npc
+                to = "intro",
+            },
+            bump = {                                        -- no npc: a pass-through
+                run = function() bumped = true end,
+                to = "intro",
+            },
+        }
+    )lua");
+
+    // Building the runtime enters the start node, so its `run` already fired —
+    // before any line was spoken — while the content nodes are untouched.
+    DialogRuntime d = build(s, log, host, tree);
+    CHECK(s.lua()["start_ran"].get<bool>() == true);
+    CHECK(s.lua()["secret_ran"].get<bool>() == false);
+
+    host.speaking = false;
+    d.update();
+    CHECK(d.state() == DialogRuntime::State::AWAITING_CHOICE);
+
+    // Choosing speaks the player line; the target node is not entered yet.
+    d.choose(0);
+    CHECK(s.lua()["secret_ran"].get<bool>() == false);
+
+    // Player line clears -> enter "secret": its `run` fires synchronously and the
+    // NPC line is spoken in the same step.
+    host.speaking = false;
+    d.update();
+    CHECK(s.lua()["secret_ran"].get<bool>() == true);
+    CHECK(d.current_node() == "secret");
+    CHECK(host.npc.back() == "Un secreto.");
+
+    // A node with `run` but no `npc` still fires its `run`, then follows `to`.
+    host.speaking = false;
+    d.update(); // secret -> back to intro
+    host.speaking = false;
+    d.update(); // intro options
+    REQUIRE(d.state() == DialogRuntime::State::AWAITING_CHOICE);
+    d.choose(1); // "Empujá." -> bump
+    host.speaking = false;
+    d.update(); // player line clears -> enter bump (run) -> falls through to intro
+    CHECK(s.lua()["bumped"].get<bool>() == true);
+    CHECK(d.current_node() == "intro");
+}
+
 // M9 #187: the `dialog { ... }` / `topic` sugar. Goes through the real
 // DialogRuntime::start (which defines the sugar prelude), so it exercises the
 // expansion + the validator + the runtime together. Binds minimal get_state /
