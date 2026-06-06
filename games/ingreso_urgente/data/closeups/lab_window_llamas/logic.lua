@@ -12,8 +12,7 @@
 --
 -- TEXT IS DRAFT — rewrite the descriptions / labels / shout lines to taste.
 
-local CFG_PUZZLE = 2 -- keep in sync with rooms/lab.lua (CFG_PUZZLE)
-local NEEDED = 3     -- identifications before Schneider starts nagging
+local NEEDED = 3 -- identifications before Schneider starts nagging
 
 -- id -> what Julia says when she examines it + the label it becomes once named.
 local animals = {
@@ -150,14 +149,11 @@ return {
 
   on_exit = function()
     -- Once Schneider is nagging, leaving the window means Julia turns around and
-    -- there she is: switch the lab to configuration 2 (Schneider present). The room
-    -- is frozen beneath the overlay, so this instant change is seen on back-out.
-    -- (Assumes the lab started without Schneider — i.e. lab.cfg was CFG_INTRO.)
+    -- there she is. A close-up can't run the beat's blocking moves/talk (the room
+    -- is frozen beneath the overlay), so hand it back: on_room_resume(...) plays the
+    -- lab's schneider_arrives() the moment the live room is ticking again (#186) —
+    -- and that beat switches the lab to the `puzzle` config when Schneider arrives.
     if count_identified() >= NEEDED then
-      set_state("lab.cfg", CFG_PUZZLE)
-      -- A close-up can't run the beat's blocking moves/talk (the room is frozen
-      -- beneath the overlay), so hand it back: on_room_resume(...) plays the lab's
-      -- schneider_arrives() the moment the live room is ticking again (#186).
       on_room_resume(schneider_arrives)
     end
   end,

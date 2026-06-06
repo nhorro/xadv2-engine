@@ -1,43 +1,32 @@
 -- Lab room behaviour. Static layout lives in lab.yaml.
 --
--- Per-configuration split (convention in scripts/game.lua, helper
--- rooms/_room_flow.lua): each config's presence + enter beats live in
--- rooms/lab/<act>/<role>.lua, dispatched by the flow helper. Read from "lab.cfg".
+-- Configurations (#185) are declared in lab.yaml under `configs:` (which actors /
+-- objects are present), keyed by a symbolic id. The engine reconciles presence on
+-- entry and tracks the live config; here we only supply the optional per-config
+-- BEATS and the cross-config TRANSITIONS:
 --
--- ACT 1 configs:
---   CFG_INTRO   1  Julia alone; the opening monologue (config on_first_enter).
---   CFG_PUZZLE  2  Julia + Dr. Schneider; the skull-trauma puzzle is active.
---   CFG_ALONE   3  Schneider has left; Julia alone again.
--- Acts 2/3 will append more configs (4, 5, ...) under rooms/lab/act2/, etc.
+--   intro   Julia alone; the opening monologue (its on_first_enter, below).
+--   puzzle  Julia + Dr. Schneider; the skull-trauma puzzle is active.
+--   alone   Schneider has left; Julia alone again.
 --
--- The cross-config TRANSITIONS (schneider_arrives / schneider_leaves) and the
--- shared pre-puzzle helpers + hotspots stay here; they are not per-config setup.
-
-local flow = include("rooms/_room_flow.lua")
-
-local CFG_INTRO = 1
-local CFG_PUZZLE = 2
-local CFG_ALONE = 3
-
--- 1-based, indexed by "lab.cfg".
-local configs = {
-    include("rooms/lab/act1/intro.lua"),
-    include("rooms/lab/act1/puzzle.lua"),
-    include("rooms/lab/act1/alone.lua"),
-}
+-- `set_room_config("lab", <id>)` switches config (reconciles presence + records
+-- it); `current_room_config("lab")` reads it. No "lab.cfg" integer, no flow helper.
 
 local room = {}
 
-local function cfg()
-    return get_state("lab.cfg") or CFG_INTRO
-end
+-- Per-config beats live here, keyed by the same ids as lab.yaml's `configs:`.
+-- Only configs that have a beat need an entry; presence-only configs (puzzle,
+-- alone) are fully described by YAML.
+room.configs = {
+    intro = include("rooms/lab/act1/intro.lua"), -- { on_first_enter = <monologue> }
+}
 
 local function schneider_present()
-    return get_state("act1.schneider_present") or cfg() == CFG_PUZZLE
+    return current_room_config("lab") == "puzzle"
 end
 
 local function puzzle_enabled()
-    return get_state("act1.puzzle_enabled") or cfg() == CFG_PUZZLE
+    return current_room_config("lab") == "puzzle"
 end
 
 --------------------------------------------------------------------------------
@@ -50,19 +39,18 @@ end
 --------------------------------------------------------------------------------
 
 -- "¡CLICK!" floating over the bluetooth speaker whenever it is toggled on/off.
--- Global so the INTRO config's intro beat (rooms/lab/act1/intro.lua) can reuse it.
+-- Global so the intro config's beat (rooms/lab/act1/intro.lua) can reuse it.
 function speaker_click()
     float_text("¡CLICK!", "bluetooth_speaker", { color = { r = 255, g = 230, b = 120 }, duration = 1.2 })
 end
 
--- CFG_PUZZLE: Dr. Schneider walks in from the door and stays for the puzzle.
--- Handed back by the llamas close-up via on_room_resume(schneider_arrives) (#186),
--- so it plays once the lab is the live, ticking room again.
+-- Dr. Schneider walks in from the door and stays for the puzzle. Handed back by
+-- the llamas close-up via on_room_resume(schneider_arrives) (#186), so it plays
+-- once the lab is the live, ticking room again. The beat does the walk-in
+-- choreography, then `set_room_config("lab", "puzzle")` records the new config
+-- (Schneider is already present, so the reconcile leaves him in place; on a later
+-- reload the `puzzle` config re-spawns him at schneider_start with no walk-in).
 schneider_arrives = cutscene(function()
-    set_state("lab.cfg", CFG_PUZZLE)
-    set_state("act1.schneider_present", true)
-    set_state("act1.puzzle_enabled", true)
-
     spawn_npc("schneider", "at_door", "down")
     move("schneider", "schneider_start")
     face("schneider", "left")
@@ -88,31 +76,15 @@ schneider_arrives = cutscene(function()
     say("schneider", "Necesito saber si puede defenderla.")
     say("schneider", "Una hipótesis no mejora por estar dicha con entusiasmo.")
     say("schneider", "Mejor si viene acompañada de evidencia.")
+
+    set_room_config("lab", "puzzle")
 end)
 
--- CFG_ALONE: a short text "cutscene" sends Schneider away again.
+-- Schneider leaves again: switch to the `alone` config (the reconcile despawns
+-- her, since `alone` lists no NPCs).
 function schneider_leaves()
-    block_input()
-    despawn_npc("schneider")
-    set_state("lab.cfg", CFG_ALONE)
-    set_state("act1.schneider_present", false)
-    set_state("act1.puzzle_enabled", false)
-    unblock_input()
+    set_room_config("lab", "alone")
 end
-
--- The llamas close-up can't run blocking room choreography (the room is frozen
--- under the overlay), so it hands the arrival beat back with on_room_resume(...)
--- from its on_exit (#186); the engine plays schneider_arrives() the moment the
--- live lab room is ticking again. No cue flag, no watcher loop to arm here.
-
---------------------------------------------------------------------------------
-function room.on_load()
-    -- Per-config presence + first-enter / re-enter beat (the INTRO config's intro
-    -- is its on_first_enter, gated by the flow's "lab.cfg1.seen").
-    flow.enter("lab", configs)
-end
-
-function room.on_unload() end
 
 --------------------------------------------------------------------------------
 -- Pre-puzzle transition helpers (shared by the hotspots below).

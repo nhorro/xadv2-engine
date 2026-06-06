@@ -1,20 +1,14 @@
--- lab — cfg 1: INTRO. Julia alone; the opening monologue (one-time).
+-- lab — `intro` config beat: Julia alone, the opening monologue (one-time).
+-- Presence (nobody but Julia) is declared in lab.yaml; this file is the beat half
+-- of `room.configs.intro` (see lab.lua) and returns just { on_first_enter = ... }.
 local M = {}
-
--- INSTANT presence: nobody but Julia; puzzle off.
-function M.configure(c)
-    despawn_npc("schneider")
-    set_state("act1.schneider_present", false)
-    set_state("act1.puzzle_enabled", false)
-end
 
 -- First time the player enters the lab: Julia introduces herself, turns on the
 -- music, and is told (by herself) to start classifying the La Matilde materials.
 -- `speaker_click` is a global helper defined in lab.lua (shared with the arrival
--- beat). Wrapped in cutscene { ... } (#184): the body reads like a screenplay,
--- the room view stays BLOCKED until the beat drains, and the flow helper still
--- calls this through spawn() — the outer task just arms the inner cutscene and
--- dies immediately.
+-- beat). Wrapped in cutscene { ... } (#184): the body reads like a screenplay and
+-- the room view stays BLOCKED until the beat drains. The engine runs this once,
+-- the first time the lab is entered in the `intro` config (#185).
 M.on_first_enter = cutscene(function()
     face("player", "left")
     wait(2)

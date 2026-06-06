@@ -28,12 +28,26 @@ avatars:
   start: player_start
   orientation: down
   player: true
+
+# Declarative configurations (#185). The only managed entity so far is the box;
+# the mummy joins the `mummy` config once its art/cast exists (then add it to
+# objects/avatars and list it here). Beats live in hall.lua.
+configs:
+  start: empty
+  empty:                       # nobody, nothing
+    present: {}
+  box_closed:                  # the closed box, carried in from outside
+    present:
+      objects: [box]
+  mummy:                       # the mummy emerged (box hidden; mummy TODO)
+    present: {}
+
 obstacles: []
 zones: []
 regions: {}
 
-# The box travels in from the exterior; configure() in hall.lua shows/hides it
-# per hall.cfg (starts hidden = CFG_EMPTY). Reuses the exterior box sprite
+# The box travels in from the exterior; the configs above show/hide it per
+# configuration (starts hidden = the `empty` config). Reuses the exterior box sprite
 # (paths resolve relative to the rooms dir, so `exterior/objects/box.png` finds
 # the same file); give it its own asset under hall/ later if you prefer. Tune
 # `position` (top-left) with the room editor.

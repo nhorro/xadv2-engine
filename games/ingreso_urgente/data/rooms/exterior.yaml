@@ -22,15 +22,34 @@ points:
   from_hall: {x: 516, y: 346}
   at_door: {x: 507, y: 346}
   delivery_guy_start: {x: 632, y: 405}
-# delivery_guy is NOT a declared avatar: he is spawned per configuration by
-# exterior.lua (spawn_npc in CFG_DELIVERY). Only the player is always present.
+# delivery_guy is NOT a declared avatar: he is spawned per configuration (the
+# `delivery` config's present.npcs, below). Only the player is always present.
 avatars:
 - id: player
   start: player_start
   orientation: down
   player: true
-# Named so configure() in exterior.lua can toggle them with the box/truck per act
-# (#143). Start disabled: CFG_EMPTY has nothing on the floor, so the walking area
+
+# Declarative configurations (#185). Presence per config; the engine reconciles on
+# entry — turning ON exactly what a config names and OFF the rest of the managed
+# set (delivery_guy / box / truck / both obstacles). Beats live in exterior.lua.
+configs:
+  start: empty
+  empty:                       # nobody outside, no delivery — managed set all off
+    present: {}
+  delivery:                    # the delivery guy + his truck + the box
+    present:
+      npcs:
+        delivery_guy: { at: delivery_guy_start, facing: down }
+      objects: [truck, box]
+      obstacles: [box_block, truck_block]
+  box:                         # the box only — institution accepted it, truck left
+    present:
+      objects: [box]
+      obstacles: [box_block]
+
+# Named so the configs above can toggle them with the box/truck per act (#143).
+# Start disabled: the `empty` config has nothing on the floor, so the walking area
 # is fully clear until the delivery shows up.
 obstacles:
 - { id: box_block,   enabled: false, area: [{x: 367, y: 390}, {x: 365, y: 354}, {x: 460, y: 354}, {x: 461, y: 390}] }
@@ -38,11 +57,10 @@ obstacles:
 zones: []
 regions: {}
 
-# box and truck are objects (was layers) so configure() in exterior.lua can
-# show/hide them per configuration. `position` is the top-left (same value the
-# layers used as `origin`); visibility persists and is driven by the room cfg,
-# so they start hidden (CFG_EMPTY). Sprite paths resolve relative to the rooms
-# dir, identical to the old layer paths.
+# box and truck are objects (was layers) so the configs above can show/hide them
+# per configuration. `position` is the top-left (same value the layers used as
+# `origin`); they start hidden (the `empty` config shows neither). Sprite paths
+# resolve relative to the rooms dir, identical to the old layer paths.
 objects:
   box:
     sprite: exterior/objects/box.png
@@ -58,8 +76,8 @@ objects:
 
 hotspots:
   # NPC hotspot (issue #141): `bind: npc:delivery_guy` tracks his moving bounds
-  # and is inactive when he isn't spawned (CFG_EMPTY / CFG_BOX). Handlers live in
-  # exterior.lua (currently commented).
+  # and is inactive when he isn't spawned (the `empty` / `box` configs). Handlers
+  # live in exterior.lua (currently commented).
   delivery_guy:
     name: repartidor
     bind: npc:delivery_guy
