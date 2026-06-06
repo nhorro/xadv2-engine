@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/core/scripting.hpp"
 #include "engine/geom/geometry.hpp"
 #include "engine/pnc/avatar.hpp"
 #include "engine/pnc/room.hpp"
@@ -16,19 +17,22 @@
 namespace pac::core {
 class Diagnostics;
 class ResourceCache;
-class Scripting;
 } // namespace pac::core
 
 namespace pac::pnc {
 
 /// Outcome of a verb-handler lookup. `handled` is true when a matching handler
 /// function existed and ran (regardless of what it returned); `caption` is its
-/// returned line, if any. This lets the dispatcher distinguish "no handler →
-/// emit the default caption" from "a handler ran (did an action, spoke, or
-/// returned nothing) → it took responsibility, emit nothing".
+/// returned line, if any. `in_flight` carries the task id when the handler is
+/// auto-spawned (M9 #183) and yielded before completing — the dispatcher then
+/// defers its caption + `finish_execution` until the task drains. This lets the
+/// dispatcher distinguish "no handler → emit the default caption" from "a handler
+/// ran (did an action, spoke, or returned nothing) → it took responsibility,
+/// emit nothing" from "a handler is still running asynchronously."
 struct VerbResult {
     bool handled = false;
     std::optional<std::string> caption;
+    std::optional<pac::core::TaskId> in_flight;
 };
 
 /// Loaded room: its static data plus the Lua behavior table. The behavior (a
