@@ -148,4 +148,61 @@ TEST_CASE("malformed inputs carry stable error codes") {
           "cutscene.color-shape");
     CHECK(error_code([] { parse_cutscene("slides:\n  - image_fit: cover\n"); }) ==
           "cutscene.image-fit-unknown");
+    CHECK(error_code([] { parse_cutscene("fade: [1, 2]\nslides: [{text: x}]\n"); }) ==
+          "cutscene.fade-shape");
+    CHECK(error_code([] { parse_cutscene("slides:\n  - text_band: [1]\n"); }) ==
+          "cutscene.text-band-shape");
+    CHECK(error_code([] {
+              parse_cutscene("slides:\n  - text_style: { outline_thickness: -1 }\n");
+          }) == "cutscene.outline-thickness-negative");
+}
+
+TEST_CASE("fade, audio_persist, text_band, and text outline parse + compose") {
+    const Cutscene c = parse_cutscene(R"YAML(
+advance_mode: manual
+audio: music/intro.mp3
+audio_persist: true
+fade: { in: 0.4, out: 0.6 }
+
+defaults:
+  text_band: { color: "#0A0A0CF0", height: 0.25 }
+  text_style: { outline_color: "#001122", outline_thickness: 2 }
+
+slides:
+  - text: "A"
+  - text: "B"
+    text_band: { height: 0.4 }
+    text_style: { outline_thickness: 3 }
+)YAML");
+
+    CHECK(c.audio == "music/intro.mp3");
+    CHECK(c.audio_persist == true);
+    CHECK(c.fade.in == doctest::Approx(0.4f));
+    CHECK(c.fade.out == doctest::Approx(0.6f));
+
+    // text_band: defaults flow into slide 0; slide 1 overrides height, keeps color.
+    CHECK(c.slides[0].text_band.height == doctest::Approx(0.25f));
+    CHECK(c.slides[0].text_band.color.r == 0x0A);
+    CHECK(c.slides[0].text_band.color.a == 0xF0);
+    CHECK(c.slides[1].text_band.height == doctest::Approx(0.4f));
+    CHECK(c.slides[1].text_band.color.a == 0xF0); // inherited from defaults
+
+    // text outline composes like the rest of text_style.
+    CHECK(c.slides[0].text_style.outline_thickness == doctest::Approx(2.0f));
+    CHECK(c.slides[0].text_style.outline_color.r == 0x00);
+    CHECK(c.slides[0].text_style.outline_color.b == 0x22);
+    CHECK(c.slides[1].text_style.outline_thickness == doctest::Approx(3.0f));
+}
+
+TEST_CASE("scalar fade sets both halves; the new fields default to off") {
+    const Cutscene c = parse_cutscene("fade: 0.5\nslides:\n  - text: x\n");
+    CHECK(c.fade.in == doctest::Approx(0.5f));
+    CHECK(c.fade.out == doctest::Approx(0.5f));
+
+    const Cutscene d = parse_cutscene("slides:\n  - text: x\n");
+    CHECK(d.fade.in == doctest::Approx(0.0f)); // 0/0 = hard cuts
+    CHECK(d.fade.out == doctest::Approx(0.0f));
+    CHECK(d.audio_persist == false);
+    CHECK(d.slides[0].text_band.height == doctest::Approx(0.0f)); // no band
+    CHECK(d.slides[0].text_style.outline_thickness == doctest::Approx(0.0f));
 }
