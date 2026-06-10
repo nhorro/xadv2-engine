@@ -488,6 +488,14 @@ int run(const std::string& manifest_path,
         }
     }
 
+    // Close the window now, while the custom cursors below are still alive. SFML's
+    // X11 teardown re-asserts the last-set cursor (setMouseCursorVisible(true) in
+    // ~WindowImplX11::cleanup). The sf::Cursors are declared after `window`, so at
+    // scope exit they are freed first; that re-assert would then reference a freed
+    // X cursor → BadCursor on exit. Closing here runs the teardown against a live
+    // cursor. (A no-op when the window is already closed.)
+    window.close();
+
     if (profiler) {
         profiler->finish();
     }
