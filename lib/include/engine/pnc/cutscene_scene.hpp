@@ -47,9 +47,15 @@ public:
     void draw(sf::RenderTarget& target) const override;
 
 private:
-    void advance();                  // Manual / Auto fall-through: step to the next slide.
-    void finish();                   // Skip + natural end: stop audio and exit per `on_finish`.
-    void apply_slide(std::size_t i); // Reset per-slide state when entering slide `i`.
+    // Slide transition phase (auto/manual). Timed mode stays in Hold and hard-cuts
+    // on its `at` schedule so it never desyncs from the audio.
+    enum class Phase { FadeIn, Hold, FadeOut };
+
+    void request_advance();           // Manual / Auto: begin fading the current slide out.
+    void begin_fade_in();             // Enter FadeIn for the current slide.
+    float fade_overlay_alpha() const; // 0..1 black-overlay opacity for the current phase.
+    void finish();                    // Skip + natural end: stop audio and exit per `on_finish`.
+    void apply_slide(std::size_t i);  // Reset per-slide state when entering slide `i`.
 
     /// Resolve the slide's text font: per-style override, else the scene's
     /// fallback font (the `font` manifest parameter). `nullptr` when neither
@@ -68,9 +74,12 @@ private:
     bool finished_ = false;
 
     std::size_t current_ = 0;    // index into data_.slides; 0..size when running
-    float slide_elapsed_ = 0.0f; // Auto: seconds since the current slide became active
+    float slide_elapsed_ = 0.0f; // Auto: seconds the current slide has been held
     float scene_elapsed_ = 0.0f; // Timed (without audio): seconds since enter()
     bool audio_playing_ = false; // Timed: true while ctx_.audio.music is our track
+
+    Phase phase_ = Phase::Hold;  // auto/manual fade machine; Timed leaves it in Hold
+    float phase_elapsed_ = 0.0f; // seconds spent in the current FadeIn/FadeOut
 };
 
 } // namespace pac::pnc

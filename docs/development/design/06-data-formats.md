@@ -501,7 +501,9 @@ Top level:
 |-------|-----|------|---------|---------|
 | `version` | opt | int | `1` | Format version. |
 | `advance_mode` | opt | enum | `auto` | `auto`, `manual`, or `timed` — see below. |
-| `audio` | opt | path | — | Background audio (timed mode). Played at scene start; slide transitions read its playback offset so they stay in sync when the engine stutters. |
+| `audio` | opt | path | — | Background music, played at scene start. In `timed` mode it also drives slide transitions (slides read its playback offset so they stay in sync when the engine stutters); in `auto` / `manual` it loops as background. |
+| `audio_persist` | opt | bool | `false` | Keep `audio` playing past the cutscene so the next scene owns it (e.g. a room script calls `stop_music()` on entry). Otherwise the track stops when the cutscene ends. |
+| `fade` | opt | float \| map | `0` | Dip-to-black between slides (and fade-in at the start / fade-out at the end). A number sets both halves; a map is `{in, out, color}` — seconds, plus the fade `color` (default black). `0`/`0` = hard cuts. Applies to `auto` / `manual`; `timed` keeps hard cuts to stay locked to its audio. |
 | `defaults` | opt | map | — | Style / layout defaults applied to every slide. Per-slide fields override these. |
 | `slides` | req | `[slide]` | — | Non-empty list of slides. |
 
@@ -517,9 +519,10 @@ Top level:
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `text_style` | map | Default `{font, size, color}` (see slide section). |
+| `text_style` | map | Default `{font, size, color, outline_color, outline_thickness}` (see slide section). |
 | `text_position` | `[x, y]` | Default normalized anchor for slide text. |
 | `text_align` | enum | Default `left` / `center` / `right`. |
+| `text_band` | map | Optional `{color, height}` scrim drawn behind the text — a "lower third" for readable narration over a full-bleed image. `height` is a fraction of screen height (`0` = none); the color's alpha sets opacity. |
 | `image_position` | `[x, y]` | Default normalized anchor for slide images. |
 | `image_size` | `[w, h]` | Default normalized box (max extent in screen space). |
 | `image_fit` | enum | `contain` (preserve aspect) or `stretch`. |
@@ -533,7 +536,8 @@ Top level:
 | `image` | opt | path | — | Image drawn behind the text. |
 | `text_position` | opt | `[x, y]` | from `defaults` | Normalized anchor (0–1). |
 | `text_align` | opt | enum | from `defaults` | Horizontal alignment relative to the anchor. Vertical anchoring is always centered on the y. |
-| `text_style` | opt | map | from `defaults` | Per-slide override. Each field (`font`, `size`, `color`) composes individually with the defaults. |
+| `text_style` | opt | map | from `defaults` | Per-slide override. Each field (`font`, `size`, `color`, `outline_color`, `outline_thickness`) composes individually with the defaults. |
+| `text_band` | opt | map | from `defaults` | `{color, height}` scrim behind this slide's text (`height` 0 = none); composes with `defaults.text_band`. |
 | `image_position` | opt | `[x, y]` | from `defaults` | Normalized anchor; the image is centered (horizontally and vertically) on this point. |
 | `image_size` | opt | `[w, h]` | from `defaults` | Normalized box. `contain` keeps the image inside it; `stretch` fills it. |
 | `image_fit` | opt | enum | from `defaults` | `contain` or `stretch`. |
@@ -548,29 +552,38 @@ Top level:
 [1.0, 1.0] = bottom-right
 ```
 
-**`text_style.color`** accepts `"#RRGGBB"` or `"#RRGGBBAA"` (case-insensitive,
-`#` optional). White (`#FFFFFF`) is the default.
+**`text_style.color`** and **`outline_color`** accept `"#RRGGBB"` or
+`"#RRGGBBAA"` (case-insensitive, `#` optional). White (`#FFFFFF`) is the default
+fill. A non-zero **`outline_thickness`** (virtual px) draws an outline in
+`outline_color` (default opaque black) — a cheap way to keep narration legible
+over a full-bleed image without a `text_band` scrim.
 
 ```yaml
-# A small manual-advance intro with an image and styled text.
+# A full-bleed manual intro: the music carries into the next scene, slides dip to
+# black, and the narration uses a black outline (no scrim) to stay readable.
 version: 1
 advance_mode: manual
+audio: music/intro.mp3
+audio_persist: true
+fade: { in: 0.5, out: 0.5 }
 
 defaults:
-  text_position: [0.5, 0.8]
-  text_align: center
-  text_style: { size: 30, color: "#E7E7E9" }
-  image_position: [0.5, 0.45]
-  image_size: [0.6, 0.6]
+  image_position: [0.5, 0.5]
+  image_size: [1.0, 1.0]
   image_fit: contain
+  text_position: [0.5, 0.88]
+  text_align: center
+  text_style:
+    size: 27
+    color: "#F2F0E8"
+    outline_color: "#000000"
+    outline_thickness: 2
 
 slides:
   - image: cutscenes/island.png
     text: "El Cairo, 1936."
-    text_position: [0.5, 0.92]
     text_style: { color: "#F0D87A" }
   - text: "Algo no anda bien..."
-    text_style: { size: 32, color: "#FFEEBB" }
 ```
 
 ```yaml

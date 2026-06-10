@@ -51,6 +51,27 @@ struct CutsceneTextStyle {
     std::string font;   // optional logical path; empty = default
     unsigned size = 30; // virtual pixels
     sf::Color color{255, 255, 255, 255};
+    sf::Color outline_color{0, 0, 0, 255};
+    float outline_thickness = 0.0f; // virtual px; 0 = no outline
+};
+
+/// Optional filled band drawn behind a slide's text — a "lower third" scrim that
+/// keeps narration readable over a full-bleed image. Full width, anchored to the
+/// bottom edge. `height` is a fraction of the screen height; <= 0 disables it.
+/// The color's alpha sets opacity (0xFF = solid band, e.g. 0xE6 = translucent).
+struct CutsceneTextBand {
+    sf::Color color{0, 0, 0, 255};
+    float height = 0.0f; // fraction of screen height; 0 = no band
+};
+
+/// Dip-to-black fade timing. `in` fades a slide up from `color` as it appears;
+/// `out` fades it down to `color` before the next slide (or the cutscene's end).
+/// 0 on either half is a hard cut. Applies to `auto`/`manual` modes; `timed`
+/// keeps hard cuts so slides stay locked to their audio schedule.
+struct CutsceneFade {
+    float in = 0.0f;  // seconds
+    float out = 0.0f; // seconds
+    sf::Color color{0, 0, 0, 255};
 };
 
 /// One slide in a `Cutscene`. Fields are evaluated against the cutscene's
@@ -68,6 +89,8 @@ struct CutsceneSlide {
     sf::Vector2f image_size{0.6f, 0.6f};     // normalized maximum extent in screen space
     CutsceneImageFit image_fit = CutsceneImageFit::Contain;
 
+    CutsceneTextBand text_band; // optional narration band (height 0 = none)
+
     std::optional<float> duration; // Auto mode; falls back to the cutscene default
     std::optional<float> at;       // Timed mode; required there
 };
@@ -77,7 +100,9 @@ struct CutsceneSlide {
 struct Cutscene {
     int version = 1;
     CutsceneAdvanceMode mode = CutsceneAdvanceMode::Auto;
-    std::string audio; // logical path; optional (Timed mode for narrated cutscenes)
+    std::string audio;          // logical path; Timed: narration sync, auto/manual: background
+    bool audio_persist = false; // keep `audio` playing past the cutscene (next scene stops it)
+    CutsceneFade fade;          // dip-to-black between slides (auto/manual); 0/0 = hard cuts
 
     /// Defaults applied to a slide that doesn't override the field. Already
     /// baked into each `CutsceneSlide` by `parse_cutscene`, so the runtime
