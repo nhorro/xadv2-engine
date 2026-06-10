@@ -30,6 +30,7 @@ namespace pac::pnc {
 namespace {
 
 constexpr float kHintMargin = 18.0f;        // virtual-px padding for the manual continue/skip hint
+constexpr unsigned kHintTextSize = 13;      // tiny continue/skip hint (e.g. "[ENTER]")
 constexpr float kTextWidthFraction = 0.86f; // slide text wraps within this fraction of the width
 
 // Map the slide's author-facing alignment onto the shared text-layout enum.
@@ -102,18 +103,25 @@ void CutsceneScene::enter() {
         return;
     }
 
-    // Timed-mode audio: start the track when the scene enters. The runtime
-    // drives slide transitions from `playing_offset_seconds()` so transient
-    // engine stutters don't desync slides from the narration.
-    if (data_.mode == CutsceneAdvanceMode::Timed && !data_.audio.empty()) {
-        ctx_.audio.music.play(data_.audio, /*loop=*/false);
+    // Start the track when the scene enters. Timed mode drives slide transitions
+    // from `playing_offset_seconds()` (so engine stutters don't desync the
+    // narration), and plays the track once; auto/manual use it as looping
+    // background music.
+    if (!data_.audio.empty()) {
+        const bool loop = data_.mode != CutsceneAdvanceMode::Timed;
+        ctx_.audio.music.play(data_.audio, loop);
         audio_playing_ = true;
     }
     apply_slide(0);
+    if (data_.mode != CutsceneAdvanceMode::Timed) {
+        begin_fade_in();
+    }
 }
 
 void CutsceneScene::leave() {
-    if (audio_playing_) {
+    // `audio_persist` hands the track to the next scene (e.g. a room script that
+    // stops it on entry); otherwise it is cut at the cutscene boundary.
+    if (audio_playing_ && !data_.audio_persist) {
         ctx_.audio.music.stop();
         audio_playing_ = false;
     }
@@ -124,12 +132,36 @@ void CutsceneScene::apply_slide(std::size_t i) {
     slide_elapsed_ = 0.0f;
 }
 
-void CutsceneScene::advance() {
-    if (current_ + 1 >= data_.slides.size()) {
-        finish();
-        return;
+void CutsceneScene::request_advance() {
+    // Only the steady Hold phase starts a transition; ignore input/timers while a
+    // fade is already in flight.
+    if (phase_ == Phase::Hold) {
+        phase_ = Phase::FadeOut;
+        phase_elapsed_ = 0.0f;
     }
-    apply_slide(current_ + 1);
+}
+
+void CutsceneScene::begin_fade_in() {
+    phase_ = Phase::FadeIn;
+    phase_elapsed_ = 0.0f;
+}
+
+float CutsceneScene::fade_overlay_alpha() const {
+    switch (phase_) {
+    case Phase::FadeIn:
+        if (data_.fade.in <= 0.0f) {
+            return 0.0f;
+        }
+        return 1.0f - std::clamp(phase_elapsed_ / data_.fade.in, 0.0f, 1.0f);
+    case Phase::FadeOut:
+        if (data_.fade.out <= 0.0f) {
+            return 0.0f;
+        }
+        return std::clamp(phase_elapsed_ / data_.fade.out, 0.0f, 1.0f);
+    case Phase::Hold:
+        break;
+    }
+    return 0.0f;
 }
 
 void CutsceneScene::finish() {
@@ -137,7 +169,7 @@ void CutsceneScene::finish() {
         return;
     }
     finished_ = true;
-    if (audio_playing_) {
+    if (audio_playing_ && !data_.audio_persist) {
         ctx_.audio.music.stop();
         audio_playing_ = false;
     }
@@ -167,7 +199,14 @@ void CutsceneScene::handle_event(const sf::Event& event) {
     const bool advance_click =
         event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left;
     if (advance_key || advance_click) {
-        advance();
+        if (phase_ == Phase::FadeIn) {
+            // Snap a slow fade-in to fully visible so the first click feels responsive.
+            phase_ = Phase::Hold;
+            phase_elapsed_ = 0.0f;
+            slide_elapsed_ = 0.0f;
+        } else {
+            request_advance();
+        }
     }
 }
 
@@ -178,19 +217,11 @@ void CutsceneScene::update(float dt) {
 
     scene_elapsed_ += dt;
     slide_elapsed_ += dt;
+    phase_elapsed_ += dt;
 
-    switch (data_.mode) {
-    case CutsceneAdvanceMode::Auto: {
-        const float dur = data_.slides[current_].duration.value_or(data_.default_duration);
-        if (slide_elapsed_ >= dur) {
-            advance();
-        }
-        break;
-    }
-    case CutsceneAdvanceMode::Manual:
-        // Idle until handle_event triggers `advance()`.
-        break;
-    case CutsceneAdvanceMode::Timed: {
+    // Timed mode hard-cuts on the audio/wall clock so it can't drift; it never
+    // runs the fade machine (phase_ stays Hold).
+    if (data_.mode == CutsceneAdvanceMode::Timed) {
         const float clock =
             audio_playing_ ? ctx_.audio.music.playing_offset_seconds() : scene_elapsed_;
         // Walk forward to the latest slide whose `at` is in the past.
@@ -212,8 +243,37 @@ void CutsceneScene::update(float dt) {
                    slide_elapsed_ >= data_.default_duration) {
             finish();
         }
-        break;
+        return;
     }
+
+    // Auto / Manual: drive the FadeIn -> Hold -> FadeOut machine.
+    switch (phase_) {
+    case Phase::FadeIn:
+        if (phase_elapsed_ >= data_.fade.in) {
+            phase_ = Phase::Hold;
+            phase_elapsed_ = 0.0f;
+            slide_elapsed_ = 0.0f; // count the hold only once the slide is fully visible
+        }
+        break;
+    case Phase::Hold:
+        if (data_.mode == CutsceneAdvanceMode::Auto) {
+            const float dur = data_.slides[current_].duration.value_or(data_.default_duration);
+            if (slide_elapsed_ >= dur) {
+                request_advance();
+            }
+        }
+        // Manual: idle until handle_event() calls request_advance().
+        break;
+    case Phase::FadeOut:
+        if (phase_elapsed_ >= data_.fade.out) {
+            if (current_ + 1 >= data_.slides.size()) {
+                finish();
+            } else {
+                apply_slide(current_ + 1);
+                begin_fade_in();
+            }
+        }
+        break;
     }
 }
 
@@ -255,6 +315,16 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
         }
     }
 
+    // Narration band: a bottom-anchored "lower third" scrim drawn over the image
+    // and under the text, so narration stays readable on a full-bleed slide.
+    if (slide.text_band.height > 0.0f) {
+        const float bh = slide.text_band.height * vh;
+        sf::RectangleShape band(sf::Vector2f(vw, bh));
+        band.setPosition(0.0f, vh - bh);
+        band.setFillColor(slide.text_band.color);
+        target.draw(band);
+    }
+
     // Text: word-wrapped multi-line block, centered on the anchor.
     if (slide.text) {
         if (const sf::Font* font = font_for(slide.text_style)) {
@@ -262,6 +332,8 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
             pac::core::TextStyle style;
             style.size = slide.text_style.size;
             style.color = slide.text_style.color;
+            style.outline_color = slide.text_style.outline_color;
+            style.outline_thickness = slide.text_style.outline_thickness;
             pac::core::draw_text_block(target,
                                        *font,
                                        *slide.text,
@@ -279,13 +351,23 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
     if (data_.mode == CutsceneAdvanceMode::Manual) {
         if (const sf::Font* font = fallback_font_) {
             const std::string label = ctx_.strings.ui_label("manual_continue_hint");
-            sf::Text hint(pac::core::utf8(label), *font, 16);
+            sf::Text hint(pac::core::utf8(label), *font, kHintTextSize);
             hint.setFillColor(sf::Color(200, 200, 210, 220));
             const sf::FloatRect b = hint.getLocalBounds();
             hint.setPosition(vw - b.width - kHintMargin - b.left,
                              vh - b.height - kHintMargin - b.top);
             target.draw(hint);
         }
+    }
+
+    // Dip-to-black fade overlay covers everything (image, band, text, hint).
+    const float fa = fade_overlay_alpha();
+    if (fa > 0.0f) {
+        sf::RectangleShape overlay(sf::Vector2f(vw, vh));
+        sf::Color c = data_.fade.color;
+        c.a = static_cast<sf::Uint8>(std::clamp(fa, 0.0f, 1.0f) * 255.0f);
+        overlay.setFillColor(c);
+        target.draw(overlay);
     }
 }
 

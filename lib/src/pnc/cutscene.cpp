@@ -126,6 +126,60 @@ void apply_text_style(const YAML::Node& node, CutsceneTextStyle& style) {
     if (node["color"]) {
         style.color = parse_color(node["color"]);
     }
+    if (node["outline_color"]) {
+        style.outline_color = parse_color(node["outline_color"]);
+    }
+    if (node["outline_thickness"]) {
+        style.outline_thickness = node["outline_thickness"].as<float>();
+        if (style.outline_thickness < 0.0f) {
+            cutscene_fail("cutscene.outline-thickness-negative",
+                          "outline_thickness must be >= 0",
+                          node["outline_thickness"]);
+        }
+    }
+}
+
+// Merge band fields from `node` on top of `band` (height/color both optional),
+// so per-slide overrides compose with the cutscene-level `defaults.text_band`.
+void apply_text_band(const YAML::Node& node, CutsceneTextBand& band) {
+    if (!node) {
+        return;
+    }
+    if (!node.IsMap()) {
+        cutscene_fail("cutscene.text-band-shape", "'text_band' must be a mapping", node);
+    }
+    if (node["height"]) {
+        band.height = node["height"].as<float>();
+    }
+    if (node["color"]) {
+        band.color = parse_color(node["color"]);
+    }
+}
+
+// Cutscene-level fade. Accepts a scalar (`fade: 0.5` -> in == out) or a mapping
+// (`fade: { in:, out:, color: }`). Absent fields keep the no-fade default.
+CutsceneFade parse_fade(const YAML::Node& node) {
+    CutsceneFade fade;
+    if (!node) {
+        return fade;
+    }
+    if (node.IsScalar()) {
+        fade.in = fade.out = node.as<float>();
+        return fade;
+    }
+    if (!node.IsMap()) {
+        cutscene_fail("cutscene.fade-shape", "'fade' must be a number or a mapping", node);
+    }
+    if (node["in"]) {
+        fade.in = node["in"].as<float>();
+    }
+    if (node["out"]) {
+        fade.out = node["out"].as<float>();
+    }
+    if (node["color"]) {
+        fade.color = parse_color(node["color"]);
+    }
+    return fade;
 }
 
 struct Defaults {
@@ -135,6 +189,7 @@ struct Defaults {
     sf::Vector2f image_position{0.5f, 0.5f};
     sf::Vector2f image_size{0.6f, 0.6f};
     CutsceneImageFit image_fit = CutsceneImageFit::Contain;
+    CutsceneTextBand text_band;
     float duration = 3.0f;
 };
 
@@ -163,6 +218,7 @@ Defaults parse_defaults(const YAML::Node& root) {
     if (node["image_fit"]) {
         d.image_fit = parse_image_fit(node["image_fit"]);
     }
+    apply_text_band(node["text_band"], d.text_band);
     if (node["duration"]) {
         d.duration = node["duration"].as<float>();
     }
@@ -186,6 +242,7 @@ CutsceneSlide parse_slide(const YAML::Node& node,
     slide.image_position = d.image_position;
     slide.image_size = d.image_size;
     slide.image_fit = d.image_fit;
+    slide.text_band = d.text_band;
 
     if (node["text"]) {
         slide.text = node["text"].as<std::string>();
@@ -210,6 +267,7 @@ CutsceneSlide parse_slide(const YAML::Node& node,
     if (node["image_fit"]) {
         slide.image_fit = parse_image_fit(node["image_fit"]);
     }
+    apply_text_band(node["text_band"], slide.text_band);
 
     if (node["duration"]) {
         slide.duration = node["duration"].as<float>();
@@ -252,6 +310,10 @@ Cutscene parse_cutscene(const std::string& yaml_text) {
     if (root["audio"]) {
         out.audio = root["audio"].as<std::string>();
     }
+    if (root["audio_persist"]) {
+        out.audio_persist = root["audio_persist"].as<bool>();
+    }
+    out.fade = parse_fade(root["fade"]);
 
     const Defaults d = parse_defaults(root);
     out.default_duration = d.duration;
