@@ -1,7 +1,7 @@
 # Scaffolder
 
 Bootstraps a new game or experiment from a template directory so you don't
-have to copy `themummy` (or `sprite_test`) by hand and rename half its
+have to copy an example by hand and rename half its
 contents. Issue #134.
 
 !!! note "Canonical reference"

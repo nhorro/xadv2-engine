@@ -1,0 +1,49 @@
+# 01_hello_room — the smallest thing that is still a point-and-click game:
+# one room, a walkable floor, an avatar you can send around by clicking, and
+# hotspots that answer back.
+#
+# There is no title screen and no cutscene here on purpose — `entry` drops you
+# straight into the room. Later examples add the rest of the shell.
+version: 1
+id: hello_room
+
+# The virtual resolution. Everything in the room YAML is expressed in these
+# coordinates; the engine scales the whole thing to the window with letterbox
+# bars, so a room never has to care about the real window size.
+resolution: { width: 1280, height: 720 }
+window:
+  fullscreen: false
+  width: 1280
+  height: 720
+
+# Resource root, resolved relative to THIS file's directory. Every asset path in
+# every data file below is logical and relative to this root.
+resources:
+  src: "."
+
+languages:
+  - id: en
+    name: "English"
+    strings: strings/en.yaml
+
+# Debug overlays. With edit_mode on, F1 toggles the walkable area + obstacles,
+# F2 the hotspot polygons, F3 anchors/z-order, F4 the state HUD. Press F1 here:
+# the floor polygon in study.yaml lights up.
+development:
+  edit_mode: true
+  show_walkboxes: false
+  show_hotspots: false
+  allow_room_reload: true      # F5 reloads the room's YAML + Lua without restarting
+
+entry: room_view
+
+scenes:
+  - id: room_view
+    type: RoomScene
+    parameters:
+      cast: cast.yaml
+      rooms: rooms              # directory: the engine loads rooms/<id>.{yaml,lua}
+      start_room: study
+      player: player            # which character in cast.yaml the player drives
+      font: fonts/DepartureMono-Regular.otf
+      logic: scripts/game.lua   # game-wide verb fallbacks

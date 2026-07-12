@@ -78,7 +78,7 @@ if errorlevel 1 exit /b 1
 
 echo.
 echo Built %CONFIG%:
-echo   "%BUILD_DIR%\games\themummy\%CONFIG%\pac_themummy.exe"
+echo   "%BUILD_DIR%\examples\01_hello_room\%CONFIG%\pac_example_01_hello_room.exe"
 echo.
 echo Run it from the repository root, pointing at the sample's manifest:
-echo   "%BUILD_DIR%\games\themummy\%CONFIG%\pac_themummy.exe" games\themummy\data\game.yaml
+echo   "%BUILD_DIR%\examples\01_hello_room\%CONFIG%\pac_example_01_hello_room.exe" examples\01_hello_room\data\game.yaml

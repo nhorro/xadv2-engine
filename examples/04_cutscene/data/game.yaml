@@ -1,0 +1,102 @@
+# 04_cutscene — the shell around the game: a title screen, an intro cutscene
+# that fades in and out, and the settings + save/load pickers the pause menu
+# needs.
+#
+# New here vs 03: `entry: title` instead of dropping straight into a room, and
+# three more scene types. Note how the scenes reference each other by id
+# (title's `new_game` -> `intro`, intro's `on_finish` -> `room_view`): that
+# chain is the whole flow of the game.
+version: 1
+id: cutscene
+
+resolution: { width: 1280, height: 720 }
+window:
+  fullscreen: false
+  width: 1280
+  height: 720
+
+resources:
+  src: "."
+
+languages:
+  - id: en
+    name: "English"
+    strings: strings/en.yaml
+
+settings:
+  audio:
+    music_volume: 0.8
+    sfx_volume: 0.8
+
+development:
+  edit_mode: true
+  show_walkboxes: false
+  show_hotspots: false
+  allow_room_reload: true
+
+entry: title
+
+scenes:
+  - id: title
+    type: TitleScreen
+    parameters:
+      background: backgrounds/title.png
+      font: fonts/DepartureMono-Regular.otf
+      font_size: 30
+      menu:
+        position: { x: 0.5, y: 0.8 }   # anchored as a fraction of the screen
+        options:
+          new_game: intro              # -> the cutscene below
+          continue: room_view          # resumes the autosave
+          load_game: room_view         # adds the load entry when a save exists
+          exit: QUIT                   # the one reserved outcome
+
+  - id: intro
+    type: Cutscene
+    parameters:
+      data: cutscenes/intro.yaml
+      on_finish: room_view             # where the last slide leads
+      font: fonts/DepartureMono-Regular.otf
+
+  - id: room_view
+    type: RoomScene
+    parameters:
+      cast: cast.yaml
+      rooms: rooms
+      start_room: yard
+      player: player
+      font: fonts/DepartureMono-Regular.otf
+      logic: scripts/game.lua
+
+  # A cutscene played from inside the game: yard.lua calls start_cutscene("memory")
+  # and this scene's on_finish hands control back to the room.
+  - id: memory
+    type: Cutscene
+    parameters:
+      data: cutscenes/memory.yaml
+      on_finish: room_view
+      font: fonts/DepartureMono-Regular.otf
+
+  # Reachable from the title and from the in-game pause menu (Esc).
+  - id: settings
+    type: SettingsScene
+    parameters:
+      background: backgrounds/title.png
+      font: fonts/DepartureMono-Regular.otf
+      font_size: 20
+
+  - id: save
+    type: SaveLoadScene
+    parameters:
+      mode: save
+      background: backgrounds/title.png
+      font: fonts/DepartureMono-Regular.otf
+      font_size: 22
+
+  - id: load
+    type: SaveLoadScene
+    parameters:
+      mode: load
+      background: backgrounds/title.png
+      font: fonts/DepartureMono-Regular.otf
+      font_size: 22

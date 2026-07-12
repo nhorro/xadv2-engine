@@ -19,7 +19,7 @@ Prerequisites: Docker Engine and the Compose plugin (`docker compose version`).
 docker compose run --rm engine-test
 ```
 
-This builds `pac_engine` + `pac_themummy` (Release) inside an Ubuntu 24.04 image
+This builds `pac_engine` + the examples (Release) inside an Ubuntu 24.04 image
 that mirrors CI, and runs the test suite. The compile also happens at image-build
 time, so the first run is the slow one; later runs reuse the cached image.
 
@@ -45,8 +45,8 @@ xhost +local: && docker compose run --rm engine   # revoke later: xhost -local:
 Override the command to run a different manifest or a headless smoke:
 
 ```bash
-docker compose run --rm engine ./build/games/themummy/pac_themummy \
-    games/themummy/data/game.yaml --frames 5
+docker compose run --rm engine ./build/examples/01_hello_room/pac_example_01_hello_room \
+    examples/01_hello_room/data/game.yaml --frames 5
 ```
 
 > Wayland-only hosts: run via XWayland (the default on most desktops) or set
@@ -80,7 +80,7 @@ docker compose up room-editor
 # then open http://localhost:8000
 ```
 
-It serves the sample game's rooms (`games/themummy/data/rooms`, bind-mounted from
+It serves an example's rooms (`examples/01_hello_room/data/rooms`, bind-mounted from
 the host so edits persist). Pick a room from the dropdown and edit. Point it at a
 different folder by overriding the command:
 

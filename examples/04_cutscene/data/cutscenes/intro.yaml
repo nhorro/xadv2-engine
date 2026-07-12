@@ -1,0 +1,52 @@
+# A cutscene is a list of slides: text, an optional image, and how to get from
+# one to the next.
+#
+# advance_mode: manual  — the player clicks / presses [enter] to advance, [esc]
+#                         skips the whole thing.
+# advance_mode: auto    — each slide holds for its own `duration` seconds.
+#
+# `defaults` applies to every slide; a slide overrides only what it needs.
+version: 1
+advance_mode: manual
+
+defaults:
+  text_position: [0.5, 0.78]
+  text_align: center
+  text_style:
+    size: 28
+    color: "#E7E7E9"
+    # An outline keeps text readable over any image underneath it.
+    outline_color: "#000000"
+    outline_thickness: 2
+  # A translucent band behind the text — the other half of readability.
+  text_band:
+    color: "#000000B0"
+    height: 0.22
+  image_position: [0.5, 0.42]
+  image_size: [0.8, 0.6]
+  image_fit: contain
+  # Fade the slide in from black and back out. `fade` is per-slide; putting it in
+  # defaults gives every slide the same rhythm.
+  fade:
+    in: 0.4
+    out: 0.4
+    color: "#000000"
+
+slides:
+  - text: "THE GALLERY"
+    text_position: [0.5, 0.5]
+    text_band: null            # a title card wants no band
+    text_style:
+      size: 56
+      color: "#F0D87A"
+      outline_color: "#000000"
+      outline_thickness: 3
+    fade:
+      in: 1.2
+      out: 0.6
+
+  - image: backgrounds/yard.png
+    text: "They locked the yard gate on a Tuesday and never opened it again."
+
+  - image: backgrounds/gallery.png
+    text: "Everything inside is exactly where they left it."

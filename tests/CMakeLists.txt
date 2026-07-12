@@ -69,11 +69,30 @@ target_link_libraries(pac_core_tests PRIVATE pac_sol2)
 
 add_test(NAME core_tests COMMAND pac_core_tests)
 
-add_executable(pac_ingreso_urgente_notebook_tests
-    test_main.cpp
-    ingreso_urgente_notebook_test.cpp
-)
-target_link_libraries(pac_ingreso_urgente_notebook_tests
-    PRIVATE pac_ingreso_urgente_notebook doctest::doctest pac_sol2 pac_project_options)
-target_compile_definitions(pac_ingreso_urgente_notebook_tests PRIVATE PAC_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-add_test(NAME ingreso_urgente_notebook_tests COMMAND pac_ingreso_urgente_notebook_tests)
+# Every example is smoke-run: it must load its manifest, build its scenes, and
+# render frames without erroring. An engine change that breaks an example's data
+# therefore breaks the test suite — which is the point of keeping the examples
+# in-tree rather than letting them rot.
+#
+# These are the ONLY tests that open a window (SFML needs a real GL context, even
+# for `--frames 5`), so they carry the `gui` label and the rest of the suite stays
+# purely headless:
+#
+#   ctest -LE gui                 # headless — the default CI job
+#   xvfb-run -a ctest -L gui      # the example smoke runs
+#
+# They run from the repo root, since their default manifest paths are repo-relative.
+if(TARGET pac_example_01_hello_room)
+    foreach(example
+        01_hello_room
+        02_scumm_inventory
+        03_dialog_npc
+        04_cutscene
+        05_closeup
+        06_cpp_scene)
+        add_test(NAME example_${example}
+                 COMMAND pac_example_${example} --frames 5
+                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        set_tests_properties(example_${example} PROPERTIES LABELS gui)
+    endforeach()
+endif()

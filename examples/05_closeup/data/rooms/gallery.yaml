@@ -1,0 +1,48 @@
+version: 1
+id: gallery
+
+background:
+  color: { r: 24, g: 22, b: 36 }
+  layers:
+    - id: room
+      image: /backgrounds/gallery.png
+      z: 0
+      # Declarative shaders: a chain, applied to this layer in order. Params are
+      # plain uniforms the .frag declares. This is how a room gets a mood without
+      # repainting the art — drop the block and the layer draws untouched.
+      # (shaders/ ships a small stock library: grades, vignette, spotlight, ...)
+      shaders:
+        - source: shaders/ambient_grade.frag
+          params:
+            tint: [1.10, 1.00, 0.88]    # a warm gallery light
+            strength: 0.5
+        - source: shaders/vignette.frag
+          params:
+            strength: 0.45
+            inner:    0.50
+            outer:    1.00
+            color:    [0.03, 0.02, 0.05]
+
+walkable:
+  - { x:   40, y: 430 }
+  - { x: 1240, y: 430 }
+  - { x: 1240, y: 600 }
+  - { x:   40, y: 600 }
+
+points:
+  player_start: { x: 400, y: 570 }
+  at_painting:  { x: 640, y: 520 }
+
+hotspots:
+  painting:
+    name: "the painting"
+    area: [{x: 450, y: 110}, {x: 830, y: 110}, {x: 830, y: 390}, {x: 450, y: 390}]
+    approach: at_painting        # walk up to it before examining — no telescopes
+    default_verb: look_at
+    affordances: [look_at]
+
+avatars:
+  - id: player
+    start: player_start
+    orientation: down
+    player: true

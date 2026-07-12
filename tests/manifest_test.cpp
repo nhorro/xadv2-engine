@@ -13,7 +13,7 @@ namespace {
 
 const char* kValid = R"YAML(
 version: 1
-id: themummy
+id: sample
 resolution: { width: 1280, height: 720 }
 window: { fullscreen: false, width: 1280, height: 720 }
 resources: { src: "." }
@@ -37,7 +37,7 @@ scenes:
 
 TEST_CASE("valid manifest parses with expected fields") {
     Manifest m = parse_manifest(kValid);
-    CHECK(m.id == "themummy");
+    CHECK(m.id == "sample");
     CHECK(m.version == 1);
     CHECK(m.resolution.x == 1280u);
     CHECK(m.resolution.y == 720u);

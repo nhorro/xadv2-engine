@@ -30,6 +30,22 @@ struct ApplicationHooks {
     std::function<void(EngineContext&, const Manifest&)> configure;
 };
 
+/// Parse the standard game command line into `opts` and return the manifest path
+/// to run — the first positional argument, or `default_manifest` when there is
+/// none. Recognized flags (both `--flag value` and `--flag=value` forms):
+///
+///     --frames N   render N frames, then exit (headless smoke)
+///     --shot PATH  write the final frame to PATH
+///     --pak PATH   load resources from this pak instead of auto-discovering one
+///
+/// `argv[0]` is recorded in `opts.argv0` for the pak-next-to-exe lookup. Every
+/// game's `main` needs exactly this, so the engine owns it rather than having
+/// each one copy it.
+std::string parse_run_options(int argc,
+                              char** argv,
+                              RunOptions& opts,
+                              const std::string& default_manifest);
+
 /// Core harness: load the manifest, create services + window, and run the
 /// fixed-timestep loop until the scene stack quits. The factory must already be
 /// populated with the scene types the game needs (the core layer does not know

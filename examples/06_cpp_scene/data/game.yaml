@@ -1,0 +1,55 @@
+# 06_cpp_scene — a custom scene type, contributed by the game's own C++.
+#
+# `type: FieldNotes` below is NOT an engine scene type: it is registered by
+# src/field_notes.cpp at startup. Once registered, the manifest treats it exactly
+# like a built-in one — same `parameters`, same lifecycle, same scene stack.
+version: 1
+id: cpp_scene
+
+resolution: { width: 1280, height: 720 }
+window:
+  fullscreen: false
+  width: 1280
+  height: 720
+
+resources:
+  src: "."
+
+languages:
+  - id: en
+    name: "English"
+    strings: strings/en.yaml
+
+development:
+  edit_mode: true
+  show_walkboxes: false
+  show_hotspots: false
+  allow_room_reload: true
+
+entry: room_view
+
+scenes:
+  - id: room_view
+    type: RoomScene
+    parameters:
+      cast: cast.yaml
+      rooms: rooms
+      start_room: office
+      player: player
+      font: fonts/DepartureMono-Regular.otf
+      logic: scripts/game.lua
+      # Adds an entry to the in-game pause menu (Esc) that pushes our scene.
+      # `label_key` is looked up in strings/en.yaml `ui` — no hardcoded UI text.
+      pause_menu:
+        overlays:
+          notes:
+            scene: notes
+            label_key: notes
+            order: 30
+
+  # Our scene. `data` is read by FieldNotesModule::configure at startup.
+  - id: notes
+    type: FieldNotes
+    parameters:
+      data: notes.yaml
+      font: fonts/DepartureMono-Regular.otf

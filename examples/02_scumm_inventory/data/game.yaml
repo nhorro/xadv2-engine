@@ -1,0 +1,44 @@
+# 02_scumm_inventory — the SCUMM loop: pick a verb, pick a target, watch the
+# command bar build a sentence; carry things; use one thing on another; walk
+# from one room to the next.
+#
+# New here vs 01: the `inventory` + `inventory_logic` parameters, a second room,
+# and a zone that changes rooms when you walk into it.
+version: 1
+id: scumm_inventory
+
+resolution: { width: 1280, height: 720 }
+window:
+  fullscreen: false
+  width: 1280
+  height: 720
+
+resources:
+  src: "."
+
+languages:
+  - id: en
+    name: "English"
+    strings: strings/en.yaml
+
+development:
+  edit_mode: true
+  show_walkboxes: false
+  show_hotspots: false
+  allow_room_reload: true
+
+entry: room_view
+
+scenes:
+  - id: room_view
+    type: RoomScene
+    parameters:
+      cast: cast.yaml
+      rooms: rooms
+      start_room: workshop
+      player: player
+      font: fonts/DepartureMono-Regular.otf
+      logic: scripts/game.lua
+      # What the player can carry (static) and what those things do (behaviour).
+      inventory: inventory.yaml
+      inventory_logic: inventory.lua

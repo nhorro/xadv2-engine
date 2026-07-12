@@ -406,8 +406,9 @@ must extend this map and `GameState` together in the same change.
   doctest entry point.
 - Unit tests run in under one second each.
 - Integration tests may load real YAML/Lua fixtures from `tests/fixtures/`.
-- Headless smoke test for the example game: `pac_themummy_smoke` runs the
-  manifest for N frames in headless mode and asserts the expected final state.
+- Smoke test for every example: `ctest -L gui` runs each `pac_example_*` for N
+  frames (`--frames`) and fails on any load or render error. These are the only
+  tests that open a window, hence the label; the rest of the suite is headless.
 - Use `SUBCASE` for related variants of a setup.
 - For parameterized cases (e.g. one row per transition-table row), use a small
   table of structs and a `for` loop with `CAPTURE` / `INFO` so the failing row
