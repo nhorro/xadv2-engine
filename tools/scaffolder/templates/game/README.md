@@ -14,7 +14,7 @@ SFML 2.6, Lua 5.4, yaml-cpp.
 ```bash
 # 1. source mode — recommended while the engine is still moving, because you can
 #    fix an engine bug in place and rebuild
-cmake -S . -B build -DXADV2_ENGINE_DIR=~/workspace/xadv2-engine
+cmake -S . -B build -DXADV2_ENGINE_DIR=../../xadv2-engine
 cmake --build build -j"$(nproc)"
 
 # 2. installed mode — once the engine is stable
@@ -39,12 +39,12 @@ The room editor, close-up editor, spritesheet packer and resource packer live in
 the engine repo. Point them at this game's data:
 
 ```bash
-export XADV2_ENGINE=~/workspace/xadv2-engine
+export XADV2_ENGINE=~/workspace/point-and-click-game/xadv2-engine
 
 # trace a room's walkable area, hotspots and objects in the browser
 (cd $XADV2_ENGINE && python -m tools.room_editor serve \
-    --room ~/games/{{short_name}}/data/rooms/lab.yaml \
-    --base-path ~/games/{{short_name}}/data)
+    --room ~/workspace/point-and-click-game/games/{{short_name}}/data/rooms/lab.yaml \
+    --base-path ~/workspace/point-and-click-game/games/{{short_name}}/data)
 
 # pack the game into a single archive for shipping
 python $XADV2_ENGINE/tools/pack/pack.py data build/resources.pak

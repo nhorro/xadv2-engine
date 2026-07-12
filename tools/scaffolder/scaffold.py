@@ -253,9 +253,15 @@ def resolve_inputs(args: argparse.Namespace, available_templates: list[str]) -> 
     if output_override is None:
         if template == "game":
             # A game is a standalone repository, not a subdirectory of the engine.
-            # Default it next to the engine checkout; the user can always --output
-            # somewhere else.
-            output = Path("..") / short_name
+            # The workspace layout is:
+            #
+            #     point-and-click-game/
+            #     ├── xadv2-engine/     <- we are here
+            #     └── games/<short_name>/
+            #
+            # so a new game lands in the sibling games/ directory, one working copy
+            # per game repository. --output overrides this.
+            output = Path("..") / "games" / short_name
         else:
             base = default_base_for(template)
             if base is None:

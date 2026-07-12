@@ -30,7 +30,7 @@ Three questions:
 
 | Template | What it generates | Default destination |
 |---|---|---|
-| `game` | A **standalone project**, with its own `CMakeLists.txt`, README, `.gitignore`, `run.sh` and `vcpkg.json`. Title screen + settings + save/load picker + intro cutscene + a starting room: a real game loop on day one. | `../<short_name>` — a **sibling of the engine checkout**, not a directory inside it |
+| `game` | A **standalone project**, with its own `CMakeLists.txt`, README, `.gitignore`, `run.sh` and `vcpkg.json`. Title screen + settings + save/load picker + intro cutscene + a starting room: a real game loop on day one. | `../games/<short_name>` — the workspace's games directory, alongside the engine checkout |
 | `experiment` | One `RoomScene` (flat fill, placeholder avatar), no title, no inventory: the smallest playground for exploring a shader or a mechanic. Part of the engine's own build. | `experiments/<short_name>/` |
 
 !!! important "A game is not part of the engine repo"
@@ -45,9 +45,9 @@ Three questions:
 After scaffolding a game:
 
 ```bash
-cd ../mygame
+cd ../games/mygame
 git init && git add -A && git commit -m "initial scaffold"
-cmake -S . -B build -DXADV2_ENGINE_DIR=~/workspace/xadv2-engine
+cmake -S . -B build -DXADV2_ENGINE_DIR=~/workspace/point-and-click-game/xadv2-engine
 cmake --build build -j"$(nproc)"
 ./run.sh
 ```
