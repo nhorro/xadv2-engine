@@ -142,22 +142,23 @@ TEST_CASE("show_text exposes the current page and clears it when done") {
 
 // Scheduler stress for the freed-coroutine-thread fix: a long-lived coroutine
 // (like a room watcher) is resumed every tick under constant GC, after a task
-// spawned BEFORE it finished and the DONE-sweep compacted the `tasks` vector,
-// moving the survivor's Task to a new slot. The survivor's lua thread must stay
-// alive across that move + GC (the scheduler now keeps an explicit GC root per
-// live task). NOTE: the original crash only reproduced in the full game (intro +
-// close-up + real allocation pressure), verified via an integration smoke; this
-// unit exercise guards the invariant and the move/anchor path but is not by
-// itself a deterministic reproducer of that SEGV.
+// spawned BEFORE it finished and the DONE-sweep removed it. Two safeguards keep
+// the survivor's lua thread alive: an explicit GC root per live task
+// (`live_threads`) AND a node-based `tasks` container (std::list) that never
+// move-assigns a live Task — sol's move-assign would call xmovable(), which
+// dereferences both operands' lua_State, and under GC one of those threads can be
+// freed -> SEGV (the original crash, in remove_if's compaction). NOTE: that crash
+// reproduced deterministically only with PAC_GC_STRESS + the full close-up/notebook
+// flow; this unit exercise guards the compaction + GC + anchor invariants but is
+// not by itself the minimal reproducer.
 TEST_CASE("scheduler: a long-lived coroutine survives compaction + heavy GC") {
     Diagnostics log = quiet();
     Scripting s(log);
     // Finisher spawned BEFORE the survivor: when it finishes, the DONE-sweep
-    // compacts the `tasks` vector and MOVES the survivor's Task to a new slot. The
-    // survivor then resumes ~3000 times, forcing a full GC each tick from inside
-    // itself: if compaction dropped its lua thread's anchor, the GC frees the live
-    // thread and the next resume SEGVs. It is finite so everything drains (no
-    // leaked threads at exit).
+    // compacts `tasks` (removing its node). The survivor then resumes ~3000 times,
+    // forcing a full GC each tick from inside itself: if compaction dropped its lua
+    // thread's anchor, the GC frees the live thread and the next resume SEGVs. It is
+    // finite so everything drains (no leaked threads at exit).
     s.run_string("spawn(function() wait(0.05) end)"); // finisher (slot 0)
     s.run_string(
         "spawn(function() for n = 1, 3000 do collectgarbage('collect'); wait(0.0) end end)");
