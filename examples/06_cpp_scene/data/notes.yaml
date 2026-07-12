@@ -1,0 +1,20 @@
+# The game's own data file, in the game's own format — the engine neither knows
+# nor cares what is in here. FieldNotesModule::configure parses it at startup.
+#
+# What the player has actually FOUND is not stored here: that goes through the
+# engine's StateStore (`notes.<id>`), so it lands in the save file like any other
+# persistent state.
+version: 1
+
+notes:
+  - id: desk
+    title: "The desk was cleared in a hurry"
+    body: "One drawer still open. Dust everywhere except a rectangle of clean wood."
+
+  - id: board
+    title: "Three notes are missing from the board"
+    body: "Four pins, three papers. Someone took the fourth and left in a hurry."
+
+  - id: ledger
+    title: "The ledger stops mid-sentence"
+    body: "Last entry: \"received, unlisted, to be catalogued —\" and nothing after."

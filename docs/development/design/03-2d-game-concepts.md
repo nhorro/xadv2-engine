@@ -370,7 +370,7 @@ shaders:
     params: { strength: 0.45, inner: 0.5, outer: 1.0, color: [0.05, 0.02, 0.0] }
 ```
 
-`games/themummy/data/shaders/` ships a small library of stock effects you can use
+`examples/_assets/shaders/` ships a small library of stock effects you can use
 or adapt: `ambient_grade`, `candle_flicker`, `color_grade`, `spotlight`,
 `omnilight`, `dust_particles`, `horizontal_displacement`, `vignette`. A dedicated
 shader-showcase game (per issue #56) is a planned second iteration; this section

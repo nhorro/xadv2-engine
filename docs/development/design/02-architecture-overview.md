@@ -287,7 +287,7 @@ window:
   height: 720
 
 resources:
-  src: games/themummy/data
+  src: examples/01_hello_room/data
 
 strings: strings/es.yaml
 
@@ -521,11 +521,12 @@ Recommended project layout:
 │   ├── include/engine/      # public engine headers
 │   ├── src/                 # engine implementation
 │   └── CMakeLists.txt       # engine library target
-├── games/
-│   ├── themummy/
-│   │   ├── CMakeLists.txt   # example game executable
-│   │   ├── main.cpp         # minimal entry point
+├── examples/
+│   ├── 01_hello_room/
+│   │   ├── CMakeLists.txt   # example executable
+│   │   ├── main.cpp         # four-line entry point
 │   │   └── data/            # manifest, Lua, YAML, assets
+│   ├── _assets/             # the shared placeholder asset kit
 │   └── CMakeLists.txt
 ├── experiments/
 │   ├── ...                  # throwaway or exploratory executables
@@ -557,8 +558,8 @@ that exercise it.
 Example target structure:
 
 ```text
-pac_engine          # engine library
-pac_themummy        # example game executable
+pac_engine          # engine library (installable: find_package(pac_engine) -> pac::engine)
+pac_example_01_hello_room   # example executable
 pac_room_tests      # test executable
 pac_dialog_tests    # test executable
 pac_experiment_x    # exploratory executable

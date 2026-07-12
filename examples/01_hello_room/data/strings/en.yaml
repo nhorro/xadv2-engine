@@ -1,0 +1,65 @@
+# Engine-emitted UI text (R3: no user-facing strings are hardcoded in C++).
+# Game content — hotspot names, speech, dialog lines — is NOT here: it lives
+# inline in the room / dialog / inventory files.
+version: 1
+language: en
+
+verbs:
+  look_at: "Look at"
+  talk_to: "Talk to"
+  pick_up: "Pick up"
+  use:     "Use"
+  give:    "Give"
+  open:    "Open"
+  close:   "Close"
+  push:    "Push"
+  pull:    "Pull"
+
+connectors:
+  use: "with"
+  give: "to"
+
+ui:
+  walk_to:  "Walk to"
+  new_game: "New game"
+  continue: "Continue"
+  settings: "Settings"
+  settings_button: "OPT"
+  quit:     "Quit"
+  pause:    "Paused"
+  resume:   "Resume"
+  save_game: "Save"
+  load_game: "Load"
+  save_button: "Save"
+  load_button: "Load"
+  autosave: "Autosave"
+  slot:     "Slot"
+  slot_empty: "Empty"
+  description_hint: "Description"
+  thumbnail_placeholder: "No capture"
+  quit_to_title: "Quit"
+  back:     "Back"
+  notes:    "Field notes"   # pause-menu label for the custom scene in 06_cpp_scene
+  apply:    "Apply"
+  manual_continue_hint: "click or [enter] to continue, [esc] to skip"
+  resolution: "Resolution"
+  fullscreen: "Fullscreen"
+  language: "Language"
+  music:    "Music"
+  sfx:      "Sound"
+  "on":     "On"
+  "off":    "Off"
+
+# Last-resort captions: what the player hears when nothing — not the hotspot,
+# not the item, not the game-wide fallback — handled the command.
+defaults:
+  cant_look_at:      "I see nothing special."
+  cant_pick_up:      "I can't pick that up."
+  wont_open:         "It won't open."
+  wont_close:        "It won't close."
+  wont_push:         "I can't push that."
+  wont_pull:         "I can't pull that."
+  cant_use_that_way: "That doesn't work."
+  no_one_to_give_to: "There's no one to give it to."
+  nothing_to_say:    "Nothing to say."
+  nothing_happens:   "Nothing happens."

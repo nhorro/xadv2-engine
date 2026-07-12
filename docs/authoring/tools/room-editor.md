@@ -19,14 +19,14 @@ Open a specific room in the browser:
 
 ```bash
 PYTHONPATH=tools python3 -m tools.room_editor serve \
-  --room games/themummy/data/rooms/hall.yaml
+  --room examples/02_scumm_inventory/data/rooms/yard.yaml
 ```
 
 Or start without a file and pick from a folder via the **Room file** dropdown:
 
 ```bash
 PYTHONPATH=tools python3 -m tools.room_editor serve \
-  --base-path games/themummy/data/rooms
+  --base-path examples/02_scumm_inventory/data/rooms
 ```
 
 Useful extras: `--base-path` (override asset root for validation),
@@ -49,9 +49,9 @@ Apply a YAML/JSON patch without the UI:
 
 ```bash
 PYTHONPATH=tools python3 -m tools.room_editor edit \
-  --room games/themummy/data/rooms/hall.yaml \
+  --room examples/02_scumm_inventory/data/rooms/yard.yaml \
   --patch patch.yaml \
-  --base-path games/themummy/data
+  --base-path examples/02_scumm_inventory/data
 ```
 
 ```yaml

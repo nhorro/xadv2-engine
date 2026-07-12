@@ -11,4 +11,10 @@ int run_game(const std::string& manifest_path, const pac::core::RunOptions& opts
     return pac::core::run(manifest_path, factory, opts);
 }
 
+int run_game_main(int argc, char** argv, const std::string& default_manifest) {
+    pac::core::RunOptions opts;
+    const std::string manifest = pac::core::parse_run_options(argc, argv, opts, default_manifest);
+    return run_game(manifest, opts);
+}
+
 } // namespace pac::pnc

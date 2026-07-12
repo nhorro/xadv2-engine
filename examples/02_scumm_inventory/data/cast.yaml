@@ -1,0 +1,24 @@
+# The examples' cast. One placeholder rig (`hero`) is reused for the player and
+# for every NPC, recoloured only by `speech_color` — an example is about the
+# engine mechanic, not about the art.
+version: 1
+
+appearances:
+  hero_body:
+    type: animated_sprite
+    sprite: characters/hero/hero.anim.yml
+    shadow:
+      size: { x: 60, y: 16 }
+      color: { r: 0, g: 0, b: 0, a: 80 }
+
+characters:
+  player:
+    appearance: hero_body
+    name: "You"
+    speech_color: { r: 255, g: 240, b: 180 }
+
+  # NPC, used by 03_dialog (spawned at runtime with spawn_npc).
+  curator:
+    appearance: hero_body
+    name: "The curator"
+    speech_color: { r: 170, g: 220, b: 255 }

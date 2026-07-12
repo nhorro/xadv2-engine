@@ -44,6 +44,16 @@ std::string logical_dir(const std::string& logical) {
 }
 
 std::string logical_join(const std::string& dir, const std::string& rel) {
+    // A leading '/' means "from the resource root", not "relative to the file
+    // that named me" — the escape hatch for assets shared between directories
+    // (a background under `backgrounds/` referenced from `rooms/study.yaml`).
+    // Without it, `dir + "/" + rel` would produce `rooms//backgrounds/...`,
+    // which is not a valid logical path. Close-ups already documented this
+    // convention; honouring it here gives it to room layers, object sprites and
+    // panel art too.
+    if (!rel.empty() && rel.front() == '/') {
+        return rel.substr(1);
+    }
     if (dir.empty()) {
         return rel;
     }

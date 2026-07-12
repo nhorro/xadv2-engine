@@ -1,2 +1,0 @@
-add_executable(pac_themummy main.cpp)
-target_link_libraries(pac_themummy PRIVATE pac_engine pac_project_options)

@@ -1,3 +1,0 @@
-# One row per original spritesheet row.
-# Names are read left-to-right, then top-to-bottom.
-default

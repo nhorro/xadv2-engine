@@ -26,5 +26,5 @@ EXPOSE 8000
 # Serve the room editor on all interfaces so the host browser reaches it via the
 # published port. Defaults to the sample game's rooms folder.
 CMD ["python3", "-m", "tools.room_editor", "serve", \
-     "--base-path", "games/themummy/data/rooms", \
+     "--base-path", "examples/01_hello_room/data/rooms", \
      "--host", "0.0.0.0", "--port", "8000"]

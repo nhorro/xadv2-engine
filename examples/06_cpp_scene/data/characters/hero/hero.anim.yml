@@ -1,0 +1,62 @@
+# The placeholder hero's directional rig. Frame ids in julia.yml use short codes:
+#   s* = standing, w*N = walking frame N; f=front(down) b=back(up) l=left r=right.
+# Sequence keys follow the engine convention <action>_<direction> with
+# direction in up/right/down/left, so Avatar::face / move_to pick the right one.
+version: 1
+spritesheet: hero.yml   # resolved relative to this file's directory
+pivot: walking_pivot
+
+sequences:
+  stand_down:
+    loop: true
+    frames:
+      - { sprite: sf, duration: 0.20 }
+
+  stand_up:
+    loop: true
+    frames:
+      - { sprite: sb, duration: 0.20 }
+
+  stand_left:
+    loop: true
+    frames:
+      - { sprite: sl, duration: 0.20 }
+
+  stand_right:
+    loop: true
+    frames:
+      - { sprite: sr, duration: 0.20 }
+
+  walk_down:
+    loop: true
+    frames:
+      - { sprite: wf0, duration: 0.10 }
+      - { sprite: wf1, duration: 0.10 }
+      - { sprite: wf2, duration: 0.10 }
+      - { sprite: wf3, duration: 0.10 }
+
+  walk_up:
+    loop: true
+    frames:
+      - { sprite: wb0, duration: 0.10 }
+      - { sprite: wb1, duration: 0.10 }
+      - { sprite: wb2, duration: 0.10 }
+      - { sprite: wb3, duration: 0.10 }
+
+  # FIXME
+  walk_left:
+    loop: true
+    frames:
+      - { sprite: wl3, duration: 0.10 }
+      - { sprite: wl1, duration: 0.10 }
+      - { sprite: wl3, duration: 0.10 }
+      - { sprite: sl, duration: 0.10 }
+
+  # FIXME
+  walk_right:
+    loop: true
+    frames:
+      - { sprite: wr3, duration: 0.10 }
+      - { sprite: wr1, duration: 0.10 }
+      - { sprite: wr3, duration: 0.10 }
+      - { sprite: sr, duration: 0.10 }

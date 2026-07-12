@@ -35,7 +35,7 @@ endif()
 include(FetchContent)
 
 add_subdirectory(lib)
-add_subdirectory(games)
+add_subdirectory(examples)
 add_subdirectory(experiments)
 
 if(PAC_BUILD_TESTS)

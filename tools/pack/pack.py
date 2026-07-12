@@ -12,7 +12,7 @@ Usage:
     python tools/pack/pack.py <resources_root> <output_pak>
 
 Examples:
-    python tools/pack/pack.py games/themummy/data games/themummy/resources.pak
+    python tools/pack/pack.py examples/01_hello_room/data build/resources.pak
 """
 
 from __future__ import annotations

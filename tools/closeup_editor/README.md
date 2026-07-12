@@ -20,7 +20,7 @@ in the close-up's Lua sidecar (`closeups/<id>.lua`); see
 # From the repo root. Point it at a close-up YAML; the asset base path is inferred
 # as the game data directory (so `background: closeups/skull.png` resolves).
 python -m tools.closeup_editor serve \
-  --closeup games/ingreso_urgente/data/closeups/lab_skull.yml
+  --closeup examples/05_closeup/data/closeups/painting/closeup.yml
 
 # Then open http://127.0.0.1:8001/
 ```

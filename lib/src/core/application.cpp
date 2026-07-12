@@ -33,6 +33,7 @@
 #include <SFML/Window/Event.hpp>
 
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -178,6 +179,41 @@ std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
 }
 
 } // namespace
+
+std::string parse_run_options(int argc,
+                              char** argv,
+                              RunOptions& opts,
+                              const std::string& default_manifest) {
+    std::string manifest = default_manifest;
+    if (argc > 0 && argv[0]) {
+        opts.argv0 = argv[0];
+    }
+
+    const auto value_of = [&](const std::string& arg, const char* flag, int& i) -> std::string {
+        const std::string prefix = std::string(flag) + "=";
+        if (arg.rfind(prefix, 0) == 0) {
+            return arg.substr(prefix.size());
+        }
+        if (arg == flag && i + 1 < argc) {
+            return argv[++i];
+        }
+        return {};
+    };
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (std::string v = value_of(arg, "--frames", i); !v.empty()) {
+            opts.max_frames = std::atoi(v.c_str());
+        } else if (std::string v = value_of(arg, "--shot", i); !v.empty()) {
+            opts.screenshot_path = std::move(v);
+        } else if (std::string v = value_of(arg, "--pak", i); !v.empty()) {
+            opts.pak_path = std::move(v);
+        } else if (!arg.empty() && arg[0] != '-') {
+            manifest = arg;
+        }
+    }
+    return manifest;
+}
 
 int run(const std::string& manifest_path,
         const SceneFactory& factory,

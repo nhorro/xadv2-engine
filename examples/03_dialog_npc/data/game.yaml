@@ -1,0 +1,42 @@
+# 03_dialog_npc — an NPC standing in the room, and a conversation with it.
+#
+# New here vs 02: an NPC put into the room by script (`spawn_npc`), a hotspot
+# that follows it (`bind: npc:curator`) instead of sitting at fixed coordinates,
+# and a dialog tree with conditional options.
+version: 1
+id: dialog_npc
+
+resolution: { width: 1280, height: 720 }
+window:
+  fullscreen: false
+  width: 1280
+  height: 720
+
+resources:
+  src: "."
+
+languages:
+  - id: en
+    name: "English"
+    strings: strings/en.yaml
+
+development:
+  edit_mode: true
+  show_walkboxes: false
+  show_hotspots: false
+  allow_room_reload: true
+
+entry: room_view
+
+scenes:
+  - id: room_view
+    type: RoomScene
+    parameters:
+      cast: cast.yaml            # `curator`'s speech colour comes from here
+      rooms: rooms
+      start_room: gallery
+      player: player
+      font: fonts/DepartureMono-Regular.otf
+      logic: scripts/game.lua
+      inventory: inventory.yaml
+      inventory_logic: inventory.lua
