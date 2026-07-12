@@ -22,8 +22,12 @@ read and are smoke-run by CI. See
 `scripts/check-packaging.sh`.
 
 The two in-tree sample games (`themummy`, `ingreso_urgente`) were removed once the
-engine became a library. Ingreso Urgente continues in its own repository; both are
-recoverable from the `games-archive/v1` tag.
+engine became a library, and their blobs were then **pruned from this repository's
+history** (`git filter-repo`) — a clone is ~60 MB rather than ~250 MB. They are not
+recoverable from here: Ingreso Urgente continues in its own repository (with its
+full history, and it builds against the engine as a library); The Mummy was dropped
+and not published anywhere. The `games-archive/v1` tag now only *marks* the split
+point; it does not contain them.
 
 **The workspace layout** (what the docs and the scaffolder assume):
 
