@@ -1,2 +1,2 @@
 add_executable(pac_example_04_cutscene main.cpp)
-target_link_libraries(pac_example_04_cutscene PRIVATE pac_engine pac_project_options)
+target_link_libraries(pac_example_04_cutscene PRIVATE pac::engine pac_project_options)

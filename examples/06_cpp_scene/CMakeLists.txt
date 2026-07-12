@@ -19,4 +19,4 @@ else()
 endif()
 
 target_link_libraries(pac_example_06_cpp_scene
-    PRIVATE pac_engine pac_sol2 ${PAC_EXAMPLE_YAMLCPP} pac_project_options)
+    PRIVATE pac::engine pac::sol2 ${PAC_EXAMPLE_YAMLCPP} pac_project_options)
