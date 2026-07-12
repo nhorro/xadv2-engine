@@ -1,0 +1,2 @@
+add_executable(pac_example_02_scumm_inventory main.cpp)
+target_link_libraries(pac_example_02_scumm_inventory PRIVATE pac::engine pac_project_options)

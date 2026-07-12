@@ -17,8 +17,8 @@
 #include <string>
 
 int main(int argc, char** argv) {
-    std::string data_root = "games/themummy/data";
-    std::string anim_logical = "characters/julia/body.anim.yml";
+    std::string data_root = "examples/01_hello_room/data";
+    std::string anim_logical = "characters/hero/hero.anim.yml";
     std::string shot_path;
     int max_frames = 0;
 

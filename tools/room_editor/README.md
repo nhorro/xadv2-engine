@@ -25,7 +25,7 @@ A minimal Python-based room YAML editor for the xadv2-engine room format.
 Start the web-based room editor and open it in a browser:
 
 ```bash
-PYTHONPATH=tools python3 -m tools.room_editor serve --room games/themummy/data/rooms/hall.yaml
+PYTHONPATH=tools python3 -m tools.room_editor serve --room examples/02_scumm_inventory/data/rooms/yard.yaml
 ```
 
 `--room` is optional. Omit it and point `--base-path` at the rooms folder to start
@@ -33,25 +33,25 @@ without a file loaded, then choose one from the **Room file** dropdown (top-left
 and click **Open** — no restart needed to switch between rooms in that folder:
 
 ```bash
-PYTHONPATH=tools python3 -m tools.room_editor serve --base-path games/themummy/data/rooms
+PYTHONPATH=tools python3 -m tools.room_editor serve --base-path examples/02_scumm_inventory/data/rooms
 ```
 
 (Optional) override the asset base path:
 
 ```bash
-PYTHONPATH=tools python3 -m tools.room_editor serve --room games/themummy/data/rooms/hall.yaml --base-path games/themummy/data
+PYTHONPATH=tools python3 -m tools.room_editor serve --room examples/02_scumm_inventory/data/rooms/yard.yaml --base-path examples/02_scumm_inventory/data
 ```
 
 (Optional) bind to a custom host or port:
 
 ```bash
-PYTHONPATH=tools python3 -m tools.room_editor serve --room games/themummy/data/rooms/hall.yaml --host 0.0.0.0 --port 9000
+PYTHONPATH=tools python3 -m tools.room_editor serve --room examples/02_scumm_inventory/data/rooms/yard.yaml --host 0.0.0.0 --port 9000
 ```
 
 Apply a patch from a YAML or JSON patch file:
 
 ```bash
-PYTHONPATH=tools python -m tools.room_editor edit --room games/themummy/data/rooms/hall.yaml --patch patch.yaml --base-path games/themummy/data
+PYTHONPATH=tools python -m tools.room_editor edit --room examples/02_scumm_inventory/data/rooms/yard.yaml --patch patch.yaml --base-path examples/02_scumm_inventory/data
 ```
 
 Patch format example:

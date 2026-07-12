@@ -1,0 +1,44 @@
+version: 1
+id: gallery
+
+background:
+  color: { r: 24, g: 22, b: 36 }
+  layers:
+    - id: room
+      image: /backgrounds/gallery.png
+      z: 0
+
+walkable:
+  - { x:   40, y: 430 }
+  - { x: 1240, y: 430 }
+  - { x: 1240, y: 600 }
+  - { x:   40, y: 600 }
+
+points:
+  player_start: { x: 400, y: 570 }
+  at_curator:   { x: 830, y: 560 }
+  curator_spot: { x: 960, y: 560 }   # where spawn_npc puts the curator
+  at_painting:  { x: 640, y: 520 }
+
+hotspots:
+  # A hotspot bound to an NPC has no `area` of its own: it tracks whatever the
+  # NPC is standing, so it keeps working when the NPC walks around.
+  curator:
+    name: "the curator"
+    bind: npc:curator
+    approach: at_curator
+    default_verb: talk_to
+    affordances: [look_at, talk_to, give]
+
+  painting:
+    name: "the painting"
+    area: [{x: 450, y: 110}, {x: 830, y: 110}, {x: 830, y: 390}, {x: 450, y: 390}]
+    approach: at_painting
+    default_verb: look_at
+    affordances: [look_at]
+
+avatars:
+  - id: player
+    start: player_start
+    orientation: down
+    player: true

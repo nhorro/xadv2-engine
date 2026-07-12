@@ -1,0 +1,69 @@
+# The room's STATIC data: what exists and where. Nothing here decides what
+# happens — that is study.lua's job. (Static data in YAML, behaviour in Lua.)
+version: 1
+id: study
+
+background:
+  color: { r: 20, g: 22, b: 32 }   # shows through anywhere a layer doesn't cover
+  layers:
+    - id: room
+      # Layer images resolve relative to THIS file's directory; the leading `/`
+      # makes the path root-relative (i.e. from `resources.src`) instead.
+      image: /backgrounds/interior.png
+      z: 0                          # drawn behind everything that sorts above 0
+
+# The walkable area: a single polygon the avatar's feet may never leave. Click
+# outside it and the avatar walks to the nearest point inside instead. Press F1
+# in-game to see it.
+walkable:
+  - { x:   40, y: 440 }
+  - { x: 1240, y: 440 }
+  - { x: 1240, y: 600 }
+  - { x:   40, y: 600 }
+
+# Named positions. Scripts and hotspots refer to points by id, never by raw
+# coordinates — move the point here and every reference follows.
+points:
+  player_start: { x: 640, y: 560 }
+  at_window:    { x: 230, y: 500 }
+  at_bench:     { x: 540, y: 500 }
+  at_poster:    { x: 830, y: 500 }
+  at_door:      { x: 1060, y: 520 }
+
+# Clickable regions. `area` is a polygon in room coordinates; `approach` is the
+# point the avatar walks to before the verb runs (so you can't examine a door
+# from across the room); `default_verb` is what a plain left-click does.
+hotspots:
+  window:
+    name: "the window"
+    area: [{x: 140, y: 140}, {x: 320, y: 140}, {x: 320, y: 300}, {x: 140, y: 300}]
+    approach: at_window
+    default_verb: look_at
+    affordances: [look_at, open]
+
+  bench:
+    name: "the workbench"
+    area: [{x: 420, y: 352}, {x: 660, y: 352}, {x: 660, y: 432}, {x: 420, y: 432}]
+    approach: at_bench
+    default_verb: look_at
+    affordances: [look_at, push]
+
+  poster:
+    name: "the poster"
+    area: [{x: 760, y: 160}, {x: 900, y: 160}, {x: 900, y: 290}, {x: 760, y: 290}]
+    approach: at_poster
+    default_verb: look_at
+    affordances: [look_at, pull]
+
+  door:
+    name: "the door"
+    area: [{x: 1000, y: 170}, {x: 1150, y: 170}, {x: 1150, y: 432}, {x: 1000, y: 432}]
+    approach: at_door
+    default_verb: look_at
+    affordances: [look_at, open]
+
+avatars:
+  - id: player
+    start: player_start
+    orientation: down
+    player: true

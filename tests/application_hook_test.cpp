@@ -1,5 +1,4 @@
 #include "engine/core/application.hpp"
-
 #include "engine/core/engine_context.hpp"
 #include "engine/core/manifest.hpp"
 #include "engine/core/scene_factory.hpp"
@@ -7,9 +6,9 @@
 
 #include <doctest/doctest.h>
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <cstdlib>
 #include <stdexcept>
 #include <string>
 
@@ -27,7 +26,8 @@ struct TempDir {
 
 } // namespace
 
-TEST_CASE("application configure hook runs after core Lua bindings and setup failure aborts startup") {
+TEST_CASE(
+    "application configure hook runs after core Lua bindings and setup failure aborts startup") {
 #if defined(_WIN32)
     _putenv_s("ALSOFT_DRIVERS", "null");
 #else
@@ -61,7 +61,14 @@ TEST_CASE("application configure hook runs after core Lua bindings and setup fai
                "id: application_hook_test\n"
                "resolution: { width: 320, height: 200 }\n"
                "window: { fullscreen: false, width: 320, height: 200 }\n"
-               "resources: { src: \"" << td.path.string() << "\" }\n"
+               // generic_string(), not string(): a Windows temp path
+               // (C:\Users\RUNNER~1\...) inside a YAML double-quoted scalar makes
+               // `\U` a Unicode escape, and the loader dies with "bad character
+               // found while scanning hex number". Forward slashes are valid on
+               // Windows and mean nothing special to YAML.
+               "resources: { src: \""
+            << td.path.generic_string()
+            << "\" }\n"
                "strings: strings.yaml\n"
                "entry: blank\n"
                "scenes: [{ id: blank, type: Blank }]\n";
@@ -69,7 +76,8 @@ TEST_CASE("application configure hook runs after core Lua bindings and setup fai
 
     bool called = false;
     pac::core::ApplicationHooks hooks;
-    hooks.configure = [&called](pac::core::EngineContext& ctx, const pac::core::Manifest& manifest) {
+    hooks.configure = [&called](pac::core::EngineContext& ctx,
+                                const pac::core::Manifest& manifest) {
         called = true;
         CHECK(manifest.id == "application_hook_test");
         CHECK(ctx.scripting.run_string("assert(type(get_state) == 'function')"));

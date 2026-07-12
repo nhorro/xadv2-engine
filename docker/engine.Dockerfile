@@ -31,8 +31,8 @@ COPY . /work
 # Configure + build (Release) and gate the image on the headless test suite.
 RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
     && cmake --build build -j"$(nproc)" \
-    && ctest --test-dir build --output-on-failure
+    && ctest --test-dir build --output-on-failure --label-exclude gui
 
 # Launch the sample game by default. Override to run another manifest or a
 # headless smoke (append `--frames 5`). Showing a window requires X11.
-CMD ["./build/games/themummy/pac_themummy", "games/themummy/data/game.yaml"]
+CMD ["./build/examples/01_hello_room/pac_example_01_hello_room", "examples/01_hello_room/data/game.yaml"]

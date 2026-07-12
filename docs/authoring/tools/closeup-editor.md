@@ -22,7 +22,7 @@ What a hotspot *does* on click lives in the close-up's Lua sidecar
 
 ```bash
 python3 -m tools.closeup_editor serve \
-  --closeup games/ingreso_urgente/data/closeups/lab_skull.yml
+  --closeup examples/05_closeup/data/closeups/painting/closeup.yml
 # then open http://127.0.0.1:8001/
 ```
 

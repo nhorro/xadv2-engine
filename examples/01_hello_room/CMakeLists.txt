@@ -1,0 +1,2 @@
+add_executable(pac_example_01_hello_room main.cpp)
+target_link_libraries(pac_example_01_hello_room PRIVATE pac::engine pac_project_options)

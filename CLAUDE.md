@@ -5,25 +5,54 @@ Guidance for working in this repository. Keep it current as the engine takes sha
 ## What this is
 
 `xadv2-engine` is a ground-up rebuild of the **Extraordinary Adventures Engine**: a
-C++17 / SFML engine for third-person, SCUMM-style point-and-click adventure games,
+C++20 / SFML engine for third-person, SCUMM-style point-and-click adventure games,
 scripted in Lua and configured with YAML. It is a remake of
 [ea-engine](https://github.com/nhorro/ea-engine); the old prototype is reference
 material only (reusable assets, behavior ideas, comparison targets) — never
 architecture to preserve.
 
-**Status: M0–M7 are merged. M8 (the prototype game — proving the engine is usable
-by content creators) is largely done: the prototype-feedback features are merged —
-object `sprite` key (#138), the `avatar(id)` handle (#139), scripted NPC presence
-`spawn_npc`/`despawn_npc` (#140), hotspot `bind: npc:` (#141), named/toggleable
-obstacles (#143), avatar `play`/`play_until_end`/`anchor` (#149), object `scale`
-(#154), the room-editor objects mode (#147), dynamic/animated objects driven by an
-`object(id)` handle (#142), and the audience-first docs reorg + scenery authoring
-guide (#145). Still open: M6 authoring templates (#39), packaging smoke path (#40),
-manual MVP regression checklist (#41), the Windows build recipe (#68); plus
-design-for follow-ups (runtime layer/shader control #144, approach-follows-moving-
-target #158).**
+**This repository is the engine, not a game.** Games live in their own
+repositories and consume the engine as a library — from a source checkout
+(`-DXADV2_ENGINE_DIR=…`, the mode to use while the API is unstable, since engine
+bugs are then fixable in place) or from an install (`find_package(pac_engine
+CONFIG)` → `pac::engine`; `PAC_BUILD_SHARED=ON` for a shared library). What lives
+here instead is `examples/`: six tiny games, one per feature, that exist to be
+read and are smoke-run by CI. See
+[docs/authoring/building-a-game.md](docs/authoring/building-a-game.md) and
+`scripts/check-packaging.sh`.
+
+The two in-tree sample games (`themummy`, `ingreso_urgente`) were removed once the
+engine became a library. Ingreso Urgente continues in its own repository; both are
+recoverable from the `games-archive/v1` tag.
+
+**The workspace layout** (what the docs and the scaffolder assume):
+
+```
+point-and-click-game/
+├── xadv2-engine/     this repository
+└── games/            one working copy per game repo — each is its own git repo,
+    └── <game>/       and `games/` itself is not one
+```
+
+`python -m tools.scaffolder --type game …` drops a new standalone game in
+`../games/<short_name>`; its build points back here with
+`-DXADV2_ENGINE_DIR=../../xadv2-engine`, and the authoring tools stay in this repo
+(`XADV2_ENGINE=…/xadv2-engine`) and run against any game's data directory.
+
+**Status: M0–M7 are merged. M8 (proving the engine is usable by content creators)
+is done: object `sprite` key (#138), the `avatar(id)` handle (#139), scripted NPC
+presence `spawn_npc`/`despawn_npc` (#140), hotspot `bind: npc:` (#141),
+named/toggleable obstacles (#143), avatar `play`/`play_until_end`/`anchor` (#149),
+object `scale` (#154), the room-editor objects mode (#147), dynamic/animated
+objects driven by an `object(id)` handle (#142), and the docs reorg + scenery
+authoring guide (#145). The library split additionally closed the M6 authoring
+templates (#39, the scaffolder now emits a standalone game repo) and the packaging
+smoke path (#40, `scripts/check-packaging.sh` in CI). Still open: manual MVP
+regression checklist (#41), the Windows build recipe (#68); design-for follow-ups
+(runtime layer/shader control #144, approach-follows-moving-target #158); and the
+shared-library symbol export needed for `PAC_BUILD_SHARED` on MSVC.**
 - **M0 Core Shell**: CMake build, `pac_engine` (`pac::core` harness + `pac::pnc`),
-  `pac_themummy` sample, headless doctest+CTest.
+  headless doctest+CTest.
 - **M1 Generic 2D**: `pac::geom`, `ResourceCache` + `AudioServices`, and `pac::gfx`
   (`Spritesheet`/`Animation`/`SequencePlayer`/`AnimatedSprite`) — verified by
   `pac_sprite_test` against the Julia atlas.
@@ -121,7 +150,8 @@ If a feature seems to require crossing a boundary, stop and revisit the design.
 
 ## Tech stack and constraints (fixed — R5/R6/R7)
 
-- **Engine:** C++17 with SFML 2.6.
+- **Engine:** C++20 with SFML 2.6. (The design docs say C++17 — the build has been
+  C++20 for a while, and `pac_engine` requires `cxx_std_20` of its consumers.)
 - **Scripting:** Lua 5.4 embedded via [sol2](https://github.com/ThePhD/sol2) (header-only).
 - **Data:** YAML via `yaml-cpp`.
 - **Tests:** doctest (single-header), registered with CTest; enable ASan/UBSan in dev.
@@ -134,20 +164,35 @@ Dependency acquisition: compiled libs from the system package manager (apt on Li
 vcpkg on Windows); header-only libs (sol2, doctest) via CMake `FetchContent` pinned.
 See [02 § Dependencies](docs/development/design/02-architecture-overview.md).
 
-## Build layout (target)
+## Build layout
 
 ```
-lib/include/engine/{core,geom,gfx,pnc}/   public headers
-lib/src/                                  engine implementation  -> pac_engine
-games/themummy/{CMakeLists.txt,main.cpp,data/}   example game     -> pac_themummy
-tests/      doctest + CTest targets
-experiments/  throwaway / exploratory executables
-CMakeLists.txt   top-level, one include per group (lib/games/tests/experiments)
+lib/include/engine/{core,geom,gfx,pnc}/   public headers  -> installed
+lib/src/                                  engine implementation  -> pac_engine / pac::engine
+cmake/                                    pacEngineDeps.cmake + the package config template
+examples/NN_name/{CMakeLists.txt,main.cpp,data/}   one example per feature
+examples/_assets/                         the shared placeholder asset kit (sync_assets.py)
+packaging/consumer_smoke/                 an external consumer, built against the INSTALL tree
+scripts/check-packaging.sh                installs the engine + builds a game against it
+tests/                                    doctest + CTest targets
+experiments/                              throwaway / exploratory executables
+CMakeLists.txt                            top-level (lib/examples/experiments/tests)
 ```
 
-Games, tests, and experiments link the `pac_engine` library and may add a minimal
-`main.cpp` and optional custom `Scene` subclasses. There is no build system yet —
-when you scaffold it, follow this layout and update the build/test commands below.
+The engine is a **library**, and the build has to behave in two situations:
+
+- **standalone** — engine development. `PROJECT_IS_TOP_LEVEL` is on, so
+  `PAC_BUILD_{TESTS,EXAMPLES,EXPERIMENTS}` and `PAC_INSTALL` default ON.
+- **as a subproject** — a game did `add_subdirectory(<engine>)`. Those all default
+  OFF: the engine contributes its library and nothing else. Never assume
+  `CMAKE_SOURCE_DIR` is the engine's root (it is the *game's*) — use
+  `PROJECT_SOURCE_DIR`.
+
+Exported targets: `pac::engine`, plus `pac::sol2` / `pac::lua` (only a game with
+custom C++ scenes links those — `engine/core/scripting_sol.hpp` is the one public
+header that includes sol2) and `pac::sanitizers` (PUBLIC, so a sanitized engine
+can't be linked into an unsanitized game). Warnings (`pac_warnings`) are
+deliberately *not* exported.
 
 ## Build & test commands
 
@@ -158,15 +203,23 @@ via pkg-config.
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug      # add -DPAC_ENABLE_SANITIZERS=ON in dev
 cmake --build build -j"$(nproc)"
-ctest --test-dir build --output-on-failure
-./build/games/themummy/pac_themummy games/themummy/data/game.yaml          # run the sample (loose files)
-./build/games/themummy/pac_themummy games/themummy/data/game.yaml --frames 5   # headless smoke
 
-# Pack the resources into a single archive (issue #109). The runtime
+# The examples are the only tests that open a window (SFML needs a GL context even
+# for --frames 5), so they carry the `gui` label:
+ctest --test-dir build --output-on-failure -LE gui     # headless suite
+xvfb-run -a ctest --test-dir build -L gui              # the example smoke runs
+
+./run-game.sh                    # 01_hello_room
+./run-game.sh 03_dialog_npc      # any example, by directory name
+
+# The library contract itself: install the engine, then build an external game
+# against it (find_package AND add_subdirectory). CI runs this.
+./scripts/check-packaging.sh
+
+# Pack a game's resources into a single archive (issue #109). The runtime
 # auto-discovers `resources.pak` next to the binary or in CWD; pass `--pak`
-# to override. Without a pak the loose-files workflow above keeps working.
-python tools/pack/pack.py games/themummy/data build/games/themummy/resources.pak
-./build/games/themummy/pac_themummy                                        # runs from the pak
+# to override. Without a pak the loose-files workflow keeps working.
+python tools/pack/pack.py examples/01_hello_room/data build/resources.pak
 ```
 
 Equivalent via CMake presets (`CMakePresets.json`): `cmake --preset linux-debug`
@@ -205,8 +258,8 @@ Format before committing: `clang-format -i` on changed `*.hpp`/`*.cpp` (never
 FetchContent'd. `tests/_vendor/doctest/doctest.h` is the genuine doctest **v2.4.11**
 single header (fetched from the raw CDN) and is preferred when present; delete
 `tests/_vendor/` to fall back to `FetchContent` once git access is available. The
-sample's UI font is **Departure Mono** (SIL OFL 1.1) at
-`games/themummy/data/fonts/DepartureMono-Regular.otf`, with the license bundled
+examples' UI font is **Departure Mono** (SIL OFL 1.1) at
+`examples/_assets/fonts/DepartureMono-Regular.otf`, with the license bundled
 alongside as `DepartureMono-OFL.txt`.
 
 ## Conventions that must hold
@@ -236,6 +289,14 @@ alongside as `DepartureMono-OFL.txt`.
   raw C++ pointer — the C++ side re-resolves the id each call.
 - **State values are scalars** (bool / number / string) for the MVP. No tables.
 - **All engine YAML files carry an optional `version:` int** (default 1).
+- **Examples are documentation, not a game.** Each one shows *exactly one* feature
+  and stays small enough to read in a sitting. Resist growing them into a game —
+  that is what killed the last two. Add a new example only for a feature none of
+  the six covers; extend an existing one otherwise. They are self-contained (a
+  manifest has one resource root), so the shared kit is copied into each:
+  `examples/_assets/` is the source of truth, `python3 examples/tools/sync_assets.py`
+  propagates it, and `--check` fails if a copy is stale. Placeholder art is
+  generated by `examples/tools/make_backgrounds.py` — never commit real art here.
 
 ## Invariants easy to get wrong
 

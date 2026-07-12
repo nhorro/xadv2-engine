@@ -1,0 +1,7 @@
+version: 1
+
+items:
+  ticket:
+    name: "a museum ticket"
+    affordances: [look_at, give]
+    combinable: true

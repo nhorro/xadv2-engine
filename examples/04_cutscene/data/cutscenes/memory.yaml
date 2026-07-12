@@ -1,0 +1,24 @@
+# A short mid-game cutscene, triggered from a verb handler (yard.lua's gate).
+# Same format as the intro; `advance_mode: auto` means it plays itself, each
+# slide holding for its own `duration`.
+version: 1
+advance_mode: auto
+
+defaults:
+  text_position: [0.5, 0.5]
+  text_align: center
+  text_style:
+    size: 30
+    color: "#E7E7E9"
+    outline_color: "#000000"
+    outline_thickness: 2
+  fade:
+    in: 0.5
+    out: 0.5
+    color: "#000000"
+
+slides:
+  - text: "I remember the chain going on."
+    duration: 2.5
+  - text: "Nobody said who ordered it."
+    duration: 2.5

@@ -1,0 +1,52 @@
+version: 1
+id: yard
+
+background:
+  color: { r: 16, g: 20, b: 34 }
+  layers:
+    - id: room
+      image: /backgrounds/yard.png
+      z: 0
+
+walkable:
+  - { x:   40, y: 420 }
+  - { x: 1240, y: 420 }
+  - { x: 1240, y: 600 }
+  - { x:   40, y: 600 }
+
+points:
+  player_start:   { x: 640, y: 560 }
+  from_workshop:  { x: 1100, y: 540 }
+  at_crate:       { x: 630, y: 500 }
+  at_gate:        { x: 200, y: 500 }
+
+# Walking into a zone fires on_zone_enter in the room's Lua — the hands-free way
+# to change rooms (no verb, no click on a hotspot: you just walk off the edge).
+zones:
+  - id: back_inside
+    polygon:
+      - { x: 1180, y: 430 }
+      - { x: 1260, y: 430 }
+      - { x: 1260, y: 600 }
+      - { x: 1180, y: 600 }
+
+hotspots:
+  crate:
+    name: "the crate"
+    area: [{x: 560, y: 330}, {x: 700, y: 330}, {x: 700, y: 425}, {x: 560, y: 425}]
+    approach: at_crate
+    default_verb: open
+    affordances: [look_at, open, push]
+
+  gate:
+    name: "the gate"
+    area: [{x: 90, y: 190}, {x: 250, y: 190}, {x: 250, y: 420}, {x: 90, y: 420}]
+    approach: at_gate
+    default_verb: look_at
+    affordances: [look_at, open, pull]
+
+avatars:
+  - id: player
+    start: player_start
+    orientation: down
+    player: true

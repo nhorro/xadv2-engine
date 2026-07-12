@@ -130,8 +130,14 @@ def list_templates(templates_dir: Path) -> list[str]:
 
 def default_base_for(template_name: str) -> str | None:
     """Default parent directory for a given template type. None means we'll
-    prompt the user (the `other` case)."""
-    return {"experiment": "experiments", "game": "games"}.get(template_name)
+    prompt the user (the `other` case).
+
+    An `experiment` is part of the engine repo, so it lands under experiments/.
+    A `game` is NOT: it is a standalone project with its own repository, its own
+    CMakeLists, and the engine as a library. Its default home is therefore a
+    SIBLING of the engine checkout, not a directory inside it — see
+    ../<short-name> in resolve_inputs()."""
+    return {"experiment": "experiments"}.get(template_name)
 
 
 # --- CLI -------------------------------------------------------------------
@@ -245,12 +251,24 @@ def resolve_inputs(args: argparse.Namespace, available_templates: list[str]) -> 
     title = args.title or prompt_value("Title (display name, UTF-8 OK)")
 
     if output_override is None:
-        base = default_base_for(template)
-        if base is None:
-            raise SystemExit(
-                f"scaffolder: template {template!r} has no default base; pass --output."
-            )
-        output = Path(base) / short_name
+        if template == "game":
+            # A game is a standalone repository, not a subdirectory of the engine.
+            # The workspace layout is:
+            #
+            #     point-and-click-game/
+            #     ├── xadv2-engine/     <- we are here
+            #     └── games/<short_name>/
+            #
+            # so a new game lands in the sibling games/ directory, one working copy
+            # per game repository. --output overrides this.
+            output = Path("..") / "games" / short_name
+        else:
+            base = default_base_for(template)
+            if base is None:
+                raise SystemExit(
+                    f"scaffolder: template {template!r} has no default base; pass --output."
+                )
+            output = Path(base) / short_name
     else:
         # If the user passed only the parent (e.g. mygames/), append the short
         # name so the project ends up in its own directory.
@@ -309,9 +327,25 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"scaffolded {inputs['template']!r} at {output_dir} ({len(created)} files)")
 
-    # Next-step hint: the new project is a sibling under its parent's
-    # CMakeLists.txt (experiments/ or games/), so it needs an
-    # add_subdirectory(<short_name>) entry to actually build.
+    if inputs["template"] == "game":
+        # A game is a standalone project: it does not join the engine's build, it
+        # links the engine as a library. Its next steps are its own repository and
+        # its own configure.
+        engine_dir = Path.cwd()
+        short = inputs["short_name"]
+        print()
+        print("next steps — this is a standalone repository, not part of the engine:")
+        print(f"    cd {output_dir}")
+        print("    git init && git add -A && git commit -m 'initial scaffold'")
+        print(f"    cmake -S . -B build -DXADV2_ENGINE_DIR={engine_dir}")
+        print('    cmake --build build -j"$(nproc)"')
+        print("    ./run.sh")
+        print()
+        print(f"    (the authoring tools stay here: export XADV2_ENGINE={engine_dir})")
+        return 0
+
+    # An experiment DOES join the engine's build, as a sibling under its parent's
+    # CMakeLists.txt, so it needs an add_subdirectory(<short_name>) entry.
     parent_cmake = output_dir.parent / "CMakeLists.txt"
     if parent_cmake.exists():
         line = f"add_subdirectory({inputs['short_name']})"

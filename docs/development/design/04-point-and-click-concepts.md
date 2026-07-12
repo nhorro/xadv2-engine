@@ -752,7 +752,7 @@ input addition, not part of the MVP.
 The panel's *look* is fully configured by the optional `scumm_panel` YAML (see the
 [SCUMM panel config](06-data-formats.md#scumm-panel-config--uiscumm_panelyml)); the
 command model is independent of it. Beyond the classic framed verb grid + text
-inventory, a config may opt into (issue #172, defaults unchanged so `themummy`
+inventory, a config may opt into (issue #172, defaults unchanged so the built-in panel
 keeps the classic look):
 
 - **plain-text verbs** (`verb_panel.style: text`) — a reduced horizontal verb row

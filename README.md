@@ -1,8 +1,43 @@
-Extrardinary Adventures Engine v2
-=================================
+Extraordinary Adventures Engine v2
+==================================
 
-This is a remake of the third person point and click engine [Extraordinary Adventures](https://github.com/nhorro/ea-engine).
+A C++17/SFML engine for third-person, SCUMM-style point-and-click adventure games,
+scripted in **Lua** and configured in **YAML**. A remake of
+[Extraordinary Adventures](https://github.com/nhorro/ea-engine).
 
+**This repository is the engine, not a game.** Games live in their own
+repositories and link the engine as a library — see
+[docs/authoring/building-a-game.md](docs/authoring/building-a-game.md):
+
+~~~bash
+# scaffold a standalone game (lands in ../games/, alongside the engine checkout)
+python -m tools.scaffolder --type game --short-name mygame --title "My Game"
+
+cd ../games/mygame
+cmake -S . -B build -DXADV2_ENGINE_DIR=~/workspace/point-and-click-game/xadv2-engine   # engine from source
+cmake --build build -j"$(nproc)" && ./run.sh
+~~~
+
+Once the engine is stable enough for you, install it and link it instead:
+`find_package(pac_engine CONFIG REQUIRED)` → `pac::engine`
+(`-DPAC_BUILD_SHARED=ON` for a shared library).
+
+Examples
+--------
+
+[`examples/`](examples/) holds six small games, each showing exactly **one** thing:
+a room and click-to-move, the SCUMM verb grid + inventory, NPCs and dialog trees,
+title screens and cutscenes, close-ups, and a game adding a scene type of its own
+in C++. They are the engine's worked documentation, and CI smoke-runs every one of
+them, so what they show is what the engine actually does.
+
+~~~bash
+./run-game.sh                  # 01_hello_room
+./run-game.sh 03_dialog_npc    # any example, by directory name
+~~~
+
+The first five contain no C++ beyond a four-line `main`. That is the claim the
+engine makes about itself, and the examples are there to keep it honest.
 
 Build instructions
 ------------------
@@ -12,6 +47,9 @@ Build instructions
 ~~~bash
 ./build-linux.sh
 ~~~
+
+Or directly: `cmake -S . -B build && cmake --build build -j"$(nproc)"`, then
+`ctest --test-dir build` (add `-LE gui` to skip the windowed example smoke runs).
 
 ### Windows
 
@@ -23,9 +61,16 @@ to it (the script also auto-detects a sibling `..\vcpkg`), then:
 ~~~
 
 This stamps the vcpkg baseline, vcpkg-installs SFML 2.6 / yaml-cpp / Lua 5.4
-(sol2 and doctest stay header-only), and builds the sample. For the IDE / CMake
-preset flow that CI uses (`cmake --preset windows-msvc`), see the Windows section
-of [CLAUDE.md](CLAUDE.md).
+(sol2 and doctest stay header-only), and builds the engine + examples. For the IDE
+/ CMake preset flow that CI uses (`cmake --preset windows-msvc`), see the Windows
+section of [CLAUDE.md](CLAUDE.md).
+
+### Packaging check
+
+~~~bash
+./scripts/check-packaging.sh   # installs the engine, then builds an external game
+                               # against it — both find_package and source mode
+~~~
 
 Docker
 ------
@@ -36,7 +81,7 @@ Linux without installing the toolchain locally. See [docker/README.md](docker/RE
 ~~~bash
 docker compose run --rm engine-test   # build the engine + run the headless tests
 docker compose up room-editor         # then open http://localhost:8000
-docker compose run --rm engine        # run the sample game (X11 + audio, desktop host)
+docker compose run --rm engine        # run an example (X11 + audio, desktop host)
 ~~~
 
 Documentation
@@ -47,3 +92,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r docs/requirements.txt
 mkdocs serve -a localhost:8002 # Room/closeup editors use 8000/8001 by default
 ~~~
+
+The canonical design lives in [docs/development/design/](docs/development/design/) —
+requirements, architecture, the Lua API, and an exhaustive data-format reference.
+The implementation follows the design: where the code diverges, the code changes.

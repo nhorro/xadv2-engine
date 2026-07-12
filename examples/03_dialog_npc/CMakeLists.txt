@@ -1,0 +1,2 @@
+add_executable(pac_example_03_dialog_npc main.cpp)
+target_link_libraries(pac_example_03_dialog_npc PRIVATE pac::engine pac_project_options)

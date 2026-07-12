@@ -10,8 +10,11 @@
 # Ctrl-C is pressed.
 #
 # Customize by exporting environment variables before running it, for example:
-#   ROOM_FILE=games/ingreso_urgente/data/rooms/lab.yaml ./run-devtools.sh
-#   CLOSEUP_FILE=games/ingreso_urgente/data/closeups/window_llamas.yml ./run-devtools.sh
+#   ROOM_FILE=examples/02_scumm_inventory/data/rooms/yard.yaml ./run-devtools.sh
+#
+# To author YOUR game (which lives in its own repository), point the tools at it:
+#   GAME_DATA_DIR=../games/mygame/data ROOM_FILE=../games/mygame/data/rooms/lab.yaml \
+#       CLOSEUP_FILE=../games/mygame/data/closeups/desk/closeup.yml ./run-devtools.sh
 #   HOST=0.0.0.0 DOCS_PORT=9002 ROOM_PORT=9000 CLOSEUP_PORT=9001 ./run-devtools.sh
 #
 # Supported variables: HOST, DOCS_PORT, ROOM_PORT, CLOSEUP_PORT, GAME_DATA_DIR,
@@ -26,11 +29,11 @@ DOCS_PORT="${DOCS_PORT:-8002}"
 ROOM_PORT="${ROOM_PORT:-8000}"
 CLOSEUP_PORT="${CLOSEUP_PORT:-8001}"
 
-GAME_DATA_DIR="${GAME_DATA_DIR:-games/ingreso_urgente/data}"
+GAME_DATA_DIR="${GAME_DATA_DIR:-examples/05_closeup/data}"
 ROOM_DIR="${ROOM_DIR:-${GAME_DATA_DIR}/rooms}"
 CLOSEUP_DIR="${CLOSEUP_DIR:-${GAME_DATA_DIR}/closeups}"
-ROOM_FILE="${ROOM_FILE:-${ROOM_DIR}/hall.yaml}"
-CLOSEUP_FILE="${CLOSEUP_FILE:-${CLOSEUP_DIR}/lab_skull.yml}"
+ROOM_FILE="${ROOM_FILE:-${ROOM_DIR}/gallery.yaml}"
+CLOSEUP_FILE="${CLOSEUP_FILE:-${CLOSEUP_DIR}/painting/closeup.yml}"
 
 VENV_DIR="${VENV_DIR:-.venv}"
 LOG_DIR="${LOG_DIR:-.devtools-logs}"

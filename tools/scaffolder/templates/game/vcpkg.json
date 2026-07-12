@@ -1,0 +1,19 @@
+{
+  "$comment": [
+    "Windows dependencies for {{title}}, via vcpkg. The two overrides are the",
+    "engine's, and they matter: it uses the SFML 2.x API (not SFML 3), and sol2",
+    "rejects Lua 5.5, which is vcpkg's current default. Run once per checkout:",
+    "  vcpkg x-update-baseline --add-initial-baseline"
+  ],
+  "name": "{{short_name}}",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "sfml",
+    "lua",
+    "yaml-cpp"
+  ],
+  "overrides": [
+    { "name": "sfml", "version": "2.6.1" },
+    { "name": "lua", "version": "5.4.7" }
+  ]
+}

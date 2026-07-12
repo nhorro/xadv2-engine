@@ -1,0 +1,27 @@
+# The close-up's static data. Coordinates are in the virtual resolution
+# (1280x720) — a close-up fills the screen, so there is no room camera to think
+# about and no walkable area: the player doesn't walk here, only looks.
+#
+# Authoring tip: the polygons below were traced with the close-up editor
+# (`python -m tools.closeup_editor serve --closeup <this file>`).
+version: 1
+id: painting_closeup
+
+# `background` resolves relative to THIS file's directory, so a co-located image
+# is just `background.png`. A leading `/` makes it root-relative instead — which
+# is what this example does, reusing the shared backdrop.
+background: /backgrounds/painting_closeup.png
+background_color: { r: 20, g: 16, b: 24 }   # shows through any transparent edge
+
+hotspots:
+  face:
+    name: "the unfinished face"
+    area: [{x: 575, y: 275}, {x: 705, y: 275}, {x: 705, y: 405}, {x: 575, y: 405}]
+
+  crack:
+    name: "a crack in the varnish"
+    area: [{x: 860, y: 130}, {x: 950, y: 140}, {x: 920, y: 590}, {x: 875, y: 585}]
+
+  signature:
+    name: "the signature"
+    area: [{x: 965, y: 545}, {x: 1090, y: 545}, {x: 1090, y: 585}, {x: 965, y: 585}]

@@ -1,0 +1,59 @@
+# 05_closeup — examining something up close: a full-screen overlay with its own
+# hotspots, its own Lua, and its own way back out.
+#
+# A close-up is an OVERLAY, not a room change: the room stays loaded underneath,
+# and Esc / right-click pops straight back to it with everything intact. That is
+# what makes it the right tool for "look at this in detail", and the wrong tool
+# for "go somewhere else" (that's change_room).
+version: 1
+id: closeup
+
+resolution: { width: 1280, height: 720 }
+window:
+  fullscreen: false
+  width: 1280
+  height: 720
+
+resources:
+  src: "."
+
+languages:
+  - id: en
+    name: "English"
+    strings: strings/en.yaml
+
+# A custom mouse cursor. `interact` is swapped in whenever the pointer is over
+# something clickable — the hover affordance, for free. `hotspot` is the active
+# pixel inside both images.
+cursor:
+  image: ui/cursor.png
+  interact: ui/cursor_interact.png
+  hotspot: { x: 1, y: 1 }
+
+development:
+  edit_mode: true
+  show_walkboxes: false
+  show_hotspots: false
+  allow_room_reload: true
+
+entry: room_view
+
+scenes:
+  - id: room_view
+    type: RoomScene
+    parameters:
+      cast: cast.yaml
+      rooms: rooms
+      start_room: gallery
+      player: player
+      font: fonts/DepartureMono-Regular.otf
+      logic: scripts/game.lua
+
+  # Opened from gallery.lua with open_closeup("painting_closeup").
+  - id: painting_closeup
+    type: CloseUp
+    parameters:
+      data: closeups/painting/closeup.yml     # background + hotspot polygons
+      logic: closeups/painting/logic.lua      # what each hotspot does
+      cast: cast.yaml                         # so talk() knows the speech colours
+      font: fonts/DepartureMono-Regular.otf

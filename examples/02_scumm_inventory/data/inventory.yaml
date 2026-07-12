@@ -1,0 +1,14 @@
+# What the player can carry. `combinable: true` is what makes an item usable as
+# the FIRST operand of a two-operand command ("Use key with door") — without it
+# the item can only be the target.
+version: 1
+
+items:
+  key:
+    name: "a rusty key"
+    affordances: [look_at, use]
+    combinable: true
+
+  note:
+    name: "a torn note"
+    affordances: [look_at]

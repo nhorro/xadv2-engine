@@ -191,7 +191,7 @@ Settings button:
   select verbs, select inventory, page inventory, or mutate command state.
 
 Presentation styles (issue #172) — all default to the classic look, so an
-existing panel config (and the engine default used by `themummy`) is unchanged:
+existing panel config (and the engine default) is unchanged:
 
 - `layout.verb_panel.style: text` draws verbs as plain horizontal pixel-text
   labels (no boxes); the selected verb takes the accent color. The grid

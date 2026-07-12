@@ -8,9 +8,10 @@
 #     2x-cost runner runs only on develop/main pushes and manual dispatch (skipped
 #     on PRs). Trigger a manual run to exercise Windows on a PR before merging.
 #
-# Headless only: the doctest+CTest suite never opens a window, so no xvfb is
-# needed on Linux. The themummy SFML smoke run (--frames N) does create a window
-# and is therefore omitted here — add it (xvfb-run on Linux) in a follow-up.
+# Two tiers of tests. The doctest+CTest suite never opens a window and runs bare.
+# The examples DO open one (SFML needs a GL context even for `--frames 5`), so
+# they carry the `gui` label and run under xvfb: `ctest -LE gui` then
+# `xvfb-run ctest -L gui`.
 name: CI
 
 on:
@@ -49,7 +50,8 @@ jobs:
             pkg-config \
             libsfml-dev \
             liblua5.4-dev \
-            libyaml-cpp-dev
+            libyaml-cpp-dev \
+            xvfb
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
@@ -57,8 +59,18 @@ jobs:
       - name: Build
         run: cmake --build build -j"$(nproc)"
 
-      - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+      - name: Run tests (headless)
+        run: ctest --test-dir build --output-on-failure --label-exclude gui
+
+      - name: Smoke-run the examples (windowed, under xvfb)
+        run: xvfb-run -a ctest --test-dir build --output-on-failure --label-regex gui
+
+      # The engine's whole point is to be consumable by a game in another
+      # repository. Installs it to a throwaway prefix and builds an external
+      # project against it, both ways: find_package(pac_engine) and
+      # add_subdirectory(<engine>). Without this the export rots silently.
+      - name: Check packaging (install + find_package, and source mode)
+        run: ./scripts/check-packaging.sh
 
   build-and-test-windows:
     name: Build and test (Windows 2022)
@@ -123,4 +135,6 @@ jobs:
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Run tests
-        run: ctest --preset windows-msvc-release
+        # Headless suite only: the example smoke runs open a window (label `gui`),
+        # and the Windows runner has no reliable GL context for one.
+        run: ctest --preset windows-msvc-release --label-exclude gui

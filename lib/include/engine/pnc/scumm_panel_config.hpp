@@ -26,7 +26,7 @@ enum class InventoryArrowMode { DRAW, BACKGROUND_VARIANTS, NONE };
 enum class InventoryArrowPlacement { RIGHT, LEFT, BOTH };
 enum class ScummPanelAnchor { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT, CENTER };
 enum class ScummButtonRenderMode { PANEL, IMAGE };
-// Verb row presentation: BUTTONS = the framed grid (default, themummy); TEXT = plain
+// Verb row presentation: BUTTONS = the framed grid (the default); TEXT = plain
 // horizontal pixel-text labels with no boxes (issue #172).
 enum class VerbPanelStyle { BUTTONS, TEXT };
 // Inventory presentation: TEXT = the localized-name list (default); ICONS = fixed
@@ -81,7 +81,7 @@ struct ScummPanelLayout {
         {645.0f, 0.0f, 24.0f, 56.0f},
     };
     // Presentation styles (issue #172). Defaults preserve the classic layout so the
-    // engine default config (themummy) is unchanged; the IU panel opts into TEXT/ICONS.
+    // engine default config is unchanged; a game opts into TEXT/ICONS in its own panel yml.
     VerbPanelStyle verb_style = VerbPanelStyle::BUTTONS;
     InventoryStyle inventory_style = InventoryStyle::TEXT;
 };

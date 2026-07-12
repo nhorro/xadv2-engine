@@ -1,0 +1,2 @@
+add_executable(pac_example_05_closeup main.cpp)
+target_link_libraries(pac_example_05_closeup PRIVATE pac::engine pac_project_options)

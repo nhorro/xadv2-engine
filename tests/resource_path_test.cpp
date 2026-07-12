@@ -26,6 +26,20 @@ TEST_CASE("logical path validation rejects unsafe paths") {
     CHECK_FALSE(is_valid_logical_path("C:/x"));      // drive
 }
 
+TEST_CASE("logical_join resolves relative to the naming file") {
+    CHECK(logical_join("rooms", "b/background.png") == "rooms/b/background.png");
+    CHECK(logical_join("", "background.png") == "background.png");
+}
+
+TEST_CASE("logical_join treats a leading slash as root-relative") {
+    // The escape hatch for assets shared across directories: a room under
+    // rooms/ naming a background under backgrounds/. Without it the join would
+    // yield 'rooms//backgrounds/...', which is not a valid logical path.
+    CHECK(logical_join("rooms", "/backgrounds/interior.png") == "backgrounds/interior.png");
+    CHECK(logical_join("", "/backgrounds/interior.png") == "backgrounds/interior.png");
+    CHECK(is_valid_logical_path(logical_join("rooms", "/backgrounds/interior.png")));
+}
+
 TEST_CASE("filesystem resource source reads, reports existence, and validates") {
     namespace fs = std::filesystem;
     const fs::path root = fs::temp_directory_path() / "xadv2_res_test";
