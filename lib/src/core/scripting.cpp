@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <list>
 #include <optional>
 #include <string>
 #include <utility>
@@ -276,10 +277,9 @@ struct Scripting::Impl {
                 release_thread(t.id);
             }
         }
-        tasks.erase(std::remove_if(tasks.begin(),
-                                   tasks.end(),
-                                   [](const Task& t) { return t.wait == Wait::DONE; }),
-                    tasks.end());
+        // std::list::remove_if destroys matching nodes in place; surviving tasks are
+        // never move-assigned (see the `tasks` declaration for why that matters).
+        tasks.remove_if([](const Task& t) { return t.wait == Wait::DONE; });
     }
 
     void deliver(ScopeId scope, const std::string& name, sol::object payload) {
@@ -304,10 +304,7 @@ struct Scripting::Impl {
                 release_thread(t.id);
             }
         }
-        tasks.erase(std::remove_if(tasks.begin(),
-                                   tasks.end(),
-                                   [scope](const Task& t) { return t.scope == scope; }),
-                    tasks.end());
+        tasks.remove_if([scope](const Task& t) { return t.scope == scope; });
     }
 
     std::size_t count(ScopeId scope) const {
@@ -324,7 +321,16 @@ struct Scripting::Impl {
     sol::state lua;
     sol::table live_threads; // task id -> sol::thread; GC-roots scheduled coroutines
     bool gc_stress_ = false; // PAC_GC_STRESS: full GC each tick (dev lifetime-bug flush)
-    std::vector<Task> tasks;
+    // A NODE-BASED container is load-bearing, not a style choice. Each Task holds
+    // sol references into a Lua coroutine thread. A std::vector relocates (move-
+    // assigns) its elements on erase/compaction, and sol's move-assign calls
+    // xmovable(), which dereferences the lua_State of BOTH operands to compare
+    // registries. Under GC, a thread referenced by a relocated Task can already be
+    // collected -> xmovable reads a freed lua_State -> SEGV (caught by PAC_GC_STRESS
+    // in update()'s remove_if). std::list never moves a live element, so erasing a
+    // task only destroys that node; surviving tasks keep their stable addresses and
+    // their sol references are never shuffled. Do not switch this back to a vector.
+    std::list<Task> tasks;
     TaskId next_task_id = 1;
     ScopeId next_scope_id = 1; // 0 reserved for the global scope
     ScopeId current_scope = 0;
