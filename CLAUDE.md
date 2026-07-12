@@ -25,6 +25,20 @@ The two in-tree sample games (`themummy`, `ingreso_urgente`) were removed once t
 engine became a library. Ingreso Urgente continues in its own repository; both are
 recoverable from the `games-archive/v1` tag.
 
+**The workspace layout** (what the docs and the scaffolder assume):
+
+```
+point-and-click-game/
+├── xadv2-engine/     this repository
+└── games/            one working copy per game repo — each is its own git repo,
+    └── <game>/       and `games/` itself is not one
+```
+
+`python -m tools.scaffolder --type game …` drops a new standalone game in
+`../games/<short_name>`; its build points back here with
+`-DXADV2_ENGINE_DIR=../../xadv2-engine`, and the authoring tools stay in this repo
+(`XADV2_ENGINE=…/xadv2-engine`) and run against any game's data directory.
+
 **Status: M0–M7 are merged. M8 (proving the engine is usable by content creators)
 is done: object `sprite` key (#138), the `avatar(id)` handle (#139), scripted NPC
 presence `spawn_npc`/`despawn_npc` (#140), hotspot `bind: npc:` (#141),

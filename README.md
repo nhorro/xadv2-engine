@@ -10,11 +10,11 @@ repositories and link the engine as a library — see
 [docs/authoring/building-a-game.md](docs/authoring/building-a-game.md):
 
 ~~~bash
-# scaffold a standalone game (lands next to the engine checkout, not inside it)
+# scaffold a standalone game (lands in ../games/, alongside the engine checkout)
 python -m tools.scaffolder --type game --short-name mygame --title "My Game"
 
-cd ../mygame
-cmake -S . -B build -DXADV2_ENGINE_DIR=~/workspace/xadv2-engine   # engine from source
+cd ../games/mygame
+cmake -S . -B build -DXADV2_ENGINE_DIR=~/workspace/point-and-click-game/xadv2-engine   # engine from source
 cmake --build build -j"$(nproc)" && ./run.sh
 ~~~
 

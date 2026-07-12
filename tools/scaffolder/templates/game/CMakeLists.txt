@@ -8,7 +8,7 @@
 #      still moving: you can fix an engine bug from inside your game's build,
 #      rebuild, and keep going.
 #
-#          cmake -S . -B build -DXADV2_ENGINE_DIR=~/workspace/xadv2-engine
+#          cmake -S . -B build -DXADV2_ENGINE_DIR=../../xadv2-engine
 #
 #   2. INSTALLED mode — link an engine that has been installed somewhere. Use
 #      this once the engine is stable enough that you don't want to rebuild it.

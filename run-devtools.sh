@@ -13,8 +13,8 @@
 #   ROOM_FILE=examples/02_scumm_inventory/data/rooms/yard.yaml ./run-devtools.sh
 #
 # To author YOUR game (which lives in its own repository), point the tools at it:
-#   GAME_DATA_DIR=~/games/mygame/data ROOM_FILE=~/games/mygame/data/rooms/lab.yaml \
-#       CLOSEUP_FILE=~/games/mygame/data/closeups/desk/closeup.yml ./run-devtools.sh
+#   GAME_DATA_DIR=../games/mygame/data ROOM_FILE=../games/mygame/data/rooms/lab.yaml \
+#       CLOSEUP_FILE=../games/mygame/data/closeups/desk/closeup.yml ./run-devtools.sh
 #   HOST=0.0.0.0 DOCS_PORT=9002 ROOM_PORT=9000 CLOSEUP_PORT=9001 ./run-devtools.sh
 #
 # Supported variables: HOST, DOCS_PORT, ROOM_PORT, CLOSEUP_PORT, GAME_DATA_DIR,
