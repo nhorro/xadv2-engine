@@ -107,6 +107,7 @@ nav:
           - SCUMM command flow: development/scumm-command-flow.md
   - Content Creators:
       - authoring/index.md
+      - Building a game: authoring/building-a-game.md
       - Lua API reference: authoring/lua-api.md
       - Data formats: authoring/data-formats.md
       - Scenery authoring: authoring/scenery.md
