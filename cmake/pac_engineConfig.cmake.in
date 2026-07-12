@@ -23,4 +23,15 @@ include("${CMAKE_CURRENT_LIST_DIR}/pacEngineDeps.cmake")
 
 include("${CMAKE_CURRENT_LIST_DIR}/pacEngineTargets.cmake")
 
+# Lua is deliberately NOT baked into the exported pac::lua: its headers and library
+# are machine-specific, and under vcpkg they live inside the engine's own build tree
+# (CMake rejects such a path in an install interface outright). The discovery above
+# has just found this machine's Lua — attach it now, so a consumer linking
+# pac::engine (static) or pac::sol2 gets Lua's headers and symbols.
+if(PAC_LUA_INCLUDE_DIRS)
+    set_property(TARGET pac::lua APPEND
+                 PROPERTY INTERFACE_INCLUDE_DIRECTORIES ${PAC_LUA_INCLUDE_DIRS})
+endif()
+set_property(TARGET pac::lua APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${PAC_LUA_LIBRARIES})
+
 check_required_components(pac_engine)
