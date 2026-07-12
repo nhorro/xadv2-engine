@@ -14,8 +14,19 @@ include(pacEngineDeps)   # -> SFML, ${PAC_YAMLCPP}, PAC_LUA_INCLUDE_DIRS/LIBRARI
 # The rest of the build never names a discovery-specific target: it links these.
 
 add_library(pac_lua INTERFACE)
-target_include_directories(pac_lua INTERFACE ${PAC_LUA_INCLUDE_DIRS})
-target_link_libraries(pac_lua INTERFACE ${PAC_LUA_LIBRARIES})
+# Lua's location is machine-specific — pkg-config on Unix, FindLua on Windows,
+# where vcpkg puts its headers and .lib INSIDE the engine's build tree. Neither can
+# be baked into an exported target: CMake flatly rejects a build-directory include
+# path in an install interface (this is what broke the Windows build), and a
+# consumer's Lua may live somewhere else entirely anyway.
+#
+# So: the build tree gets the real paths here, behind $<BUILD_INTERFACE:>, and the
+# installed package re-attaches them in pac_engineConfig.cmake from its own
+# discovery run. The two must stay in sync — both go through cmake/pacEngineDeps.cmake.
+if(PAC_LUA_INCLUDE_DIRS)
+    target_include_directories(pac_lua INTERFACE $<BUILD_INTERFACE:${PAC_LUA_INCLUDE_DIRS}>)
+endif()
+target_link_libraries(pac_lua INTERFACE $<BUILD_INTERFACE:${PAC_LUA_LIBRARIES}>)
 # Without EXPORT_NAME, the namespaced export would be `pac::pac_lua`.
 set_target_properties(pac_lua PROPERTIES EXPORT_NAME lua)
 add_library(pac::lua ALIAS pac_lua)
