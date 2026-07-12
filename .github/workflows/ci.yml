@@ -63,7 +63,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure --label-exclude gui
 
       - name: Smoke-run the examples (windowed, under xvfb)
-        run: xvfb-run -a ctest --test-dir build --output-on-failure --label gui
+        run: xvfb-run -a ctest --test-dir build --output-on-failure --label-regex gui
 
       # The engine's whole point is to be consumable by a game in another
       # repository. Installs it to a throwaway prefix and builds an external
@@ -135,4 +135,6 @@ jobs:
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Run tests
-        run: ctest --preset windows-msvc-release
+        # Headless suite only: the example smoke runs open a window (label `gui`),
+        # and the Windows runner has no reliable GL context for one.
+        run: ctest --preset windows-msvc-release --label-exclude gui
