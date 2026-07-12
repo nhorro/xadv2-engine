@@ -29,9 +29,7 @@ class EmptyScene : public pac::core::Scene {
 public:
     explicit EmptyScene(pac::core::EngineContext& ctx) : ctx_(ctx) {}
 
-    void draw(sf::RenderTarget& target) const override {
-        target.clear(sf::Color(18, 20, 28));
-    }
+    void draw(sf::RenderTarget& target) const override { target.clear(sf::Color(18, 20, 28)); }
 
 private:
     pac::core::EngineContext& ctx_;

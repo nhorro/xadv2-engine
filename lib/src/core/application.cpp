@@ -180,10 +180,8 @@ std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
 
 } // namespace
 
-std::string parse_run_options(int argc,
-                              char** argv,
-                              RunOptions& opts,
-                              const std::string& default_manifest) {
+std::string
+parse_run_options(int argc, char** argv, RunOptions& opts, const std::string& default_manifest) {
     std::string manifest = default_manifest;
     if (argc > 0 && argv[0]) {
         opts.argv0 = argv[0];

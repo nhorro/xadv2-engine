@@ -41,10 +41,8 @@ struct ApplicationHooks {
 /// `argv[0]` is recorded in `opts.argv0` for the pak-next-to-exe lookup. Every
 /// game's `main` needs exactly this, so the engine owns it rather than having
 /// each one copy it.
-std::string parse_run_options(int argc,
-                              char** argv,
-                              RunOptions& opts,
-                              const std::string& default_manifest);
+std::string
+parse_run_options(int argc, char** argv, RunOptions& opts, const std::string& default_manifest);
 
 /// Core harness: load the manifest, create services + window, and run the
 /// fixed-timestep loop until the scene stack quits. The factory must already be

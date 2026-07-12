@@ -112,7 +112,8 @@ void FieldNotesScene::draw(sf::RenderTarget& target) const {
 
     sf::Text footer(std::to_string(discovered) + "/" + std::to_string(notes_.size()) +
                         " found  —  [esc] or click to go back",
-                    *font_, 16);
+                    *font_,
+                    16);
     footer.setPosition(90.f, h - 70.f);
     footer.setFillColor(sf::Color(120, 126, 142));
     target.draw(footer);
@@ -122,11 +123,11 @@ FieldNotesModule::FieldNotesModule(std::string scene_id) : scene_id_(std::move(s
 
 void FieldNotesModule::register_scenes(pac::core::SceneFactory& factory) {
     // From here on, `type: FieldNotes` in the manifest is as real as `type: RoomScene`.
-    factory.register_type("FieldNotes",
-                          [this](pac::core::EngineContext& ctx,
-                                 const pac::core::SceneParams& params) {
-                              return std::make_unique<FieldNotesScene>(ctx, params, notes_);
-                          });
+    factory.register_type(
+        "FieldNotes",
+        [this](pac::core::EngineContext& ctx, const pac::core::SceneParams& params) {
+            return std::make_unique<FieldNotesScene>(ctx, params, notes_);
+        });
 }
 
 void FieldNotesModule::configure(pac::core::EngineContext& ctx,
@@ -148,9 +149,8 @@ void FieldNotesModule::configure(pac::core::EngineContext& ctx,
     sol::state& lua = ctx.scripting.lua();
     pac::core::StateStore& state = ctx.state;
 
-    lua.set_function("discover_note", [&state, this](const std::string& id) {
-        state.set(state_key(id), true);
-    });
+    lua.set_function("discover_note",
+                     [&state, this](const std::string& id) { state.set(state_key(id), true); });
     lua.set_function("has_note", [&state](const std::string& id) {
         const auto value = state.get(state_key(id));
         return value && std::holds_alternative<bool>(*value) && std::get<bool>(*value);
