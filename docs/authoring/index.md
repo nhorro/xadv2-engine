@@ -14,7 +14,7 @@ Lua API, the data formats, and the asset tools.
 !!! info "Your game lives in its own repository"
     The engine is a **library**. A game is a standalone project that links it —
     it does not live inside the engine repo. Start with
-    **[Building a game](building-a-game.md)**: scaffold, build (against an engine
+    **[Building a game](./building-a-game.md)**: scaffold, build (against an engine
     checkout or an installed engine), author, ship.
 
     The engine repo keeps only `examples/` — six tiny games, one per feature,
@@ -22,7 +22,7 @@ Lua API, the data formats, and the asset tools.
 
 ## Where to start
 
-0. **Set up your game repo: [Building a game](building-a-game.md)**.
+0. **Set up your game repo: [Building a game](./building-a-game.md)**.
 1. **Read the [Lua & content authoring guide](../development/coding-guide/lua-game.md)** —
    the rules and patterns for writing content (the YAML/Lua split, state, scopes,
    common pitfalls).
