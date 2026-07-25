@@ -7,7 +7,7 @@ usage rules live in the [C++ engine coding guide](coding-guide/cpp-engine.md)
 
 ## Formatting (clang-format)
 
-[`.clang-format`](../.clang-format) is the source of truth for whitespace,
+The repository’s `.clang-format` file is the source of truth for whitespace,
 braces, and include ordering. Highlights: LLVM base, **4-space indent**,
 **100-column limit**, pointers/references bound left (`const std::string& id`),
 attached braces, one parameter/argument per line when wrapping, namespace-closing
@@ -38,4 +38,4 @@ and recursive runs leave it untouched.
 | Whitespace, braces, includes, indent, columns | this file + `.clang-format` |
 | Naming, headers, ownership, error handling, sol2/yaml-cpp patterns, tests, CMake | [coding-guide/cpp-engine.md](coding-guide/cpp-engine.md) |
 | Lua scripting + YAML authoring conventions | [coding-guide/lua-game.md](coding-guide/lua-game.md) |
-| `what` the engine does | [design docs](development/design/) |
+| `what` the engine does | [design docs](design/00-index.md) |
