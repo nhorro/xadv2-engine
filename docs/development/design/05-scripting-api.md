@@ -819,6 +819,7 @@ each call yielding until the page finishes or is skipped.
 | `set_room_config(room_id, config_id)` | room id, config id | — | Switch a room's [configuration](#room-configurations) (#185). Live room: reconcile presence now; another room: record it, applied on its next load. |
 | `current_room_config(room_id?)` | optional room id | config id | The room's live config id (defaults to the current room); `""` for a room without `configs:`. |
 | `open_closeup(scene_id)` | `CloseUp` scene id | — | Open an examine view as an overlay over the room; it pops back here on Esc / right-click (design 04 §CloseUp). |
+| `open_case_resolution(scene_id)` | `CaseResolution` scene id | — | Open a deduction template over the room. Esc/right-click cancels; slot assignments persist when it is reopened. Its sidecar may handle `on_check(invalid_slots)` and `on_exit(status)`, where status is `solved`, `incorrect`, or `cancelled`. |
 | `start_cutscene(scene_id)` | manifest scene id | — | Leave the room for a manifest scene (typically a `Cutscene` / `StoryText`) — e.g. an act-closing cutscene fired from a verb handler. Unlike `open_closeup` this **replaces** the room (it does not pop back); the target scene's own `on_finish` decides where to go next. Persistent `GameState` survives; the live room is unloaded. |
 | `on_room_resume(fn)` | a function (usually a `cutscene`-wrapped beat) | — | Defer a blocking room beat until the room is the live, ticking scene again — the bridge a **close-up** uses (from its `on_exit`) to hand a beat back to its frozen room (design §Close-up scripts). `fn` runs **once**, in the room's scope, blocking input until it finishes. Transient: it fires within a frame of the close-up closing, so it is not saved in `GameState`; a room change before it fires drops it. |
 | `camera_look_at(target)` | target | — | Snap camera to target and suspend follow. |
@@ -889,6 +890,9 @@ NPC once that lands).
 |----------|------------|---------|---------|
 | `get_state(key)` | string | value | Read global saved state. |
 | `set_state(key, value)` | string, value | — | Write global saved state. |
+| `add_case_term(id)` | term id | bool | Discover a case term. Returns `true` only when newly added. |
+| `has_case_term(id)` | term id | bool | Test whether a case term has been discovered. |
+| `remove_case_term(id)` | term id | bool | Remove an owned case term. Returns `true` only when it was owned. |
 | `get_room_state(key)` | string | value | Read current-room saved state. |
 | `set_room_state(key, value)` | string, value | — | Write current-room saved state. |
 
@@ -909,6 +913,14 @@ MVP. Tables and nested values are out of scope so the save file stays simple and
 serialization is total; storing an unsupported type fails loudly in development
 builds. Region states are not stored here — they are managed by `set_region_state`
 / `get_region_state` (see Scenery below).
+
+Case terms are authored in the term-bank YAML but start unavailable. Award them
+from exploration, conversation, or event handlers with `add_case_term("tomas")`.
+Ownership is idempotent and is saved in `GameState`; a case-resolution scene only
+shows the terms the player owns. `has_case_term` can guard one-time feedback when
+needed. Terms are not consumed automatically when a template is solved: case
+logic may call `remove_case_term(id)` for any terms that should leave the shared
+bank, while reusable terms remain owned.
 
 ### Scenery
 

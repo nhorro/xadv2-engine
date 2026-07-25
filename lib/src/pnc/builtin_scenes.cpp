@@ -2,6 +2,7 @@
 
 #include "engine/core/scene_factory.hpp"
 #include "engine/pnc/blank_scene.hpp"
+#include "engine/pnc/case_resolution_scene.hpp"
 #include "engine/pnc/closeup_scene.hpp"
 #include "engine/pnc/cutscene_scene.hpp"
 #include "engine/pnc/room_scene.hpp"
@@ -42,6 +43,10 @@ void register_builtin_scenes(pac::core::SceneFactory& factory) {
     factory.register_type("CloseUp",
                           [](pac::core::EngineContext& ctx, const pac::core::SceneParams& params) {
                               return std::make_unique<CloseUpScene>(ctx, params);
+                          });
+    factory.register_type("CaseResolution",
+                          [](pac::core::EngineContext& ctx, const pac::core::SceneParams& params) {
+                              return std::make_unique<CaseResolutionScene>(ctx, params);
                           });
     factory.register_type("Blank",
                           [](pac::core::EngineContext& ctx, const pac::core::SceneParams& params) {

@@ -26,6 +26,8 @@ enum class InventoryArrowMode { DRAW, BACKGROUND_VARIANTS, NONE };
 enum class InventoryArrowPlacement { RIGHT, LEFT, BOTH };
 enum class ScummPanelAnchor { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT, CENTER };
 enum class ScummButtonRenderMode { PANEL, IMAGE };
+/// What a systemic panel button does when clicked.
+enum class ScummSystemAction { OPEN_SETTINGS, OPEN_MENU, PUSH_SCENE };
 // Verb row presentation: BUTTONS = the framed grid (the default); TEXT = plain
 // horizontal pixel-text labels with no boxes (issue #172).
 enum class VerbPanelStyle { BUTTONS, TEXT };
@@ -56,6 +58,18 @@ struct InventoryArrowLayout {
     sf::FloatRect next_hitbox;
 };
 
+/// Explicit paging controls for the ICONS inventory, laid out as their own zone
+/// instead of a gutter carved out of the inventory rect. When disabled (the
+/// default) the icon inventory keeps reserving a right-hand gutter for its
+/// arrows, so existing panels are unaffected. `rect` is body-relative; `previous`
+/// and `next` are relative to `rect`.
+struct ScummInventoryPagination {
+    bool enabled = false;
+    sf::FloatRect rect;
+    sf::FloatRect previous;
+    sf::FloatRect next;
+};
+
 struct ScummPanelLayout {
     sf::Vector2f design_size{1280.0f, 720.0f};
     sf::FloatRect panel_rect{0.0f, 612.0f, 1280.0f, 108.0f};
@@ -80,6 +94,7 @@ struct ScummPanelLayout {
         {619.0f, 0.0f, 24.0f, 56.0f},
         {645.0f, 0.0f, 24.0f, 56.0f},
     };
+    ScummInventoryPagination inventory_pagination;
     // Presentation styles (issue #172). Defaults preserve the classic layout so the
     // engine default config is unchanged; a game opts into TEXT/ICONS in its own panel yml.
     VerbPanelStyle verb_style = VerbPanelStyle::BUTTONS;
@@ -104,6 +119,9 @@ struct ScummTextStyle {
     sf::Color color{210, 213, 226};
     sf::Color hover_color{248, 250, 255};
     sf::Color disabled_color{136, 136, 136};
+    // Label color while the control is the active selection (e.g. the chosen verb).
+    // The default is the dark ink that reads over the classic amber selected cell.
+    sf::Color selected_color{30, 27, 20};
     std::string align = "center";
     // Optional text outline for legibility over busy backgrounds. 0 = none
     // (default, classic look). Thickness is in design pixels and scales with the
@@ -122,12 +140,47 @@ struct ScummArrowDrawSkin {
     sf::Color disabled_color{136, 136, 136};
 };
 
+/// The box of a framed control (verb cell, inventory slot, systemic button): fill
+/// and border per interaction state. Only the frame — the label color lives in the
+/// matching ScummTextStyle, so the two are configured in one place each.
+///
+/// The defaults reproduce the classic engine look (solid accent fills) so a panel
+/// that does not configure a skin renders exactly as before. A game wanting the
+/// border-driven look of a modern spec sets the same fill for every state and
+/// varies only the border.
+struct ScummButtonSkin {
+    sf::Color background{44, 43, 56};
+    sf::Color border{63, 66, 86};
+    sf::Color hover_background{74, 92, 138};
+    sf::Color hover_border{63, 66, 86};
+    sf::Color selected_background{214, 170, 92};
+    sf::Color selected_border{63, 66, 86};
+    sf::Color disabled_background{44, 43, 56, 96};
+    sf::Color disabled_border{136, 136, 136};
+    float border_thickness = 1.0f;
+};
+
+/// The command-bar strip drawn over a solid panel: its fill, and the rule that
+/// divides it from the controls below. Defaults reproduce the classic look (a
+/// slightly lifted strip under a warm accent rule). Set `separator_thickness: 0`
+/// for no rule.
+struct ScummCommandBarSkin {
+    sf::Color background{34, 31, 40};
+    sf::Color separator{122, 96, 56};
+    float separator_thickness = 2.0f;
+};
+
 struct ScummPanelSkin {
     std::map<std::string, std::string> background_variants;
+    ScummCommandBarSkin command_bar;
     ScummTextStyle command_text;
     ScummTextStyle verb_text;
     ScummTextStyle inventory_text;
+    ScummTextStyle system_button_text;
     ScummArrowDrawSkin arrows_draw;
+    ScummButtonSkin verb_button;
+    ScummButtonSkin inventory_slot;
+    ScummButtonSkin system_button;
 };
 
 struct ScummSettingsButtonPanelSkin {
@@ -188,11 +241,28 @@ struct ScummNotebookConfig {
     ScummTextStyle text;
 };
 
+/// A systemic panel button ("Opciones", "Menú", or a game-defined scene link).
+/// Generalizes `settings_button`, which could only ever be one control anchored by
+/// a normalized point: these are an ordered list, each with a body-relative rect,
+/// so a panel can lay out a real controls column. `settings_button` still parses
+/// and behaves as before; a game uses one mechanism or the other.
+struct ScummSystemButton {
+    std::string id;
+    sf::FloatRect rect; // relative to body_rect
+    ScummSystemAction action = ScummSystemAction::OPEN_SETTINGS;
+    std::string scene; // required when action == PUSH_SCENE
+    std::string label_key;
+    std::string icon; // optional glyph drawn left of the label
+    ScummButtonRenderMode render_mode = ScummButtonRenderMode::PANEL;
+    ScummSettingsButtonImageSkin image; // used when render_mode == IMAGE
+};
+
 struct ScummPanelConfig {
     ScummPanelLayout layout;
     ScummPanelContent content;
     ScummPanelSkin skin;
     ScummSettingsButtonConfig settings_button;
+    std::vector<ScummSystemButton> system_buttons;
     ScummEvidenceIndicator evidence_indicator;
     ScummNotebookConfig notebook;
     // Optional font smoothing (linear filtering) for the panel fonts. Unset =

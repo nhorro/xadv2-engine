@@ -99,6 +99,30 @@ void bind_core_api(EngineContext& ctx) {
         }
     });
 
+    // --- discovered case terms ---------------------------------------------
+    // The reserved state keys are the live representation. RoomScene folds
+    // them into GameState::case_terms when saving and restores them on load.
+    lua.set_function("add_case_term", [&ctx](const std::string& id) {
+        if (id.empty()) {
+            ctx.log.error("add_case_term: term id must not be empty");
+            return false;
+        }
+        const std::string key = "__case_term." + id;
+        const bool added = !ctx.state.has(key);
+        ctx.state.set(key, true);
+        return added;
+    });
+    lua.set_function("has_case_term", [&ctx](const std::string& id) {
+        return !id.empty() && ctx.state.has("__case_term." + id);
+    });
+    lua.set_function("remove_case_term", [&ctx](const std::string& id) {
+        if (id.empty()) {
+            ctx.log.error("remove_case_term: term id must not be empty");
+            return false;
+        }
+        return ctx.state.erase("__case_term." + id);
+    });
+
     // --- declared facts (#188): the `facts.<ns>.<name>` proxy over state ---
     // `facts.yaml` is optional: a missing file leaves an empty registry (guard
     // off); a malformed one is a loud authoring error but still degrades to the

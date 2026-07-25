@@ -122,6 +122,14 @@ void CloseUpScene::enter() {
             shout_text_ = text.value_or(std::string());
         });
 
+        // Dismiss the close-up from script, the same way Esc / right-click does.
+        // A close-up that navigates — a map whose regions travel somewhere — needs
+        // this: the room-mutating globals (`change_room`, ...) reach through to the
+        // live RoomScene underneath, but that scene only ticks once it is on top
+        // again, so the handler must also close this view for the change to commit.
+        // The pop is queued, so the calling handler keeps running to its end.
+        L.set_function("close_closeup", [this]() { exit(); });
+
         // on_enter runs with the close-up scope current, so a spawn(...) inside it
         // lands here. Restore the global scope afterwards (the scheduler sets the
         // scope per task on resume).
@@ -144,6 +152,7 @@ void CloseUpScene::leave() {
         L["_closeup_talk_start"] = sol::lua_nil;
         L["set_hotspot_name"] = sol::lua_nil;
         L["shout"] = sol::lua_nil;
+        L["close_closeup"] = sol::lua_nil;
         ctx_.scripting.set_current_scope(ctx_.scripting.global_scope());
     }
     // Reap the scope: cancels any in-flight hotspot handler / spawned task.

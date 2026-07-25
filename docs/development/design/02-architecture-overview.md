@@ -731,9 +731,15 @@ GameState {
 - Saving serializes `GameState` to YAML in the per-user location. Loading
   deserializes it, enters `current_scene_id`, and — for `RoomScene` — loads
   `current_room_id` and reseats the player at the saved position.
-- In the MVP, saving (the menu save and the room-change autosave) happens only
-  while `RoomScene` is active; `current_scene_id` is still recorded so saving from
+- In the MVP, saving (the menu save and the autosave) happens only while
+  `RoomScene` is active; `current_scene_id` is still recorded so saving from
   other scenes is a design-for extension rather than a format change.
+- The autosave (slot 0) is written when a **new game reaches its start room** and
+  on every subsequent **room change**. Without the first of those, a single-room
+  game would never produce a save and the title's `Continue` would have nothing to
+  resume. Neither fires while the room is `BLOCKED` (a cutscene): restoring into a
+  scene the player cannot act in is worse than no checkpoint. Restoring a save
+  does not re-autosave — that would round-trip the state just loaded.
 - On restore, `on_load` runs again to rebuild transient room setup from persisted
   state; there is no separate `on_restore` hook.
 

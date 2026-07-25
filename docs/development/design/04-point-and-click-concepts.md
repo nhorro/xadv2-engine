@@ -840,8 +840,15 @@ The command builder exists only in the room-view `Command` state.
 | `COMMAND_READY` | Internal | — | `COMMAND_EXECUTING` | Dispatch command. |
 | `COMMAND_EXECUTING` | Command finished | — | `IDLE` | Clear command and restore UI. |
 
-The **Cancel** input is the player clicking empty scenery (a point that is
-neither a hotspot nor the panel) while a command is being built.
+The **Cancel** input has three routes, all clearing the verb and any operands:
+
+- clicking empty scenery (a point that is neither a hotspot nor the panel) while
+  a command is being built;
+- the **secondary mouse button**, anywhere, while the room is in `COMMAND`;
+- clicking the **already-selected verb**, which un-selects it — so the verb row is
+  its own cancel affordance.
+
+`Esc` is not a cancel: it opens/closes the in-room pause menu.
 
 ### Verb-to-state mapping
 

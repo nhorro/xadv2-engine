@@ -465,15 +465,26 @@ int run(const std::string& manifest_path,
             break;
         }
 
-        // Apply the cursor a scene requested this frame (only when an interact
-        // variant exists to swap to), then reset so INTERACT must be re-asserted.
-        if (apply_cursor && cursor_default && cursor_interact &&
-            cursor_state.requested != applied_cursor) {
-            window.setMouseCursor(cursor_state.requested == CursorKind::INTERACT ? *cursor_interact
-                                                                                 : *cursor_default);
-            applied_cursor = cursor_state.requested;
+        // Apply the cursor a scene requested (only when an interact variant exists
+        // to swap to), then reset so INTERACT must be re-asserted.
+        //
+        // Gated on a simulation step having run: scenes request the cursor from
+        // update(), which is driven by the fixed-timestep loop above, while this
+        // runs once per *rendered* frame. Without vsync the render rate far exceeds
+        // the fixed rate, so most frames take zero steps — and an unconditional
+        // reset() there would revert the cursor to DEFAULT on every one of them,
+        // leaving INTERACT visible only on the rare stepping frame. Consuming the
+        // request at the cadence it is produced keeps it stable (issue #73).
+        if (steps > 0) {
+            if (apply_cursor && cursor_default && cursor_interact &&
+                cursor_state.requested != applied_cursor) {
+                window.setMouseCursor(cursor_state.requested == CursorKind::INTERACT
+                                          ? *cursor_interact
+                                          : *cursor_default);
+                applied_cursor = cursor_state.requested;
+            }
+            cursor_state.reset();
         }
-        cursor_state.reset();
 
         window.clear(sf::Color::Black); // letterbox bars
         window.setView(display.view());

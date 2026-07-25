@@ -30,10 +30,18 @@ namespace pac::pnc {
 ///   music       (opt path)   background track, played in a loop
 ///   menu.position.{x,y}      menu anchor as a 0..1 screen fraction
 ///   menu.options.{new_game,continue,exit}   outcome scene ids
+///   menu.continue_fallback   (opt) `new_game` — see below
 ///
 /// Outcomes `new_game`, `continue`, and `exit` are wired by the manifest;
-/// `settings` is engine-handled (pushes the SettingsScene). The `Continue` entry
-/// only appears when a save exists (via the engine's SaveService.latest_slot()).
+/// `settings` is engine-handled (pushes the SettingsScene). By default the
+/// `Continue` entry only appears when a save exists (the engine's
+/// `SaveService::latest_slot()`, i.e. the most recent of the autosave and the
+/// manual slots).
+///
+/// `menu.continue_fallback: new_game` instead keeps `Continue` always listed, and
+/// makes it start a new game when there is no save — so the entry is a stable
+/// "just play" affordance rather than one that appears and disappears. Omitting
+/// the key preserves the show-only-when-a-save-exists behavior.
 class TitleScreen : public pac::core::Scene {
 public:
     TitleScreen(pac::core::EngineContext& ctx, const pac::core::SceneParams& params);
@@ -54,6 +62,9 @@ private:
 
     void rebuild_entries();
     void trigger(Action action);
+    /// Clear world + staged state and go to the `new_game` target. Shared by the
+    /// New game entry and by Continue's no-save fallback.
+    void start_new_game();
     sf::Vector2f entry_center(int index, int count) const;
     int entry_at(float virtual_x, float virtual_y) const;
 
@@ -64,7 +75,8 @@ private:
     std::string continue_target_;
     std::string load_game_target_; // optional (#108); when wired, shows the load picker
     std::string exit_target_;
-    sf::Vector2f menu_anchor_{0.5f, 0.5f}; // screen-fraction position of the menu block
+    bool continue_starts_new_game_ = false; // menu.continue_fallback: new_game
+    sf::Vector2f menu_anchor_{0.5f, 0.5f};  // screen-fraction position of the menu block
     unsigned font_size_ = 28;
     std::vector<Entry> entries_;
     const sf::Font* font_ = nullptr; // owned by ResourceCache; null if unavailable

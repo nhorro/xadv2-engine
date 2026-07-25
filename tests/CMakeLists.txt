@@ -41,6 +41,7 @@ add_executable(pac_core_tests
     room_test.cpp
     cast_test.cpp
     closeup_test.cpp
+    case_resolution_test.cpp
     closeup_runtime_test.cpp
     cutscene_test.cpp
     command_builder_test.cpp

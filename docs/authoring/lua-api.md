@@ -32,7 +32,8 @@ Jump to the matching section of [05 — Scripting API](../development/design/05-
 - **Lifecycle hooks** — `on_load`, `on_unload`, per-room/scene entry points.
 - **Coroutine scheduler** — `spawn`, `wait`, `emit`, `wait_event`, script scopes
   and cancellation.
-- **State** — `get_state` / `set_state`, `set_room_state`, region and dialog stores.
+- **State** — `get_state` / `set_state`, `set_room_state`, case-term ownership,
+  region and dialog stores.
 - **Avatars** — `avatar(id):move_to`, `:say`, `:play_until_end`, facing, approach.
 - **Speech** — captions and timed `talk`.
 - **Rooms & navigation** — `change_room`, zones, camera.
