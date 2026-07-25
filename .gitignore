@@ -1,5 +1,5 @@
 .secret
-build*
+build*/
 .doc
 vcpkg_installed/
 !build-linux.sh
