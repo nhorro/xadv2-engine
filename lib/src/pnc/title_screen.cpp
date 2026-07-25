@@ -57,6 +57,13 @@ TitleScreen::TitleScreen(pac::core::EngineContext& ctx, const pac::core::ScenePa
     load_game_target_ = params.get_or("menu.options.load_game", "");
     exit_target_ = params.get_or("menu.options.exit", "QUIT");
 
+    const std::string continue_fallback = params.get_or("menu.continue_fallback", "");
+    continue_starts_new_game_ = continue_fallback == "new_game";
+    if (!continue_fallback.empty() && !continue_starts_new_game_) {
+        ctx_.log.warn("title: menu.continue_fallback must be 'new_game' (got '" +
+                      continue_fallback + "'); ignoring");
+    }
+
     menu_anchor_.x = parse_fraction(params, "menu.position.x", 0.5f);
     menu_anchor_.y = parse_fraction(params, "menu.position.y", 0.5f);
 
@@ -98,7 +105,11 @@ void TitleScreen::leave() {
 void TitleScreen::rebuild_entries() {
     entries_.clear();
     entries_.push_back({ctx_.strings.ui_label("new_game"), Action::NEW_GAME, 0.0f});
-    if (!continue_target_.empty() && ctx_.saves.latest_slot().has_value()) {
+    // Continue resumes the most recent save across the autosave and the manual
+    // slots. With `menu.continue_fallback: new_game` it is always listed and falls
+    // through to a new game when nothing is saved yet.
+    if (!continue_target_.empty() &&
+        (ctx_.saves.latest_slot().has_value() || continue_starts_new_game_)) {
         entries_.push_back({ctx_.strings.ui_label("continue"), Action::CONTINUE, 0.0f});
     }
     // Optional "Load game" entry (#108) — shows when the manifest wires it
@@ -145,27 +156,38 @@ int TitleScreen::entry_at(float vx, float vy) const {
     return -1;
 }
 
+void TitleScreen::start_new_game() {
+    if (new_game_target_.empty()) {
+        ctx_.log.warn("title: 'new_game' outcome is not wired in the manifest");
+        return;
+    }
+    ctx_.state.clear();
+    ctx_.saves.clear_staged();
+    ctx_.scenes.goto_scene(new_game_target_);
+}
+
 void TitleScreen::trigger(Action action) {
     switch (action) {
     case Action::NEW_GAME:
-        if (new_game_target_.empty()) {
-            ctx_.log.warn("title: 'new_game' outcome is not wired in the manifest");
-        } else {
-            ctx_.state.clear();
-            ctx_.saves.clear_staged();
-            ctx_.scenes.goto_scene(new_game_target_);
-        }
+        start_new_game();
         break;
     case Action::CONTINUE: {
         const auto slot = ctx_.saves.latest_slot();
         if (!slot) {
-            ctx_.log.warn("title: 'Continue' clicked with no save on disk");
+            // Only reachable with `menu.continue_fallback: new_game` (otherwise the
+            // entry isn't listed without a save): Continue doubles as "just play".
+            if (continue_starts_new_game_) {
+                start_new_game();
+            } else {
+                ctx_.log.warn("title: 'Continue' clicked with no save on disk");
+            }
             break;
         }
         auto state = ctx_.saves.load(*slot);
         if (!state) {
-            // load() already logged. The save is unreadable; surface a clear
-            // user-facing fallback by simply staying on the title.
+            // load() already logged. The save is unreadable — stay on the title
+            // rather than silently starting over: 'New game' is right there, and
+            // the player should get to make that call themselves.
             break;
         }
         ctx_.saves.stage_restore(std::move(*state));

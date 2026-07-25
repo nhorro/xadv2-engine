@@ -116,13 +116,16 @@ struct PanelIntent {
         CLICK_INVENTORY,
         CHANGE_INVENTORY_PAGE,
         OPEN_SETTINGS,
-        OPEN_NOTEBOOK
+        OPEN_NOTEBOOK,
+        OPEN_MENU,  ///< a systemic button asking for the in-room pause menu
+        PUSH_SCENE, ///< a systemic button asking for an arbitrary scene (see `scene`)
     };
     Kind kind = Kind::NONE;
     Verb verb{};
     std::string item_id;
     int page_index = 0;
-    std::string tab; ///< valid when kind == OPEN_NOTEBOOK: initial tab hint for the scene
+    std::string tab;   ///< valid when kind == OPEN_NOTEBOOK: initial tab hint for the scene
+    std::string scene; ///< valid when kind == PUSH_SCENE: the scene id to push
 };
 
 /// Evidence progress readout shown by the optional evidence indicator (issue #172).
@@ -196,13 +199,20 @@ private:
         sf::FloatRect rect;
     };
     /// Geometry of the icon-style inventory: a fixed `rows*columns` slot grid plus
-    /// a right-hand gutter holding the vertical paging arrows.
+    /// the vertical paging arrows. The arrows sit in a right-hand gutter carved out
+    /// of the inventory rect, or — when `layout.inventory_pagination` is enabled —
+    /// in their own body-relative zone, leaving the whole rect to the slots.
     struct IconInventoryLayout {
         std::vector<sf::FloatRect> slots; ///< capacity slot rects (incl. empty ones)
         sf::FloatRect prev_arrow;         ///< up arrow (previous page)
         sf::FloatRect next_arrow;         ///< down arrow (next page)
     };
+    struct SystemButtonCell {
+        const ScummSystemButton* button = nullptr;
+        sf::FloatRect rect;
+    };
     [[nodiscard]] std::vector<VerbCell> verb_cells() const;
+    [[nodiscard]] std::vector<SystemButtonCell> system_button_cells() const;
     [[nodiscard]] std::vector<InventoryCell> inventory_cells(const InventoryModel& inventory,
                                                              int page_index) const;
     [[nodiscard]] IconInventoryLayout icon_inventory_layout() const;
@@ -229,6 +239,19 @@ private:
     void draw_settings_button(sf::RenderTarget& target,
                               const pac::core::Strings& strings,
                               sf::Vector2f cursor) const;
+    /// Framed systemic buttons ("Opciones", "Menú", …): a skinned box with an
+    /// optional leading icon and a localized label.
+    void draw_system_buttons(sf::RenderTarget& target,
+                             const pac::core::Strings& strings,
+                             sf::Vector2f cursor) const;
+    /// Draw one skinned control box. `selected` wins over `hovered`; a disabled box
+    /// ignores both.
+    void draw_button_box(sf::RenderTarget& target,
+                         const ScummButtonSkin& skin,
+                         sf::FloatRect rect,
+                         bool hovered,
+                         bool selected,
+                         bool enabled = true) const;
     /// Icon-style inventory: fixed slot frames with the held item's icon (or a
     /// drawn placeholder when the item has none), plus vertical paging arrows
     /// (same look as the dialog arrows) shown when more than one page exists.
@@ -260,6 +283,7 @@ private:
     [[nodiscard]] sf::FloatRect arrow_previous_area() const;
     [[nodiscard]] sf::FloatRect arrow_next_area() const;
     [[nodiscard]] sf::FloatRect settings_button_area() const;
+    [[nodiscard]] const sf::Font* system_button_font() const;
     [[nodiscard]] sf::FloatRect evidence_indicator_area() const;
     [[nodiscard]] sf::FloatRect notebook_area() const;
     [[nodiscard]] sf::FloatRect options_area() const;
@@ -293,6 +317,7 @@ private:
     const sf::Font* settings_font_ = nullptr;
     const sf::Font* evidence_font_ = nullptr;
     const sf::Font* notebook_font_ = nullptr;
+    const sf::Font* system_button_font_ = nullptr;
     ScummPanelTheme theme_;
 };
 

@@ -472,3 +472,221 @@ TEST_CASE("scumm panel text verbs lay out horizontally and emit SELECT_VERB") {
     CHECK(fourth.kind == PanelIntent::Kind::SELECT_VERB);
     CHECK(fourth.verb == Verb::USE);
 }
+
+namespace {
+
+// A spec-style panel (issue: SCUMM UI v1.0): a 3x3 verb grid, a dedicated
+// pagination column left of an eight-slot icon inventory, and a two-button
+// systemic controls column. 128x72 design so click coords map 1:1 at that runtime
+// size (a tenth of the real 1280x720 geometry).
+std::string systemic_panel_yaml() {
+    return R"yaml(
+scumm_panel:
+  design_size: [128, 72]
+  layout:
+    panel:
+      rect: [0, 59.2, 128, 12.8]
+      padding: [0, 0, 0, 0]
+      background:
+        type: solid
+        color: "#151617"
+    command_bar:
+      rect: [0, 0, 128, 3.2]
+    body:
+      rect: [0, 3.2, 128, 9.6]
+    verb_panel:
+      rect: [0, 0, 36, 9.6]
+      rows: 3
+      columns: 3
+      style: buttons
+    inventory_pagination:
+      rect: [36, 0, 4, 9.6]
+      previous: [0, 0, 4, 4.8]
+      next: [0, 4.8, 4, 4.8]
+    inventory_panel:
+      rect: [40, 0, 76.8, 9.6]
+      rows: 1
+      columns: 8
+      style: icons
+      # Explicit: the engine's grid defaults carry the classic layout's 52px right
+      # padding (gutter for the old arrows) and 8px cell gap, which would eat the
+      # slots here.
+      padding: [0, 0, 0, 0]
+      cell_gap: [0, 0]
+  content:
+    verbs: [look_at, open, push, talk_to, close, pull, pick_up, use, give]
+  system_buttons:
+    - id: options
+      rect: [116.8, 0, 11.2, 4.8]
+      action: open_settings
+      label_key: settings
+    - id: menu
+      rect: [116.8, 4.8, 11.2, 4.8]
+      action: open_menu
+      label_key: menu
+  skin:
+    verb_button:
+      background: "#16212B"
+      border: "#3A4650"
+      hover_border: "#2BB7D6"
+      selected_border: "#C9982E"
+      disabled_background: "#16212B80"
+    verb_text:
+      color: "#E1D1AB"
+      hover_color: "#2BB7D6"
+      selected_color: "#C9982E"
+      disabled_color: "#B0A58A"
+)yaml";
+}
+
+} // namespace
+
+TEST_CASE("scumm panel parses button skins, alpha colors, and the selected text color") {
+    const ScummPanelConfig cfg = parse_scumm_panel_config(systemic_panel_yaml(), "ui/panel.yml");
+
+    CHECK(cfg.skin.verb_button.background == sf::Color(0x16, 0x21, 0x2B));
+    CHECK(cfg.skin.verb_button.border == sf::Color(0x3A, 0x46, 0x50));
+    CHECK(cfg.skin.verb_button.hover_border == sf::Color(0x2B, 0xB7, 0xD6));
+    CHECK(cfg.skin.verb_button.selected_border == sf::Color(0xC9, 0x98, 0x2E));
+    // #RRGGBBAA keeps its alpha; an unset state falls back to the engine default.
+    CHECK(cfg.skin.verb_button.disabled_background == sf::Color(0x16, 0x21, 0x2B, 0x80));
+    CHECK(cfg.skin.verb_button.hover_background == ScummButtonSkin{}.hover_background);
+
+    CHECK(cfg.skin.verb_text.selected_color == sf::Color(0xC9, 0x98, 0x2E));
+    CHECK(cfg.skin.verb_text.disabled_color == sf::Color(0xB0, 0xA5, 0x8A));
+}
+
+TEST_CASE("scumm panel systemic buttons emit their configured action") {
+    const ScummPanelConfig cfg = parse_scumm_panel_config(systemic_panel_yaml(), "ui/panel.yml");
+    REQUIRE(cfg.system_buttons.size() == 2);
+    CHECK(cfg.system_buttons[0].id == "options");
+    CHECK(cfg.system_buttons[1].action == ScummSystemAction::OPEN_MENU);
+
+    ScummPanel panel(cfg, {128, 72}, nullptr, nullptr);
+    const InventoryModel inventory = inventory_with_three_items();
+
+    // Body starts at panel.top + 3.2 = 62.4. The controls column is x 116.8..128;
+    // "Opciones" is the top half (y 62.4..67.2), "Menú" the bottom (67.2..72).
+    const PanelIntent options = panel.click({122.0f, 64.0f}, inventory, {});
+    CHECK(options.kind == PanelIntent::Kind::OPEN_SETTINGS);
+
+    const PanelIntent menu = panel.click({122.0f, 70.0f}, inventory, {});
+    CHECK(menu.kind == PanelIntent::Kind::OPEN_MENU);
+}
+
+TEST_CASE("scumm panel push_scene systemic buttons carry the scene id") {
+    ScummPanelConfig cfg = parse_scumm_panel_config(systemic_panel_yaml(), "ui/panel.yml");
+    cfg.system_buttons[1].action = ScummSystemAction::PUSH_SCENE;
+    cfg.system_buttons[1].scene = "journal";
+    ScummPanel panel(std::move(cfg), {128, 72}, nullptr, nullptr);
+
+    const PanelIntent intent = panel.click({122.0f, 70.0f}, InventoryModel{}, {});
+    CHECK(intent.kind == PanelIntent::Kind::PUSH_SCENE);
+    CHECK(intent.scene == "journal");
+}
+
+TEST_CASE("scumm panel rejects push_scene systemic buttons without a scene") {
+    const std::string yaml = R"yaml(
+scumm_panel:
+  design_size: [128, 72]
+  layout:
+    panel:
+      rect: [0, 59.2, 128, 12.8]
+    command_bar:
+      rect: [0, 0, 128, 3.2]
+    body:
+      rect: [0, 3.2, 128, 9.6]
+  system_buttons:
+    - id: journal
+      rect: [116.8, 0, 11.2, 4.8]
+      action: push_scene
+      label_key: journal
+)yaml";
+    CHECK_THROWS_AS(static_cast<void>(parse_scumm_panel_config(yaml, "ui/panel.yml")), DataError);
+}
+
+TEST_CASE("explicit inventory pagination pages the icon inventory and frees the whole rect") {
+    const ScummPanelConfig cfg = parse_scumm_panel_config(systemic_panel_yaml(), "ui/panel.yml");
+    REQUIRE(cfg.layout.inventory_pagination.enabled);
+
+    ScummPanel panel(cfg, {128, 72}, nullptr, nullptr);
+    // Capacity is 8; ten items need two pages.
+    InventoryModel inventory;
+    inventory.replace_all({"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"});
+
+    // The pagination column is body-relative x 36..40, i.e. left of the inventory.
+    // Next = bottom half (y 67.2..72), previous = top half (62.4..67.2).
+    CommandState state;
+    const PanelIntent next = panel.click({38.0f, 70.0f}, inventory, state);
+    CHECK(next.kind == PanelIntent::Kind::CHANGE_INVENTORY_PAGE);
+    CHECK(next.page_index == 1);
+
+    state.inventory_page_index = 1;
+    const PanelIntent prev = panel.click({38.0f, 64.0f}, inventory, state);
+    CHECK(prev.kind == PanelIntent::Kind::CHANGE_INVENTORY_PAGE);
+    CHECK(prev.page_index == 0);
+
+    // With paging outside the inventory rect, no gutter is carved out of it: the
+    // eighth slot spans x 116.8-9.6..116.8 and is clickable to its right edge.
+    const PanelIntent last_slot = panel.click({116.0f, 67.0f}, inventory, {});
+    CHECK(last_slot.kind == PanelIntent::Kind::CLICK_INVENTORY);
+    CHECK(last_slot.item_id == "h");
+
+    // Page 1 shows the remaining two items in the first slots.
+    state.inventory_page_index = 1;
+    const PanelIntent page2 = panel.click({42.0f, 67.0f}, inventory, state);
+    CHECK(page2.kind == PanelIntent::Kind::CLICK_INVENTORY);
+    CHECK(page2.item_id == "i");
+}
+
+TEST_CASE("inventory pagination requires the icon inventory style") {
+    const std::string yaml = R"yaml(
+scumm_panel:
+  design_size: [128, 72]
+  layout:
+    panel:
+      rect: [0, 59.2, 128, 12.8]
+    command_bar:
+      rect: [0, 0, 128, 3.2]
+    body:
+      rect: [0, 3.2, 128, 9.6]
+    inventory_panel:
+      rect: [40, 0, 76.8, 9.6]
+      rows: 1
+      columns: 8
+      style: text
+    inventory_pagination:
+      rect: [36, 0, 4, 9.6]
+      previous: [0, 0, 4, 4.8]
+      next: [0, 4.8, 4, 4.8]
+)yaml";
+    CHECK_THROWS_AS(static_cast<void>(parse_scumm_panel_config(yaml, "ui/panel.yml")), DataError);
+}
+
+TEST_CASE("scumm panel command bar skin overrides the classic strip, and defaults to it") {
+    const ScummPanelConfig fallback =
+        parse_scumm_panel_config(systemic_panel_yaml(), "ui/panel.yml");
+    CHECK(fallback.skin.command_bar.background == ScummCommandBarSkin{}.background);
+    CHECK(fallback.skin.command_bar.separator == ScummCommandBarSkin{}.separator);
+
+    const std::string yaml = R"yaml(
+scumm_panel:
+  design_size: [128, 72]
+  layout:
+    panel:
+      rect: [0, 59.2, 128, 12.8]
+    command_bar:
+      rect: [0, 0, 128, 3.2]
+    body:
+      rect: [0, 3.2, 128, 9.6]
+  skin:
+    command_bar:
+      background: "#151617"
+      separator: "#3A4650"
+      separator_thickness: 0
+)yaml";
+    const ScummPanelConfig cfg = parse_scumm_panel_config(yaml, "ui/panel.yml");
+    CHECK(cfg.skin.command_bar.background == sf::Color(0x15, 0x16, 0x17));
+    CHECK(cfg.skin.command_bar.separator == sf::Color(0x3A, 0x46, 0x50));
+    CHECK(cfg.skin.command_bar.separator_thickness == doctest::Approx(0.0f));
+}

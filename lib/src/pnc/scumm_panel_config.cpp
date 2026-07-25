@@ -122,9 +122,12 @@ int positive_int(const YAML::Node& node, const std::string& field) {
     return value;
 }
 
+/// `#RRGGBB`, or `#RRGGBBAA` when a control needs to fade rather than recolor
+/// (e.g. a disabled cell that dims over the panel art).
 sf::Color parse_color(const std::string& text, const YAML::Node& at) {
-    if (text.size() != 7 || text[0] != '#') {
-        panel_fail("scumm-panel.color-invalid", "color must use #RRGGBB form", at);
+    const bool has_alpha = text.size() == 9;
+    if ((text.size() != 7 && !has_alpha) || text[0] != '#') {
+        panel_fail("scumm-panel.color-invalid", "color must use #RRGGBB or #RRGGBBAA form", at);
     }
     const auto hex = [](char c) -> int {
         if (c >= '0' && c <= '9') {
@@ -138,16 +141,19 @@ sf::Color parse_color(const std::string& text, const YAML::Node& at) {
         }
         return -1;
     };
-    std::array<int, 6> n{};
-    for (std::size_t i = 0; i < n.size(); ++i) {
+    std::array<int, 8> n{};
+    const std::size_t digits = has_alpha ? 8 : 6;
+    for (std::size_t i = 0; i < digits; ++i) {
         n[i] = hex(text[i + 1]);
         if (n[i] < 0) {
-            panel_fail("scumm-panel.color-invalid", "color must use #RRGGBB form", at);
+            panel_fail("scumm-panel.color-invalid", "color must use #RRGGBB or #RRGGBBAA form", at);
         }
     }
     return sf::Color(static_cast<sf::Uint8>(n[0] * 16 + n[1]),
                      static_cast<sf::Uint8>(n[2] * 16 + n[3]),
-                     static_cast<sf::Uint8>(n[4] * 16 + n[5]));
+                     static_cast<sf::Uint8>(n[4] * 16 + n[5]),
+                     has_alpha ? static_cast<sf::Uint8>(n[6] * 16 + n[7])
+                               : static_cast<sf::Uint8>(255));
 }
 
 std::string
@@ -261,7 +267,7 @@ ScummButtonRenderMode button_render_mode(const std::string& value, const YAML::N
         return ScummButtonRenderMode::IMAGE;
     }
     panel_fail("scumm-panel.button-render-mode-invalid",
-               "settings_button.render_mode must be panel or image",
+               "render_mode must be panel or image",
                node);
 }
 
@@ -405,6 +411,10 @@ ScummTextStyle parse_text_style(const YAML::Node& node,
         style.disabled_color =
             parse_color(node["disabled_color"].as<std::string>(), node["disabled_color"]);
     }
+    if (node["selected_color"]) {
+        style.selected_color =
+            parse_color(node["selected_color"].as<std::string>(), node["selected_color"]);
+    }
     if (node["align"]) {
         style.align = node["align"].as<std::string>();
     }
@@ -416,6 +426,139 @@ ScummTextStyle parse_text_style(const YAML::Node& node,
             parse_color(node["outline_color"].as<std::string>(), node["outline_color"]);
     }
     return style;
+}
+
+ScummButtonSkin
+parse_button_skin(const YAML::Node& node, const std::string& field, ScummButtonSkin fallback) {
+    if (!node) {
+        return fallback;
+    }
+    if (!node.IsMap()) {
+        panel_fail("scumm-panel.button-skin-invalid", field + " must be a mapping", node);
+    }
+    ScummButtonSkin skin = fallback;
+    const auto color_at = [&](const char* key, sf::Color& out) {
+        if (const YAML::Node c = node[key]) {
+            out = parse_color(c.as<std::string>(), c);
+        }
+    };
+    color_at("background", skin.background);
+    color_at("border", skin.border);
+    color_at("hover_background", skin.hover_background);
+    color_at("hover_border", skin.hover_border);
+    color_at("selected_background", skin.selected_background);
+    color_at("selected_border", skin.selected_border);
+    color_at("disabled_background", skin.disabled_background);
+    color_at("disabled_border", skin.disabled_border);
+    if (node["border_thickness"]) {
+        skin.border_thickness = node["border_thickness"].as<float>();
+        if (skin.border_thickness < 0.0f) {
+            panel_fail("scumm-panel.button-skin-invalid",
+                       field + ".border_thickness must be >= 0",
+                       node["border_thickness"]);
+        }
+    }
+    return skin;
+}
+
+ScummInventoryPagination parse_inventory_pagination(const YAML::Node& node,
+                                                    ScummInventoryPagination fallback) {
+    if (!node) {
+        return fallback;
+    }
+    if (!node.IsMap()) {
+        panel_fail("scumm-panel.inventory-pagination-invalid",
+                   "layout.inventory_pagination must be a mapping",
+                   node);
+    }
+    ScummInventoryPagination paging = fallback;
+    paging.enabled = true;
+    if (node["enabled"]) {
+        paging.enabled = node["enabled"].as<bool>();
+    }
+    paging.rect = rect_from(node["rect"], "layout.inventory_pagination.rect");
+    paging.previous = rect_from(node["previous"], "layout.inventory_pagination.previous");
+    paging.next = rect_from(node["next"], "layout.inventory_pagination.next");
+    return paging;
+}
+
+ScummSystemAction system_action(const std::string& value, const YAML::Node& node) {
+    if (value == "open_settings") {
+        return ScummSystemAction::OPEN_SETTINGS;
+    }
+    if (value == "open_menu") {
+        return ScummSystemAction::OPEN_MENU;
+    }
+    if (value == "push_scene") {
+        return ScummSystemAction::PUSH_SCENE;
+    }
+    panel_fail("scumm-panel.system-button-action-invalid",
+               "system_buttons[].action must be open_settings, open_menu, or push_scene",
+               node);
+}
+
+std::vector<ScummSystemButton> parse_system_buttons(const YAML::Node& node,
+                                                    const std::string& base_dir) {
+    std::vector<ScummSystemButton> buttons;
+    if (!node) {
+        return buttons;
+    }
+    if (!node.IsSequence()) {
+        panel_fail("scumm-panel.system-buttons-invalid",
+                   "scumm_panel.system_buttons must be a sequence",
+                   node);
+    }
+    for (const YAML::Node& bn : node) {
+        if (!bn.IsMap()) {
+            panel_fail("scumm-panel.system-button-invalid",
+                       "system_buttons entries must be mappings",
+                       bn);
+        }
+        ScummSystemButton button;
+        if (bn["id"]) {
+            button.id = bn["id"].as<std::string>();
+        }
+        button.rect = rect_from(bn["rect"], "system_buttons[].rect");
+        if (bn["action"]) {
+            button.action = system_action(bn["action"].as<std::string>(), bn["action"]);
+        }
+        if (bn["scene"]) {
+            button.scene = bn["scene"].as<std::string>();
+        }
+        if (bn["label_key"]) {
+            button.label_key = bn["label_key"].as<std::string>();
+        }
+        button.icon = resolve_asset(base_dir, bn["icon"], "system_buttons[].icon");
+        if (bn["render_mode"]) {
+            button.render_mode =
+                button_render_mode(bn["render_mode"].as<std::string>(), bn["render_mode"]);
+        }
+        if (const YAML::Node image = bn["image"]) {
+            button.image.normal =
+                resolve_asset(base_dir, image["normal"], "system_buttons[].image.normal");
+            button.image.hovered =
+                resolve_asset(base_dir, image["hovered"], "system_buttons[].image.hovered");
+        }
+
+        if (button.action == ScummSystemAction::PUSH_SCENE && button.scene.empty()) {
+            panel_fail("scumm-panel.system-button-scene-missing",
+                       "system_buttons[] with action push_scene require a scene id",
+                       bn);
+        }
+        if (button.render_mode == ScummButtonRenderMode::IMAGE && button.image.normal.empty()) {
+            panel_fail("scumm-panel.system-button-image-missing",
+                       "image-rendered system_buttons[] require image.normal",
+                       bn);
+        }
+        if (button.render_mode == ScummButtonRenderMode::PANEL && button.label_key.empty() &&
+            button.icon.empty()) {
+            panel_fail("scumm-panel.system-button-label-missing",
+                       "panel-rendered system_buttons[] require a label_key or an icon",
+                       bn);
+        }
+        buttons.push_back(std::move(button));
+    }
+    return buttons;
 }
 
 ScummSettingsButtonConfig parse_settings_button(const YAML::Node& node,
@@ -614,6 +757,15 @@ void validate_config(const ScummPanelConfig& cfg, const YAML::Node& root) {
                        root["settings_button"] ? root["settings_button"] : root);
         }
     }
+    // The explicit pagination zone replaces the ICONS gutter. The TEXT inventory
+    // pages through `inventory_arrows` instead, so the two would silently disagree.
+    if (cfg.layout.inventory_pagination.enabled &&
+        cfg.layout.inventory_style != InventoryStyle::ICONS) {
+        panel_fail("scumm-panel.inventory-pagination-style",
+                   "layout.inventory_pagination requires inventory_panel.style: icons "
+                   "(the text inventory pages with layout.inventory_arrows)",
+                   root["layout"] ? root["layout"]["inventory_pagination"] : root);
+    }
     if (cfg.notebook.enabled) {
         if (cfg.notebook.scene.empty()) {
             panel_fail("scumm-panel.notebook-scene-missing",
@@ -721,6 +873,9 @@ ScummPanelConfig parse_scumm_panel_config(const std::string& yaml_text,
                                  layout["inventory_panel"]["style"]);
     }
 
+    cfg.layout.inventory_pagination =
+        parse_inventory_pagination(layout["inventory_pagination"], cfg.layout.inventory_pagination);
+
     if (const YAML::Node arrows = layout["inventory_arrows"]) {
         if (arrows["mode"]) {
             cfg.layout.inventory_arrows.mode =
@@ -770,6 +925,24 @@ ScummPanelConfig parse_scumm_panel_config(const std::string& yaml_text,
                 }
             }
         }
+        if (const YAML::Node bar = skin["command_bar"]) {
+            if (bar["background"]) {
+                cfg.skin.command_bar.background =
+                    parse_color(bar["background"].as<std::string>(), bar["background"]);
+            }
+            if (bar["separator"]) {
+                cfg.skin.command_bar.separator =
+                    parse_color(bar["separator"].as<std::string>(), bar["separator"]);
+            }
+            if (bar["separator_thickness"]) {
+                cfg.skin.command_bar.separator_thickness = bar["separator_thickness"].as<float>();
+                if (cfg.skin.command_bar.separator_thickness < 0.0f) {
+                    panel_fail("scumm-panel.command-bar-invalid",
+                               "skin.command_bar.separator_thickness must be >= 0",
+                               bar["separator_thickness"]);
+                }
+            }
+        }
         cfg.skin.command_text = parse_text_style(skin["command_text"],
                                                  base_dir,
                                                  "skin.command_text",
@@ -780,6 +953,17 @@ ScummPanelConfig parse_scumm_panel_config(const std::string& yaml_text,
                                                    base_dir,
                                                    "skin.inventory_text",
                                                    cfg.skin.inventory_text);
+        cfg.skin.system_button_text = parse_text_style(skin["system_button_text"],
+                                                       base_dir,
+                                                       "skin.system_button_text",
+                                                       cfg.skin.system_button_text);
+        cfg.skin.verb_button =
+            parse_button_skin(skin["verb_button"], "skin.verb_button", cfg.skin.verb_button);
+        cfg.skin.inventory_slot = parse_button_skin(skin["inventory_slot"],
+                                                    "skin.inventory_slot",
+                                                    cfg.skin.inventory_slot);
+        cfg.skin.system_button =
+            parse_button_skin(skin["system_button"], "skin.system_button", cfg.skin.system_button);
         const YAML::Node skin_arrows = skin["arrows"];
         if (const YAML::Node arrows = skin_arrows ? skin_arrows["draw"] : YAML::Node()) {
             cfg.skin.arrows_draw.font =
@@ -812,6 +996,7 @@ ScummPanelConfig parse_scumm_panel_config(const std::string& yaml_text,
 
     cfg.settings_button =
         parse_settings_button(panel["settings_button"], base_dir, cfg.settings_button);
+    cfg.system_buttons = parse_system_buttons(panel["system_buttons"], base_dir);
     cfg.evidence_indicator =
         parse_evidence_indicator(panel["evidence_indicator"], base_dir, cfg.evidence_indicator);
     cfg.notebook = parse_notebook(panel["notebook"], base_dir, cfg.notebook);

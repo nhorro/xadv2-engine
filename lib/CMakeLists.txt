@@ -153,9 +153,12 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/pnc/pause_overlay.cpp
     src/pnc/dialog.cpp
     src/pnc/closeup.cpp
+    src/pnc/case_resolution.cpp
+    src/pnc/case_resolution_runtime.cpp
     src/pnc/closeup_runtime.cpp
     src/pnc/room_scene.cpp
     src/pnc/closeup_scene.cpp
+    src/pnc/case_resolution_scene.cpp
     src/pnc/builtin_scenes.cpp
     src/pnc/game_app.cpp
 )

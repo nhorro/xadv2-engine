@@ -196,6 +196,11 @@ RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams
 RoomScene::~RoomScene() = default;
 
 float RoomScene::scenery_height() const {
+    // Set from the panel config in enter(); the fraction is the pre-panel fallback
+    // (and the value enter() itself uses to place a default panel).
+    if (scenery_height_ > 0.0f) {
+        return scenery_height_;
+    }
     return static_cast<float>(ctx_.display.virtual_resolution().y) * kScenerFraction;
 }
 
@@ -243,6 +248,16 @@ void RoomScene::enter() {
         } catch (const std::exception& e) {
             ctx_.log.error(std::string("RoomScene: scumm_panel: ") + e.what());
         }
+    }
+    // The scene owns everything above the panel. Derive the split from the panel's
+    // own top edge (converted from its design space to the virtual resolution) so a
+    // game that resizes the panel doesn't leave the scenery viewport, hotspot
+    // hit-testing and walk clamping stranded at the built-in fraction. Panels that
+    // keep the default rect land back on exactly kScenerFraction.
+    const sf::Vector2f design = panel_config.layout.design_size;
+    if (design.y > 0.0f) {
+        scenery_height_ =
+            panel_config.layout.panel_rect.top * (static_cast<float>(vres.y) / design.y);
     }
     panel_.emplace(std::move(panel_config), vres, font_, &ctx_.resources);
 
@@ -373,6 +388,10 @@ end
     // Open a close-up / examine view (issue #76) as an overlay over the room; the
     // close-up pops back here on Esc / right-click, so the room state is preserved.
     L.set_function("open_closeup",
+                   [this](const std::string& scene_id) { ctx_.scenes.push_scene(scene_id); });
+    // Case-resolution templates use the same overlay lifetime as close-ups, but
+    // have their own verb so story scripts do not need to describe them as one.
+    L.set_function("open_case_resolution",
                    [this](const std::string& scene_id) { ctx_.scenes.push_scene(scene_id); });
     // Leave the room for a manifest scene (typically a Cutscene / StoryText) — e.g.
     // an act-closing cutscene triggered from a verb handler. Unlike open_closeup
@@ -733,6 +752,17 @@ end
     ctx_.scripting.set_current_scope(prev_scope);
 
     load_room(start_room_, "");
+
+    // Checkpoint the fresh start. Otherwise the only autosave is on a room change,
+    // so a game with a single room would never have a save at all and the title's
+    // Continue would have nothing to resume. Only reached on a new game — a staged
+    // restore returns above, so this never round-trips a save we just loaded.
+    // Skipped when the start room opened a cutscene (can_save() is false while
+    // BLOCKED): restoring into a scene the player cannot act in is worse than no
+    // checkpoint. No thumbnail yet — nothing has been rendered at enter() time.
+    if (can_save()) {
+        ctx_.saves.save(pac::core::SaveService::kAutosaveSlot, snap());
+    }
 }
 
 void RoomScene::leave() {
@@ -1174,24 +1204,45 @@ void RoomScene::handle_event(const sf::Event& event) {
         handle_menu_event(event);
         return;
     }
+    // The secondary button clears the command being composed (design 04 §cancel):
+    // the player drops the verb and any operand and starts over, anywhere on screen.
+    if (event.type == sf::Event::MouseButtonReleased &&
+        event.mouseButton.button == sf::Mouse::Right) {
+        if (view_state_ == ViewState::COMMAND) {
+            command_controller_.cancel();
+            sync_command_hover();
+        }
+        return;
+    }
     if (event.type != sf::Event::MouseButtonReleased ||
         event.mouseButton.button != sf::Mouse::Left) {
         return;
     }
     const sf::Vector2f vp{static_cast<float>(event.mouseButton.x),
                           static_cast<float>(event.mouseButton.y)};
-    auto open_settings_if_clicked = [&]() {
+    // Systemic panel buttons belong to command mode. Dialog mode owns the whole
+    // panel for its choices; opening settings/menu there would interrupt the
+    // dialog lifecycle and leave both interfaces active at once.
+    auto handle_system_button_if_clicked = [&]() {
         if (!panel_ || !panel_->contains(vp)) {
             return false;
         }
         const PanelIntent intent = panel_->click(vp, inventory_, command_controller_.state());
-        if (intent.kind != PanelIntent::Kind::OPEN_SETTINGS) {
+        switch (intent.kind) {
+        case PanelIntent::Kind::OPEN_SETTINGS:
+            ctx_.scenes.open_settings();
+            return true;
+        case PanelIntent::Kind::OPEN_MENU:
+            view_state_ = ViewState::MENU;
+            return true;
+        case PanelIntent::Kind::PUSH_SCENE:
+            ctx_.scenes.push_scene(intent.scene);
+            return true;
+        default:
             return false;
         }
-        ctx_.scenes.open_settings();
-        return true;
     };
-    if (view_state_ != ViewState::BLOCKED && open_settings_if_clicked()) {
+    if (view_state_ == ViewState::COMMAND && handle_system_button_if_clicked()) {
         return;
     }
     if (speech_.active()) {
@@ -1238,7 +1289,14 @@ void RoomScene::handle_event(const sf::Event& event) {
     if (panel_ && panel_->contains(vp)) {
         const PanelIntent intent = panel_->click(vp, inventory_, command_controller_.state());
         if (intent.kind == PanelIntent::Kind::SELECT_VERB) {
-            command_controller_.on_verb_selected({intent.verb});
+            // Clicking the already-selected verb un-selects it, so the verb row is
+            // its own cancel affordance (design 04 §cancel).
+            const CommandState& state = command_controller_.state();
+            if (state.selected_verb && *state.selected_verb == intent.verb) {
+                command_controller_.cancel();
+            } else {
+                command_controller_.on_verb_selected({intent.verb});
+            }
         } else if (intent.kind == PanelIntent::Kind::CLICK_INVENTORY) {
             if (const auto cmd = command_controller_.on_inventory_item_selected({intent.item_id})) {
                 execute_command(*cmd);
@@ -1785,8 +1843,8 @@ void RoomScene::update(float dt) {
     // spawn_call seam as a verb handler (#183/#184): a `cutscene { ... }` wrapper
     // arms awaiting_handler_task_ itself via _cutscene_arm; a plain blocking fn
     // yields and hands us its task id. Either way the room blocks until it drains.
-    if (lua_ && view_state_ == ViewState::COMMAND && !change_pending_ && !change_armed_ &&
-        !awaiting_handler_task_) {
+    if (lua_ && view_state_ == ViewState::COMMAND && !dialog_ && !change_pending_ &&
+        !change_armed_ && !awaiting_handler_task_) {
         if (const auto it = lua_->pending_resume.find(current_room_id_);
             it != lua_->pending_resume.end()) {
             const sol::function fn = it->second;
@@ -2842,6 +2900,15 @@ pac::core::GameState RoomScene::snap() const {
     }
     s.inventory = inventory_.list();
     s.global_state = ctx_.state.entries();
+    constexpr std::string_view case_term_prefix = "__case_term.";
+    for (auto it = s.global_state.begin(); it != s.global_state.end();) {
+        if (it->first.starts_with(case_term_prefix)) {
+            s.case_terms.push_back(it->first.substr(case_term_prefix.size()));
+            it = s.global_state.erase(it);
+        } else {
+            ++it;
+        }
+    }
     s.room_state = room_state_;
     // Per-room runtime flags: snapshot persisted history across rooms, then
     // overlay the live values from the currently loaded room (which may
@@ -2901,6 +2968,10 @@ bool RoomScene::restore(const pac::core::GameState& state) {
     }
     // Replace stores before the room load so on_load observes restored state.
     ctx_.state.replace_all(state.global_state);
+    for (const std::string& id : state.case_terms) {
+        if (!id.empty())
+            ctx_.state.set("__case_term." + id, true);
+    }
     room_state_ = state.room_state;
     region_state_persist_ = state.region_states;
     hotspot_enabled_persist_ = state.hotspot_enabled;

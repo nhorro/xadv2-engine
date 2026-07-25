@@ -50,6 +50,7 @@ GameState make_rich_state() {
     s.room_view.current_room_id = "study";
     s.room_view.player = {600.5f, 830.25f, "left", "julia_body"};
     s.inventory = {"notebook", "key"};
+    s.case_terms = {"tomas", "camioneta"};
     s.global_state["stan.received_notebook"] = true;
     s.global_state["__dialog.stan.greet.3"] = true;
     s.global_state["mummy.awake"] = false;
@@ -95,6 +96,7 @@ TEST_CASE("save -> load round-trip preserves every field") {
     REQUIRE(out.inventory.size() == 2);
     CHECK(out.inventory[0] == "notebook");
     CHECK(out.inventory[1] == "key");
+    CHECK(out.case_terms == std::vector<std::string>{"tomas", "camioneta"});
 
     CHECK(std::get<bool>(out.global_state.at("stan.received_notebook")) == true);
     CHECK(std::get<bool>(out.global_state.at("__dialog.stan.greet.3")) == true);

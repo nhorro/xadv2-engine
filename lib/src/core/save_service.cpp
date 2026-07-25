@@ -164,6 +164,13 @@ void emit_game_state(YAML::Emitter& out, const GameState& s) {
     }
     out << YAML::EndSeq;
 
+    out << YAML::Key << "case_terms" << YAML::Value;
+    out << YAML::BeginSeq;
+    for (const std::string& id : s.case_terms) {
+        out << YAML::DoubleQuoted << id;
+    }
+    out << YAML::EndSeq;
+
     out << YAML::Key << "global_state" << YAML::Value;
     emit_string_value_map(out, s.global_state);
 
@@ -223,6 +230,12 @@ GameState decode_game_state(const YAML::Node& root) {
     if (const YAML::Node inv = root["inventory"]; inv && inv.IsSequence()) {
         for (const auto& item : inv) {
             s.inventory.push_back(item.as<std::string>());
+        }
+    }
+
+    if (const YAML::Node terms = root["case_terms"]; terms && terms.IsSequence()) {
+        for (const auto& term : terms) {
+            s.case_terms.push_back(term.as<std::string>());
         }
     }
 

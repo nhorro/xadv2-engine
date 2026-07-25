@@ -212,6 +212,7 @@ ScummPanel::ScummPanel(ScummPanelConfig config,
     settings_font_ = load_font(config_.settings_button.panel.font);
     evidence_font_ = load_font(config_.evidence_indicator.text.font);
     notebook_font_ = load_font(config_.notebook.text.font);
+    system_button_font_ = load_font(config_.skin.system_button_text.font);
 
     // Optional font smoothing. The fonts live in the shared ResourceCache and are
     // returned const; smoothing is a render hint on the font object, so a const_cast
@@ -225,6 +226,7 @@ ScummPanel::ScummPanel(ScummPanelConfig config,
                                   settings_font_,
                                   evidence_font_,
                                   notebook_font_,
+                                  system_button_font_,
                                   font_}) {
             if (f != nullptr) {
                 const_cast<sf::Font*>(f)->setSmooth(smooth);
@@ -399,17 +401,30 @@ ScummPanel::IconInventoryLayout ScummPanel::icon_inventory_layout() const {
     const float sx = static_cast<float>(runtime_size_.x) / config_.layout.design_size.x;
     const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
 
-    // Reserve a right-hand gutter for the stacked up/down paging arrows; the slots
-    // share the rest. The gutter is reserved whether or not paging is currently
-    // needed, so slot positions stay stable as the inventory fills up.
-    const float gutter = std::min(area.width * 0.16f, area.height * 0.6f);
-    const float arrow_gap = gutter * 0.2f;
-    const float slots_w = std::max(1.0f, area.width - gutter - arrow_gap);
-    out.prev_arrow = {area.left + area.width - gutter, area.top, gutter, area.height * 0.5f};
-    out.next_arrow = {area.left + area.width - gutter,
-                      area.top + area.height * 0.5f,
-                      gutter,
-                      area.height * 0.5f};
+    float slots_w = area.width;
+    const ScummInventoryPagination& paging = config_.layout.inventory_pagination;
+    if (paging.enabled) {
+        // The arrows live in their own body-relative zone, so the whole inventory
+        // rect stays available to the slots.
+        const sf::FloatRect zone = config_.layout.inventory_pagination.rect;
+        const auto in_zone = [&](sf::FloatRect r) {
+            return body_child({zone.left + r.left, zone.top + r.top, r.width, r.height});
+        };
+        out.prev_arrow = in_zone(paging.previous);
+        out.next_arrow = in_zone(paging.next);
+    } else {
+        // Reserve a right-hand gutter for the stacked up/down paging arrows; the
+        // slots share the rest. The gutter is reserved whether or not paging is
+        // currently needed, so slot positions stay stable as the inventory fills up.
+        const float gutter = std::min(area.width * 0.16f, area.height * 0.6f);
+        const float arrow_gap = gutter * 0.2f;
+        slots_w = std::max(1.0f, area.width - gutter - arrow_gap);
+        out.prev_arrow = {area.left + area.width - gutter, area.top, gutter, area.height * 0.5f};
+        out.next_arrow = {area.left + area.width - gutter,
+                          area.top + area.height * 0.5f,
+                          gutter,
+                          area.height * 0.5f};
+    }
 
     const float gap_x = grid.cell_gap.x * sx;
     const float gap_y = grid.cell_gap.y * sy;
@@ -427,6 +442,96 @@ ScummPanel::IconInventoryLayout ScummPanel::icon_inventory_layout() const {
                              cell_h});
     }
     return out;
+}
+
+std::vector<ScummPanel::SystemButtonCell> ScummPanel::system_button_cells() const {
+    std::vector<SystemButtonCell> cells;
+    cells.reserve(config_.system_buttons.size());
+    for (const ScummSystemButton& button : config_.system_buttons) {
+        cells.push_back({&button, body_child(button.rect)});
+    }
+    return cells;
+}
+
+const sf::Font* ScummPanel::system_button_font() const {
+    return font_or_default(system_button_font_);
+}
+
+void ScummPanel::draw_button_box(sf::RenderTarget& target,
+                                 const ScummButtonSkin& skin,
+                                 sf::FloatRect rect,
+                                 bool hovered,
+                                 bool selected,
+                                 bool enabled) const {
+    sf::Color fill = skin.background;
+    sf::Color border = skin.border;
+    if (!enabled) {
+        fill = skin.disabled_background;
+        border = skin.disabled_border;
+    } else if (selected) {
+        fill = skin.selected_background;
+        border = skin.selected_border;
+    } else if (hovered) {
+        fill = skin.hover_background;
+        border = skin.hover_border;
+    }
+
+    // The border grows inward so a thick highlight never bleeds into the
+    // neighbouring cell (the grid packs cells edge to edge).
+    const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
+    const float thickness = skin.border_thickness * sy;
+    sf::RectangleShape box(sf::Vector2f(std::max(0.0f, rect.width - 2.0f * thickness),
+                                        std::max(0.0f, rect.height - 2.0f * thickness)));
+    box.setPosition(rect.left + thickness, rect.top + thickness);
+    box.setFillColor(fill);
+    box.setOutlineThickness(thickness);
+    box.setOutlineColor(border);
+    target.draw(box);
+}
+
+void ScummPanel::draw_system_buttons(sf::RenderTarget& target,
+                                     const pac::core::Strings& strings,
+                                     sf::Vector2f cursor) const {
+    const sf::Font* font = system_button_font();
+    const ScummTextStyle& style = config_.skin.system_button_text;
+    for (const SystemButtonCell& cell : system_button_cells()) {
+        const ScummSystemButton& button = *cell.button;
+        const bool hot = cell.rect.contains(cursor);
+
+        if (button.render_mode == ScummButtonRenderMode::IMAGE) {
+            const std::string& image =
+                hot && !button.image.hovered.empty() ? button.image.hovered : button.image.normal;
+            draw_image_in_rect(target, image, cell.rect);
+            continue;
+        }
+
+        draw_button_box(target, config_.skin.system_button, cell.rect, hot, /*selected=*/false);
+
+        // An optional icon takes a square gutter on the left; the label uses the
+        // rest. Without an icon the label owns the whole box.
+        sf::FloatRect label_rect = cell.rect;
+        if (!button.icon.empty()) {
+            const float icon_w = cell.rect.height;
+            const float inset = icon_w * 0.2f;
+            draw_image_in_rect(target,
+                               button.icon,
+                               {cell.rect.left + inset,
+                                cell.rect.top + inset,
+                                icon_w - 2.0f * inset,
+                                icon_w - 2.0f * inset});
+            label_rect.left += icon_w;
+            label_rect.width -= icon_w;
+        }
+        if (!font || button.label_key.empty()) {
+            continue;
+        }
+        sf::Text label(pac::core::utf8(strings.ui_label(button.label_key)),
+                       *font,
+                       scaled_text_size(style.size));
+        apply_text_style(label, style, hot ? style.hover_color : style.color);
+        place_text(label, label_rect, style.align);
+        target.draw(label);
+    }
 }
 
 sf::FloatRect ScummPanel::evidence_indicator_area() const {
@@ -509,18 +614,31 @@ PanelIntent ScummPanel::click(sf::Vector2f p,
                               const InventoryModel& inventory,
                               const CommandState& command_state) const {
     if (config_.settings_button.enabled && settings_button_area().contains(p)) {
-        return {PanelIntent::Kind::OPEN_SETTINGS, Verb::LOOK_AT, {}, 0, {}};
+        return {PanelIntent::Kind::OPEN_SETTINGS, Verb::LOOK_AT, {}, 0, {}, {}};
+    }
+    for (const SystemButtonCell& cell : system_button_cells()) {
+        if (!cell.rect.contains(p)) {
+            continue;
+        }
+        switch (cell.button->action) {
+        case ScummSystemAction::OPEN_SETTINGS:
+            return {PanelIntent::Kind::OPEN_SETTINGS, Verb::LOOK_AT, {}, 0, {}, {}};
+        case ScummSystemAction::OPEN_MENU:
+            return {PanelIntent::Kind::OPEN_MENU, Verb::LOOK_AT, {}, 0, {}, {}};
+        case ScummSystemAction::PUSH_SCENE:
+            return {PanelIntent::Kind::PUSH_SCENE, Verb::LOOK_AT, {}, 0, {}, cell.button->scene};
+        }
     }
     if (config_.notebook.enabled) {
         for (const NotebookCell& cell : notebook_cells()) {
             if (cell.rect.contains(p)) {
-                return {PanelIntent::Kind::OPEN_NOTEBOOK, Verb::LOOK_AT, {}, 0, cell.tab};
+                return {PanelIntent::Kind::OPEN_NOTEBOOK, Verb::LOOK_AT, {}, 0, cell.tab, {}};
             }
         }
     }
     for (const VerbCell& cell : verb_cells()) {
         if (cell.rect.contains(p)) {
-            return {PanelIntent::Kind::SELECT_VERB, cell.verb, {}, 0, {}};
+            return {PanelIntent::Kind::SELECT_VERB, cell.verb, {}, 0, {}, {}};
         }
     }
     const int page = clamped_inventory_page(inventory, command_state.inventory_page_index);
@@ -530,10 +648,20 @@ PanelIntent ScummPanel::click(sf::Vector2f p,
         const IconInventoryLayout layout = icon_inventory_layout();
         if (pages > 1) {
             if (layout.prev_arrow.contains(p) && page > 0) {
-                return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE, Verb::LOOK_AT, {}, page - 1, {}};
+                return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE,
+                        Verb::LOOK_AT,
+                        {},
+                        page - 1,
+                        {},
+                        {}};
             }
             if (layout.next_arrow.contains(p) && page < pages - 1) {
-                return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE, Verb::LOOK_AT, {}, page + 1, {}};
+                return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE,
+                        Verb::LOOK_AT,
+                        {},
+                        page + 1,
+                        {},
+                        {}};
             }
         }
         const int capacity = inventory_capacity();
@@ -548,6 +676,7 @@ PanelIntent ScummPanel::click(sf::Vector2f p,
                         Verb::LOOK_AT,
                         inventory.list()[static_cast<std::size_t>(item_index)],
                         0,
+                        {},
                         {}};
             }
         }
@@ -556,15 +685,15 @@ PanelIntent ScummPanel::click(sf::Vector2f p,
 
     if (config_.layout.inventory_arrows.mode != InventoryArrowMode::NONE) {
         if (arrow_previous_area().contains(p) && page > 0) {
-            return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE, Verb::LOOK_AT, {}, page - 1, {}};
+            return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE, Verb::LOOK_AT, {}, page - 1, {}, {}};
         }
         if (arrow_next_area().contains(p) && page < pages - 1) {
-            return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE, Verb::LOOK_AT, {}, page + 1, {}};
+            return {PanelIntent::Kind::CHANGE_INVENTORY_PAGE, Verb::LOOK_AT, {}, page + 1, {}, {}};
         }
     }
     for (const InventoryCell& cell : inventory_cells(inventory, page)) {
         if (cell.rect.contains(p)) {
-            return {PanelIntent::Kind::CLICK_INVENTORY, Verb::LOOK_AT, cell.item_id, 0, {}};
+            return {PanelIntent::Kind::CLICK_INVENTORY, Verb::LOOK_AT, cell.item_id, 0, {}, {}};
         }
     }
     return {};
@@ -727,18 +856,23 @@ void ScummPanel::draw_backdrop(sf::RenderTarget& target,
     if (!image.empty()) {
         draw_background_image(target, image, mode);
     } else if (!suppress_command_bar) {
-        // Preserve the old command strip when the panel is using engine-drawn
-        // cells over a solid background. In dialog mode the strip + separator
-        // rule are suppressed — the action string has no meaning there.
-        sf::RectangleShape strip(sf::Vector2f(command_bar_area().width, command_bar_area().height));
-        strip.setPosition(command_bar_area().left, command_bar_area().top);
-        strip.setFillColor(theme_.command_bar_bg);
+        // The command strip over a solid background. In dialog mode the strip +
+        // separator rule are suppressed — the action string has no meaning there.
+        const ScummCommandBarSkin& bar = config_.skin.command_bar;
+        const sf::FloatRect area = command_bar_area();
+        sf::RectangleShape strip(sf::Vector2f(area.width, area.height));
+        strip.setPosition(area.left, area.top);
+        strip.setFillColor(bar.background);
         target.draw(strip);
 
-        sf::RectangleShape rule(sf::Vector2f(panel.width, 2.0f));
-        rule.setPosition(panel.left, command_bar_area().top + command_bar_area().height - 1.0f);
-        rule.setFillColor(theme_.separator);
-        target.draw(rule);
+        if (bar.separator_thickness > 0.0f) {
+            const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
+            const float thickness = bar.separator_thickness * sy;
+            sf::RectangleShape rule(sf::Vector2f(panel.width, thickness));
+            rule.setPosition(panel.left, area.top + area.height - thickness);
+            rule.setFillColor(bar.separator);
+            target.draw(rule);
+        }
     }
 }
 
@@ -902,13 +1036,7 @@ void ScummPanel::draw(sf::RenderTarget& target,
             const bool selected =
                 command_state.selected_verb && *command_state.selected_verb == cell.verb;
             const bool hot = cell.rect.contains(cursor);
-            sf::RectangleShape box(sf::Vector2f(cell.rect.width, cell.rect.height));
-            box.setPosition(cell.rect.left, cell.rect.top);
-            box.setFillColor(selected ? theme_.verb_selected
-                                      : (hot ? theme_.verb_hover : theme_.verb_default));
-            box.setOutlineThickness(1.0f);
-            box.setOutlineColor(theme_.verb_outline);
-            target.draw(box);
+            draw_button_box(target, config_.skin.verb_button, cell.rect, hot, selected);
 
             if (verb_font) {
                 sf::Text label(
@@ -917,7 +1045,7 @@ void ScummPanel::draw(sf::RenderTarget& target,
                     scaled_text_size(config_.skin.verb_text.size));
                 apply_text_style(label,
                                  config_.skin.verb_text,
-                                 selected ? theme_.verb_text_active
+                                 selected ? config_.skin.verb_text.selected_color
                                           : (hot ? config_.skin.verb_text.hover_color
                                                  : config_.skin.verb_text.color));
                 place_text(label, cell.rect, config_.skin.verb_text.align);
@@ -941,8 +1069,6 @@ void ScummPanel::draw(sf::RenderTarget& target,
             const float cell_h =
                 (area.height - gap_y * static_cast<float>(std::max(0, grid.rows - 1))) /
                 static_cast<float>(grid.rows);
-            sf::Color inactive = theme_.verb_default;
-            inactive.a = 96;
             for (int i = inactive_start; i < verb_capacity; ++i) {
                 const int col = i % grid.columns;
                 const int row = i / grid.columns;
@@ -950,12 +1076,12 @@ void ScummPanel::draw(sf::RenderTarget& target,
                                          area.top + static_cast<float>(row) * (cell_h + gap_y),
                                          cell_w - 2.0f,
                                          cell_h - 2.0f};
-                sf::RectangleShape box(sf::Vector2f(rect.width, rect.height));
-                box.setPosition(rect.left, rect.top);
-                box.setFillColor(inactive);
-                box.setOutlineThickness(1.0f);
-                box.setOutlineColor(config_.skin.verb_text.disabled_color);
-                target.draw(box);
+                draw_button_box(target,
+                                config_.skin.verb_button,
+                                rect,
+                                /*hovered=*/false,
+                                /*selected=*/false,
+                                /*enabled=*/false);
             }
         }
     }
@@ -992,6 +1118,7 @@ void ScummPanel::draw(sf::RenderTarget& target,
     draw_evidence_indicator(target, strings, evidence);
     draw_notebook(target, strings, cursor);
     draw_settings_button(target, strings, cursor);
+    draw_system_buttons(target, strings, cursor);
 }
 
 void ScummPanel::draw_inventory_icons(sf::RenderTarget& target,
@@ -1010,13 +1137,13 @@ void ScummPanel::draw_inventory_icons(sf::RenderTarget& target,
         const int item_index = first + static_cast<int>(i);
         const bool has_item = item_index < static_cast<int>(items.size());
         const bool hot = has_item && rect.contains(cursor);
+        // The selected item keeps its accent while the command is being composed —
+        // including after a page flip, since selection is tracked by item id.
+        const bool selected = has_item && command_state.selected_inventory_item_id &&
+                              *command_state.selected_inventory_item_id ==
+                                  items[static_cast<std::size_t>(item_index)];
 
-        sf::RectangleShape frame(sf::Vector2f(rect.width, rect.height));
-        frame.setPosition(rect.left, rect.top);
-        frame.setFillColor(hot ? theme_.inventory_hover_bg : theme_.verb_default);
-        frame.setOutlineThickness(1.0f);
-        frame.setOutlineColor(theme_.verb_outline);
-        target.draw(frame);
+        draw_button_box(target, config_.skin.inventory_slot, rect, hot, selected);
 
         if (!has_item) {
             continue;
@@ -1160,10 +1287,19 @@ sf::FloatRect ScummPanel::options_area() const {
     const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
     const float pad_x = theme_.pad * sx;
     const float pad_y = theme_.pad * sy;
-    return {panel.left + pad_x,
-            panel.top + pad_y,
-            panel.width - 2.0f * pad_x,
-            panel.height - 2.0f * pad_y};
+    sf::FloatRect area{panel.left + pad_x,
+                       panel.top + pad_y,
+                       panel.width - 2.0f * pad_x,
+                       panel.height - 2.0f * pad_y};
+
+    // Systemic buttons stay live during a dialog, so the option text must not run
+    // underneath them: give back everything from the leftmost button's edge.
+    float limit = area.left + area.width;
+    for (const SystemButtonCell& cell : system_button_cells()) {
+        limit = std::min(limit, cell.rect.left - pad_x);
+    }
+    area.width = std::max(1.0f, limit - area.left);
+    return area;
 }
 
 DialogPageLayout ScummPanel::dialog_layout(const std::vector<std::string>& options,
@@ -1188,7 +1324,7 @@ DialogPageLayout ScummPanel::dialog_layout(const std::vector<std::string>& optio
 }
 
 void ScummPanel::draw_options(sf::RenderTarget& target,
-                              const pac::core::Strings& strings,
+                              const pac::core::Strings& /*strings*/,
                               const std::vector<std::string>& options,
                               int page_index,
                               sf::Vector2f cursor) const {
@@ -1196,7 +1332,6 @@ void ScummPanel::draw_options(sf::RenderTarget& target,
 
     const sf::Font* option_font = font_or_default(inventory_font_);
     if (!option_font) {
-        draw_settings_button(target, strings, cursor);
         return;
     }
 
@@ -1230,7 +1365,6 @@ void ScummPanel::draw_options(sf::RenderTarget& target,
     if (layout.has_next) {
         draw_v_arrow(target, layout.next_arrow, false, arrow_color(layout.next_arrow));
     }
-    draw_settings_button(target, strings, cursor);
 }
 
 DialogClick ScummPanel::click_dialog(sf::Vector2f p,

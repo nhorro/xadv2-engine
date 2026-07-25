@@ -59,6 +59,10 @@ struct GameState {
     /// Inventory item ids, in player-visible order.
     std::vector<std::string> inventory;
 
+    /// Case-resolution term ids discovered through exploration, dialog, or
+    /// scripted events. The case scene only exposes authored terms present here.
+    std::vector<std::string> case_terms;
+
     /// Global state store, the `set_state`/`get_state` map (`__dialog.*` keys
     /// included).
     std::map<std::string, StateValue> global_state;

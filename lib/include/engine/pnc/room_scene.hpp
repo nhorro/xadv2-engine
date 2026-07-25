@@ -315,6 +315,9 @@ private:
     std::string player_char_;
     std::string font_path_;
     std::string scumm_panel_path_;
+    /// Height of the scenery viewport, derived in enter() from the panel's top
+    /// edge. 0 until then; scenery_height() falls back to the built-in fraction.
+    float scenery_height_ = 0.0f;
     std::string inventory_path_;
     std::string inventory_logic_;
     std::string logic_path_;
