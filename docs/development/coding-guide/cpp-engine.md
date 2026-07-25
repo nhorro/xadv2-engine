@@ -1,7 +1,7 @@
 # C++ Engine Coding Guide
 
 This guide is the implementation source of truth for engine C++ code. The
-[design documents](../design/) describe *what* the engine does; this
+[design documents](../design/00-index.md) describe *what* the engine does; this
 guide describes *how* to write it. If this guide conflicts with the design
 docs, the design docs win — fix this guide.
 

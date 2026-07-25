@@ -68,12 +68,18 @@ default_language: es   # optional; defaults to the first entry
   `font` (opt path), `font_size` (opt int — menu label size in virtual pixels),
   and a `menu` map: `menu.position` `{x, y}` (anchor as a 0..1 screen fraction;
   `{0.5, 0.5}` centers the menu block) and `menu.options` with the outcome scene
-  ids `new_game`, `continue` (the entry shows only when a save exists),
-  `load_game` (opt, #108 — when wired *and* a save exists, the title adds a
-  "Recuperar partida" entry that pushes the load picker; the value is reserved
+  ids `new_game`, `continue` (resumes the most recent save — the autosave or a
+  manual slot, whichever is newer; by default the entry shows only when a save
+  exists), `load_game` (opt, #108 — when wired *and* a save exists, the title adds
+  a "Recuperar partida" entry that pushes the load picker; the value is reserved
   for a future opt-out routing override, any non-empty value enables the entry),
   and `exit` (often `QUIT`). Menu entries are borderless text; hover highlights
   the entry and switches the cursor to its interact variant.
+  `menu.continue_fallback: new_game` (opt) instead keeps `Continue` always listed
+  and makes it start a new game when nothing is saved, so it reads as a stable
+  "just play" entry rather than one that appears and disappears. An unreadable
+  save is *not* a fallback case: the title stays put and logs, rather than
+  silently starting the player over.
 - `StoryText` — Lua-driven cut-scene (script invokes `show_text(...)`).
   Parameters: `script` (path), `on_finish` (outcome scene id), `font` (opt path).
   Skippable with Enter / Space / Esc / click. Use for scripted yield-based
@@ -131,10 +137,20 @@ cast file, not the scene `font`.
 
 ## SCUMM panel config — `ui/scumm_panel*.yml`
 
+<a id="scumm-panel-config--uiscumm_panelyml"></a>
+
 `RoomScene.parameters.scumm_panel` may point at a panel layout/skin YAML file.
 When omitted, the engine uses the built-in classic 85% scenery / 15% panel
 layout. The config controls visual layout only: command construction and command
 preview state still live in `CommandController`.
+
+**The panel's top edge sets the scene/panel split.** `RoomScene` derives the
+scenery viewport height from `layout.panel.rect.top` (converted from `design_size`
+to the virtual resolution), so it also governs the camera viewport, hotspot
+hit-testing and walk clamping — not just where the panel is painted. A panel that
+keeps the classic rect lands back on exactly 85%. Room geometry (walkables,
+points, hotspots) must stay above that line or it is drawn under the panel and
+cannot be clicked.
 
 Coordinate rules:
 
@@ -142,13 +158,26 @@ Coordinate rules:
 - `layout.panel.rect` is in `design_size` coordinates.
 - `layout.command_bar.rect` and `layout.body.rect` are relative to the panel.
 - `layout.verb_panel.rect`, `layout.inventory_panel.rect`,
+  `layout.inventory_pagination.rect`, `system_buttons[].rect`,
   `evidence_indicator.rect`, and `notebook.rect` are all relative to the body.
-- `layout.inventory_arrows.*.hitbox` is relative to the inventory panel.
+- `layout.inventory_arrows.*.hitbox` is relative to the inventory panel;
+  `layout.inventory_pagination.previous` / `.next` are relative to the pagination
+  rect.
 - `settings_button.position` is normalized within the panel: `[0, 0]` is the
   panel's top-left and `[1, 1]` is its bottom-right. `anchor` determines which
   point of the button is placed there.
 - At runtime, rectangles and hitboxes scale by
   `runtime_width / design_width` and `runtime_height / design_height`.
+
+Colors are `#RRGGBB`, or `#RRGGBBAA` where a control should fade rather than
+recolor (e.g. a disabled cell dimming over panel art).
+
+!!! warning "State the grid `padding` and `cell_gap`"
+    `layout.verb_panel` and `layout.inventory_panel` inherit the *classic* grid
+    defaults for any key they omit — including the inventory's 52px right padding
+    (the old arrow gutter) and 8px cell gap. A new panel that sets its own `rect`
+    but leaves those unset will get non-square, mis-sized cells. Set them
+    explicitly.
 
 Top-level shape:
 
@@ -162,12 +191,16 @@ Top-level shape:
 | `layout.body.rect` | req | rect | — | Parent region for verbs and inventory. |
 | `layout.verb_panel` | opt | grid | 3x3 classic grid | Grid rect, row/column count, padding, and cell gap. Optional `style: buttons` (default) or `text`. |
 | `layout.inventory_panel` | opt | grid | 2x4 classic grid | Inventory grid; page capacity is `rows * columns`. Optional `style: text` (default) or `icons`. |
-| `layout.inventory_arrows.mode` | opt | enum | `draw` | `draw`, `background_variants`, or `none`. Ignored when `inventory_panel.style: icons`. |
+| `layout.inventory_arrows.mode` | opt | enum | `draw` | `draw`, `background_variants`, or `none`. Paging for the **text** inventory. |
+| `layout.inventory_pagination` | opt | map | disabled | Paging for the **icons** inventory, in its own zone instead of a gutter cut from the inventory rect. Body-relative `rect`, plus `previous` / `next` sub-rects. Requires `inventory_panel.style: icons`. |
 | `content.verbs` | opt | `[verb id]` | classic 9 verbs | Row-major verb order. Use canonical ids such as `open`, `look_at`, and `pick_up`; labels come from UI strings. |
 | `evidence_indicator` | opt | map | disabled | Optional `{label} x/n` readout (issue #172). See below. |
 | `notebook` | opt | map | disabled | Optional in-panel notebook access links (issue #172). See below. |
-| `settings_button` | opt | map | disabled | Optional Settings button. Supports `enabled`, normalized `position`, `anchor`, design-pixel `size`, `render_mode: panel | image`, `panel` label/style, and `image.normal` / `image.hovered`. |
-| `skin.command_text`, `skin.verb_text`, `skin.inventory_text` | opt | text style | built-in colors | `font`, `size`, `color`, `hover_color`, `disabled_color`, `align`, and an optional `outline_thickness` (design px, `0` = none) + `outline_color` (default black). The `evidence_indicator.text` / `notebook.text` styles take the same fields. |
+| `settings_button` | opt | map | disabled | A single Settings button placed by a normalized `position` + `anchor`. Superseded by `system_buttons` for anything with more than one control; both still work. |
+| `system_buttons` | opt | list | none | Ordered systemic controls, each with a body-relative `rect`, an `action` (`open_settings`, `open_menu`, `push_scene` + `scene`), an optional `label_key` and `icon`, and `render_mode: panel \| image`. See below. |
+| `skin.command_text`, `skin.verb_text`, `skin.inventory_text`, `skin.system_button_text` | opt | text style | built-in colors | `font`, `size`, `color`, `hover_color`, `selected_color`, `disabled_color`, `align`, and an optional `outline_thickness` (design px, `0` = none) + `outline_color` (default black). The `evidence_indicator.text` / `notebook.text` styles take the same fields. |
+| `skin.verb_button`, `skin.inventory_slot`, `skin.system_button` | opt | button skin | classic accent fills | The *box* of a framed control, per state: `background`/`border`, `hover_background`/`hover_border`, `selected_background`/`selected_border`, `disabled_background`/`disabled_border`, and `border_thickness` (design px). The label color lives in the matching text style. Borders grow inward, so a thick highlight never bleeds into the neighbouring cell. |
+| `skin.command_bar` | opt | map | classic strip | `background`, `separator`, `separator_thickness` (design px; `0` = no rule) for the command-bar band drawn over a solid panel. |
 | `skin.panel.background_variants` | opt | map key -> path | none | Background images for arrow visibility/hover states. |
 
 Arrow modes:
@@ -199,8 +232,31 @@ existing panel config (and the engine default) is unchanged:
   by the rect. `style: buttons` (default) keeps the framed grid.
 - `layout.inventory_panel.style: icons` renders exactly `rows * columns` fixed
   slots with a frame and, per held item, its `icon` (from `inventory.yaml`) or a
-  drawn placeholder glyph. There is no paging, so `inventory_arrows` is ignored.
-  `style: text` (default) keeps the localized-name list with paging.
+  drawn placeholder glyph. An empty slot keeps its frame and draws nothing else.
+  The held item that is the command's current operand keeps the `selected_*`
+  accent — including across a page flip, since selection is tracked by item id.
+  `style: text` (default) keeps the localized-name list.
+- The icons inventory pages with vertical arrows. By default they sit in a gutter
+  carved out of the right of the inventory rect; set `layout.inventory_pagination`
+  to move them into their own zone and give the slots the whole rect.
+  `layout.inventory_arrows` does not apply to the icons style.
+
+Systemic buttons (`system_buttons`) — an ordered list of panel controls that are
+UI navigation, not command grammar: they never select verbs, select inventory,
+page inventory, or mutate command state. Each has a body-relative `rect`, so a
+panel can lay out a real controls column (`settings_button` could only ever be one
+control anchored at a normalized point).
+
+- `action: open_settings` opens the `SettingsScene` overlay
+  (`SceneManager::open_settings()`).
+- `action: open_menu` opens the in-room pause menu (save / load / settings / quit).
+- `action: push_scene` pushes the named `scene` — the general escape hatch (a
+  journal, a map, a close-up).
+- `render_mode: panel` (default) draws a `skin.system_button` box with an optional
+  leading `icon` and the `label_key` label; `render_mode: image` draws
+  `image.normal`, switching to `image.hovered` under the pointer.
+- They stay live during a dialog, and the dialog option text is laid out to stop
+  short of the leftmost systemic button so the two never overlap.
 
 Evidence indicator (`evidence_indicator`) — a non-clickable `{label} x/n` readout
 for deduction-style games. The counts come from two engine state keys the game /
@@ -232,6 +288,8 @@ provide neither `skin.panel.background_variants.normal` nor a panel background
 image, and image-rendered Settings buttons without `image.normal`.
 
 ## UI strings — `strings/<lang>.yaml`
+
+<a id="ui-strings--stringslangyaml"></a>
 
 The strings resource holds every user-facing string the engine itself generates:
 verb labels, command connectors, and built-in menu labels. It does **not** hold
@@ -309,6 +367,8 @@ defaults:
 > dispatch wiring is tracked as a follow-up.
 
 ## Cast — `cast.yaml`
+
+<a id="cast--castyaml"></a>
 
 Worked example: [05 — Scripting API](05-scripting-api.md).
 
@@ -491,6 +551,8 @@ shader:
 ```
 
 ## Cutscene — `cutscenes/<id>.yaml`
+
+<a id="cutscene--cutscenesidyaml"></a>
 
 Data file for the `Cutscene` scene type (issue #116) — a list of slides over a
 solid-black background, with auto / manual / timed advancement.
@@ -816,6 +878,8 @@ declared. The guard is active in development builds (and in Release when
 reads/writes, so release is never blocked.
 
 ## Player settings — `settings.yaml`
+
+<a id="player-settings--settingsyaml"></a>
 
 Player-facing preferences, persisted in the per-user **config** location (not the
 resource root): `$XDG_CONFIG_HOME/<id>/settings.yaml` (or `~/.config/<id>/…`) on

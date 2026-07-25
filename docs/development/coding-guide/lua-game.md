@@ -1,7 +1,7 @@
 # Lua and Game Content Authoring Guide
 
 This guide is for game authors writing the Lua scripts and YAML data that make
-up a game. The [design documents](../design/) are the source of truth
+up a game. The [design documents](../design/00-index.md) are the source of truth
 for schemas and runtime semantics; this guide focuses on the rules and patterns
 authors should follow when writing content.
 
