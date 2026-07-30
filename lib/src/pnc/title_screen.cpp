@@ -121,7 +121,7 @@ void TitleScreen::rebuild_entries() {
         entries_.push_back({ctx_.strings.ui_label("load_game"), Action::LOAD_GAME, 0.0f});
     }
     entries_.push_back({ctx_.strings.ui_label("settings"), Action::SETTINGS, 0.0f});
-    entries_.push_back({ctx_.strings.ui_label("quit"), Action::EXIT, 0.0f});
+    entries_.push_back({ctx_.strings.ui_label("quit_to_os"), Action::EXIT, 0.0f});
 
     if (font_ != nullptr) {
         for (Entry& e : entries_) {

@@ -24,6 +24,8 @@ connectors:
   give: "a"
 ui:
   walk_to: "Ir a"
+  quit_to_os: "Salir del juego"
+  quit_to_title: "Volver al inicio"
 defaults:
   cant_look_at: "No veo nada."
   cant_pick_up: "No puedo agarrarlo."
@@ -45,6 +47,8 @@ TEST_CASE("parse_strings reads blocks and caption() returns last-resort text") {
     CHECK(s.verb_label("look_at") == "Mirar");
     CHECK(s.connector("use") == "con");
     CHECK(s.ui_label("walk_to") == "Ir a");
+    CHECK(s.ui_label("quit_to_os") == "Salir del juego");
+    CHECK(s.ui_label("quit_to_title") == "Volver al inicio");
     CHECK(s.caption("nothing_happens") == "No pasa nada.");
     CHECK(s.caption("no_one_to_give_to") == "A nadie.");
     CHECK(s.caption("missing") == "?missing"); // visible placeholder, not silent

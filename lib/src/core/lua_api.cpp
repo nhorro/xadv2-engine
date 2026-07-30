@@ -70,6 +70,16 @@ void bind_core_api(EngineContext& ctx) {
     lua.set_function("play_music", [&ctx](const std::string& path, sol::optional<bool> loop) {
         ctx.audio.music.play(path, loop.value_or(true));
     });
+    lua.set_function("crossfade_music",
+                     [&ctx](const std::string& path,
+                            sol::optional<float> seconds,
+                            sol::optional<bool> preserve_offset,
+                            sol::optional<bool> loop) {
+                         return ctx.audio.music.crossfade(path,
+                                                          seconds.value_or(2.5f),
+                                                          preserve_offset.value_or(false),
+                                                          loop.value_or(true));
+                     });
     lua.set_function("stop_music", [&ctx]() { ctx.audio.music.stop(); });
     lua.set_function(
         "play_sound",
@@ -122,6 +132,8 @@ void bind_core_api(EngineContext& ctx) {
         }
         return ctx.state.erase("__case_term." + id);
     });
+    lua.set_function("clear_case_terms",
+                     [&ctx]() { return ctx.state.erase_prefix("__case_term."); });
 
     // --- declared facts (#188): the `facts.<ns>.<name>` proxy over state ---
     // `facts.yaml` is optional: a missing file leaves an empty registry (guard

@@ -58,6 +58,10 @@ struct RoomHotspot {
 struct RoomAvatarPlacement {
     std::string id;
     std::string start; // point name
+    // Optional point from which the player walks into the room on a normal
+    // entry. Usually just beyond a screen edge; `start` remains the destination.
+    // Save restores and change_room(..., explicit_entry_point) skip this walk.
+    std::string enter_from;
     std::string orientation = "down";
     bool player = false;
 };

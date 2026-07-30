@@ -198,6 +198,51 @@ select {
   background: #10b981;
 }
 
+#avatars-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.avatar-item {
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  cursor: pointer;
+}
+
+.avatar-item.selected {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.compact-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.compact-row label {
+  width: 3rem;
+  margin: 0;
+}
+
+.compact-row input[type="number"] {
+  width: 5.5rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+#avatar-values {
+  margin-top: 0.75rem;
+  user-select: text;
+}
+
 pre {
   margin: 0;
   padding: 0.75rem;
@@ -210,11 +255,14 @@ pre {
 
 .canvas-panel {
   padding: 1rem;
+  height: calc(100vh - 86px);
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
 }
 
 #room-canvas {
-  width: 100%;
-  height: calc(100vh - 116px);
+  display: block;
   border-radius: 20px;
   background: #0f172a;
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);

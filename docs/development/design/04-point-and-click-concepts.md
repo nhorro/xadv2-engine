@@ -184,7 +184,9 @@ hotspots:
     affordances: [ look_at, use, pick_up ]
 
 avatars:
-  - { id: julia, start: player_start, orientation: down, player: true }
+  # Optional enter_from makes Julia walk on-screen before on_player_entered.
+  - { id: julia, start: player_start, enter_from: beyond_door,
+      orientation: down, player: true }
   - { id: schneider, start: at_drawer, orientation: left }
 ```
 
@@ -195,6 +197,12 @@ local room = {}
 
 function room.on_load()
   play_music("music/study.ogg", true)
+end
+
+-- Called after an opt-in `enter_from` walk reaches the normal `start` point.
+-- Save restores and explicit change_room entry points do not replay the walk.
+function room.on_player_entered()
+  talk("player", "Llegué.")
 end
 
 function room.on_unload()
@@ -605,8 +613,11 @@ is configured the OS cursor is kept.
 The harness owns the cursor and applies it once per frame from a request channel
 (`EngineContext::cursor`): a scene calls `cursor.want(INTERACT)` each frame the
 pointer is over a hotspot, and the request resets to `DEFAULT` automatically, so
-the cursor falls back the moment the scene stops asking. An animated/blinking
-cursor is a possible later iteration.
+the cursor falls back the moment the scene stops asking. A scene over a
+contrasting background may also call `cursor.want_inverted()` each frame; the
+harness preserves alpha and inverts the authored cursor's RGB channels, then
+restores its normal tone when the request stops. An animated/blinking cursor is a
+possible later iteration.
 
 ## Avatars
 
@@ -1003,11 +1014,13 @@ into "awaiting a choice".
 
 Long option labels **word-wrap** at word boundaries to the available width (no
 word is clipped off the edge). When the options do not all fit in the panel, they
-**page**: small vertical up/down arrows appear in a right-hand gutter (and *only*
-when more than one page is needed). Paging is line-aware — options are packed onto
-a page by their wrapped height, and an option that would not fit in the remaining
-space is **promoted whole to the next page** rather than split or clipped. The
-wrap + page-packing logic is pure (`layout_dialog_options`) and headless-tested.
+**page**: small vertical up/down arrows appear in a gutter at the panel's true
+right edge (and *only* when more than one page is needed). Dialog mode does not
+render the system/settings buttons, so their column is reclaimed for options and
+the paging gutter. Paging is line-aware — options are packed onto a page by their
+wrapped height, and an option that would not fit in the remaining space is
+**promoted whole to the next page** rather than split or clipped. The wrap +
+page-packing logic is pure (`layout_dialog_options`) and headless-tested.
 
 ### Dialog format
 
@@ -1148,8 +1161,11 @@ the dialog on its own once every option is consumed or filtered out.
 ## Speech
 
 Speech is rendered over the scenery near the speaker. The speech font is the
-`RoomScene` `font` parameter (a logical path; an engine default applies when
-omitted); per-character speech color and style come from the cast file.
+game manifest's top-level `speech.font`, and its size is `speech.font_size`
+(default `24` virtual pixels). When `speech.font` is omitted, the active scene's
+UI font is used for compatibility. The same presentation applies to scripted
+close-up speech and to case-resolution follow-up speech scheduled for the room.
+Per-character speech colour and placement clearance come from the cast file.
 
 Anchoring follows the speaker: the player's lines sit over the player; an NPC's
 lines via `talk(npc, ...)` sit over that NPC's avatar. A fixed prop that is not
@@ -1243,4 +1259,3 @@ may later declare an optional `icon` — a spritesheet frame id or image logical
 path — which the SCUMM panel draws instead of text. Inventory items support the
 same optional `default_verb` as hotspots: it must be one of the item's
 `affordances` and defaults to `look_at`.
-

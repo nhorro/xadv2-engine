@@ -20,6 +20,9 @@ resources: { src: "." }
 strings: strings/es.yaml
 settings:
   audio: { music_volume: 0.8, sfx_volume: 0.5 }
+speech:
+  font: fonts/dialogue.ttf
+  font_size: 30
 development:
   allow_room_reload: true
 entry: title
@@ -45,6 +48,8 @@ TEST_CASE("valid manifest parses with expected fields") {
     CHECK(m.strings_path == "strings/es.yaml");
     CHECK(m.settings.music_volume == doctest::Approx(0.8f));
     CHECK(m.settings.sfx_volume == doctest::Approx(0.5f));
+    CHECK(m.speech.font == "fonts/dialogue.ttf");
+    CHECK(m.speech.font_size == 30u);
     CHECK(m.development.allow_room_reload == true);
     CHECK(m.entry == "title");
     REQUIRE(m.scenes.size() == 2);
@@ -55,6 +60,26 @@ TEST_CASE("valid manifest parses with expected fields") {
     CHECK(title->parameters.get_or("new_game", "") == "gameplay");
     CHECK(title->parameters.get_or("exit", "") == "QUIT");
     CHECK(m.find_scene("nope") == nullptr);
+}
+
+TEST_CASE("speech config is optional and validates its font size") {
+    const Manifest defaults =
+        parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                       "resources: { src: . }\nstrings: s\nentry: a\n"
+                       "scenes: [{id: a, type: B}]\n");
+    CHECK(defaults.speech.font.empty());
+    CHECK(defaults.speech.font_size == 24u);
+
+    CHECK_THROWS_AS(parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                                   "resources: { src: . }\nstrings: s\nentry: a\n"
+                                   "speech: { font_size: 0 }\n"
+                                   "scenes: [{id: a, type: B}]\n"),
+                    ManifestError);
+    CHECK_THROWS_AS(parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                                   "resources: { src: . }\nstrings: s\nentry: a\n"
+                                   "speech: large\n"
+                                   "scenes: [{id: a, type: B}]\n"),
+                    ManifestError);
 }
 
 TEST_CASE("missing required fields throw ManifestError") {

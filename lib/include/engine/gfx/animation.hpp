@@ -13,6 +13,7 @@ struct FrameRef {
 
 struct Sequence {
     bool loop = false;
+    bool h_mirror = false;
     std::vector<FrameRef> frames;
 };
 

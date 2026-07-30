@@ -4,6 +4,7 @@
 
 #include <SFML/Graphics/Color.hpp>
 
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
@@ -22,6 +23,10 @@ struct CaseTermBank {
     std::vector<CaseTerm> terms;
     [[nodiscard]] const CaseTerm* find(const std::string& id) const;
 };
+
+/// Stable author-defined tag -> display accent. Keeping this shared means every UI
+/// that presents case terms gives a tag the same visual identity.
+[[nodiscard]] sf::Color case_term_color(const std::string& tag, std::uint8_t alpha = 255);
 
 struct CaseSlot {
     std::string id;

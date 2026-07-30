@@ -20,6 +20,10 @@ languages:
     name: "English"
     strings: strings/en.yaml
 
+speech:
+  font: fonts/DepartureMono-Regular.otf
+  font_size: 24
+
 development:
   edit_mode: true
   show_walkboxes: false

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/core/speech_config.hpp"
+
 #include <string>
 
 namespace pac::core {
@@ -59,6 +61,8 @@ struct EngineContext {
     /// candidates (`Scene::wants_thumbnail()`); the in-game pause menu hands
     /// it to `SaveService` when the player opens the save picker.
     Thumbnail& thumbnail;
+    /// Game-wide spoken-line typography. Scene-specific fonts remain UI fonts.
+    SpeechConfig speech;
 };
 
 } // namespace pac::core

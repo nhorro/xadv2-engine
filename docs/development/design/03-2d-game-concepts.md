@@ -96,7 +96,7 @@ asset return the same loaded instance.
 | Sound buffer | Fully loaded and cached. |
 | Shader | Fully loaded and cached. |
 | YAML/Lua data | Loaded through the resource layer; caching depends on subsystem needs. |
-| Music | Streamed as one active track; not cached as a full buffer. |
+| Music | Streamed through two decks for crossfades; not decoded as full buffers. |
 
 ### Packed archive design-for
 
@@ -166,6 +166,8 @@ supports the usual sprite rendering operations:
 An animated sprite designates one anchor as its pivot. Setting the sprite's
 position places the current frame's pivot at that world position. This keeps feet,
 hands, or other anchors stable across frames without per-frame offset logic.
+When a sequence sets `h_mirror: true`, its frames and frame-local anchors are
+mirrored horizontally around that pivot.
 
 Example animation file:
 
@@ -188,6 +190,13 @@ sequences:
       - { sprite: frame_002, duration: 0.10 }
       - { sprite: frame_003, duration: 0.10 }
       - { sprite: frame_004, duration: 0.10 }
+
+  walk_left:
+    loop: true
+    h_mirror: true
+    frames: # reuse right-facing art without duplicating atlas frames
+      - { sprite: frame_005, duration: 0.10 }
+      - { sprite: frame_006, duration: 0.10 }
 
   pick_up_down:
     loop: false
@@ -607,7 +616,7 @@ The engine exposes two global audio services.
 
 | Service | Purpose |
 |---------|---------|
-| `MusicPlayer` | One streamed background track at a time. |
+| `MusicPlayer` | Two streamed decks for immediate changes and crossfades. |
 | `SoundPlayer` | Short overlapping sound effects. |
 
 ### Music player
@@ -615,14 +624,18 @@ The engine exposes two global audio services.
 The music player supports:
 
 - `play(path, loop)`;
+- `crossfade(path, seconds, preserve_offset, loop)`;
 - `stop()`;
-- replacing the current track by playing a new one;
+- immediate replacement or equal-power two-track transitions;
+- optional offset preservation for synchronized variations;
 - volume controlled by settings.
 
 Lua API:
 
 ```lua
 play_music("music/study.ogg", true)
+crossfade_music("music/hall.ogg", 2.5)
+crossfade_music("music/study_danger.ogg", 1.0, true) -- aligned variation
 stop_music()
 ```
 
@@ -649,7 +662,6 @@ stop_sounds()
 
 ### Packed resource note
 
-`sf::Music` streams from a file. In packed mode, the selected music track may be
-extracted to a temporary file and streamed from there. Other assets should load
-from streams directly when possible.
-
+Both `sf::Music` decks stream from stable buffers owned by `ResourceCache`, using
+`openFromMemory` in loose and packed builds. A crossfade therefore overlaps
+streaming rather than decoding either track into a full sound buffer.

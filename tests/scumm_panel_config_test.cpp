@@ -574,6 +574,30 @@ TEST_CASE("scumm panel systemic buttons emit their configured action") {
     CHECK(menu.kind == PanelIntent::Kind::OPEN_MENU);
 }
 
+TEST_CASE("dialog pagination reclaims the systemic-buttons column") {
+    ScummPanelConfig cfg = default_scumm_panel_config({0.0f, 0.0f, 100.0f, 100.0f});
+    ScummSystemButton options_button;
+    options_button.id = "options";
+    options_button.rect = {60.0f, 0.0f, 20.0f, 24.0f};
+    options_button.action = ScummSystemAction::OPEN_SETTINGS;
+    cfg.system_buttons.push_back(std::move(options_button));
+    ScummSystemButton menu_button;
+    menu_button.id = "menu";
+    menu_button.rect = {60.0f, 24.0f, 20.0f, 24.0f};
+    menu_button.action = ScummSystemAction::OPEN_MENU;
+    cfg.system_buttons.push_back(std::move(menu_button));
+    ScummPanel panel(std::move(cfg), {100, 100}, nullptr, nullptr);
+    const std::vector<std::string> options{"a", "b", "c", "d", "e"};
+    REQUIRE(panel.dialog_page_count(options) > 1);
+
+    // The full dialog area is x 10..90 after padding, so its arrow gutter is at
+    // the far right (roughly x 67..90). Before the fix, options_area() stopped
+    // before the system-button column and this click missed the arrow.
+    const DialogClick next = panel.click_dialog({75.0f, 75.0f}, options, 0);
+    CHECK(next.kind == DialogClick::Kind::PAGE);
+    CHECK(next.page_index == 1);
+}
+
 TEST_CASE("scumm panel push_scene systemic buttons carry the scene id") {
     ScummPanelConfig cfg = parse_scumm_panel_config(systemic_panel_yaml(), "ui/panel.yml");
     cfg.system_buttons[1].action = ScummSystemAction::PUSH_SCENE;

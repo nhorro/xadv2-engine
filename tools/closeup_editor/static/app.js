@@ -9,14 +9,18 @@ const deleteBtn = document.getElementById("delete-btn");
 const saveBtn = document.getElementById("save-btn");
 const statusEl = document.getElementById("status");
 const listEl = document.getElementById("hotspot-list");
+const editorTitleEl = document.getElementById("editor-title");
+const areasTitleEl = document.getElementById("areas-title");
 const propsEl = document.getElementById("props");
 const propIdEl = document.getElementById("prop-id");
 const propNameEl = document.getElementById("prop-name");
+const propNameLabelEl = document.getElementById("prop-name-label");
 const propApplyBtn = document.getElementById("prop-apply");
 
 // --- state -------------------------------------------------------------------
 const state = {
   info: null,
+  kind: "closeup", // 'closeup' | 'template'
   background: null, // logical path
   bgImage: null,
   hotspots: [], // [{ id, name, area: [{x, y}] }]
@@ -30,6 +34,20 @@ const state = {
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
   statusEl.classList.toggle("error", !!isError);
+}
+
+function configureKind(kind) {
+  state.kind = kind === "template" ? "template" : "closeup";
+  const isTemplate = state.kind === "template";
+  editorTitleEl.textContent = isTemplate
+    ? "Case template slot editor"
+    : "Close-up hotspot editor";
+  areasTitleEl.textContent = isTemplate ? "Slots" : "Hotspots";
+  newBtn.hidden = isTemplate;
+  deleteBtn.hidden = isTemplate;
+  propIdEl.disabled = isTemplate;
+  propNameLabelEl.hidden = isTemplate;
+  propApplyBtn.hidden = isTemplate;
 }
 
 async function getJson(url) {
@@ -373,11 +391,15 @@ async function save() {
     const res = await fetch("/api/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hotspots: map }),
+      body: JSON.stringify({ areas: map }),
     });
     const data = await res.json();
-    if (data.ok) setStatus(`Saved ${state.hotspots.length} hotspot(s).`);
-    else setStatus(`Save failed: ${data.error}`, true);
+    if (data.ok) {
+      const noun = state.kind === "template" ? "slot" : "hotspot";
+      setStatus(`Saved ${state.hotspots.length} ${noun}(s).`);
+    } else {
+      setStatus(`Save failed: ${data.error}`, true);
+    }
   } catch (e) {
     setStatus(`Save failed: ${e}`, true);
   }
@@ -407,9 +429,15 @@ function loadBackground(logical) {
 
 async function loadCloseup() {
   const data = await getJson("/api/closeup");
-  state.background = typeof data.background === "string" ? data.background : null;
+  configureKind(data.editor_kind);
+  if (data.resolution) {
+    canvas.width = data.resolution.width;
+    canvas.height = data.resolution.height;
+  }
+  const background = data.asset_background ?? data.background;
+  state.background = typeof background === "string" ? background : null;
   state.hotspots = [];
-  const hs = data.hotspots || {};
+  const hs = data.areas || {};
   for (const [id, spec] of Object.entries(hs)) {
     if (!spec || !Array.isArray(spec.area)) continue;
     state.hotspots.push({
@@ -426,10 +454,6 @@ async function loadCloseup() {
 
 async function init() {
   state.info = await getJson("/api/info");
-  if (state.info.resolution) {
-    canvas.width = state.info.resolution.width;
-    canvas.height = state.info.resolution.height;
-  }
 
   const list = await getJson("/api/closeups");
   closeupSelect.innerHTML = "";

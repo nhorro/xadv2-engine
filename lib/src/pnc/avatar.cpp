@@ -21,6 +21,7 @@ void Avatar::play(const std::string& sequence) {
     if (!sprite_.has(sequence)) {
         return; // unknown sequence: leave the mover-driven animation in place
     }
+    talking_ = false;
     acting_ = sequence;
     sprite_.play(sequence, true); // restart from the first frame
 }
@@ -33,6 +34,24 @@ std::optional<geom::Point> Avatar::anchor(const std::string& name) const {
 }
 
 void Avatar::apply_animation() {
+    if (talking_) {
+        const std::string preferred = std::string("talk_") + to_string(mover_.facing());
+        // Preserve the current facing when that rig exists. A partial rig may
+        // only ship one talk direction, though, so accept any authored direction
+        // before falling back to a direction-neutral loop.
+        for (const std::string& candidate : {preferred,
+                                             std::string("talk_right"),
+                                             std::string("talk_down"),
+                                             std::string("talk_left"),
+                                             std::string("talk_up"),
+                                             std::string("talk")}) {
+            if (sprite_.has(candidate)) {
+                sprite_.play(candidate, false);
+                return;
+            }
+        }
+        talking_ = false; // no talk rig: use the normal stand fallback below
+    }
     if (!acting_.empty()) {
         // A scripted play() sequence holds until a non-looping one finishes (then
         // control returns to stand/walk); a looping one runs until movement
@@ -74,19 +93,36 @@ void Avatar::face(Direction direction) {
 }
 
 void Avatar::move_to(geom::Point target) {
-    acting_.clear(); // walking cancels a scripted play()
+    talking_ = false; // walking cancels a talk loop
+    acting_.clear();  // walking cancels a scripted play()
     mover_.move_to(target);
     apply_animation();
 }
 
 void Avatar::follow_path(std::vector<geom::Point> path) {
-    acting_.clear(); // walking cancels a scripted play()
+    talking_ = false; // walking cancels a talk loop
+    acting_.clear();  // walking cancels a scripted play()
     mover_.follow_path(std::move(path));
     apply_animation();
 }
 
 void Avatar::stop() {
     mover_.stop();
+    apply_animation();
+}
+
+void Avatar::talk() {
+    mover_.stop();
+    acting_.clear();
+    talking_ = true;
+    apply_animation();
+}
+
+void Avatar::stop_talking() {
+    if (!talking_) {
+        return;
+    }
+    talking_ = false;
     apply_animation();
 }
 

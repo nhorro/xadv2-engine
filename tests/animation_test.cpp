@@ -1,9 +1,12 @@
+#include "engine/gfx/animated_sprite.hpp"
 #include "engine/gfx/animation.hpp"
 #include "engine/gfx/asset_error.hpp"
 #include "engine/gfx/sequence_player.hpp"
+#include "engine/gfx/spritesheet.hpp"
 #include "loader_diag.hpp"
 
 #include <doctest/doctest.h>
+#include <SFML/Graphics/Texture.hpp>
 
 using namespace pac::gfx;
 using pac::test::error_code;
@@ -29,6 +32,11 @@ sequences:
     frames:
       - { sprite: w0, duration: 0.10 }
       - { sprite: w1, duration: 0.10 }
+  walk_left:
+    loop: true
+    h_mirror: true
+    frames:
+      - { sprite: f0, duration: 0.10 }
 )YAML";
 
 } // namespace
@@ -40,7 +48,9 @@ TEST_CASE("parse_animation reads pivot, spritesheet, and sequences") {
     REQUIRE(a.has("walk"));
     CHECK(a.sequence("walk")->frames.size() == 3);
     CHECK(a.sequence("walk")->loop);
+    CHECK_FALSE(a.sequence("walk")->h_mirror);
     CHECK_FALSE(a.sequence("wave")->loop);
+    CHECK(a.sequence("walk_left")->h_mirror);
     CHECK(a.sequence("nope") == nullptr);
 }
 
@@ -72,6 +82,16 @@ TEST_CASE("SequencePlayer handles a large dt across multiple frames") {
     CHECK(p.current_frame_id() == "f2");
 }
 
+TEST_CASE("SequencePlayer exposes horizontal mirroring for the current sequence") {
+    SequencePlayer p(parse_animation(kAnim));
+
+    CHECK_FALSE(p.current_h_mirror());
+    p.play("walk");
+    CHECK_FALSE(p.current_h_mirror());
+    p.play("walk_left");
+    CHECK(p.current_h_mirror());
+}
+
 TEST_CASE("non-looping sequence finishes, fires callback, and holds last frame") {
     SequencePlayer p(parse_animation(kAnim));
     bool done = false;
@@ -87,4 +107,46 @@ TEST_CASE("non-looping sequence finishes, fires callback, and holds last frame")
     CHECK(p.current_frame_id() == "w1"); // holds last frame
     p.update(1.0f);                      // no further movement
     CHECK(p.current_frame_id() == "w1");
+}
+
+TEST_CASE("AnimatedSprite mirrors bounds and frame-local anchors around its pivot") {
+    sf::Texture texture;
+    SpritesheetData sheet_data;
+    Frame frame;
+    frame.rect = sf::IntRect(0, 0, 10, 20);
+    frame.anchors["foot"] = {2.0f, 18.0f};
+    frame.anchors["hand"] = {8.0f, 5.0f};
+    sheet_data.frames.emplace("frame", std::move(frame));
+
+    Animation anim;
+    anim.pivot = "foot";
+    Sequence normal;
+    normal.frames.push_back({"frame", 0.1f});
+    anim.sequences.emplace("normal", normal);
+    Sequence mirrored = normal;
+    mirrored.h_mirror = true;
+    anim.sequences.emplace("mirrored", mirrored);
+
+    AnimatedSprite sprite(Spritesheet(std::move(sheet_data), texture), std::move(anim));
+    sprite.setPosition(100.0f, 200.0f);
+
+    sprite.play("normal");
+    sf::FloatRect bounds = sprite.global_bounds();
+    CHECK(bounds.left == doctest::Approx(98.0f));
+    CHECK(bounds.top == doctest::Approx(182.0f));
+    CHECK(bounds.width == doctest::Approx(10.0f));
+    CHECK(bounds.height == doctest::Approx(20.0f));
+    REQUIRE(sprite.anchor_world("hand").has_value());
+    CHECK(sprite.anchor_world("hand")->x == doctest::Approx(106.0f));
+    CHECK(sprite.anchor_world("hand")->y == doctest::Approx(187.0f));
+
+    sprite.play("mirrored");
+    bounds = sprite.global_bounds();
+    CHECK(bounds.left == doctest::Approx(92.0f));
+    CHECK(bounds.top == doctest::Approx(182.0f));
+    CHECK(bounds.width == doctest::Approx(10.0f));
+    CHECK(bounds.height == doctest::Approx(20.0f));
+    REQUIRE(sprite.anchor_world("hand").has_value());
+    CHECK(sprite.anchor_world("hand")->x == doctest::Approx(94.0f));
+    CHECK(sprite.anchor_world("hand")->y == doctest::Approx(187.0f));
 }

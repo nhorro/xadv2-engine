@@ -84,7 +84,11 @@ public:
     // done"). Empty -> nothing to show, so the wrapper never waits. The wrapper only
     // waits when running inside a coroutine task; on the main thread (a plain hook /
     // verb handler) talk stays fire-and-forget.
-    [[nodiscard]] std::string api_talk(const std::string& speaker_id, const std::string& text);
+    [[nodiscard]] std::string
+    api_talk(const std::string& speaker_id,
+             const std::string& text,
+             bool continue_action = false,
+             const std::optional<std::string>& face_target = std::nullopt);
     // Start dialog `dialog_id` (file `dialogs/<dialog_id>.lua`), spoken by cast
     // character `speaker_id` (its speech colour + over-head bubble; defaults to
     // dialog_id). The split lets one NPC have several topic-named dialogs.
@@ -112,6 +116,16 @@ public:
                                                         const std::string& sequence);
     [[nodiscard]] std::optional<geom::Point> api_avatar_anchor(const std::string& id,
                                                                const std::string& name) const;
+
+    /// Start/stop the engine-owned animation associated with the single active
+    /// speech bubble. `continue_action` deliberately leaves the avatar alone.
+    void begin_talk_animation(const std::string& speaker_id,
+                              bool continue_action,
+                              const std::optional<std::string>& face_target = std::nullopt);
+    void end_talk_animation();
+    /// Dialogs are conversations: stop both participants and turn them toward
+    /// each other before the first line.
+    void prepare_dialog_participants(const std::string& npc_id);
 
     // Scripted object transform/movement — the `object(id)` Lua handle (#142).
     // `move_to` is a free linear move (objects are not pathfound); it returns an
@@ -173,7 +187,7 @@ public:
 private:
     void load_room(const std::string& id, const std::string& entry_point);
     void unload_room();
-    void seat_player(const std::string& entry_point);
+    void seat_player(const std::string& entry_point, bool allow_entry_walk);
     void spawn_room_npcs();
     // Declarative configs (#185). `apply_room_config` resolves the room's effective
     // config (persisted value, else its `start`), persists it, reconciles presence,
@@ -321,9 +335,11 @@ private:
     std::string inventory_path_;
     std::string inventory_logic_;
     std::string logic_path_;
+    std::string development_logic_path_;
     std::vector<PauseOverlayAction> pause_overlays_;
 
     const sf::Font* font_ = nullptr;
+    const sf::Font* speech_font_ = nullptr;
     Cast cast_;
     InventoryModel inventory_;
     std::optional<RoomRuntime> room_;
@@ -354,6 +370,15 @@ private:
     // yielded (M9 #183). While set, the view is BLOCKED and update() polls
     // is_task_alive; when the task drains, finish_execution + restore COMMAND.
     std::optional<pac::core::TaskId> awaiting_handler_task_;
+
+    struct PendingPlayerEntry {
+        geom::Point target;
+        std::string final_orientation;
+    };
+    // Declarative `avatars[].enter_from`: while present, input stays blocked
+    // until the player reaches the normal start point. Completion fires the
+    // room's optional `on_player_entered` hook.
+    std::optional<PendingPlayerEntry> pending_player_entry_;
 
     // Persistent state across room changes — all folded into GameState by snap().
     std::map<std::string, std::map<std::string, pac::core::StateValue>> room_state_;
@@ -446,6 +471,7 @@ private:
     // leave an entry that emits to no waiter, which is harmless.
     std::vector<PendingMove> pending_speech_;
     std::uint64_t talk_seq_ = 0;
+    std::string talking_avatar_id_;
 
     // Resolved static point for the running dialog's NPC speech (from the dialog
     // file's `text_anchor`). Empty -> bubble follows the NPC avatar position.

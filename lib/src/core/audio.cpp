@@ -11,10 +11,16 @@
 
 namespace pac::core {
 
+detail::MusicCrossfadeGains detail::music_crossfade_gains(float progress) {
+    constexpr float kHalfPi = 1.57079632679f;
+    const float t = std::clamp(progress, 0.0f, 1.0f);
+    return {std::cos(t * kHalfPi), std::sin(t * kHalfPi)};
+}
+
 MusicPlayer::MusicPlayer(ResourceCache& resources, Diagnostics& log)
     : resources_(resources), log_(log) {}
 
-void MusicPlayer::play(const std::string& logical, bool loop) {
+bool MusicPlayer::open(int deck, const std::string& logical, bool loop) {
     // sf::Music streams from the buffer we pass in, so the buffer must outlive
     // the music (a requirement of openFromMemory). ResourceCache::persistent_bytes
     // caches the buffer with a stable address — the same path works for both the
@@ -24,39 +30,135 @@ void MusicPlayer::play(const std::string& logical, bool loop) {
         bytes = resources_.persistent_bytes(logical);
     } catch (const std::exception& e) {
         log_.warn(std::string("music: ") + e.what());
-        return;
+        return false;
     }
     if (!bytes || bytes->empty()) {
         log_.warn("music: could not load '" + logical + "'");
-        return;
+        return false;
     }
-    if (!music_.openFromMemory(bytes->data(), bytes->size())) {
+    if (!decks_[deck].openFromMemory(bytes->data(), bytes->size())) {
         log_.warn("music: could not decode '" + logical + "'");
+        return false;
+    }
+    decks_[deck].setLoop(loop);
+    return true;
+}
+
+void MusicPlayer::cancel_fade() {
+    if (!fading_)
+        return;
+
+    // A third request cannot keep all three streams alive with two decks. Keep
+    // whichever side of the interrupted fade is currently louder so a late
+    // interruption does not bring the nearly silent outgoing track back.
+    const detail::MusicCrossfadeGains gains =
+        detail::music_crossfade_gains(elapsed_ / fade_duration_);
+    if (incoming_ >= 0 && gains.incoming > gains.outgoing) {
+        decks_[active_].stop();
+        active_ = incoming_;
+    } else if (incoming_ >= 0) {
+        decks_[incoming_].stop();
+    }
+
+    decks_[active_].setVolume(volume_ * 100.0f);
+    incoming_ = -1;
+    fading_ = false;
+}
+
+void MusicPlayer::play(const std::string& logical, bool loop) {
+    cancel_fade();
+    const int next = 1 - active_;
+    decks_[next].stop();
+    if (!open(next, logical, loop))
+        return;
+
+    decks_[active_].stop();
+    active_ = next;
+    decks_[active_].setVolume(volume_ * 100.0f);
+    decks_[active_].play();
+}
+
+bool MusicPlayer::crossfade(const std::string& logical,
+                            float fade_seconds,
+                            bool preserve_offset,
+                            bool loop) {
+    cancel_fade();
+    const int next = 1 - active_;
+    decks_[next].stop();
+    if (!open(next, logical, loop))
+        return false;
+
+    if (preserve_offset && decks_[active_].getStatus() == sf::SoundSource::Playing) {
+        const float duration = decks_[next].getDuration().asSeconds();
+        if (duration > 0.0f) {
+            const float offset =
+                std::fmod(decks_[active_].getPlayingOffset().asSeconds(), duration);
+            decks_[next].setPlayingOffset(sf::seconds(offset));
+        }
+    }
+
+    decks_[next].setVolume(0.0f);
+    decks_[next].play();
+    incoming_ = next;
+    elapsed_ = 0.0f;
+    fade_duration_ = std::isfinite(fade_seconds) ? std::max(fade_seconds, 0.01f) : 2.5f;
+    fading_ = true;
+    apply_volumes();
+    return true;
+}
+
+void MusicPlayer::update(float delta_seconds) {
+    if (!fading_)
+        return;
+
+    elapsed_ += std::max(delta_seconds, 0.0f);
+    const float progress = std::clamp(elapsed_ / fade_duration_, 0.0f, 1.0f);
+    apply_volumes();
+    if (progress < 1.0f)
+        return;
+
+    decks_[active_].stop();
+    decks_[active_].setVolume(volume_ * 100.0f);
+    active_ = incoming_;
+    incoming_ = -1;
+    fading_ = false;
+    decks_[active_].setVolume(volume_ * 100.0f);
+}
+
+void MusicPlayer::apply_volumes() {
+    if (!fading_ || incoming_ < 0) {
+        decks_[active_].setVolume(volume_ * 100.0f);
         return;
     }
-    music_.setLoop(loop);
-    music_.setVolume(volume_ * 100.0f);
-    music_.play();
+    const detail::MusicCrossfadeGains gains =
+        detail::music_crossfade_gains(elapsed_ / fade_duration_);
+    decks_[active_].setVolume(volume_ * gains.outgoing * 100.0f);
+    decks_[incoming_].setVolume(volume_ * gains.incoming * 100.0f);
 }
 
 void MusicPlayer::stop() {
-    music_.stop();
+    for (sf::Music& deck : decks_)
+        deck.stop();
+    incoming_ = -1;
+    fading_ = false;
 }
 
 float MusicPlayer::playing_offset_seconds() const {
-    if (music_.getStatus() != sf::SoundSource::Playing) {
+    const sf::Music& current = incoming_ >= 0 ? decks_[incoming_] : decks_[active_];
+    if (current.getStatus() != sf::SoundSource::Playing) {
         return 0.0f;
     }
-    return music_.getPlayingOffset().asSeconds();
+    return current.getPlayingOffset().asSeconds();
 }
 
 bool MusicPlayer::is_playing() const {
-    return music_.getStatus() == sf::SoundSource::Playing;
+    const sf::Music& current = incoming_ >= 0 ? decks_[incoming_] : decks_[active_];
+    return current.getStatus() == sf::SoundSource::Playing;
 }
 
 void MusicPlayer::set_volume(float volume01) {
-    volume_ = volume01;
-    music_.setVolume(volume_ * 100.0f);
+    volume_ = std::clamp(volume01, 0.0f, 1.0f);
+    apply_volumes();
 }
 
 SoundPlayer::SoundPlayer(ResourceCache& resources, Diagnostics& log)

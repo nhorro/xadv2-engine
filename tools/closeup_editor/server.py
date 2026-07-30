@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .closeup_data import (
-    apply_hotspots,
+    apply_editable_areas,
+    background_asset_name,
+    document_kind,
+    editable_areas,
     list_closeups,
     load_closeup_yaml,
     resolve_within,
@@ -60,7 +63,32 @@ class CloseUpEditorHandler(BaseHTTPRequestHandler):
         if not self.server.closeup_path:
             self.send_json({})
             return
-        self.send_json(load_closeup_yaml(self.server.closeup_path))
+        data = load_closeup_yaml(self.server.closeup_path)
+        kind = document_kind(data)
+        height = data.get("canvas_height") if kind == "template" else self.server.height
+        width = (
+            data.get("canvas_width", self.server.width)
+            if kind == "template"
+            else self.server.width
+        )
+        if not isinstance(width, (int, float)) or width <= 0:
+            width = self.server.width
+        if not isinstance(height, (int, float)) or height <= 0:
+            height = self.server.height
+        # Keep the original YAML fields in the response for compatibility with
+        # existing clients, then add the format-neutral editor projection.
+        payload = dict(data)
+        payload.update(
+            {
+                "asset_background": background_asset_name(
+                    data, self.server.closeup_path, self.server.base_path
+                ),
+                "editor_kind": kind,
+                "areas": editable_areas(data),
+                "resolution": {"width": int(width), "height": int(height)},
+            }
+        )
+        self.send_json(payload)
 
     def handle_api_info(self) -> None:
         self.send_json(
@@ -94,7 +122,7 @@ class CloseUpEditorHandler(BaseHTTPRequestHandler):
                 raise ValueError("closeup name must be provided")
             target = resolve_within(self.server.base_path, name)
             if not target.exists() or not target.is_file():
-                raise FileNotFoundError(f"Close-up file not found: {name}")
+                raise FileNotFoundError(f"Editor document not found: {name}")
             self.server.closeup_path = target
             self.send_json({"ok": True, "closeup": target.name})
         except Exception as exc:
@@ -105,9 +133,9 @@ class CloseUpEditorHandler(BaseHTTPRequestHandler):
             if not self.server.closeup_path:
                 raise ValueError("No close-up loaded; open one first.")
             payload = json.loads(body.decode("utf-8"))
-            hotspots = payload.get("hotspots")
+            areas = payload.get("areas", payload.get("hotspots"))
             data = load_closeup_yaml(self.server.closeup_path)
-            apply_hotspots(data, hotspots)
+            apply_editable_areas(data, areas)
             save_closeup_yaml(self.server.closeup_path, data)
             self.send_json({"ok": True})
         except Exception as exc:
@@ -197,7 +225,7 @@ def run_server(
         (host, port), CloseUpEditorHandler, closeup_path, base_path, static_dir, width, height
     )
     print(f"Serving close-up editor at http://{host}:{port}/")
-    print(f"Editing close-up file: {closeup_path if closeup_path else '(none — pick one in the UI)'}")
+    print(f"Editing YAML file: {closeup_path if closeup_path else '(none — pick one in the UI)'}")
     print(f"Asset base path: {base_path}  (virtual resolution {width}x{height})")
     try:
         server.serve_forever()

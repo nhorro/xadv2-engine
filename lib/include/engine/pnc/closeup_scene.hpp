@@ -66,6 +66,7 @@ private:
     std::string cast_path_;
     std::string on_exit_; // scene id on back-out; empty -> pop the overlay
     const sf::Font* font_ = nullptr;
+    const sf::Font* speech_font_ = nullptr;
     CloseUpData data_;
     bool loaded_ = false;
     SpeechManager speech_;

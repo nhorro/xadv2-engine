@@ -58,7 +58,12 @@ def _dumper():
 
         def represent_list(dumper, data):
             polygon = bool(data) and all(_is_point(item) for item in data)
-            return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=polygon)
+            scalar_list = bool(data) and all(
+                isinstance(item, (str, int, float, bool)) or item is None for item in data
+            )
+            return dumper.represent_sequence(
+                "tag:yaml.org,2002:seq", data, flow_style=polygon or scalar_list
+            )
 
         CloseUpDumper.add_representer(dict, represent_dict)
         CloseUpDumper.add_representer(list, represent_list)
@@ -120,6 +125,90 @@ def apply_hotspots(data: Dict[str, Any], hotspots: Any) -> Dict[str, Any]:
     return data
 
 
+def document_kind(data: Dict[str, Any]) -> str:
+    """Return the polygon collection used by a supported editor document."""
+    return "template" if isinstance(data.get("slots"), dict) else "closeup"
+
+
+def editable_areas(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the collection exposed to the editor UI.
+
+    Close-ups expose their full hotspot entries because ``name`` is editable.
+    Case-resolution templates expose geometry-only slot entries; semantic fields
+    such as ``accepts`` and ``solution`` are deliberately kept server-side.
+    """
+    key = "slots" if document_kind(data) == "template" else "hotspots"
+    collection = data.get(key, {})
+    if not isinstance(collection, dict):
+        return {}
+    result: Dict[str, Any] = {}
+    for item_id, spec in collection.items():
+        if not isinstance(item_id, str) or not isinstance(spec, dict):
+            continue
+        entry: Dict[str, Any] = {"area": spec.get("area")}
+        if key == "hotspots" and isinstance(spec.get("name"), str):
+            entry["name"] = spec["name"]
+        result[item_id] = entry
+    return result
+
+
+def apply_editable_areas(data: Dict[str, Any], areas: Any) -> Dict[str, Any]:
+    """Apply editor geometry to a close-up or case-resolution template.
+
+    Template slot ids and membership are fixed in the geometry editor. This
+    prevents a polygon edit from silently dropping the slot's ``accepts`` and
+    ``solution`` fields or creating an unusable slot with no semantics.
+    """
+    if document_kind(data) == "closeup":
+        return apply_hotspots(data, areas)
+    if not isinstance(areas, dict):
+        raise ValueError("slots must be a mapping of id -> slot")
+
+    slots = data.get("slots")
+    if not isinstance(slots, dict):
+        raise ValueError("template slots must be a mapping")
+    expected = set(slots)
+    received = set(areas)
+    if received != expected:
+        missing = sorted(expected - received)
+        extra = sorted(received - expected)
+        details = []
+        if missing:
+            details.append(f"missing: {', '.join(missing)}")
+        if extra:
+            details.append(f"unknown: {', '.join(extra)}")
+        raise ValueError(
+            "template slot ids cannot be added or removed (" + "; ".join(details) + ")"
+        )
+
+    normalized = normalize_hotspots(areas)
+    for slot_id, slot in slots.items():
+        if not isinstance(slot, dict):
+            raise ValueError(f"slot '{slot_id}' must be a mapping")
+        slot["area"] = normalized[slot_id]["area"]
+    return data
+
+
+def background_asset_name(data: Dict[str, Any], path: Path, base_path: Path) -> Optional[str]:
+    """Return the background path expected by the ``/assets`` endpoint.
+
+    Like the engine, relative paths resolve beside the YAML. A leading slash is
+    resources-root-relative and therefore resolves below ``base_path``.
+    """
+    background = data.get("background")
+    if not isinstance(background, str) or not background:
+        return None
+    candidate = (
+        base_path / background.lstrip("/")
+        if background.startswith("/")
+        else path.parent / background
+    )
+    try:
+        return str(candidate.resolve().relative_to(base_path.resolve())).replace("\\", "/")
+    except ValueError:
+        return background
+
+
 def resolve_within(base_path: Path, name: str) -> Path:
     """Resolve ``name`` under ``base_path`` and confirm it stays inside it.
 
@@ -136,8 +225,11 @@ def resolve_within(base_path: Path, name: str) -> Path:
 
 
 def list_closeups(base_path: Path) -> List[str]:
-    """Close-up YAML files anywhere under ``base_path`` (a file counts as a close-up
-    when it parses to a mapping carrying a ``background`` string and ``id``)."""
+    """Supported YAML documents anywhere under ``base_path``.
+
+    A mapping with a string ``background`` and an ``id`` is either a close-up or
+    case template for the purposes of this editor.
+    """
     if not base_path.exists() or not base_path.is_dir():
         return []
     results: List[str] = []

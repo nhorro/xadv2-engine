@@ -350,6 +350,8 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
         }
         placement.id = av["id"].as<std::string>();
         placement.start = av["start"] ? av["start"].as<std::string>() : std::string();
+        placement.enter_from =
+            av["enter_from"] ? av["enter_from"].as<std::string>() : std::string();
         placement.orientation = av["orientation"] ? av["orientation"].as<std::string>() : "down";
         placement.player = av["player"] ? av["player"].as<bool>() : false;
         room.avatars.push_back(std::move(placement));

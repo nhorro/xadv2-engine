@@ -3,6 +3,7 @@
 #include "engine/core/dev_flags.hpp"
 #include "engine/core/load_error.hpp"
 #include "engine/core/scene_params.hpp"
+#include "engine/core/speech_config.hpp"
 
 #include <SFML/System/Vector2.hpp>
 
@@ -81,6 +82,7 @@ struct Manifest {
     std::string default_language;
     SettingsDefaults settings;
     CursorConfig cursor;
+    SpeechConfig speech;
     DevFlags development;
     std::string entry;
     std::vector<SceneDesc> scenes;

@@ -9,6 +9,8 @@ vcpkg_installed/
 /site/
 .venv/
 .devtools-logs/
+__pycache__/
+*.py[cod]
 
 # Claude Code local config + memory
 .claude/

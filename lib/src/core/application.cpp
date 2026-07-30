@@ -155,7 +155,8 @@ void apply_window_mode(sf::RenderWindow& window, const DisplayMode& mode) {
 std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
                                         const std::string& logical,
                                         sf::Vector2u hotspot,
-                                        Diagnostics& log) {
+                                        Diagnostics& log,
+                                        bool inverted = false) {
     if (logical.empty()) {
         return nullptr;
     }
@@ -165,6 +166,18 @@ std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
         if (!image.loadFromMemory(bytes.data(), bytes.size())) {
             log.warn("cursor: could not decode image '" + logical + "'");
             return nullptr;
+        }
+        if (inverted) {
+            const sf::Vector2u size = image.getSize();
+            for (unsigned y = 0; y < size.y; ++y) {
+                for (unsigned x = 0; x < size.x; ++x) {
+                    sf::Color pixel = image.getPixel(x, y);
+                    pixel.r = static_cast<sf::Uint8>(255U - pixel.r);
+                    pixel.g = static_cast<sf::Uint8>(255U - pixel.g);
+                    pixel.b = static_cast<sf::Uint8>(255U - pixel.b);
+                    image.setPixel(x, y, pixel);
+                }
+            }
         }
         auto cursor = std::make_unique<sf::Cursor>();
         if (!cursor->loadFromPixels(image.getPixelsPtr(), image.getSize(), hotspot)) {
@@ -320,7 +333,8 @@ int run(const std::string& manifest_path,
                       cursor_state,
                       localization,
                       settings_store,
-                      thumbnail};
+                      thumbnail,
+                      manifest.speech};
     bind_core_api(ctx);
     if (hooks.configure) {
         try {
@@ -391,10 +405,18 @@ int run(const std::string& manifest_path,
     const std::unique_ptr<sf::Cursor> cursor_interact =
         cursor_default ? load_cursor(source, manifest.cursor.interact, manifest.cursor.hotspot, log)
                        : nullptr;
+    const std::unique_ptr<sf::Cursor> cursor_default_inverted =
+        cursor_default
+            ? load_cursor(source, manifest.cursor.image, manifest.cursor.hotspot, log, true)
+            : nullptr;
+    const std::unique_ptr<sf::Cursor> cursor_interact_inverted =
+        cursor_interact
+            ? load_cursor(source, manifest.cursor.interact, manifest.cursor.hotspot, log, true)
+            : nullptr;
     if (apply_cursor && cursor_default) {
         window.setMouseCursor(*cursor_default);
     }
-    CursorKind applied_cursor = CursorKind::DEFAULT;
+    const sf::Cursor* applied_cursor = cursor_default.get();
 
     // Enable fade-to-black between full-screen scene swaps, and fade the first
     // scene in from black at startup. (Set after the entry scene is already in
@@ -449,6 +471,7 @@ int run(const std::string& manifest_path,
         accumulator += frame_seconds;
         int steps = 0;
         while (accumulator >= kFixedDt && steps < kMaxStepsPerFrame) {
+            audio.update(kFixedDt);
             scripting.update(kFixedDt);
             scenes.update(kFixedDt);
             scenes.apply_pending();
@@ -476,12 +499,18 @@ int run(const std::string& manifest_path,
         // leaving INTERACT visible only on the rare stepping frame. Consuming the
         // request at the cadence it is produced keeps it stable (issue #73).
         if (steps > 0) {
-            if (apply_cursor && cursor_default && cursor_interact &&
-                cursor_state.requested != applied_cursor) {
-                window.setMouseCursor(cursor_state.requested == CursorKind::INTERACT
-                                          ? *cursor_interact
-                                          : *cursor_default);
-                applied_cursor = cursor_state.requested;
+            const bool interact = cursor_state.requested == CursorKind::INTERACT;
+            const sf::Cursor* requested_cursor =
+                interact && cursor_interact ? cursor_interact.get() : cursor_default.get();
+            if (cursor_state.inverted) {
+                requested_cursor = interact && cursor_interact_inverted
+                                       ? cursor_interact_inverted.get()
+                                   : cursor_default_inverted ? cursor_default_inverted.get()
+                                                             : requested_cursor;
+            }
+            if (apply_cursor && requested_cursor && requested_cursor != applied_cursor) {
+                window.setMouseCursor(*requested_cursor);
+                applied_cursor = requested_cursor;
             }
             cursor_state.reset();
         }

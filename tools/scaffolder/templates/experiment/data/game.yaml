@@ -20,6 +20,10 @@ languages:
     name: "Español"
     strings: strings/es.yaml
 
+speech:
+  font: fonts/DepartureMono-Regular.otf
+  font_size: 24
+
 entry: room_view
 
 development:

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 try:
     import yaml
@@ -209,18 +210,206 @@ def list_rooms(base_path: Path) -> List[str]:
     return results
 
 
-def list_assets(base_path: Path, prefix: Optional[str] = None) -> List[str]:
-    if not base_path.exists() or not base_path.is_dir():
+def list_assets(
+    data_path: Path,
+    prefix: Optional[str] = None,
+    relative_to: Optional[Path] = None,
+) -> List[str]:
+    """List data-tree assets using paths valid from the active room directory."""
+
+    if not data_path.exists() or not data_path.is_dir():
         return []
-    prefix_path = Path(prefix) if prefix else None
+    data_root = data_path.resolve()
+    prefix_path = (data_path / prefix).resolve() if prefix else None
+    if prefix_path:
+        try:
+            prefix_path.relative_to(data_root)
+        except ValueError:
+            return []
+    reference = (relative_to or data_path).resolve()
     results: List[str] = []
-    for candidate in sorted(base_path.rglob("*")):
+    for candidate in sorted(data_path.rglob("*")):
         if not candidate.is_file():
+            continue
+        resolved = candidate.resolve()
+        try:
+            resolved.relative_to(data_root)
+        except ValueError:
             continue
         if prefix_path:
             try:
-                candidate.relative_to(base_path / prefix_path)
+                resolved.relative_to(prefix_path)
             except ValueError:
                 continue
-        results.append(str(candidate.relative_to(base_path)).replace("\\", "/"))
+        results.append(os.path.relpath(resolved, reference).replace("\\", "/"))
     return results
+
+
+def resolve_asset_within(data_path: Path, room_dir: Path, logical: str) -> Path:
+    """Resolve a room-relative asset while preventing escape from game data."""
+
+    data_root = data_path.resolve()
+    target = (room_dir / logical).resolve()
+    try:
+        target.relative_to(data_root)
+    except ValueError as exc:
+        raise ValueError(f"Asset escapes data directory: {logical}") from exc
+    return target
+
+
+def find_cast_file(room_path: Optional[Path], base_path: Path) -> Optional[Path]:
+    """Find the nearest cast file above the room folder.
+
+    Room images are normally relative to ``data/rooms`` while cast resources are
+    relative to ``data``. This also supports the deprecated room-directory launch
+    form by discovering the surrounding data root.
+    """
+
+    starts = []
+    if room_path:
+        starts.append(room_path.parent.resolve())
+    starts.append(base_path.resolve())
+    visited = set()
+    for start in starts:
+        for directory in (start, *start.parents):
+            if directory in visited:
+                continue
+            visited.add(directory)
+            for name in ("cast.yaml", "cast.yml"):
+                candidate = directory / name
+                if candidate.is_file():
+                    return candidate
+    return None
+
+
+def _resolve_project_asset(asset_root: Path, parent: Path, logical: str) -> Tuple[Path, str]:
+    target = (parent / logical).resolve()
+    try:
+        relative = target.relative_to(asset_root.resolve())
+    except ValueError as exc:
+        raise ValueError(f"Asset escapes cast data root: {logical}") from exc
+    return target, relative.as_posix()
+
+
+def _default_preview_sequence(sequences: Dict[str, Any]) -> Optional[str]:
+    for name in ("stand_down", "stand", "idle_down", "idle"):
+        if name in sequences:
+            return name
+    return next(iter(sequences), None)
+
+
+def load_avatar_catalog(cast_path: Path) -> Dict[str, Any]:
+    """Resolve cast characters to first-frame browser preview metadata.
+
+    The result contains no image bytes. It describes the atlas crop, pivot and
+    sequence mirror flag; the HTTP server serves the referenced atlas from the
+    cast file's directory (the game's data root).
+    """
+
+    asset_root = cast_path.parent.resolve()
+    cast = load_room_yaml(cast_path)
+    appearances = cast.get("appearances") or {}
+    characters = cast.get("characters") or {}
+    result: List[Dict[str, Any]] = []
+    errors: List[str] = []
+
+    if not isinstance(appearances, dict) or not isinstance(characters, dict):
+        return {
+            "cast_path": str(cast_path),
+            "asset_root": str(asset_root),
+            "characters": [],
+            "errors": ["cast appearances and characters must be mappings"],
+        }
+
+    for character_id, character in characters.items():
+        if not isinstance(character, dict):
+            continue
+        appearance_id = character.get("appearance")
+        appearance = appearances.get(appearance_id)
+        if not isinstance(appearance, dict) or appearance.get("type") != "animated_sprite":
+            continue
+        animation_logical = appearance.get("sprite")
+        if not isinstance(animation_logical, str) or not animation_logical:
+            continue
+
+        try:
+            animation_path, _ = _resolve_project_asset(
+                asset_root, asset_root, animation_logical
+            )
+            animation = load_room_yaml(animation_path)
+            sheet_logical = animation.get("spritesheet")
+            if not isinstance(sheet_logical, str) or not sheet_logical:
+                raise ValueError("animation has no spritesheet")
+            sheet_path, _ = _resolve_project_asset(
+                asset_root, animation_path.parent, sheet_logical
+            )
+            sheet = load_room_yaml(sheet_path)
+            image_logical = sheet.get("image")
+            if not isinstance(image_logical, str) or not image_logical:
+                raise ValueError("spritesheet has no image")
+            image_path, image_asset = _resolve_project_asset(
+                asset_root, sheet_path.parent, image_logical
+            )
+            if not image_path.is_file():
+                raise FileNotFoundError(f"atlas image not found: {image_asset}")
+
+            frames_by_id = {
+                frame.get("id"): frame
+                for frame in (sheet.get("sprites") or [])
+                if isinstance(frame, dict) and isinstance(frame.get("id"), str)
+            }
+            raw_sequences = animation.get("sequences") or {}
+            if not isinstance(raw_sequences, dict):
+                raise ValueError("animation sequences must be a mapping")
+            pivot_name = animation.get("pivot")
+            sequence_previews: Dict[str, Any] = {}
+            for sequence_name, sequence in raw_sequences.items():
+                if not isinstance(sequence, dict):
+                    continue
+                refs = sequence.get("frames") or []
+                if not isinstance(refs, list) or not refs or not isinstance(refs[0], dict):
+                    continue
+                frame_id = refs[0].get("sprite")
+                frame = frames_by_id.get(frame_id)
+                if not isinstance(frame, dict) or not isinstance(frame.get("rect"), dict):
+                    continue
+                rect = frame["rect"]
+                anchors = frame.get("anchors") or {}
+                pivot = anchors.get(pivot_name, {"x": 0, "y": 0})
+                sequence_previews[str(sequence_name)] = {
+                    "frame": str(frame_id),
+                    "rect": {
+                        "x": int(rect.get("x", 0)),
+                        "y": int(rect.get("y", 0)),
+                        "width": int(rect.get("width", 0)),
+                        "height": int(rect.get("height", 0)),
+                    },
+                    "pivot": {
+                        "x": float(pivot.get("x", 0)),
+                        "y": float(pivot.get("y", 0)),
+                    },
+                    "h_mirror": bool(sequence.get("h_mirror", False)),
+                }
+            default_sequence = _default_preview_sequence(sequence_previews)
+            if not default_sequence:
+                raise ValueError("animation has no previewable sequence frames")
+
+            result.append(
+                {
+                    "id": str(character_id),
+                    "name": str(character.get("name") or character_id),
+                    "appearance": str(appearance_id),
+                    "image": image_asset,
+                    "default_sequence": default_sequence,
+                    "sequences": sequence_previews,
+                }
+            )
+        except Exception as exc:
+            errors.append(f"{character_id}: {exc}")
+
+    return {
+        "cast_path": str(cast_path),
+        "asset_root": str(asset_root),
+        "characters": result,
+        "errors": errors,
+    }

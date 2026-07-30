@@ -3,6 +3,7 @@
 #include <SFML/Audio/Music.hpp>
 #include <SFML/Audio/Sound.hpp>
 
+#include <array>
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -13,13 +14,34 @@ class ResourceCache;
 class Settings;
 class Diagnostics;
 
-/// One streamed background track at a time. Volume is 0..1 (mapped to SFML's
-/// 0..100). Music streams from a host file, so it needs a filesystem-backed cache.
+namespace detail {
+
+struct MusicCrossfadeGains {
+    float outgoing = 1.0f;
+    float incoming = 0.0f;
+};
+
+/// Equal-power gains for a clamped 0..1 crossfade progress. Kept pure so the
+/// envelope is headless-testable without starting an audio device.
+[[nodiscard]] MusicCrossfadeGains music_crossfade_gains(float progress);
+
+} // namespace detail
+
+/// Two-deck streamed background music. Volume is 0..1 (mapped to SFML's 0..100).
+/// Tracks stream from stable ResourceCache memory in loose and packed builds.
 class MusicPlayer {
 public:
     MusicPlayer(ResourceCache& resources, Diagnostics& log);
 
     void play(const std::string& logical, bool loop = true);
+    /// Start `logical` on the idle deck and equal-power fade from the active deck.
+    /// `preserve_offset` aligns variations of the same composition by carrying the
+    /// outgoing playback position modulo the incoming track's duration.
+    [[nodiscard]] bool crossfade(const std::string& logical,
+                                 float fade_seconds = 2.5f,
+                                 bool preserve_offset = false,
+                                 bool loop = true);
+    void update(float delta_seconds);
     void stop();
     void set_volume(float volume01);
 
@@ -34,10 +56,19 @@ public:
     [[nodiscard]] bool is_playing() const;
 
 private:
+    bool open(int deck, const std::string& logical, bool loop);
+    void cancel_fade();
+    void apply_volumes();
+
     ResourceCache& resources_;
     Diagnostics& log_;
-    sf::Music music_;
+    std::array<sf::Music, 2> decks_;
+    int active_ = 0;
+    int incoming_ = -1;
     float volume_ = 1.0f;
+    float elapsed_ = 0.0f;
+    float fade_duration_ = 2.5f;
+    bool fading_ = false;
 };
 
 /// Short overlapping sound effects, played from cached sound buffers.
@@ -68,6 +99,7 @@ struct AudioServices {
 
     AudioServices(ResourceCache& resources, Diagnostics& log, const Settings& settings);
     void apply_settings(const Settings& settings);
+    void update(float delta_seconds) { music.update(delta_seconds); }
 };
 
 } // namespace pac::core

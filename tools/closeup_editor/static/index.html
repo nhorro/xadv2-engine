@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Close-up hotspot editor</title>
+  <title>Close-up and template polygon editor</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
-    <strong>Close-up hotspot editor</strong>
-    <select id="closeup-select" title="Open a close-up"></select>
+    <strong id="editor-title">Close-up hotspot editor</strong>
+    <select id="closeup-select" title="Open a close-up or case template"></select>
     <button id="new-btn" title="Draw a new hotspot polygon">New hotspot</button>
     <button id="delete-btn" title="Delete the selected hotspot">Delete</button>
     <button id="save-btn" title="Write hotspots back to the YAML">Save</button>
@@ -22,13 +22,13 @@
     </section>
 
     <aside>
-      <h2>Hotspots</h2>
+      <h2 id="areas-title">Hotspots</h2>
       <ul id="hotspot-list"></ul>
 
       <div id="props" hidden>
         <h3>Selected</h3>
         <label>id <input id="prop-id" type="text" /></label>
-        <label>name <input id="prop-name" type="text" placeholder="(hover label)" /></label>
+        <label id="prop-name-label">name <input id="prop-name" type="text" placeholder="(hover label)" /></label>
         <button id="prop-apply">Apply</button>
       </div>
 
@@ -40,7 +40,7 @@
         <li><b>Shift-click</b> an edge to insert a vertex.</li>
         <li><b>Right-click</b> a vertex to delete it.</li>
         <li><b>Esc</b> cancels an in-progress polygon.</li>
-        <li><b>Save</b> writes the <code>hotspots:</code> map back to the YAML (other fields are kept; comments are not).</li>
+        <li><b>Save</b> writes polygon geometry back to <code>hotspots:</code> or template <code>slots:</code> (other fields are kept; comments are not).</li>
       </ul>
     </aside>
   </main>

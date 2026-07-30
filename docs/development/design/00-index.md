@@ -69,8 +69,9 @@ occupies the region beneath it, not an overlay.
 **Room** — a place inside the `RoomScene`, loaded by id from `rooms/<id>.{yaml,lua}`
 and switched with `change_room`. Rooms are not manifest entries.
 
-**Character** — a cast entry: a stable `id`, display `name`, speech style, and an
-`appearance`. Lives in `cast.yaml`.
+**Character** — a cast entry: a stable `id`, display `name`, character-specific
+speech colour/placement, and an `appearance`. Lives in `cast.yaml`; shared speech
+font and size live in `game.yaml`.
 
 **Appearance** — a typed visual definition (`animated_sprite`, `composite`, or
 future `skeletal`) bound to a character; supplies the drawing strategy's

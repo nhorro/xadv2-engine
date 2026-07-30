@@ -207,6 +207,16 @@ Manifest parse_manifest(const std::string& yaml_text) {
         }
     }
 
+    if (const YAML::Node speech = root["speech"]) {
+        if (!speech.IsMap()) {
+            manifest_fail("manifest.speech-invalid", "'speech' must be a mapping", speech);
+        }
+        m.speech.font = speech["font"] ? speech["font"].as<std::string>() : std::string();
+        if (speech["font_size"]) {
+            m.speech.font_size = require_dimension(speech["font_size"], "speech.font_size");
+        }
+    }
+
     if (const YAML::Node dev = root["development"]) {
         m.development.edit_mode = dev["edit_mode"] ? dev["edit_mode"].as<bool>() : false;
         m.development.show_walkboxes =

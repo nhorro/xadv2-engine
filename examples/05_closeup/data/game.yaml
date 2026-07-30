@@ -22,6 +22,11 @@ languages:
     name: "English"
     strings: strings/en.yaml
 
+# Spoken lines use this game-wide style; the CloseUp `font` remains its UI font.
+speech:
+  font: fonts/DepartureMono-Regular.otf
+  font_size: 24
+
 # A custom mouse cursor. `interact` is swapped in whenever the pointer is over
 # something clickable — the hover affordance, for free. `hotspot` is the active
 # pixel inside both images.

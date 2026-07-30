@@ -22,6 +22,8 @@ public:
     const std::string& current_sequence() const { return current_; }
     bool has(const std::string& sequence) const { return anim_.has(sequence); }
     std::string current_frame_id() const; // "" when no valid frame
+    /// Whether the current sequence renders its source frames horizontally mirrored.
+    bool current_h_mirror() const;
     bool finished() const { return finished_; }
     void set_on_finished(std::function<void()> callback) { on_finished_ = std::move(callback); }
 
