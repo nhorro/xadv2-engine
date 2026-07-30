@@ -15,9 +15,16 @@ enum class CursorKind : std::uint8_t { DEFAULT, INTERACT };
 /// (when it stops, the cursor falls back to DEFAULT on its own).
 struct CursorState {
     CursorKind requested = CursorKind::DEFAULT;
+    bool inverted = false;
 
     void want(CursorKind kind) { requested = kind; }
-    void reset() { requested = CursorKind::DEFAULT; }
+    /// Ask the harness for an RGB-inverted variant this frame. Useful when an
+    /// overlay has the opposite luminance from the game behind it.
+    void want_inverted(bool value = true) { inverted = value; }
+    void reset() {
+        requested = CursorKind::DEFAULT;
+        inverted = false;
+    }
 };
 
 } // namespace pac::core

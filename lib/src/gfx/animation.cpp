@@ -49,6 +49,7 @@ Animation parse_animation(const std::string& yaml_text) {
         Sequence seq;
         const YAML::Node node = kv.second;
         seq.loop = node["loop"] ? node["loop"].as<bool>() : false;
+        seq.h_mirror = node["h_mirror"] ? node["h_mirror"].as<bool>() : false;
         if (const YAML::Node frames = node["frames"]) {
             for (const YAML::Node& fn : frames) {
                 if (!fn["sprite"]) {

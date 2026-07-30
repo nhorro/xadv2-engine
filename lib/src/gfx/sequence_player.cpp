@@ -56,4 +56,9 @@ std::string SequencePlayer::current_frame_id() const {
     return seq->frames[frame_index_].sprite;
 }
 
+bool SequencePlayer::current_h_mirror() const {
+    const Sequence* seq = anim_.sequence(current_);
+    return seq && seq->h_mirror;
+}
+
 } // namespace pac::gfx

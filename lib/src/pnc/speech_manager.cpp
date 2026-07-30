@@ -13,7 +13,6 @@
 namespace pac::pnc {
 
 namespace {
-constexpr unsigned kFontSize = 24;
 constexpr float kWrapWidth = 360.0f;   // world px; a line breaks past this width
 constexpr float kScreenMargin = 12.0f; // keep the text this far from the edges
 constexpr float kBalloonTail = 14.0f;  // gap left above the head when floating the balloon
@@ -105,10 +104,10 @@ void SpeechManager::draw(sf::RenderTarget& target, const sf::Font* font) const {
         return;
     }
     const auto measure = [&](const std::string& s) {
-        return sf::Text(pac::core::utf8(s), *font, kFontSize).getLocalBounds().width;
+        return sf::Text(pac::core::utf8(s), *font, font_size_).getLocalBounds().width;
     };
     const std::vector<std::string> lines = pac::core::wrap_text(text_, kWrapWidth, measure);
-    const float line_h = font->getLineSpacing(kFontSize);
+    const float line_h = font->getLineSpacing(font_size_);
     const float block_h = line_h * static_cast<float>(lines.size());
 
     // The block is as wide as its widest line; remember each line's width to
@@ -134,7 +133,7 @@ void SpeechManager::draw(sf::RenderTarget& target, const sf::Font* font) const {
 
     float y = top_left.y;
     for (std::size_t i = 0; i < lines.size(); ++i) {
-        sf::Text text(pac::core::utf8(lines[i]), *font, kFontSize);
+        sf::Text text(pac::core::utf8(lines[i]), *font, font_size_);
         text.setFillColor(color_);
         text.setOutlineColor(sf::Color(0, 0, 0, 200));
         text.setOutlineThickness(2.0f);

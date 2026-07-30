@@ -101,7 +101,7 @@ characters:
 | Section | Meaning |
 |---------|---------|
 | `appearances` | Reusable visual definitions. |
-| `characters` | Character ids, display names, speech style, and appearance binding. |
+| `characters` | Character ids, display names, speech colour/placement, and appearance binding. Shared speech font and size live in `game.yaml`. |
 
 Character ids are stable script identifiers. Display names are localized text.
 
@@ -132,7 +132,7 @@ handlers.
 local room = {}
 
 function room.on_load()
-  play_music("music/study.ogg", true)
+  crossfade_music("music/study.ogg", 2.5)
 end
 
 function room.on_unload()
@@ -178,6 +178,7 @@ return room
 | Hook | Called when |
 |------|-------------|
 | `on_load()` | The room has been (re)loaded and initialized — runs on **every entry** (see below). |
+| `on_player_entered()` | An opt-in player `avatars[].enter_from` walk has reached its normal `start` point. It does not fire on save restore or when `change_room` supplies an explicit entry point. |
 | `on_unload()` | The room is about to be unloaded (on leaving it, and on hot-reload). |
 | `on_screen_edge(edge)` | Player reaches a room screen edge (`left`/`right`/`top`/`bottom`); all four fire. |
 | `on_zone_enter(zone)` | Player enters a zone polygon. |
@@ -201,7 +202,13 @@ scratch* (rebuilding its `room` table) and then calls `on_load()`. So:
 `game.lua`'s optional `on_start()` runs **once, only when a new game begins**
 (driven by `RoomScene`, before the start room's `on_load`). It is **skipped on
 Continue / Load** so it never clobbers a restored save. Seed initial `set_state`
-values here; see *Global game logic*.
+values here; see *Global game logic*. It may return a room id to override
+`start_room` for that new game.
+
+`RoomScene.parameters.development_logic` may point at a second script returning
+the same `{ on_start = function() ... end }` shape. Its hook runs after
+`game.on_start()` and can return the final room override. This is intended for
+removable scenario catalogs and debug harnesses; omit the parameter in production.
 
 #### State and persistence
 
@@ -422,6 +429,7 @@ game.fallbacks = {
 
 function game.on_start()
   set_state("mummy.awake", false)
+  -- Optional: return "laboratory"
 end
 
 return game
@@ -432,7 +440,8 @@ without a staged restore, in the global scope, **before the start room's
 `on_load`** (so a room may read the world state `on_start` seeds — e.g. each
 room's initial configuration). It is **skipped on Continue/Load**, so it never
 overwrites a restored save. It is a plain (non-coroutine) call; wrap any blocking
-sequence in `spawn(...)`.
+sequence in `spawn(...)`. Returning a non-empty room id overrides the manifest's
+`start_room` for that new game.
 
 If a hotspot does not provide a specific handler for a valid command, the command
 system may fall back to `game.lua`.
@@ -611,7 +620,8 @@ room's `.yaml` + `.lua`.
 - **`on_enter` / `on_exit`** are *direct* (non-blocking) calls, like a room's
   `on_load` / `on_unload`. Wrap any blocking sequence in your own `spawn(...)`.
 - **`talk`** inside a close-up shows in the close-up's own bubble (centred near the
-  bottom). Speech colour comes from the optional `cast:` scene param.
+  bottom). Font and size come from the manifest's top-level `speech` block;
+  character colour comes from the optional `cast:` scene param.
 - **Reaching the room beneath.** The room is frozen while the close-up is open, but
   its Lua API is still live, so a close-up script may make **instant** room changes
   that appear when the player backs out — `spawn_npc`, `despawn_npc`, `set_state`,
@@ -715,7 +725,7 @@ The following hooks stay **direct** (non-coroutine), so blocking calls inside
 them must still be wrapped in `spawn(...)` (or assigned a `cutscene`-wrapped
 function):
 
-- `room.on_load` / `room.on_unload`;
+- `room.on_load` / `room.on_player_entered` / `room.on_unload`;
 - `room.on_zone_enter` / `room.on_zone_exit` / `room.on_screen_edge`;
 - dialog `on_enter` / `on_exit` and a dialog **node** `run` (fires on entry);
 - close-up `on_enter` / `on_exit`;
@@ -794,7 +804,8 @@ later room cannot resume a task that was waiting in an earlier one.
 
 | Function | Parameters | Returns | Meaning |
 |----------|------------|---------|---------|
-| `talk(speaker, text, pos?, dur?)` | character id, string, optional position, optional duration | — | Show speech near the speaker and yield until finished/skipped. |
+| `talk(speaker, text [, opts])` | character id, string, optional table | — | Show speech near the speaker, play its talk animation, and yield until finished/skipped. `opts.continue_action = true` preserves walking/current action; `opts.face` may name an avatar or room point to face first. |
+| `remark(speaker, text)` | character id, string | — | Incidental speech that preserves the speaker's current movement or gesture. Equivalent to `talk(speaker, text, { continue_action = true })`. |
 | `show_text(text, dur?)` | string, optional duration | — | Show a speaker-less centered text page in virtual space and yield until finished/skipped. |
 | `clear_text()` | — | — | Remove the current text page immediately. |
 | `start_dialog(id [, speaker])` | dialog id, optional cast character id | — | Enter dialog state and run `dialogs/<id>.lua`. `speaker` (default `id`) is the cast character whose speech colour and over-head bubble render the `npc` lines, letting one NPC own several topic-named dialogs. |
@@ -809,6 +820,15 @@ the line length (see [Speech](04-point-and-click-concepts.md)); `talk` and
 page primitive used by `StoryText` cutscenes (and any script that wants a centered
 page). Each `show_text` replaces the current page — a script calls it in sequence,
 each call yielding until the page finishes or is skipped.
+
+By default `talk` stops the speaker and selects `talk_<current-facing>`. Partial
+character rigs are valid: the engine falls back to another authored direction and
+then to bare `talk`; if no talk loop exists, the character simply stands. Use
+`talk("player", line, { continue_action = true })` for an incidental remark that
+must not interrupt walking or a gesture; the shorter `remark("player", line)` is
+preferred when no other options are needed. `start_dialog` automatically stops
+the player and NPC, faces them toward each other, and applies this animation
+selection to each line's active speaker.
 
 ### Rooms and camera
 
@@ -893,6 +913,7 @@ NPC once that lands).
 | `add_case_term(id)` | term id | bool | Discover a case term. Returns `true` only when newly added. |
 | `has_case_term(id)` | term id | bool | Test whether a case term has been discovered. |
 | `remove_case_term(id)` | term id | bool | Remove an owned case term. Returns `true` only when it was owned. |
+| `clear_case_terms()` | — | integer | Remove every owned case term and return how many were removed. Use when starting a new case. |
 | `get_room_state(key)` | string | value | Read current-room saved state. |
 | `set_room_state(key, value)` | string, value | — | Write current-room saved state. |
 
@@ -921,6 +942,8 @@ shows the terms the player owns. `has_case_term` can guard one-time feedback whe
 needed. Terms are not consumed automatically when a template is solved: case
 logic may call `remove_case_term(id)` for any terms that should leave the shared
 bank, while reusable terms remain owned.
+Call `clear_case_terms()` when a new case begins if terms from the previous case
+must not carry over.
 
 ### Scenery
 
@@ -970,10 +993,26 @@ and `play_until_end` are no-ops on a static-texture object.
 
 | Function | Parameters | Returns | Meaning |
 |----------|------------|---------|---------|
-| `play_music(path, loop?)` | logical path, optional bool | — | Start streamed music. |
+| `play_music(path, loop?)` | logical path, optional bool | — | Start streamed music immediately, replacing any current track. |
+| `crossfade_music(path, seconds?, preserve_offset?, loop?)` | logical path, optional number/bool/bool | bool | Equal-power fade from the current track to a new one. Defaults: `2.5`, `false`, `true`. Returns false if the new track cannot be loaded. |
 | `stop_music()` | — | — | Stop current music. |
 | `play_sound(path, volume?, pan?)` | logical path, optional number (0..1), optional number (-1..1) | — | Play a short sound effect. `volume` scales the global SFX volume; `pan` places it L/R (-1 left, 0 center, +1 right). Panning affects mono clips only; a position-aware/spatial path is design-for. |
 | `stop_sounds()` | — | — | Stop all active sound effects. |
+
+Use `play_music` when the new cue must start immediately. Use `crossfade_music`
+for room-to-room ambience or score changes:
+
+```lua
+crossfade_music("music/archive_interior.ogg", 3.0)
+```
+
+Set `preserve_offset` only when both files are synchronized variations of the
+same composition. The incoming offset is the outgoing position modulo its own
+duration:
+
+```lua
+crossfade_music("music/archive_danger.ogg", 1.5, true)
+```
 
 ### Input and room-view control
 

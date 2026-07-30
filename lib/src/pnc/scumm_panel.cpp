@@ -1292,13 +1292,8 @@ sf::FloatRect ScummPanel::options_area() const {
                        panel.width - 2.0f * pad_x,
                        panel.height - 2.0f * pad_y};
 
-    // Systemic buttons stay live during a dialog, so the option text must not run
-    // underneath them: give back everything from the leftmost button's edge.
-    float limit = area.left + area.width;
-    for (const SystemButtonCell& cell : system_button_cells()) {
-        limit = std::min(limit, cell.rect.left - pad_x);
-    }
-    area.width = std::max(1.0f, limit - area.left);
+    // System buttons are not rendered or clickable in dialog mode. Reclaim their
+    // column as well, so the paging gutter sits at the panel's true right edge.
     return area;
 }
 

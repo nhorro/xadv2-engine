@@ -30,6 +30,7 @@ Worked example: [02 — Architecture overview](02-architecture-overview.md).
 | `strings` | req* | path | — | Single-language shorthand: the UI strings resource (engine-emitted text). Mutually exclusive with `languages`; exactly one is required. See [UI strings](#ui-strings--stringslangyaml). |
 | `languages` | req* | `[{id, name?, strings}]` | — | UI-strings languages (R3). Each entry: `id` (stable ASCII id stored in settings), `name` (opt display label in its own language, defaults to `id`), `strings` (path to that language's file). The MVP ships one entry (Spanish); the list is design-ready for more. |
 | `default_language` | opt | language id | first entry | Which `languages` entry is active when no player preference is stored. Must name an entry in `languages`. |
+| `speech` | opt | `{font?, font_size?}` | scene font, `24` | Shared typography for character `talk` / `remark` lines in rooms and close-ups. `font` is a logical resource path; when omitted, the active scene's UI font is used as a compatibility fallback. `font_size` is a positive integer in virtual pixels. |
 | `settings` | opt | map | — | Default player-facing settings (e.g. `audio.music_volume`, `audio.sfx_volume`). User settings override these. |
 | `cursor` | opt | `{image, interact?, hotspot?}` | OS cursor | Custom point-and-click cursor. `image` is the resting cursor; `interact` (opt) shows over an interactive hotspot; `hotspot` (opt `{x, y}`, default `0,0`) is the active click pixel within both images. Omitted ⇒ the OS cursor is used. |
 | `development` | opt | map | — | Dev-only flags: `edit_mode` (master gate for the debug overlays), `show_walkboxes`, `show_hotspots`, `show_anchors`, `show_state` (seed the overlay layers), `allow_room_reload`, `profiling` (resource-profiling mode, #112), `profiling_interval` (seconds between samples, default `2.0`). Not persisted as player settings. |
@@ -94,9 +95,12 @@ default_language: es   # optional; defaults to the first entry
   yields or branching.
 - `RoomScene` — `cast` (path), `logic` (path), `inventory` (path),
   `inventory_logic` (path), `rooms` (directory path), `start_room` (room id),
+  `development_logic` (opt path — removable development sidecar whose
+  `on_start()` runs after the main game hook and may return a start-room id),
   `player` (req, cast character id — the persistent player avatar; appearance comes
-  from this character's cast entry), `font` (opt path — speech and default panel
-  font), `scumm_panel` (opt path — YAML panel layout/skin config),
+  from this character's cast entry), `font` (opt path — default panel and other
+  room UI text; spoken-line typography comes from top-level `speech`),
+  `scumm_panel` (opt path — YAML panel layout/skin config),
   `pause_menu.overlays.<id>` (opt map — custom pause actions with `scene`,
   `label_key`, and an `order` from 30 through 89). Custom actions push their
   scene as a transparent or opaque overlay. Built-ins remain ordered at resume
@@ -131,9 +135,11 @@ default_language: es   # optional; defaults to the first entry
   a **Load** button that stages the restore and triggers a `goto_scene` to
   `room_scene`.
 
-Scenes that render text take their `font` as a logical-path parameter; an engine
-default is used when omitted. Per-character speech color and style come from the
-cast file, not the scene `font`.
+Scenes that render UI text take their `font` as a logical-path parameter. Spoken
+`talk` / `remark` lines instead use the manifest's top-level `speech.font` and
+`speech.font_size`, consistently across rooms and close-ups. If `speech.font` is
+omitted, the scene font is used as a compatibility fallback. Cast entries still
+own character-specific speech colour and placement clearance (`speech_gap`).
 
 ## SCUMM panel config — `ui/scumm_panel*.yml`
 
@@ -255,8 +261,8 @@ control anchored at a normalized point).
 - `render_mode: panel` (default) draws a `skin.system_button` box with an optional
   leading `icon` and the `label_key` label; `render_mode: image` draws
   `image.normal`, switching to `image.hovered` under the pointer.
-- They stay live during a dialog, and the dialog option text is laid out to stop
-  short of the leftmost systemic button so the two never overlap.
+- Dialog mode hides and disables them. Their column is reclaimed for dialog
+  options, with any pagination arrows placed at the panel's true right edge.
 
 Evidence indicator (`evidence_indicator`) — a non-clickable `{label} x/n` readout
 for deduction-style games. The counts come from two engine state keys the game /
@@ -306,8 +312,12 @@ language is persisted in the player settings file (see below).
 | `verbs` | req | map verb id → string | — | Display label per verb. Keys are the verb ids: `look_at`, `talk_to`, `pick_up`, `use`, `give`, `open`, `close`, `push`, `pull`. Used in the command bar. |
 | `verb_panel` | opt | map verb id → string | falls back to `verbs` | Short SCUMM-panel button labels (e.g. `talk_to: "Hablar"` while `verbs.talk_to` stays `"Hablar con"` for the command bar). |
 | `connectors` | req | map verb id → string | — | Two-operand connector per verb: `use` (e.g. `con`), `give` (e.g. `a`). |
-| `ui` | req | map key → string | — | Built-in UI labels. Menu (`new_game`, `continue`, `settings`, `settings_button`, `quit`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `settings`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `on`, `off`); the cutscene manual-continue hint (`manual_continue_hint`); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
+| `ui` | req | map key → string | — | Built-in UI labels. Title menu (`new_game`, `continue`, `settings`, `settings_button`, `quit_to_os`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `settings`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `on`, `off`); the cutscene manual-continue hint (`manual_continue_hint`); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
 | `defaults` | req | map key → string | — | Engine last-resort captions, spoken when no game handler produced text for a verb. The loader requires the exact key set below — no missing keys, and (in dev) no unknown keys. |
+
+The two exit labels are intentionally distinct: `quit_to_os` closes the
+application from the title screen, while `quit_to_title` leaves the active game
+and returns to that title screen.
 
 The required `defaults` keys and when each fires:
 
@@ -347,7 +357,8 @@ ui:
   continue: "Continuar"
   settings: "Opciones"
   settings_button: "OP"
-  quit:     "Salir"
+  quit_to_os: "Salir del juego"
+  quit_to_title: "Volver al inicio"
 
 defaults:
   cant_look_at:      "No veo nada interesante."
@@ -483,6 +494,7 @@ source activates the hotspot.
 |-------|-----|------|---------|---------|
 | `id` | req | character id | — | Character to place. |
 | `start` | req | point id | — | Placement point. |
+| `enter_from` | opt, player only | point id | — | On a normal room entry, place the player at this point (typically just beyond a screen edge), block input, and pathfind to `start`. Skipped for save restores and `change_room` calls with an explicit entry point. When the walk finishes, the room's optional `on_player_entered` Lua hook fires. The point must be inside the room's `walkable` polygon even when it lies beyond the visible background. |
 | `orientation` | opt | `up`/`right`/`down`/`left` | `down` | Initial facing. |
 | `player` | opt | bool | `false` | Marks the player's placement entry (does not create the player; see [player vs NPC avatars](04-point-and-click-concepts.md)). |
 
@@ -698,8 +710,10 @@ YAML `goto`/`name` action.
 
 **Scene parameters** (manifest `parameters:` for a `type: CloseUp` scene): `data`
 (req, path to the close-up YAML), `logic` (opt, path to the Lua sidecar — enables
-scripting), `cast` (opt, cast file for `talk` speech colours), `font` (opt), and
-`on_exit` (opt scene id entered on back-out; omitted ⇒ pop back to the opener).
+scripting), `cast` (opt, cast file for `talk` speech colours), `font` (opt, UI
+text such as hover labels, banners, and the back hint), and `on_exit` (opt scene
+id entered on back-out; omitted ⇒ pop back to the opener). Scripted `talk` uses
+the manifest's top-level `speech` style.
 
 ## Spritesheet — `<name>.yaml`
 
@@ -732,8 +746,11 @@ Worked example: [03 — 2D game concepts](03-2d-game-concepts.md).
 | `pivot` | req | anchor name | — | Anchor used as the sprite's position pivot. |
 | `sequences` | req | map name → sequence | — | Named playable sequences. |
 
-**`sequence`:** `loop` (bool, default `false`), `frames` (`[{sprite, duration}]`)
-where `sprite` is a frame id and `duration` is seconds.
+**`sequence`:** `loop` (bool, default `false`), `h_mirror` (bool, default
+`false`), and `frames` (`[{sprite, duration}]`) where `sprite` is a frame id and
+`duration` is seconds. A mirrored sequence reuses the declared atlas frames but
+renders them horizontally flipped; pivots and other frame-local anchors mirror
+with the image.
 
 ## Composite — `<name>.composite.yaml`
 

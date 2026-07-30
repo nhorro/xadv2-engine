@@ -4,7 +4,14 @@ import argparse
 import sys
 from pathlib import Path
 
-from .room_data import apply_room_patch, find_missing_assets, load_patch, load_room_yaml, save_room_yaml
+from .room_data import (
+    apply_room_patch,
+    find_cast_file,
+    find_missing_assets,
+    load_patch,
+    load_room_yaml,
+    save_room_yaml,
+)
 from .server import run_server
 
 
@@ -20,8 +27,24 @@ def parse_args() -> argparse.Namespace:
     edit_parser.add_argument("--base-path", help="Optional base directory for asset validity checks.")
 
     serve_parser = subparsers.add_parser("serve", help="Start the web-based room editor in a browser.")
-    serve_parser.add_argument("--room", help="Optional room YAML to open at startup. Omit to pick one in the UI.")
-    serve_parser.add_argument("--base-path", help="Base directory for logical asset paths and the room list. Defaults to the room YAML directory, or the current directory when --room is omitted.")
+    serve_parser.add_argument(
+        "--room",
+        help="Optional room YAML or filename to open at startup. Omit to pick one in the UI.",
+    )
+    serve_paths = serve_parser.add_mutually_exclusive_group()
+    serve_paths.add_argument(
+        "--data-path",
+        help="Game data directory. Rooms default to <data-path>/rooms.",
+    )
+    serve_paths.add_argument(
+        "--base-path",
+        help="Deprecated compatibility form: room directory used by older commands.",
+    )
+    serve_parser.add_argument(
+        "--rooms-dir",
+        default="rooms",
+        help="Room directory, relative to --data-path unless absolute (default: rooms).",
+    )
     serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind the web server to.")
     serve_parser.add_argument("--port", type=int, default=8000, help="Port to bind the web server to.")
 
@@ -32,14 +55,77 @@ def main() -> int:
     args = parse_args()
 
     if args.command == "serve":
-        room_path = Path(args.room) if args.room else None
-        if args.base_path:
-            base_path = Path(args.base_path)
-        elif room_path:
-            base_path = room_path.parent
+        raw_room = Path(args.room) if args.room else None
+        if args.data_path:
+            data_path = Path(args.data_path).resolve()
+            requested_rooms = Path(args.rooms_dir)
+            rooms_path = (
+                requested_rooms.resolve()
+                if requested_rooms.is_absolute()
+                else (data_path / requested_rooms).resolve()
+            )
+            if raw_room:
+                room_path = (
+                    raw_room.resolve()
+                    if raw_room.is_absolute() or raw_room.exists()
+                    else (rooms_path / raw_room).resolve()
+                )
+            else:
+                room_path = None
+        elif args.base_path:
+            rooms_path = Path(args.base_path).resolve()
+            cast_path = find_cast_file(None, rooms_path)
+            data_path = (
+                cast_path.parent.resolve()
+                if cast_path
+                else (rooms_path.parent if rooms_path.name == "rooms" else rooms_path)
+            )
+            room_path = (
+                raw_room.resolve()
+                if raw_room and (raw_room.is_absolute() or raw_room.exists())
+                else ((rooms_path / raw_room).resolve() if raw_room else None)
+            )
+        elif raw_room:
+            room_path = raw_room.resolve()
+            rooms_path = room_path.parent
+            cast_path = find_cast_file(room_path, rooms_path)
+            data_path = (
+                cast_path.parent.resolve()
+                if cast_path
+                else (rooms_path.parent if rooms_path.name == "rooms" else rooms_path)
+            )
         else:
-            base_path = Path.cwd()
-        run_server(room_path=room_path, base_path=base_path, host=args.host, port=args.port)
+            data_path = Path.cwd().resolve()
+            rooms_path = (
+                (data_path / args.rooms_dir).resolve()
+                if (data_path / args.rooms_dir).is_dir()
+                else data_path
+            )
+            room_path = None
+
+        if not data_path.is_dir():
+            raise SystemExit(f"room_editor: data directory not found: {data_path}")
+        if not rooms_path.is_dir():
+            raise SystemExit(f"room_editor: rooms directory not found: {rooms_path}")
+        if room_path and not room_path.is_file():
+            raise SystemExit(f"room_editor: room file not found: {room_path}")
+
+        try:
+            rooms_path.relative_to(data_path)
+            if room_path:
+                room_path.relative_to(rooms_path)
+        except ValueError:
+            raise SystemExit(
+                "room_editor: rooms and room paths must stay inside --data-path"
+            )
+
+        run_server(
+            room_path=room_path,
+            rooms_path=rooms_path,
+            data_path=data_path,
+            host=args.host,
+            port=args.port,
+        )
         return 0
 
     if args.command == "edit":

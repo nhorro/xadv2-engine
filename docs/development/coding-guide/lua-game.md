@@ -75,7 +75,7 @@ Never use globals. Persistent values go through `set_state` / `set_room_state`.
 local room = {}
 
 function room.on_load()
-  play_music("music/study.ogg", true)
+  crossfade_music("music/study.ogg", 2.5)
 end
 
 function room.on_unload()
@@ -258,7 +258,8 @@ These yield the current coroutine; the engine resumes you later:
 
 - `wait(seconds)`
 - `wait_event(name)`
-- `talk(speaker, text)`
+- `talk(speaker, text [, opts])`
+- `remark(speaker, text)`
 - `start_dialog(id)`
 - `avatar(id):move_to(target)`
 - `avatar(id):play_until_end(sequence)`
@@ -281,6 +282,15 @@ spawn(function()
   talk("ghost", "Buuuh.")
 end)
 ```
+
+`talk` normally stops the speaker and plays its directional talking loop. For
+speech that should not break a walk or gesture, pass
+`{ continue_action = true }`. A scripted conversation can also pass
+`{ face = "other_character" }`; `start_dialog` handles stopping and mutual facing
+for player/NPC dialogs automatically. For the common incidental case, use
+`remark("player", text)` instead of spelling out the options table. The semantic
+name is intentional: unlike `talk`, a remark does not take over the character's
+current action.
 
 ### `change_room` is deferred
 

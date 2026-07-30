@@ -48,6 +48,13 @@ CloseUpScene::CloseUpScene(pac::core::EngineContext& ctx, const pac::core::Scene
     if (!font_path.empty()) {
         font_ = ctx_.resources.try_font(font_path);
     }
+    speech_font_ = font_;
+    if (!ctx_.speech.font.empty()) {
+        if (const sf::Font* configured = ctx_.resources.try_font(ctx_.speech.font)) {
+            speech_font_ = configured;
+        }
+    }
+    speech_.set_font_size(ctx_.speech.font_size);
     // A close-up is a HUD-like full-screen view that fully covers the scene it is
     // pushed over, so it stays opaque (the default) and the manager skips drawing
     // the room beneath it.
@@ -332,7 +339,7 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
         target.draw(hint);
     }
 
-    speech_.draw(target, font_);
+    speech_.draw(target, speech_font_);
 }
 
 } // namespace pac::pnc

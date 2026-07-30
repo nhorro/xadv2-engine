@@ -40,6 +40,14 @@ slots:
     CHECK(case_slot_accepts(data.slots[0], *bank.find("unknown"))); // no tags = any
 }
 
+TEST_CASE("case term colors are stable per tag and preserve the requested alpha") {
+    const sf::Color person = case_term_color("person");
+    CHECK(case_term_color("person") == person);
+    CHECK(case_term_color("object") != person);
+    CHECK(case_term_color("person", 73).a == 73);
+    CHECK(case_term_color("", 91) == sf::Color(58, 70, 80, 91));
+}
+
 TEST_CASE("assignments move terms, reject wrong tags, and check solutions") {
     const CaseTerm person{"tomas", "Tomás", "person"};
     const CaseTerm other{"malena", "Malena", "person"};

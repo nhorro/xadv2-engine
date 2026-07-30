@@ -5,9 +5,13 @@ from unittest import TestCase
 
 from room_editor.room_data import (
     apply_room_patch,
+    find_cast_file,
     find_missing_assets,
+    list_assets,
     list_rooms,
+    load_avatar_catalog,
     load_room_yaml,
+    resolve_asset_within,
     resolve_within,
     save_room_yaml,
 )
@@ -96,6 +100,26 @@ class RoomEditorTests(TestCase):
             with self.assertRaises(ValueError):
                 resolve_within(base, "../rooms_secret/x.yaml")
 
+    def test_data_assets_are_room_relative_and_cannot_escape_data(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data = Path(tmpdir) / "data"
+            rooms = data / "rooms"
+            objects = data / "props"
+            rooms.mkdir(parents=True)
+            objects.mkdir()
+            (rooms / "background.png").write_bytes(b"room")
+            (objects / "desk.png").write_bytes(b"object")
+
+            assets = list_assets(data, relative_to=rooms)
+            self.assertIn("background.png", assets)
+            self.assertIn("../props/desk.png", assets)
+            self.assertEqual(
+                resolve_asset_within(data, rooms, "../props/desk.png"),
+                (objects / "desk.png").resolve(),
+            )
+            with self.assertRaises(ValueError):
+                resolve_asset_within(data, rooms, "../../outside.png")
+
     def test_save_room_yaml_writes_polygons_inline(self):
         room = {
             "id": "r",
@@ -121,3 +145,83 @@ class RoomEditorTests(TestCase):
             loaded = load_room_yaml(room_file)
             self.assertEqual(loaded["id"], "roundtrip")
             self.assertEqual(loaded["background"]["layers"], [])
+
+    def test_avatar_catalog_resolves_first_sequence_frames_and_mirroring(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data = Path(tmpdir) / "data"
+            rooms = data / "rooms"
+            character_dir = data / "characters" / "hero"
+            rooms.mkdir(parents=True)
+            character_dir.mkdir(parents=True)
+            room_file = rooms / "study.yaml"
+            save_room_yaml(room_file, {"id": "study", "background": {"layers": []}})
+            save_room_yaml(
+                data / "cast.yaml",
+                {
+                    "appearances": {
+                        "hero": {
+                            "type": "animated_sprite",
+                            "sprite": "characters/hero/hero.anim.yml",
+                        }
+                    },
+                    "characters": {
+                        "player": {
+                            "appearance": "hero",
+                            "name": "Hero",
+                        }
+                    },
+                },
+            )
+            save_room_yaml(
+                character_dir / "hero.anim.yml",
+                {
+                    "spritesheet": "hero.yml",
+                    "pivot": "feet",
+                    "sequences": {
+                        "stand_down": {
+                            "loop": True,
+                            "frames": [{"sprite": "idle", "duration": 0.2}],
+                        },
+                        "stand_left": {
+                            "loop": True,
+                            "h_mirror": True,
+                            "frames": [{"sprite": "idle", "duration": 0.2}],
+                        },
+                    },
+                },
+            )
+            save_room_yaml(
+                character_dir / "hero.yml",
+                {
+                    "image": "hero.png",
+                    "size": {"width": 64, "height": 96},
+                    "sprites": [
+                        {
+                            "id": "idle",
+                            "rect": {"x": 4, "y": 8, "width": 32, "height": 48},
+                            "anchors": {"feet": {"x": 12, "y": 44}},
+                        }
+                    ],
+                },
+            )
+            (character_dir / "hero.png").write_bytes(b"preview")
+
+            cast_path = find_cast_file(room_file, rooms)
+            self.assertEqual(cast_path, data / "cast.yaml")
+            catalog = load_avatar_catalog(cast_path)
+            self.assertEqual(catalog["errors"], [])
+            self.assertEqual(len(catalog["characters"]), 1)
+            hero = catalog["characters"][0]
+            self.assertEqual(hero["id"], "player")
+            self.assertEqual(hero["default_sequence"], "stand_down")
+            self.assertEqual(hero["image"], "characters/hero/hero.png")
+            self.assertEqual(
+                hero["sequences"]["stand_down"]["rect"],
+                {"x": 4, "y": 8, "width": 32, "height": 48},
+            )
+            self.assertEqual(
+                hero["sequences"]["stand_down"]["pivot"],
+                {"x": 12.0, "y": 44.0},
+            )
+            self.assertFalse(hero["sequences"]["stand_down"]["h_mirror"])
+            self.assertTrue(hero["sequences"]["stand_left"]["h_mirror"])

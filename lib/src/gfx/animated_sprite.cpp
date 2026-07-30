@@ -42,6 +42,9 @@ bool build_current_sprite(const Spritesheet& sheet,
         out_sprite.setOrigin(*p);
         out_origin = *p;
     }
+    if (player.current_h_mirror()) {
+        out_sprite.setScale(-1.0f, 1.0f);
+    }
     out_sprite.setColor(color);
     return true;
 }
@@ -126,6 +129,9 @@ void AnimatedSprite::draw(sf::RenderTarget& target,
     }
     sf::Sprite blit(*result, sf::IntRect(0, 0, rect.width, rect.height));
     blit.setOrigin(origin);
+    if (player_.current_h_mirror()) {
+        blit.setScale(-1.0f, 1.0f);
+    }
     blit.setColor(color_);
     target.draw(blit, states);
 }
@@ -144,7 +150,9 @@ sf::FloatRect AnimatedSprite::global_bounds() const {
     if (const sf::Vector2f* p = frame->anchor(pivot_)) {
         pivot = *p;
     }
-    const sf::FloatRect local(-pivot.x,
+    const float left =
+        player_.current_h_mirror() ? pivot.x - static_cast<float>(frame->rect.width) : -pivot.x;
+    const sf::FloatRect local(left,
                               -pivot.y,
                               static_cast<float>(frame->rect.width),
                               static_cast<float>(frame->rect.height));
@@ -168,7 +176,8 @@ std::optional<sf::Vector2f> AnimatedSprite::anchor_world(const std::string& name
     if (const sf::Vector2f* p = frame->anchor(pivot_)) {
         pivot = *p;
     }
-    return getTransform().transformPoint(a->x - pivot.x, a->y - pivot.y);
+    const float local_x = player_.current_h_mirror() ? pivot.x - a->x : a->x - pivot.x;
+    return getTransform().transformPoint(local_x, a->y - pivot.y);
 }
 
 AnimatedSprite load_animated_sprite(pac::core::ResourceCache& res,

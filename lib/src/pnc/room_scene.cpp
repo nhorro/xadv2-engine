@@ -88,6 +88,8 @@ struct RoomScene::Lua {
     bool inventory_valid = false;
     sol::table game_table;
     bool game_valid = false;
+    sol::table development_table;
+    bool development_valid = false;
     pac::core::Scripting* scripting = nullptr; // for auto-spawn (M9 #183)
     pac::core::Diagnostics* log = nullptr;
 
@@ -153,21 +155,41 @@ struct RoomScene::Lua {
         return res;
     }
 
-    /// Run game.lua's optional `on_start()` once-per-new-game world-state
-    /// initialization hook. No-op when absent. Errors are logged, not fatal.
-    void call_on_start() {
-        if (!game_valid) {
-            return;
-        }
-        sol::optional<sol::protected_function> fn = game_table["on_start"];
-        if (!fn) {
-            return;
-        }
-        const sol::protected_function_result r = (*fn)();
-        if (!r.valid()) {
-            const sol::error e = r;
-            log->error(std::string("game on_start error: ") + e.what());
-        }
+    /// Run the normal and optional development `on_start()` hooks once per new
+    /// game. A hook may return a room id to override the manifest's start_room;
+    /// the development hook runs last so a removable debug sidecar can select a
+    /// scenario without mutating production game logic.
+    std::optional<std::string> call_on_start() {
+        std::optional<std::string> room_override;
+        const auto call = [this, &room_override](
+                              const sol::table& table,
+                              bool valid,
+                              const std::string& label) {
+            if (!valid) {
+                return;
+            }
+            sol::optional<sol::protected_function> fn = table["on_start"];
+            if (!fn) {
+                return;
+            }
+            const sol::protected_function_result r = (*fn)();
+            if (!r.valid()) {
+                const sol::error e = r;
+                log->error(label + " on_start error: " + e.what());
+                return;
+            }
+            if (r.return_count() == 0) {
+                return;
+            }
+            const sol::object value(r[0]);
+            if (value.is<std::string>() && !value.as<std::string>().empty()) {
+                room_override = value.as<std::string>();
+            }
+        };
+
+        call(game_table, game_valid, "game");
+        call(development_table, development_valid, "development logic");
+        return room_override;
     }
 };
 
@@ -182,6 +204,7 @@ RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams
     inventory_path_ = params.get_or("inventory", "");
     inventory_logic_ = params.get_or("inventory_logic", "");
     logic_path_ = params.get_or("logic", "");
+    development_logic_path_ = params.get_or("development_logic", "");
     pause_overlays_ = parse_pause_overlays(params, ctx_.log);
     fade_duration_ = kRoomFadeDefault;
     if (const auto v = params.get("fade_duration")) {
@@ -216,6 +239,13 @@ void RoomScene::enter() {
     if (!font_path_.empty()) {
         font_ = ctx_.resources.try_font(font_path_);
     }
+    speech_font_ = font_;
+    if (!ctx_.speech.font.empty()) {
+        if (const sf::Font* configured = ctx_.resources.try_font(ctx_.speech.font)) {
+            speech_font_ = configured;
+        }
+    }
+    speech_.set_font_size(ctx_.speech.font_size);
     try {
         cast_ = parse_cast(ctx_.resources.read_text(cast_path_));
     } catch (const std::exception& e) {
@@ -298,6 +328,10 @@ void RoomScene::enter() {
         lua_->game_table = *t;
         lua_->game_valid = true;
     }
+    if (auto t = load_table(development_logic_path_)) {
+        lua_->development_table = *t;
+        lua_->development_valid = true;
+    }
 
     // --- bind the genre Lua API (captures this; one RoomScene is active) ---
     L.set_function("change_room", [this](std::string id, sol::optional<std::string> e) {
@@ -345,9 +379,15 @@ void RoomScene::enter() {
         }
         return out;
     });
-    L.set_function("_talk_start", [this](std::string speaker, std::string text) {
-        return api_talk(speaker, text);
-    });
+    L.set_function("_talk_start",
+                   [this](std::string speaker,
+                          std::string text,
+                          bool continue_action,
+                          sol::optional<std::string> face_target) {
+                       const std::optional<std::string> target =
+                           face_target ? std::optional<std::string>(*face_target) : std::nullopt;
+                       return api_talk(speaker, text, continue_action, target);
+                   });
     // talk(speaker, text): show the line, then (when run inside a coroutine task)
     // yield until it is dismissed so a cutscene's lines play one after another
     // instead of overwriting each other (design 05: talk "yields until done"). On
@@ -364,12 +404,16 @@ void RoomScene::enter() {
     // auto-spawned handler that yielded — the dispatcher (#183) defers the SCUMM
     // panel's finish_execution until update() sees the cutscene task drain.
     ctx_.scripting.run_string(R"LUA(
-function talk(speaker, text)
-  local ev = _talk_start(speaker, text)
+function talk(speaker, text, opts)
+  opts = opts or {}
+  local ev = _talk_start(speaker, text, opts.continue_action == true, opts.face)
   local _, ismain = coroutine.running()
   if ev and ev ~= "" and not ismain then wait_event(ev) end
 end
-function say(speaker, text) return talk(speaker, text) end
+function say(speaker, text, opts) return talk(speaker, text, opts) end
+function remark(speaker, text)
+  return talk(speaker, text, { continue_action = true })
+end
 function move(id, target) return avatar(id):move_to(target) end
 function face(id, dir) return avatar(id):face(dir) end
 function cutscene(body)
@@ -742,16 +786,17 @@ end
         ctx_.log.error("RoomScene: no 'start_room'");
         return;
     }
-    // New game (no staged restore reached this point): run game.lua's optional
-    // on_start() for one-time world-state initialization, in the global scope,
-    // BEFORE the start room's on_load so a room can read the state it seeds.
+    // New game (no staged restore reached this point): run the normal and optional
+    // development on_start() hooks for one-time world-state initialization in
+    // the global scope, BEFORE the selected room's on_load so it can read the
+    // state they seed. Either hook may override the manifest start_room.
     // Continue/Load returns above, so on_start never clobbers a restored save.
     const pac::core::ScopeId prev_scope = ctx_.scripting.current_scope();
     ctx_.scripting.set_current_scope(ctx_.scripting.global_scope());
-    lua_->call_on_start();
+    const std::optional<std::string> start_override = lua_->call_on_start();
     ctx_.scripting.set_current_scope(prev_scope);
 
-    load_room(start_room_, "");
+    load_room(start_override.value_or(start_room_), "");
 
     // Checkpoint the fresh start. Otherwise the only autosave is on a room change,
     // so a game with a single room would never have a save at all and the title's
@@ -843,9 +888,16 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
                            "' has no usable avatar; the player will not appear (see error above)");
         }
     }
-    seat_player(entry_point);
+    const bool allow_entry_walk =
+        entry_point.empty() && !pending_restore_player_.has_value();
+    seat_player(entry_point, allow_entry_walk);
     if (player_ && camera_) {
-        camera_->snap_to(player_->position());
+        // Frame the authored destination, not the off-screen source. Otherwise
+        // a scrolling room would chase the player outside before the entrance
+        // has even begun.
+        const geom::Point camera_target =
+            pending_player_entry_ ? pending_player_entry_->target : player_->position();
+        camera_->snap_to(camera_target);
     }
     spawn_room_npcs();
     build_object_sprites();
@@ -971,12 +1023,13 @@ void RoomScene::spawn_room_npcs() {
     }
 }
 
-void RoomScene::seat_player(const std::string& entry_point) {
+void RoomScene::seat_player(const std::string& entry_point, bool allow_entry_walk) {
     if (!player_ || !room_) {
         return;
     }
     const RoomData& data = room_->data();
     const geom::Point* start = nullptr;
+    const RoomAvatarPlacement* player_placement = nullptr;
     std::string orientation = "down";
     if (!entry_point.empty()) {
         start = data.point(entry_point);
@@ -984,6 +1037,7 @@ void RoomScene::seat_player(const std::string& entry_point) {
     if (!start) {
         for (const RoomAvatarPlacement& a : data.avatars) {
             if (a.player) {
+                player_placement = &a;
                 start = data.point(a.start);
                 orientation = a.orientation;
                 break;
@@ -996,6 +1050,21 @@ void RoomScene::seat_player(const std::string& entry_point) {
     if (start) {
         player_->set_position(*start);
         player_->face(orientation);
+        pending_player_entry_.reset();
+        if (allow_entry_walk && player_placement &&
+            !player_placement->enter_from.empty()) {
+            const geom::Point* from = data.point(player_placement->enter_from);
+            if (!from) {
+                ctx_.log.error("RoomScene: player entry point '" +
+                               player_placement->enter_from + "' does not exist");
+            } else {
+                player_->set_position(*from);
+                player_->follow_path(
+                    geom::find_path(*from, *start, data.walkable, data.active_obstacles()));
+                pending_player_entry_ = PendingPlayerEntry{*start, orientation};
+                view_state_ = ViewState::BLOCKED;
+            }
+        }
     } else {
         ctx_.log.error("RoomScene: room '" + current_room_id_ + "' has no player start");
     }
@@ -1034,6 +1103,7 @@ void RoomScene::unload_room() {
     pending_obj_moves_.clear();
     pending_obj_anim_.clear();
     pending_speech_.clear();
+    end_talk_animation();
     ambient_.clear(); // transient float_text labels do not survive a room change
     // An in-progress dialog references the outgoing room's NPC avatars; the
     // room change kills both. Cancelling the dialog scope also reaps any
@@ -1481,6 +1551,8 @@ std::optional<geom::Point> RoomScene::hotspot_focus(const RoomHotspot& hs) const
 
 void RoomScene::dispatch_and_feedback(const Command& cmd) {
     spoke_during_command_ = false;
+    const bool player_was_moving = player_ && player_->moving();
+    const std::string movement_facing = player_ ? player_->facing() : std::string();
     // Turn to face what we're about to act on / talk to, before dispatch (so the
     // avatar already looks at an NPC when its dialog opens).
     face_target(cmd);
@@ -1520,10 +1592,25 @@ void RoomScene::dispatch_and_feedback(const Command& cmd) {
     // no handler took responsibility — a handler that ran (opened a close-up,
     // changed state, spoke via talk(), or just returned nothing) suppresses the
     // default, since it already decided how to react.
+    // An immediate observation can be made mid-stride. `face_target` above is
+    // still useful for stationary interactions, but restore the route facing
+    // when this command did not stop the walk.
+    if (player_was_moving && player_ && player_->moving()) {
+        player_->face(movement_facing);
+    }
     if (result.caption) {
         say(*result.caption, color, gap);
+        // Command captions are Julia reacting while normal play continues. Let
+        // an in-flight walk or scripted gesture keep its animation; when she is
+        // already idle, use the talk loop.
+        if (speech_.active()) {
+            begin_talk_animation(player_char_, player_ && (player_->moving() || player_->acting()));
+        }
     } else if (!result.handled && !spoke_during_command_) {
         say(ctx_.strings.caption("nothing_happens"), color, gap);
+        if (speech_.active()) {
+            begin_talk_animation(player_char_, player_ && (player_->moving() || player_->acting()));
+        }
     }
     command_controller_.finish_execution();
     sync_command_hover();
@@ -1795,6 +1882,20 @@ void RoomScene::update(float dt) {
         }
         check_zones();
     }
+    // Declarative walk-on entrance. Unblock before the completion hook so the
+    // hook may deliberately replace COMMAND with a cutscene or dialog.
+    if (pending_player_entry_ && player_ && !player_->moving()) {
+        const std::string orientation = pending_player_entry_->final_orientation;
+        pending_player_entry_.reset();
+        player_->face(orientation);
+        view_state_ = ViewState::COMMAND;
+        if (room_) {
+            const pac::core::ScopeId previous_scope = ctx_.scripting.current_scope();
+            ctx_.scripting.set_current_scope(room_scope_);
+            room_->call_hook("on_player_entered");
+            ctx_.scripting.set_current_scope(previous_scope);
+        }
+    }
     // A command deferred until the player reaches a `requires_approach` hotspot's
     // approach point fires once the avatar stops (path complete, or as close as
     // pathing allowed). We unblock first so dispatch runs in the COMMAND view.
@@ -1889,6 +1990,9 @@ void RoomScene::update(float dt) {
     }
     prev_view_state_ = view_state_;
     speech_.update(dt);
+    if (!speech_.active()) {
+        end_talk_animation();
+    }
     // Age out ambient float_text labels.
     if (!ambient_.empty()) {
         for (AmbientLabel& label : ambient_) {
@@ -1903,6 +2007,7 @@ void RoomScene::update(float dt) {
         dialog_->update();
         if (dialog_->ended()) {
             dialog_.reset();
+            end_talk_animation();
             // Reap the dialog scope: cancel the run-task (if still around)
             // and anything else that was spawned within the dialog. No-op if
             // the scope was already cancelled by unload_room / restore.
@@ -2063,7 +2168,7 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                                       room_->npcs(),
                                       font_);
         }
-        speech_.draw(target, font_); // world coordinates, over the scenery
+        speech_.draw(target, speech_font_); // world coordinates, over the scenery
         draw_ambient(target);        // float_text labels, world coordinates
     }
 
@@ -2200,7 +2305,10 @@ std::optional<pac::core::StateValue> RoomScene::api_get_room_state(const std::st
     return it->second;
 }
 
-std::string RoomScene::api_talk(const std::string& speaker_id, const std::string& text) {
+std::string RoomScene::api_talk(const std::string& speaker_id,
+                                const std::string& text,
+                                bool continue_action,
+                                const std::optional<std::string>& face_target) {
     sf::Color color(230, 230, 230);
     float gap = 48.0f;
     if (const Character* c = cast_.character(speaker_id)) {
@@ -2221,11 +2329,61 @@ std::string RoomScene::api_talk(const std::string& speaker_id, const std::string
     }
     // Nothing shown (empty text) -> no event, so the Lua wrapper never waits.
     if (!speech_.active()) {
+        end_talk_animation();
         return std::string();
     }
+    begin_talk_animation(speaker_id, continue_action, face_target);
     const std::string event = "__spoke." + speaker_id + "." + std::to_string(++talk_seq_);
     pending_speech_.push_back({speaker_id, ctx_.scripting.current_scope(), event});
     return event;
+}
+
+void RoomScene::begin_talk_animation(const std::string& speaker_id,
+                                     bool continue_action,
+                                     const std::optional<std::string>& face_target) {
+    end_talk_animation();
+    if (continue_action) {
+        return;
+    }
+    Avatar* speaker = resolve_avatar(speaker_id);
+    if (!speaker) {
+        return; // cast-only/close-up speakers can still show their line
+    }
+    speaker->stop();
+    if (face_target) {
+        if (const Avatar* target = resolve_avatar(*face_target)) {
+            speaker->face(nearest_direction(target->position() - speaker->position()));
+        } else if (room_) {
+            if (const geom::Point* target = room_->data().point(*face_target)) {
+                speaker->face(nearest_direction(*target - speaker->position()));
+            }
+        }
+    }
+    speaker->talk();
+    if (speaker->talking()) {
+        talking_avatar_id_ = speaker_id;
+    }
+}
+
+void RoomScene::end_talk_animation() {
+    if (talking_avatar_id_.empty()) {
+        return;
+    }
+    if (Avatar* speaker = resolve_avatar(talking_avatar_id_)) {
+        speaker->stop_talking();
+    }
+    talking_avatar_id_.clear();
+}
+
+void RoomScene::prepare_dialog_participants(const std::string& npc_id) {
+    Avatar* npc = resolve_avatar(npc_id);
+    if (!player_ || !npc || npc == &*player_) {
+        return;
+    }
+    player_->stop();
+    npc->stop();
+    player_->face(nearest_direction(npc->position() - player_->position()));
+    npc->face(nearest_direction(player_->position() - npc->position()));
 }
 
 void RoomScene::api_camera_look_at(geom::Point target) {
@@ -2609,10 +2767,21 @@ std::string RoomScene::api_current_room_config(const std::string& room_id) const
 }
 
 void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string& speaker_id) {
-    if (view_state_ != ViewState::COMMAND) {
-        ctx_.log.error("start_dialog('" + dialog_id + "'): a dialog is already running");
+    // BLOCKED is a valid origin: a cutscene or deferred on_room_resume beat may
+    // finish its choreography by handing control to a dialog. The drain seam
+    // only restores BLOCKED -> COMMAND, so the DIALOG state set below survives
+    // after that task exits. Test actual ownership instead of treating every
+    // non-COMMAND state as a nested dialog.
+    if (dialog_) {
+        ctx_.log.error("start_dialog('" + dialog_id + "'): dialog '" + dialog_->npc_id() +
+                       "' is already running");
         return;
     }
+    if (view_state_ == ViewState::MENU) {
+        ctx_.log.error("start_dialog('" + dialog_id + "'): cannot start while the menu is open");
+        return;
+    }
+    prepare_dialog_participants(speaker_id);
     dialog_text_anchor_.reset();
     DialogHost host;
     host.set_text_anchor = [this](const std::string& point_name) {
@@ -2642,8 +2811,11 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
             }
         }
         say_at(text, color, pos, gap);
+        if (speech_.active()) {
+            begin_talk_animation(speaker_id, false, player_char_);
+        }
     };
-    host.speak_player = [this](const std::string& text) {
+    host.speak_player = [this, speaker_id](const std::string& text) {
         sf::Color color(230, 230, 230);
         float gap = 48.0f;
         if (const Character* c = cast_.character(player_char_)) {
@@ -2652,6 +2824,9 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
         }
         const geom::Point pos = player_ ? speech_anchor(*player_) : geom::Point{640.0f, 360.0f};
         say_at(text, color, pos, gap);
+        if (speech_.active()) {
+            begin_talk_animation(player_char_, false, speaker_id);
+        }
     };
     host.is_speaking = [this]() { return speech_.active(); };
     // `once`-consumption persists in the global StateStore under the

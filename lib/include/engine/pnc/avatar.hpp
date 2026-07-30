@@ -50,6 +50,14 @@ public:
     void stop();
     bool moving() const { return mover_.moving(); }
 
+    /// Stop the current movement/action and play the talking loop for the current
+    /// facing. Prefers `talk_<direction>`, then any directional talk sequence,
+    /// then bare `talk`; when none exists the avatar simply stands.
+    void talk();
+    /// End a talk loop and return control to the mover-driven stand animation.
+    void stop_talking();
+    [[nodiscard]] bool talking() const { return talking_; }
+
     void update(float dt, const RoomData& room);
 
     /// Render the avatar (shadow blob + animated sprite). The renderer supplies
@@ -81,6 +89,11 @@ public:
     /// True while a scripted `play` sequence is still running (not yet finished
     /// and not cancelled by movement).
     [[nodiscard]] bool acting() const { return !acting_.empty(); }
+    /// The sequence currently selected on the underlying sprite. Useful to
+    /// diagnostics and engine-level behavior tests.
+    [[nodiscard]] const std::string& current_animation() const {
+        return sprite_.current_sequence();
+    }
     /// World position of a named sprite anchor on the current frame, if present.
     [[nodiscard]] std::optional<geom::Point> anchor(const std::string& name) const;
 
@@ -99,6 +112,7 @@ private:
     // non-empty it supersedes the mover-driven stand/walk animation; a one-shot
     // sequence clears it on finish, and movement cancels it.
     std::string acting_;
+    bool talking_ = false;
 
     gfx::AnimatedSprite sprite_;
     Mover mover_;

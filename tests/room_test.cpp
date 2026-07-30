@@ -43,7 +43,7 @@ hotspots:
     approach: at_door
     affordances: [ look_at, open ]
 avatars:
-  - { id: julia, start: player_start, player: true }
+  - { id: julia, start: player_start, enter_from: at_door, player: true }
 )YAML";
 
 } // namespace
@@ -73,6 +73,7 @@ TEST_CASE("parse_room reads layout, points, hotspots, and avatars") {
     REQUIRE(r.avatars.size() == 1);
     CHECK(r.avatars[0].player == true);
     CHECK(r.avatars[0].start == "player_start");
+    CHECK(r.avatars[0].enter_from == "at_door");
 }
 
 TEST_CASE("parse_room reads per-layer origins (native-size layers)") {

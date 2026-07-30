@@ -7,6 +7,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
+#include <iterator>
 #include <set>
 
 namespace pac::pnc {
@@ -50,6 +51,26 @@ std::string resolve(const std::string& raw, const std::string& logical_path, con
     return path;
 }
 } // namespace
+
+sf::Color case_term_color(const std::string& tag, std::uint8_t alpha) {
+    if (tag.empty())
+        return sf::Color(58, 70, 80, alpha);
+
+    static const sf::Color colors[] = {
+        {38, 116, 125},
+        {145, 101, 32},
+        {111, 67, 112},
+        {125, 57, 62},
+        {91, 99, 48},
+        {46, 92, 130},
+    };
+    std::size_t hash = 5381;
+    for (const unsigned char c : tag)
+        hash = ((hash << 5U) + hash) ^ c;
+    sf::Color result = colors[hash % std::size(colors)];
+    result.a = alpha;
+    return result;
+}
 
 const CaseTerm* CaseTermBank::find(const std::string& id) const {
     const auto it =

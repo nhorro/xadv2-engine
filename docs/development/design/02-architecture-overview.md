@@ -291,6 +291,10 @@ resources:
 
 strings: strings/es.yaml
 
+speech:
+  font: fonts/DepartureMono-Regular.otf
+  font_size: 24
+
 settings:
   audio:
     music_volume: 0.8
@@ -341,6 +345,7 @@ scenes:
 | `window` | Required | Initial physical window mode and size. |
 | `resources.src` | Required | Resource source: filesystem directory for MVP; archive file design-for. |
 | `strings` | Required | UI strings resource for engine-emitted text (verb labels, connectors, menu labels). One file in the MVP; a language→file map is design-for. See [data formats](06-data-formats.md). |
+| `speech` | Optional | Game-wide character speech typography (`font` and `font_size`, default 24). Separate from scene UI fonts. |
 | `settings` | Optional | Default player-facing settings. User settings may override these. |
 | `development` | Optional | Development-only flags. Not persisted as player settings. |
 | `entry` | Required | Initial scene id. |
@@ -399,8 +404,9 @@ python tools/pack/pack.py <resources_root> <resources.pak>
 Both backends are stream-and-cache safe: the `ResourceCache` keeps decoded
 textures, fonts (loaded via `loadFromMemory` so the bytes outlive the font),
 sound buffers, and shader programs alive for the cache's lifetime, and
-`MusicPlayer` streams the current track from memory through
-`openFromMemory` against the cache's persistent buffer.
+`MusicPlayer` streams up to two overlapping tracks from memory through
+`openFromMemory` against the cache's persistent buffers, enabling crossfades
+without decoding either track in full.
 
 All game assets are referenced by logical paths relative to the resource root,
 for example:

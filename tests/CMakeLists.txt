@@ -31,9 +31,12 @@ add_executable(pac_core_tests
     resource_path_test.cpp
     pack_resource_source_test.cpp
     display_test.cpp
+    audio_test.cpp
+    cursor_test.cpp
     geometry_test.cpp
     spritesheet_test.cpp
     animation_test.cpp
+    avatar_test.cpp
     shader_effect_test.cpp
     state_store_test.cpp
     facts_test.cpp

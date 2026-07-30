@@ -10,7 +10,7 @@
   <header>
     <div>
       <h1>Room Editor</h1>
-      <p>Edit walkable areas, zones, regions, hotspots, and named points in the browser.</p>
+      <p>Edit room geometry, layers, objects, and avatar placement in the browser.</p>
     </div>
     <div class="toolbar">
       <button id="reload-button">Reload</button>
@@ -138,6 +138,41 @@
           <div class="hint" style="margin-top:.4rem">
             z: blank/"auto" sorts by the scaled bottom edge; a number overrides;
             baseline sets a fixed floor line (avatars pass in front below it).
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="avatars-panel" style="display:none">
+        <h2>Avatar previews</h2>
+        <p class="hint">
+          Editor-only helpers: they are seeded from the room but are never saved.
+          Drag a character or its corner handle, then copy the pivot position and
+          scale into points/perspective YAML.
+        </p>
+        <label for="avatar-character">Cast character</label>
+        <select id="avatar-character"></select>
+        <div class="button-row">
+          <button id="avatar-add-pc">Add PC</button>
+          <button id="avatar-add-npc">Add NPC</button>
+        </div>
+        <div id="avatars-list"></div>
+        <label>Selected preview</label>
+        <div id="avatar-info">
+          <div class="compact-row">
+            <label>x</label>
+            <input id="avatar-x" type="number" step="1" />
+            <label>y</label>
+            <input id="avatar-y" type="number" step="1" />
+          </div>
+          <div class="compact-row">
+            <label>scale</label>
+            <input id="avatar-scale" type="number" step="0.01" min="0.05" />
+            <button id="avatar-apply">Apply</button>
+          </div>
+          <pre id="avatar-values">No avatar selected.</pre>
+          <div class="button-row">
+            <button id="avatar-copy">Copy values</button>
+            <button id="avatar-remove">Remove</button>
           </div>
         </div>
       </section>

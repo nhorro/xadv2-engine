@@ -19,18 +19,21 @@ Open a specific room in the browser:
 
 ```bash
 PYTHONPATH=tools python3 -m tools.room_editor serve \
-  --room examples/02_scumm_inventory/data/rooms/yard.yaml
+  --data-path examples/02_scumm_inventory/data \
+  --room yard.yaml
 ```
 
 Or start without a file and pick from a folder via the **Room file** dropdown:
 
 ```bash
 PYTHONPATH=tools python3 -m tools.room_editor serve \
-  --base-path examples/02_scumm_inventory/data/rooms
+  --data-path examples/02_scumm_inventory/data
 ```
 
-Useful extras: `--base-path` (override asset root for validation),
-`--host` / `--port` (bind address).
+Rooms default to `<data-path>/rooms`. Use `--rooms-dir` to override that
+directory; it may be relative to the data directory or an absolute path inside
+it. Room backgrounds and objects may live elsewhere under the data directory.
+Useful extras: `--host` / `--port` (bind address).
 
 ## What you can do
 
@@ -41,7 +44,14 @@ Useful extras: `--base-path` (override asset root for validation),
   layer's corner handles to resize (aspect-locked, base-anchored so furniture stays
   grounded). The Background panel exposes numeric `scale`/`z` and a **z = base**
   button that sorts a layer by its floor line (handy for occluders).
-- Validate assets against a base asset directory.
+- Add editor-only **PC/NPC previews** from `cast.yaml`, move or scale their
+  first/default animation frame, and copy their floor-pivot position and scale.
+  Previews depth-sort against furniture and are never saved into room YAML.
+- Browse object and background assets throughout the game data directory while
+  keeping their YAML paths relative to the room.
+- Scroll beyond the room background on every side. The workspace follows the
+  farthest editable entity with extra margin, allowing negative coordinates and
+  off-screen staging points or paths.
 
 ## Headless patching
 

@@ -9,6 +9,13 @@ using namespace pac::pnc;
 // wrap_text / layout_text now live in pac::core and are covered by
 // text_layout_test.cpp; this file keeps the speech-balloon geometry tests.
 
+TEST_CASE("speech font size defaults to 24 and is configurable") {
+    SpeechManager speech;
+    CHECK(speech.font_size() == 24u);
+    speech.set_font_size(32);
+    CHECK(speech.font_size() == 32u);
+}
+
 TEST_CASE("contain_block centers on the anchor when there is room") {
     // 100x40 block, anchor at the middle of a 1000x600 view -> centered top-left.
     const sf::FloatRect bounds(0.0f, 0.0f, 1000.0f, 600.0f);

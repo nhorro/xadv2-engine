@@ -25,7 +25,7 @@ ui:
   continue: "Continue"
   settings: "Settings"
   settings_button: "OPT"
-  quit:     "Quit"
+  quit_to_os: "Quit game"
   pause:    "Paused"
   resume:   "Resume"
   save_game: "Save"
@@ -37,7 +37,7 @@ ui:
   slot_empty: "Empty"
   description_hint: "Description"
   thumbnail_placeholder: "No capture"
-  quit_to_title: "Quit"
+  quit_to_title: "Return to title"
   back:     "Back"
   notes:    "Field notes"   # pause-menu label for the custom scene in 06_cpp_scene
   apply:    "Apply"

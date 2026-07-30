@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from .closeup_data import apply_hotspots, load_closeup_yaml, save_closeup_yaml
+from .closeup_data import apply_editable_areas, load_closeup_yaml, save_closeup_yaml
 from .server import run_server
 
 
@@ -17,16 +17,18 @@ def _parse_resolution(text: str) -> tuple[int, int]:
 
 
 def _default_base_path(closeup_path: Path) -> Path:
-    # A close-up usually lives at <data>/closeups/<id>.yml and its `background`
-    # path is relative to <data>; default the asset base to <data> so the image
-    # resolves. Falls back to the file's own folder otherwise.
-    parent = closeup_path.parent
-    return parent.parent if parent.name == "closeups" else parent
+    # Find the resource root for conventional <data>/closeups/... and
+    # <data>/cases/... layouts. This also supports arbitrarily nested close-up
+    # directories and leading-slash, resources-root-relative asset paths.
+    for parent in closeup_path.parents:
+        if parent.name in {"closeups", "cases"}:
+            return parent.parent
+    return closeup_path.parent
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Hotspot editor for point-and-click close-ups (closeups/<id>.yml)."
+        description="Polygon editor for close-ups and case-resolution templates."
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -46,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8001)
 
-    edit = sub.add_parser("edit", help="Write a hotspots map (JSON file) into a close-up YAML.")
+    edit = sub.add_parser("edit", help="Write an areas map (JSON file) into a supported YAML.")
     edit.add_argument("--closeup", required=True)
     edit.add_argument("--hotspots", required=True, help="JSON file: { id: { name?, area: [...] } }")
 
@@ -74,9 +76,9 @@ def main() -> int:
         closeup_path = Path(args.closeup)
         hotspots = json.loads(Path(args.hotspots).read_text(encoding="utf-8"))
         data = load_closeup_yaml(closeup_path)
-        apply_hotspots(data, hotspots)
+        apply_editable_areas(data, hotspots)
         save_closeup_yaml(closeup_path, data)
-        print(f"Saved close-up {closeup_path}")
+        print(f"Saved editor document {closeup_path}")
         return 0
 
     return 1

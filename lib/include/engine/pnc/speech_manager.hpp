@@ -47,6 +47,8 @@ public:
     void update(float dt);
     void skip();
     bool active() const { return active_; }
+    void set_font_size(unsigned font_size) { font_size_ = font_size; }
+    [[nodiscard]] unsigned font_size() const { return font_size_; }
 
     void draw(sf::RenderTarget& target, const sf::Font* font) const;
 
@@ -57,6 +59,7 @@ private:
     float remaining_ = 0.0f;
     float side_gap_ = 48.0f; // clearance when a line is placed beside the speaker
     bool active_ = false;
+    unsigned font_size_ = 24;
 };
 
 } // namespace pac::pnc

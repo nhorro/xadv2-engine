@@ -8,12 +8,19 @@ A minimal Python-based room YAML editor for the xadv2-engine room format.
 - Edit background layers and geometry sections only.
 - Preserve other room fields intact.
 - Visual web-based editor for room geometry and points (runs in the browser).
+- Preview PC/NPC cast sprites using the first frame of their default sequence.
+  Avatar previews can be moved and scaled, are depth-sorted with furniture, and
+  show copyable pivot position/scale values. They are editor-only and are not
+  written to room YAML.
 - Move, resize, and depth-sort background layers (handy for placing furniture
   occluders). In **layers** mode, select a layer then drag its corner handles to
   resize — scaling is aspect-locked and keeps the layer's base (bottom-centre)
   fixed, so furniture stays grounded. The Background panel exposes the numeric
   `scale`/`z` and a "z = base" button that sorts the layer by its floor line.
-- Asset validation against a base asset directory.
+- Discover room backgrounds and objects anywhere under the game data directory.
+- Scroll beyond every side of the visible room to recover negative coordinates
+  and author off-screen points, paths, objects, and staging positions. The
+  workspace grows in chunks beyond the farthest editable entity.
 
 ## Requirements
 
@@ -25,27 +32,39 @@ A minimal Python-based room YAML editor for the xadv2-engine room format.
 Start the web-based room editor and open it in a browser:
 
 ```bash
-PYTHONPATH=tools python3 -m tools.room_editor serve --room examples/02_scumm_inventory/data/rooms/yard.yaml
+PYTHONPATH=tools python3 -m tools.room_editor serve \
+  --data-path examples/02_scumm_inventory/data \
+  --room yard.yaml
 ```
 
-`--room` is optional. Omit it and point `--base-path` at the rooms folder to start
-without a file loaded, then choose one from the **Room file** dropdown (top-left)
-and click **Open** — no restart needed to switch between rooms in that folder:
+`--data-path` points at the game data directory. Rooms are read from its `rooms`
+subdirectory by default, while room-relative references such as
+`../objects/desk.png` can reach other assets inside the data tree. `--room` is
+optional: omit it to choose from the **Room file** dropdown without restarting.
 
 ```bash
-PYTHONPATH=tools python3 -m tools.room_editor serve --base-path examples/02_scumm_inventory/data/rooms
+PYTHONPATH=tools python3 -m tools.room_editor serve \
+  --data-path examples/02_scumm_inventory/data
 ```
 
-(Optional) override the asset base path:
+Override the room directory when a game does not use `<data>/rooms`:
 
 ```bash
-PYTHONPATH=tools python3 -m tools.room_editor serve --room examples/02_scumm_inventory/data/rooms/yard.yaml --base-path examples/02_scumm_inventory/data
+PYTHONPATH=tools python3 -m tools.room_editor serve \
+  --data-path examples/02_scumm_inventory/data \
+  --rooms-dir scenes/rooms
 ```
 
-(Optional) bind to a custom host or port:
+An absolute `--rooms-dir` is also accepted, provided it remains inside
+`--data-path`. The older `--base-path <rooms-directory>` form remains available
+for compatibility.
+
+Bind to a custom host or port:
 
 ```bash
-PYTHONPATH=tools python3 -m tools.room_editor serve --room examples/02_scumm_inventory/data/rooms/yard.yaml --host 0.0.0.0 --port 9000
+PYTHONPATH=tools python3 -m tools.room_editor serve \
+  --data-path examples/02_scumm_inventory/data \
+  --room yard.yaml --host 0.0.0.0 --port 9000
 ```
 
 Apply a patch from a YAML or JSON patch file:

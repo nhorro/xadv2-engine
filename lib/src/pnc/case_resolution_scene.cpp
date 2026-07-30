@@ -39,26 +39,6 @@ bool inside(geom::Point p, float x, float y, float w, float h) {
     return p.x >= x && p.x < x + w && p.y >= y && p.y < y + h;
 }
 
-sf::Color tag_color(const std::string& tag, sf::Uint8 alpha = 255) {
-    if (tag.empty())
-        return sf::Color(58, 70, 80, alpha);
-    // Stable author-defined tag -> one of the subdued SCUMM-compatible accents.
-    static const sf::Color colors[] = {
-        {38, 116, 125},
-        {145, 101, 32},
-        {111, 67, 112},
-        {125, 57, 62},
-        {91, 99, 48},
-        {46, 92, 130},
-    };
-    std::size_t hash = 5381;
-    for (const unsigned char c : tag)
-        hash = ((hash << 5U) + hash) ^ c;
-    sf::Color result = colors[hash % std::size(colors)];
-    result.a = alpha;
-    return result;
-}
-
 void centered(sf::RenderTarget& target,
               const sf::Font& font,
               const std::string& value,
@@ -326,12 +306,13 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
         for (std::size_t i = 0; i < slot.area.size(); ++i)
             shape.setPoint(i, {slot.area[i].x, slot.area[i].y});
         const bool hovered = data_.slot_at(mouse_) == &slot;
-        const sf::Color slot_tag = slot.accepts.size() == 1 ? tag_color(slot.accepts.front(), 150)
-                                                            : sf::Color(22, 33, 43, 190);
+        const sf::Color slot_tag = slot.accepts.size() == 1
+                                       ? case_term_color(slot.accepts.front(), 150)
+                                       : sf::Color(22, 33, 43, 190);
         shape.setFillColor(slot_tag);
         shape.setOutlineColor(
             hovered ? kHover
-                    : (slot.accepts.size() == 1 ? tag_color(slot.accepts.front()) : kGold));
+                    : (slot.accepts.size() == 1 ? case_term_color(slot.accepts.front()) : kGold));
         shape.setOutlineThickness(2.0f);
         target.draw(shape);
         if (font_) {
@@ -385,7 +366,7 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
         const float x = (local % 6) * cw, y = py + kHeader + (local / 6) * ch;
         sf::RectangleShape cell({cw, ch});
         cell.setPosition(x, y);
-        cell.setFillColor(tag_color(bank_.terms[index].tag, 135));
+        cell.setFillColor(case_term_color(bank_.terms[index].tag, 135));
         const bool selected = selected_term_ == bank_.terms[index].id,
                    hover = inside(mouse_, x, y, cw, ch);
         cell.setOutlineColor(selected ? kGold : (hover ? kHover : kBorder));

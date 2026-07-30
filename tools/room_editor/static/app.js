@@ -11,7 +11,13 @@ const state = {
   dragOffset: null,
   imageCache: new Map(),
   viewScale: 1, // world->canvas scale from the last draw(); used to map clicks back to world
-  assets: [], // image asset paths under the base dir, for the object sprite picker (#147)
+  viewOrigin: { x: 0, y: 0 },
+  workspaceInitialized: false,
+  assets: [], // data-tree assets expressed relative to the active room directory
+  avatarCatalog: [],
+  avatarCatalogErrors: [],
+  avatarPreviews: [], // editor-only; deliberately excluded from saveRoom()
+  nextAvatarPreviewId: 1,
 };
 
 const canvas = document.getElementById('room-canvas');
@@ -40,13 +46,26 @@ const hotspotIdInput = document.getElementById('hotspot-id');
 const hotspotRenameButton = document.getElementById('hotspot-rename');
 const hotspotNameInput = document.getElementById('hotspot-name');
 const hotspotAffordances = document.getElementById('hotspot-affordances');
+const avatarsPanel = document.getElementById('avatars-panel');
+const avatarCharacterSelect = document.getElementById('avatar-character');
+const avatarsList = document.getElementById('avatars-list');
+const avatarXInput = document.getElementById('avatar-x');
+const avatarYInput = document.getElementById('avatar-y');
+const avatarScaleInput = document.getElementById('avatar-scale');
+const avatarValues = document.getElementById('avatar-values');
+
+const WORKSPACE_MARGIN = 160;
+const WORKSPACE_GROWTH_STEP = 256;
+const MAX_CANVAS_DEVICE_DIMENSION = 8192;
+let pendingPointerMove = null;
+let pointerMoveFrame = null;
 
 // The game's verb set, mirroring `verbs:` in strings/<lang>.yaml. Used to offer
 // affordance checkboxes; any verb already on a hotspot is shown too (see
 // affordanceVerbs), so a custom/unknown verb is never hidden or dropped.
 const KNOWN_VERBS = ['look_at', 'talk_to', 'pick_up', 'use', 'give', 'open', 'close', 'push', 'pull'];
 
-const modeOptions = ['walkable', 'obstacles', 'zones', 'regions', 'hotspots', 'points', 'layers', 'objects', 'preview'];
+const modeOptions = ['walkable', 'obstacles', 'zones', 'regions', 'hotspots', 'points', 'layers', 'objects', 'avatars', 'preview'];
 const entityPrefix = {
   zones: 'zone',
   regions: 'region',
@@ -68,11 +87,25 @@ function fetchJson(url) {
 
 async function loadInfo() {
   state.info = await fetchJson('/api/info');
-  assetBase.textContent = state.info.base_path;
+  assetBase.textContent =
+    `data: ${state.info.data_path}\nrooms: ${state.info.rooms_path}`;
+}
+
+async function loadAvatarCatalog() {
+  try {
+    const data = await fetchJson('/api/avatar-catalog');
+    state.avatarCatalog = Array.isArray(data.characters) ? data.characters : [];
+    state.avatarCatalogErrors = Array.isArray(data.errors) ? data.errors : [];
+  } catch (err) {
+    state.avatarCatalog = [];
+    state.avatarCatalogErrors = [err.message];
+  }
+  populateAvatarCharacters();
 }
 
 async function loadRoom() {
   state.room = await fetchJson('/api/room');
+  state.workspaceInitialized = false;
   updateRoomInfo();
   state.selectedEntity = null;
   state.selectedPoint = null;
@@ -80,6 +113,7 @@ async function loadRoom() {
   state.addVertexMode = false;
   state.deleteVertexMode = false;
   state.selectedVertex = null;
+  seedAvatarPreviews();
   updateUI();
   draw();
   if (!state.room || !state.room.id) {
@@ -87,14 +121,14 @@ async function loadRoom() {
   }
 }
 
-// Populate the room-file dropdown from the rooms found in base_path, keeping the
+// Populate the room-file dropdown from the configured rooms directory, keeping the
 // currently-open file selected.
 async function loadRooms() {
   try {
     const data = await fetchJson('/api/rooms');
     const rooms = data.rooms || [];
     if (!rooms.length) {
-      roomFileSelect.innerHTML = '<option value="">(no rooms found in base path)</option>';
+      roomFileSelect.innerHTML = '<option value="">(no rooms found)</option>';
       return;
     }
     roomFileSelect.innerHTML = rooms.map((r) => `<option value="${r}">${r}</option>`).join('');
@@ -119,8 +153,10 @@ async function openSelectedRoom() {
     const result = await res.json();
     if (!result.ok) throw new Error(result.error || 'Open failed');
     state.imageCache.clear();
+    await loadAvatarCatalog();
     await loadRoom();
     await loadRooms();
+    await loadAssets();
     setStatus(`Opened ${name}.`);
   } catch (err) {
     setStatus(err.message, true);
@@ -142,6 +178,12 @@ function getEntities() {
   if (state.mode === 'regions') return Object.keys(state.room.regions || {}).map((id) => ({ id, label: id }));
   if (state.mode === 'hotspots') return Object.keys(state.room.hotspots || {}).map((id) => ({ id, label: id }));
   if (state.mode === 'objects') return Object.keys(state.room.objects || {}).map((id) => ({ id, label: id }));
+  if (state.mode === 'avatars') {
+    return state.avatarPreviews.map((preview) => ({
+      id: preview.uid,
+      label: `${preview.role} · ${preview.characterId}`,
+    }));
+  }
   return [];
 }
 
@@ -507,35 +549,367 @@ function applyObjectFields() {
   setStatus(`Object "${state.selectedEntity}" updated.`);
 }
 
-function drawObjects() {
-  const objs = objectsMap();
-  for (const [id, obj] of Object.entries(objs)) {
-    if (!obj.sprite) continue;
-    let img = state.imageCache.get(obj.sprite);
-    if (!img) {
-      img = new Image();
-      img.src = `/assets/${encodeURIComponent(obj.sprite)}`;
-      img.onload = () => {
-        state.imageCache.set(obj.sprite, img);
-        draw();
-      };
-      img.onerror = () => {
-        /* missing sprite: skip silently in the editor */
-      };
+function drawObject(id, obj) {
+  if (!obj.sprite || obj.visible === false) return;
+  let img = state.imageCache.get(obj.sprite);
+  if (!img) {
+    img = new Image();
+    img.src = `/assets/${encodeURIComponent(obj.sprite)}`;
+    img.onload = () => {
       state.imageCache.set(obj.sprite, img);
+      draw();
+    };
+    img.onerror = () => {
+      /* missing sprite: skip silently in the editor */
+    };
+    state.imageCache.set(obj.sprite, img);
+  }
+  if (img.complete && img.naturalWidth !== 0) {
+    const r = objectRect(obj);
+    ctx.drawImage(img, r.x, r.y, r.w, r.h);
+    if (state.mode === 'objects' && id === state.selectedEntity) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(165, 180, 252, 0.95)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.restore();
     }
-    if (img.complete && img.naturalWidth !== 0) {
-      const r = objectRect(obj);
-      ctx.drawImage(img, r.x, r.y, r.w, r.h);
-      if (state.mode === 'objects' && id === state.selectedEntity) {
-        ctx.save();
-        ctx.strokeStyle = 'rgba(165, 180, 252, 0.95)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 4]);
-        ctx.strokeRect(r.x, r.y, r.w, r.h);
-        ctx.restore();
-      }
-    }
+  }
+}
+
+function drawObjects() {
+  for (const [id, obj] of Object.entries(objectsMap())) {
+    drawObject(id, obj);
+  }
+}
+
+function objectDepth(obj) {
+  if (Number.isFinite(Number(obj.baseline))) return Number(obj.baseline);
+  if (obj.z !== undefined && obj.z !== 'auto' && Number.isFinite(Number(obj.z))) {
+    return Number(obj.z);
+  }
+  const rect = objectRect(obj);
+  return rect.y + rect.h;
+}
+
+function avatarImage(character) {
+  const key = `avatar:${character.image}`;
+  let img = state.imageCache.get(key);
+  if (!img) {
+    img = new Image();
+    img.src = `/avatar-assets/${encodeURIComponent(character.image)}`;
+    img.onload = () => {
+      state.imageCache.set(key, img);
+      draw();
+    };
+    img.onerror = () => {
+      setStatus(`Unable to load avatar atlas ${character.image}`, true);
+    };
+    state.imageCache.set(key, img);
+  }
+  return img;
+}
+
+function drawAvatarPreview(preview) {
+  const resolved = avatarPreviewFrame(preview);
+  if (!resolved) return;
+  const { character, sequence } = resolved;
+  const img = avatarImage(character);
+  if (!img.complete || img.naturalWidth === 0) return;
+  const { rect, pivot, h_mirror: mirrored } = sequence;
+  const scale = avatarPreviewScale(preview);
+  const x = Number(preview.position?.x) || 0;
+  const y = Number(preview.position?.y) || 0;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(mirrored ? -scale : scale, scale);
+  ctx.drawImage(
+    img,
+    rect.x, rect.y, rect.width, rect.height,
+    -pivot.x, -pivot.y, rect.width, rect.height
+  );
+  ctx.restore();
+}
+
+// In avatar/preview modes use the same floor-depth model as the engine, so an
+// avatar can be judged against foreground furniture such as a desk.
+function drawDepthSortedScene() {
+  const entries = [];
+  let order = 0;
+  for (const layer of state.room.background?.layers || []) {
+    if (!layer.image) continue;
+    entries.push({
+      depth: Number.isFinite(Number(layer.z)) ? Number(layer.z) : order,
+      order: order++,
+      draw: () => drawLayer(layer),
+    });
+  }
+  for (const [id, obj] of Object.entries(objectsMap())) {
+    if (!obj.sprite || obj.visible === false) continue;
+    entries.push({
+      depth: objectDepth(obj),
+      order: order++,
+      draw: () => drawObject(id, obj),
+    });
+  }
+  for (const preview of state.avatarPreviews) {
+    entries.push({
+      depth: Number(preview.position?.y) || 0,
+      order: order++,
+      draw: () => drawAvatarPreview(preview),
+    });
+  }
+  entries.sort((a, b) => a.depth - b.depth || a.order - b.order);
+  entries.forEach((entry) => entry.draw());
+}
+
+// --- Avatar previews -------------------------------------------------------
+// These are an authoring overlay only. Existing room placements seed the list,
+// but preview position/scale never enter the save patch.
+function catalogCharacter(id) {
+  return state.avatarCatalog.find((character) => character.id === id) || null;
+}
+
+function perspectiveScaleAt(y) {
+  const perspective = state.room?.perspective;
+  const top = perspective?.top;
+  const bottom = perspective?.bottom;
+  if (!top || !bottom) return 1;
+  const topY = Number(top.y);
+  const bottomY = Number(bottom.y);
+  const topScale = Number(top.scale);
+  const bottomScale = Number(bottom.scale);
+  if (![topY, bottomY, topScale, bottomScale].every(Number.isFinite)) return 1;
+  if (bottomY === topY) return bottomScale;
+  const t = Math.max(0, Math.min(1, (y - topY) / (bottomY - topY)));
+  return topScale + (bottomScale - topScale) * t;
+}
+
+function avatarSequence(character, orientation) {
+  if (!character) return null;
+  const preferred = orientation ? `stand_${orientation}` : null;
+  if (preferred && character.sequences?.[preferred]) return preferred;
+  return character.default_sequence;
+}
+
+function seedAvatarPreviews() {
+  state.avatarPreviews = [];
+  state.nextAvatarPreviewId = 1;
+  for (const placement of state.room?.avatars || []) {
+    const character = catalogCharacter(placement.id);
+    if (!character) continue;
+    const point = state.room?.points?.[placement.start];
+    const position = point
+      ? { x: Number(point.x) || 0, y: Number(point.y) || 0 }
+      : { x: 100, y: 100 };
+    state.avatarPreviews.push({
+      uid: `avatar-preview-${state.nextAvatarPreviewId++}`,
+      characterId: placement.id,
+      role: placement.player ? 'PC' : 'NPC',
+      position,
+      scale: Math.round(perspectiveScaleAt(position.y) * 1000) / 1000,
+      sequence: avatarSequence(character, placement.orientation),
+      sourcePoint: placement.start || null,
+    });
+  }
+}
+
+function populateAvatarCharacters() {
+  if (!avatarCharacterSelect) return;
+  if (!state.avatarCatalog.length) {
+    const reason = state.avatarCatalogErrors[0] || 'No animated cast characters found.';
+    avatarCharacterSelect.innerHTML = `<option value="">(${reason})</option>`;
+    return;
+  }
+  avatarCharacterSelect.innerHTML = state.avatarCatalog
+    .map((character) => `<option value="${character.id}">${character.name} · ${character.id}</option>`)
+    .join('');
+}
+
+function selectedAvatarPreview() {
+  if (state.mode !== 'avatars' || !state.selectedEntity) return null;
+  return state.avatarPreviews.find((preview) => preview.uid === state.selectedEntity) || null;
+}
+
+function addAvatarPreview(role) {
+  const characterId = avatarCharacterSelect.value;
+  const character = catalogCharacter(characterId);
+  if (!character) {
+    setStatus('Choose an animated cast character first.', true);
+    return;
+  }
+  const { width, height } = computeRoomSize();
+  const position = { x: Math.round(width / 2), y: Math.round(height * 0.8) };
+  const preview = {
+    uid: `avatar-preview-${state.nextAvatarPreviewId++}`,
+    characterId,
+    role,
+    position,
+    scale: Math.round(perspectiveScaleAt(position.y) * 1000) / 1000,
+    sequence: character.default_sequence,
+    sourcePoint: null,
+  };
+  state.avatarPreviews.push(preview);
+  state.mode = 'avatars';
+  state.selectedEntity = preview.uid;
+  updateUI();
+  setStatus(`${role} preview added. Drag it by the body or resize handle.`);
+}
+
+function removeSelectedAvatarPreview() {
+  const preview = selectedAvatarPreview();
+  if (!preview) return;
+  state.avatarPreviews = state.avatarPreviews.filter((item) => item.uid !== preview.uid);
+  state.selectedEntity = null;
+  updateUI();
+  setStatus('Avatar preview removed (room YAML unchanged).');
+}
+
+function avatarPreviewFrame(preview) {
+  const character = preview ? catalogCharacter(preview.characterId) : null;
+  if (!character) return null;
+  const sequence =
+    character.sequences?.[preview.sequence] ||
+    character.sequences?.[character.default_sequence];
+  return sequence ? { character, sequence } : null;
+}
+
+function avatarPreviewScale(preview) {
+  const scale = Number(preview?.scale);
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+
+function avatarPreviewRect(preview) {
+  const resolved = avatarPreviewFrame(preview);
+  if (!resolved) return null;
+  const { rect, pivot, h_mirror: mirrored } = resolved.sequence;
+  const scale = avatarPreviewScale(preview);
+  const x = Number(preview.position?.x) || 0;
+  const y = Number(preview.position?.y) || 0;
+  const left = mirrored
+    ? x - (rect.width - pivot.x) * scale
+    : x - pivot.x * scale;
+  return {
+    x: left,
+    y: y - pivot.y * scale,
+    w: rect.width * scale,
+    h: rect.height * scale,
+  };
+}
+
+function avatarResizeHandle(preview) {
+  const rect = avatarPreviewRect(preview);
+  return rect ? { x: rect.x + rect.w, y: rect.y } : null;
+}
+
+function drawAvatarHandles() {
+  if (state.mode !== 'avatars') return;
+  const preview = selectedAvatarPreview();
+  const rect = preview ? avatarPreviewRect(preview) : null;
+  if (!preview || !rect) return;
+  const pivot = preview.position;
+  const handle = avatarResizeHandle(preview);
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(245, 158, 11, 0.95)';
+  ctx.fillStyle = '#f59e0b';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.setLineDash([]);
+
+  ctx.beginPath();
+  ctx.arc(handle.x, handle.y, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#422006';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // The room position is the animation pivot (normally Julia's feet), not the
+  // top-left sprite corner. Mark it clearly because this is the value to copy.
+  ctx.fillStyle = '#22d3ee';
+  ctx.beginPath();
+  ctx.moveTo(pivot.x, pivot.y - 9);
+  ctx.lineTo(pivot.x - 7, pivot.y + 5);
+  ctx.lineTo(pivot.x + 7, pivot.y + 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(
+    `${preview.role} · ${preview.characterId} · ${avatarPreviewScale(preview)}×`,
+    rect.x,
+    rect.y - 8
+  );
+  ctx.restore();
+}
+
+function updateAvatarPanel() {
+  if (!avatarsPanel) return;
+  avatarsPanel.style.display = state.mode === 'avatars' ? '' : 'none';
+  if (state.mode !== 'avatars') return;
+
+  avatarsList.innerHTML = state.avatarPreviews.map((preview) => {
+    const selected = preview.uid === state.selectedEntity ? ' selected' : '';
+    const point = preview.sourcePoint ? ` · point: ${preview.sourcePoint}` : '';
+    return `<div class="avatar-item${selected}" data-avatar-id="${preview.uid}">
+      <strong>${preview.role} · ${preview.characterId}</strong>
+      <div>pos: ${preview.position.x}, ${preview.position.y} · scale: ${avatarPreviewScale(preview)}${point}</div>
+    </div>`;
+  }).join('');
+
+  const preview = selectedAvatarPreview();
+  const disabled = !preview;
+  for (const element of [avatarXInput, avatarYInput, avatarScaleInput]) {
+    element.disabled = disabled;
+  }
+  document.getElementById('avatar-apply').disabled = disabled;
+  document.getElementById('avatar-copy').disabled = disabled;
+  document.getElementById('avatar-remove').disabled = disabled;
+  if (!preview) {
+    avatarXInput.value = '';
+    avatarYInput.value = '';
+    avatarScaleInput.value = '';
+    avatarValues.textContent = 'No avatar selected.';
+    return;
+  }
+  avatarXInput.value = preview.position.x;
+  avatarYInput.value = preview.position.y;
+  avatarScaleInput.value = avatarPreviewScale(preview);
+  avatarValues.textContent =
+    `position: {x: ${preview.position.x}, y: ${preview.position.y}}\n` +
+    `scale: ${avatarPreviewScale(preview)}`;
+}
+
+function applyAvatarFields() {
+  const preview = selectedAvatarPreview();
+  if (!preview) return;
+  const x = Number(avatarXInput.value);
+  const y = Number(avatarYInput.value);
+  const scale = Number(avatarScaleInput.value);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(scale) || scale <= 0) {
+    setStatus('Avatar x, y, and scale must be valid numbers; scale must be positive.', true);
+    return;
+  }
+  preview.position = { x: Math.round(x), y: Math.round(y) };
+  preview.scale = Math.round(Math.max(0.05, scale) * 1000) / 1000;
+  updateAvatarPanel();
+  draw();
+}
+
+async function copyAvatarValues() {
+  const preview = selectedAvatarPreview();
+  if (!preview) return;
+  const text =
+    `position: {x: ${preview.position.x}, y: ${preview.position.y}}\n` +
+    `scale: ${avatarPreviewScale(preview)}`;
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus('Avatar position and scale copied.');
+  } catch (_) {
+    setStatus('Clipboard unavailable; select the values shown in the panel.', true);
   }
 }
 
@@ -544,6 +918,7 @@ function updateUI() {
   updateEntityOptions();
   updateLayersList();
   updateObjectsPanel();
+  updateAvatarPanel();
   updateVertexList();
   updateSnapshotSource();
   updateHotspotProps();
@@ -728,20 +1103,34 @@ function pointNear(point, target, threshold = 12) {
   return Math.hypot(point.x - target.x, point.y - target.y) <= threshold;
 }
 
-function resizeCanvas() {
-  const rect = canvas.parentElement.getBoundingClientRect();
-  const w = Math.round(rect.width * devicePixelRatio);
-  const h = Math.round(rect.height * devicePixelRatio);
+function resizeCanvas(cssWidth, cssHeight, origin, scale) {
+  const panel = canvas.parentElement;
+  const oldOrigin = state.viewOrigin;
+  const w = Math.max(1, Math.round(cssWidth * devicePixelRatio));
+  const h = Math.max(1, Math.round(cssHeight * devicePixelRatio));
   // Assigning canvas.width/height reallocates (and clears) the backing store, so
   // only do it on an actual size change — draw() runs this every frame, including
-  // on every pointermove during a drag.
+  // during a drag.
   if (canvas.width !== w || canvas.height !== h) {
     canvas.width = w;
     canvas.height = h;
-    canvas.style.width = `${rect.width}px`;
-    canvas.style.height = `${rect.height}px`;
+    canvas.style.width = `${cssWidth}px`;
+    canvas.style.height = `${cssHeight}px`;
   }
   ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+
+  // Start with world (0,0) at the viewport's top-left. If geometry later grows
+  // farther left/up, compensate the scroll position so the visible world does
+  // not jump while the user is dragging.
+  if (!state.workspaceInitialized) {
+    panel.scrollLeft = Math.max(0, -origin.x * scale);
+    panel.scrollTop = Math.max(0, -origin.y * scale);
+    state.workspaceInitialized = true;
+  } else {
+    panel.scrollLeft += (oldOrigin.x - origin.x) * scale;
+    panel.scrollTop += (oldOrigin.y - origin.y) * scale;
+  }
+  state.viewOrigin = origin;
 }
 
 // Room world bounds, mirroring the engine's compute_room_bounds: the union of
@@ -768,6 +1157,67 @@ function computeRoomSize() {
   return { width, height };
 }
 
+function includePoint(bounds, point) {
+  if (!point) return;
+  const x = Number(point.x);
+  const y = Number(point.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  bounds.minX = Math.min(bounds.minX, x);
+  bounds.minY = Math.min(bounds.minY, y);
+  bounds.maxX = Math.max(bounds.maxX, x);
+  bounds.maxY = Math.max(bounds.maxY, y);
+}
+
+function includeRect(bounds, rect) {
+  if (!rect) return;
+  includePoint(bounds, { x: rect.x, y: rect.y });
+  includePoint(bounds, { x: rect.x + rect.w, y: rect.y + rect.h });
+}
+
+function includePolygon(bounds, polygon) {
+  if (!Array.isArray(polygon)) return;
+  polygon.forEach((point) => includePoint(bounds, point));
+}
+
+// The workspace includes every editable entity, irrespective of the active
+// mode, plus a stable margin on each side. This makes small negative coordinates
+// recoverable and leaves room to author off-screen paths and staging positions.
+function computeWorkspaceBounds(roomSize) {
+  const bounds = { minX: 0, minY: 0, maxX: roomSize.width, maxY: roomSize.height };
+  for (const layer of state.room?.background?.layers || []) includeRect(bounds, layerRect(layer));
+  includePolygon(bounds, state.room?.walkable);
+  for (const polygon of state.room?.obstacles || []) includePolygon(bounds, polygon);
+  for (const zone of state.room?.zones || []) includePolygon(bounds, zone?.polygon);
+  for (const region of Object.values(state.room?.regions || {})) includePolygon(bounds, region?.area);
+  for (const hotspot of Object.values(state.room?.hotspots || {})) includePolygon(bounds, hotspot?.area);
+  for (const point of Object.values(state.room?.points || {})) includePoint(bounds, point);
+  for (const object of Object.values(objectsMap())) includeRect(bounds, objectRect(object));
+  for (const preview of state.avatarPreviews) {
+    includeRect(bounds, avatarPreviewRect(preview));
+    includePoint(bounds, preview.position);
+  }
+  if (state.tempRegion) {
+    includePoint(bounds, state.tempRegion.start);
+    includePoint(bounds, state.tempRegion.current);
+  }
+  return {
+    // Grow in chunks so dragging the outermost entity does not reallocate the
+    // canvas backing store for every single pixel crossed.
+    minX:
+      Math.floor((bounds.minX - WORKSPACE_MARGIN) / WORKSPACE_GROWTH_STEP) *
+      WORKSPACE_GROWTH_STEP,
+    minY:
+      Math.floor((bounds.minY - WORKSPACE_MARGIN) / WORKSPACE_GROWTH_STEP) *
+      WORKSPACE_GROWTH_STEP,
+    maxX:
+      Math.ceil((bounds.maxX + WORKSPACE_MARGIN) / WORKSPACE_GROWTH_STEP) *
+      WORKSPACE_GROWTH_STEP,
+    maxY:
+      Math.ceil((bounds.maxY + WORKSPACE_MARGIN) / WORKSPACE_GROWTH_STEP) *
+      WORKSPACE_GROWTH_STEP,
+  };
+}
+
 function updateRoomInfo() {
   if (!state.room) return;
   const { width, height } = computeRoomSize();
@@ -776,27 +1226,64 @@ function updateRoomInfo() {
 
 function draw() {
   if (!state.room) return;
-  resizeCanvas();
-  const { width, height } = computeRoomSize();
+  const roomSize = computeRoomSize();
+  const { width, height } = roomSize;
+  const workspace = computeWorkspaceBounds(roomSize);
+  const workspaceWidth = Math.max(1, workspace.maxX - workspace.minX);
+  const workspaceHeight = Math.max(1, workspace.maxY - workspace.minY);
+  const panel = canvas.parentElement;
+  const panelStyle = getComputedStyle(panel);
+  const availableWidth = Math.max(
+    1,
+    panel.clientWidth - parseFloat(panelStyle.paddingLeft) - parseFloat(panelStyle.paddingRight)
+  );
+  const availableHeight = Math.max(
+    1,
+    panel.clientHeight - parseFloat(panelStyle.paddingTop) - parseFloat(panelStyle.paddingBottom)
+  );
+  const fitScale = Math.min(availableWidth / width, availableHeight / height, 1);
+  // Keep pathological far-off coordinates from asking Chrome for an enormous
+  // backing store. The whole workspace remains reachable, just at a lower zoom.
+  const scale = Math.min(
+    fitScale,
+    MAX_CANVAS_DEVICE_DIMENSION / devicePixelRatio / workspaceWidth,
+    MAX_CANVAS_DEVICE_DIMENSION / devicePixelRatio / workspaceHeight
+  );
+  // Ensure there is enough scroll range to place world (0,0) at the viewport's
+  // top-left even when the room's aspect ratio leaves spare space on one axis.
+  const cssWidth = Math.max(
+    workspaceWidth * scale,
+    availableWidth + Math.max(0, -workspace.minX * scale)
+  );
+  const cssHeight = Math.max(
+    workspaceHeight * scale,
+    availableHeight + Math.max(0, -workspace.minY * scale)
+  );
+  resizeCanvas(cssWidth, cssHeight, { x: workspace.minX, y: workspace.minY }, scale);
   updateRoomInfo();
-  const scale = Math.min(canvas.width / devicePixelRatio / width, canvas.height / devicePixelRatio / height, 1);
   state.viewScale = scale;
 
   ctx.save();
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
   ctx.scale(scale, scale);
+  ctx.translate(-workspace.minX, -workspace.minY);
 
   const bg = state.room.background?.color || { r: 0, g: 0, b: 0 };
   ctx.fillStyle = `rgba(${bg.r || 0}, ${bg.g || 0}, ${bg.b || 0}, ${bg.a ?? 255} / 255)`;
   ctx.fillRect(0, 0, width, height);
 
-  drawLayers();
-  drawObjects();
+  if (state.mode === 'avatars' || state.mode === 'preview') {
+    drawDepthSortedScene();
+  } else {
+    drawLayers();
+    drawObjects();
+  }
   drawPolygons();
   drawTempRegion();
   drawPoints();
   drawSelectedHandles();
   drawLayerHandles();
+  drawAvatarHandles();
 
   ctx.restore();
 }
@@ -890,29 +1377,31 @@ function drawTempRegion() {
   ctx.restore();
 }
 
+function drawLayer(layer) {
+  if (!layer.image) return;
+  let img = state.imageCache.get(layer.image);
+  if (!img) {
+    img = new Image();
+    img.src = `/assets/${encodeURIComponent(layer.image)}`;
+    img.onload = () => {
+      state.imageCache.set(layer.image, img);
+      draw();
+    };
+    img.onerror = () => {
+      setStatus(`Unable to load layer ${layer.image}`, true);
+    };
+    state.imageCache.set(layer.image, img);
+  }
+  if (img.complete && img.naturalWidth !== 0) {
+    const { x: ox, y: oy } = layerOrigin(layer);
+    const s = layerScale(layer);
+    ctx.drawImage(img, ox, oy, img.naturalWidth * s, img.naturalHeight * s);
+  }
+}
+
 function drawLayers() {
   const layers = Array.isArray(state.room.background?.layers) ? state.room.background.layers : [];
-  layers.forEach((layer) => {
-    if (!layer.image) return;
-    let img = state.imageCache.get(layer.image);
-    if (!img) {
-      img = new Image();
-      img.src = `/assets/${encodeURIComponent(layer.image)}`;
-      img.onload = () => {
-        state.imageCache.set(layer.image, img);
-        draw();
-      };
-      img.onerror = () => {
-        setStatus(`Unable to load layer ${layer.image}`, true);
-      };
-      state.imageCache.set(layer.image, img);
-    }
-    if (img.complete && img.naturalWidth !== 0) {
-      const { x: ox, y: oy } = layerOrigin(layer);
-      const s = layerScale(layer);
-      ctx.drawImage(img, ox, oy, img.naturalWidth * s, img.naturalHeight * s);
-    }
-  });
+  layers.forEach(drawLayer);
 }
 
 function polygonForMode() {
@@ -942,7 +1431,7 @@ function drawPolygons() {
     hotspots: '#ea580c',
   };
 
-  if (state.mode === 'points' || state.mode === 'preview') return;
+  if (state.mode === 'points' || state.mode === 'avatars' || state.mode === 'preview') return;
   const polygons = polygonForMode();
   polygons.forEach((item) => {
     if (!Array.isArray(item.polygon) || item.polygon.length === 0) return;
@@ -961,7 +1450,7 @@ function drawPolygons() {
 }
 
 function drawPoints() {
-  if (state.mode === 'preview') return;
+  if (state.mode === 'avatars' || state.mode === 'preview') return;
   const points = state.room.points || {};
   Object.entries(points).forEach(([id, point]) => {
     ctx.fillStyle = id === state.selectedPoint ? '#ef4444' : '#16a34a';
@@ -978,7 +1467,7 @@ function drawPoints() {
 }
 
 function drawSelectedHandles() {
-  if (state.mode === 'points' || state.mode === 'preview') return;
+  if (state.mode === 'points' || state.mode === 'avatars' || state.mode === 'preview') return;
   const polygon = getRoomPolygon();
   if (!Array.isArray(polygon)) return;
   polygon.forEach((vertex, index) => {
@@ -995,8 +1484,8 @@ function drawSelectedHandles() {
 function getCanvasPosition(evt) {
   const rect = canvas.getBoundingClientRect();
   const scale = state.viewScale || 1;
-  const x = (evt.clientX - rect.left) * (canvas.width / rect.width) / devicePixelRatio / scale;
-  const y = (evt.clientY - rect.top) * (canvas.height / rect.height) / devicePixelRatio / scale;
+  const x = (evt.clientX - rect.left) / scale + state.viewOrigin.x;
+  const y = (evt.clientY - rect.top) / scale + state.viewOrigin.y;
   return { x, y };
 }
 
@@ -1074,6 +1563,47 @@ function pointInPolygon(pt, poly) {
 function handlePointerDown(evt) {
   if (!state.room) return;
   const pos = getCanvasPosition(evt);
+
+  if (state.mode === 'avatars') {
+    const selected = selectedAvatarPreview();
+    const resizeHandle = selected ? avatarResizeHandle(selected) : null;
+    if (selected && resizeHandle && pointNear(resizeHandle, pos, 14)) {
+      const distance = Math.hypot(
+        resizeHandle.x - selected.position.x,
+        resizeHandle.y - selected.position.y
+      );
+      state.dragTarget = {
+        type: 'avatar-resize',
+        id: selected.uid,
+        nativeDistance: distance / avatarPreviewScale(selected) || 1,
+      };
+      setStatus('Drag to scale the avatar about its pivot.');
+      return;
+    }
+
+    // Hit-test in reverse depth order so overlapping characters select the one
+    // that is visually in front.
+    const previews = state.avatarPreviews
+      .slice()
+      .sort((a, b) => (Number(b.position?.y) || 0) - (Number(a.position?.y) || 0));
+    for (const preview of previews) {
+      const rect = avatarPreviewRect(preview);
+      if (!rect) continue;
+      if (pos.x >= rect.x && pos.x <= rect.x + rect.w &&
+          pos.y >= rect.y && pos.y <= rect.y + rect.h) {
+        state.selectedEntity = preview.uid;
+        entitySelect.value = preview.uid;
+        state.dragTarget = { type: 'avatar', id: preview.uid };
+        state.dragOffset = {
+          x: pos.x - preview.position.x,
+          y: pos.y - preview.position.y,
+        };
+        updateUI();
+        return;
+      }
+    }
+    return;
+  }
 
   // Regions: click+drag to create rectangle, or select an existing region
   if (state.mode === 'regions') {
@@ -1292,6 +1822,35 @@ function handlePointerMove(evt) {
     draw();
     return;
   }
+  if (state.dragTarget.type === 'avatar') {
+    const preview = state.avatarPreviews.find(
+      (item) => item.uid === state.dragTarget.id
+    );
+    if (!preview) return;
+    preview.position = {
+      x: Math.round(pos.x - state.dragOffset.x),
+      y: Math.round(pos.y - state.dragOffset.y),
+    };
+    updateAvatarPanel();
+    draw();
+    return;
+  }
+  if (state.dragTarget.type === 'avatar-resize') {
+    const preview = state.avatarPreviews.find(
+      (item) => item.uid === state.dragTarget.id
+    );
+    if (!preview) return;
+    const distance = Math.hypot(
+      pos.x - preview.position.x,
+      pos.y - preview.position.y
+    );
+    preview.scale = Math.round(
+      Math.max(0.05, distance / state.dragTarget.nativeDistance) * 1000
+    ) / 1000;
+    updateAvatarPanel();
+    draw();
+    return;
+  }
   if (state.dragTarget.type === 'region-create') {
     state.tempRegion = state.tempRegion || { start: state.dragTarget.start, current: { x: pos.x, y: pos.y } };
     state.tempRegion.current = { x: pos.x, y: pos.y };
@@ -1300,7 +1859,41 @@ function handlePointerMove(evt) {
   }
 }
 
+function queuePointerMove(evt) {
+  // Retain only the latest coordinates. Raw pointer events can arrive much
+  // faster than a full room redraw; one animation-frame callback bounds both
+  // memory use and paint work while preserving the latest drag position.
+  pendingPointerMove = { clientX: evt.clientX, clientY: evt.clientY };
+  if (pointerMoveFrame !== null) return;
+  pointerMoveFrame = requestAnimationFrame(() => {
+    pointerMoveFrame = null;
+    const latest = pendingPointerMove;
+    pendingPointerMove = null;
+    if (latest) handlePointerMove(latest);
+  });
+}
+
+function flushPointerMove() {
+  if (pointerMoveFrame !== null) {
+    cancelAnimationFrame(pointerMoveFrame);
+    pointerMoveFrame = null;
+  }
+  const latest = pendingPointerMove;
+  pendingPointerMove = null;
+  if (latest) handlePointerMove(latest);
+}
+
 function handlePointerUp() {
+  if (state.dragTarget &&
+      (state.dragTarget.type === 'avatar' ||
+       state.dragTarget.type === 'avatar-resize')) {
+    const resized = state.dragTarget.type === 'avatar-resize';
+    state.dragTarget = null;
+    state.dragOffset = null;
+    updateAvatarPanel();
+    setStatus(resized ? 'Avatar preview scaled.' : 'Avatar preview moved.');
+    return;
+  }
   if (state.dragTarget && (state.dragTarget.type === 'layer' || state.dragTarget.type === 'layer-resize')) {
     // keep selection, but clear drag state. The layer list (pos/scale text) is
     // refreshed here rather than on every pointermove to keep dragging smooth.
@@ -1358,7 +1951,10 @@ function changeEntity(evt) {
 function addEntity() {
   if (!state.room) return;
   const mode = state.mode;
-  if (mode === 'points') {
+  if (mode === 'avatars') {
+    addAvatarPreview('NPC');
+    return;
+  } else if (mode === 'points') {
     const id = prompt('New point ID:');
     if (!id) return;
     state.room.points = state.room.points || {};
@@ -1445,6 +2041,9 @@ function removeEntity() {
   } else if (mode === 'objects') {
     delete (state.room.objects || {})[state.selectedEntity];
     state.selectedEntity = null;
+  } else if (mode === 'avatars') {
+    removeSelectedAvatarPreview();
+    return;
   }
   updateUI();
 }
@@ -1543,8 +2142,10 @@ async function saveRoom() {
 reloadButton.addEventListener('click', async () => {
   setStatus('Reloading...');
   state.imageCache.clear(); // re-fetch images in case the art changed on disk
+  await loadAvatarCatalog();
   await loadRoom();
   await loadRooms();
+  await loadAssets();
   setStatus('Room reloaded.');
 });
 saveButton.addEventListener('click', saveRoom);
@@ -1576,6 +2177,22 @@ document.addEventListener('click', (evt) => {
 });
 document.getElementById('object-apply').addEventListener('click', applyObjectFields);
 document.getElementById('object-sprite').addEventListener('change', applyObjectFields);
+document.addEventListener('click', (evt) => {
+  const el = evt.target.closest && evt.target.closest('[data-avatar-id]');
+  if (el && avatarsList.contains(el)) {
+    const id = el.getAttribute('data-avatar-id');
+    if (id) {
+      state.selectedEntity = id;
+      entitySelect.value = id;
+      updateUI();
+    }
+  }
+});
+document.getElementById('avatar-add-pc').addEventListener('click', () => addAvatarPreview('PC'));
+document.getElementById('avatar-add-npc').addEventListener('click', () => addAvatarPreview('NPC'));
+document.getElementById('avatar-apply').addEventListener('click', applyAvatarFields);
+document.getElementById('avatar-copy').addEventListener('click', copyAvatarValues);
+document.getElementById('avatar-remove').addEventListener('click', removeSelectedAvatarPreview);
 snapshotRegionButton.addEventListener('click', snapshotRegion);
 modeSelect.addEventListener('change', changeMode);
 entitySelect.addEventListener('change', changeEntity);
@@ -1595,9 +2212,18 @@ canvas.addEventListener('pointerdown', (evt) => {
   handlePointerDown(evt);
 });
 canvas.addEventListener('pointermove', (evt) => {
-  if (evt.buttons === 1) handlePointerMove(evt);
+  if ((evt.buttons & 1) !== 0) queuePointerMove(evt);
 });
-canvas.addEventListener('pointerup', handlePointerUp);
+canvas.addEventListener('pointerup', () => {
+  flushPointerMove();
+  handlePointerUp();
+});
+canvas.addEventListener('pointercancel', () => {
+  pendingPointerMove = null;
+  if (pointerMoveFrame !== null) cancelAnimationFrame(pointerMoveFrame);
+  pointerMoveFrame = null;
+  handlePointerUp();
+});
 window.addEventListener('resize', draw);
 
 async function saveAsset(filename, blob) {
@@ -1709,6 +2335,7 @@ async function loadAssets() {
 
 updateModeOptions();
 loadInfo()
+  .then(loadAvatarCatalog)
   .then(loadRooms)
   .then(loadRoom)
   .then(loadAssets)
