@@ -145,7 +145,8 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                         const Avatar* player,
                         const std::vector<const Avatar*>& npcs,
                         pac::core::Diagnostics& log,
-                        const ShaderEnv& shaders) const {
+                        const ShaderEnv& shaders,
+                        const ProjectedShadow* projected_shadow_override) const {
     const RoomData& data = room.data();
     const float shader_time = shaders.time;
 
@@ -387,8 +388,11 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                            });
     }
 
-    const ProjectedShadow* player_shadow =
-        data.projected_shadow && data.projected_shadow->enabled ? &*data.projected_shadow : nullptr;
+    const ProjectedShadow* player_shadow = nullptr;
+    if (data.projected_shadow && data.projected_shadow->enabled) {
+        player_shadow = data.projected_shadow->source.empty() ? &*data.projected_shadow
+                                                              : projected_shadow_override;
+    }
     const ProjectedShadow* npc_shadow =
         player_shadow && player_shadow->casters == ProjectedShadow::Casters::ALL ? player_shadow
                                                                                  : nullptr;

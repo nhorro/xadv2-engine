@@ -478,11 +478,17 @@ TEST_CASE("parse_room reads ambient, omni, spot, attachments, and modulation") {
 id: r
 lighting:
   ambient: { color: [0.55, 0.60, 0.75], intensity: 0.32 }
+  normal_map:
+    image: normals/room.png
+    origin: {x: 4, y: 8}
+    scale: 2
+    strength: 0.75
   lights:
     - id: lamp
       type: omni
       at: {x: 320, y: 180}
       radius: 240
+      height: 90
       color: [1.0, 0.78, 0.42]
       intensity: 0.85
       modulation: {type: flicker, amount: 0.06, speed: 7, seed: 12}
@@ -495,6 +501,9 @@ lighting:
       follow_facing: true
       angle: 42
       softness: 10
+  occluders:
+    - id: partition
+      area: [{x: 500, y: 100}, {x: 500, y: 400}]
 )YAML");
 
     REQUIRE(r.dynamic_lighting.has_value());
@@ -503,6 +512,11 @@ lighting:
     CHECK(lighting.ambient_color[1] == doctest::Approx(0.60f));
     CHECK(lighting.ambient_color[2] == doctest::Approx(0.75f));
     CHECK(lighting.ambient_intensity == doctest::Approx(0.32f));
+    CHECK(lighting.normal_map == "normals/room.png");
+    CHECK(lighting.normal_origin.x == doctest::Approx(4.0f));
+    CHECK(lighting.normal_origin.y == doctest::Approx(8.0f));
+    CHECK(lighting.normal_scale == doctest::Approx(2.0f));
+    CHECK(lighting.normal_strength == doctest::Approx(0.75f));
     REQUIRE(lighting.lights.size() == 2);
 
     const RoomLight& lamp = lighting.lights[0];
@@ -510,6 +524,7 @@ lighting:
     CHECK(lamp.type == RoomLight::Type::OMNI);
     CHECK(lamp.at.x == doctest::Approx(320.0f));
     CHECK(lamp.radius == doctest::Approx(240.0f));
+    CHECK(lamp.height == doctest::Approx(90.0f));
     CHECK(lamp.intensity == doctest::Approx(0.85f));
     CHECK(lamp.modulation.type == LightModulation::Type::FLICKER);
     CHECK(lamp.modulation.amount == doctest::Approx(0.06f));
@@ -522,10 +537,14 @@ lighting:
     CHECK(flashlight.offset.x == doctest::Approx(18.0f));
     CHECK(flashlight.offset.y == doctest::Approx(-52.0f));
     CHECK(flashlight.radius == doctest::Approx(420.0f));
+    CHECK(flashlight.height == doctest::Approx(210.0f));
     CHECK(flashlight.direction == doctest::Approx(-4.0f));
     CHECK(flashlight.follow_facing);
     CHECK(flashlight.angle == doctest::Approx(42.0f));
     CHECK(flashlight.softness == doctest::Approx(10.0f));
+    REQUIRE(lighting.occluders.size() == 1);
+    CHECK(lighting.occluders[0].id == "partition");
+    CHECK(lighting.occluders[0].area.size() == 2);
 }
 
 TEST_CASE("parse_room keeps projected shadows independent from dynamic lighting") {
@@ -554,12 +573,19 @@ lighting:
       radius: 80
       intensity: 0.2
       enabled: false
+  occluders:
+    - id: door
+      area: [{x: 50, y: 0}, {x: 50, y: 80}]
 )YAML"));
 
     CHECK(room.has_light("lamp"));
     CHECK(room.light_enabled("lamp"));
     CHECK(room.light_intensity("lamp") == doctest::Approx(0.75f));
     CHECK_FALSE(room.light_enabled("emergency"));
+    CHECK(room.has_light_occluder("door"));
+    CHECK(room.light_occluder_enabled("door"));
+    room.set_light_occluder_enabled("door", false);
+    CHECK_FALSE(room.light_occluder_enabled("door"));
 
     room.set_light_enabled("lamp", false);
     room.set_light_intensity("lamp", 1.4f);
@@ -570,6 +596,14 @@ lighting:
     CHECK(room.light_intensity("lamp") == doctest::Approx(4.0f));
     room.set_light_intensity("lamp", -2.0f);
     CHECK(room.light_intensity("lamp") == doctest::Approx(0.0f));
+
+    room.set_light_intensity("lamp", 2.0f, 2.0f);
+    room.update_lights(0.5f);
+    CHECK(room.light_intensity("lamp") == doctest::Approx(0.3125f));
+    room.update_lights(0.5f);
+    CHECK(room.light_intensity("lamp") == doctest::Approx(1.0f));
+    room.update_lights(1.0f);
+    CHECK(room.light_intensity("lamp") == doctest::Approx(2.0f));
 
     room.set_light_enabled("missing", true);
     room.set_light_intensity("missing", 1.0f);
@@ -599,6 +633,26 @@ TEST_CASE("parse_room validates dynamic lights") {
                          "    - id: a\n      type: omni\n      at: {x: 0, y: 0}\n"
                          "      radius: 10\n      modulation: {type: flicker, amount: 2}\n");
           }) == "room.light-modulation-params-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  normal_map: {image: n.png, scale: 0}\n");
+          }) == "room.normal-map-params-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  occluders:\n"
+                         "    - {id: wall, area: [{x: 0, y: 0}]}\n");
+          }) == "room.light-occluder-params-invalid");
+}
+
+TEST_CASE("parse_room connects projected shadows to a dynamic light") {
+    const RoomData r = parse_room(R"YAML(
+id: r
+lighting:
+  lights:
+    - {id: lamp, type: omni, at: {x: 10, y: 20}, radius: 100}
+  projected_shadows:
+    source: lamp
+)YAML");
+    REQUIRE(r.projected_shadow.has_value());
+    CHECK(r.projected_shadow->source == "lamp");
 }
 
 TEST_CASE("parse_room reads projected avatar shadows from room lighting") {
@@ -661,6 +715,18 @@ TEST_CASE("parse_room validates projected avatar shadow parameters") {
               parse_room("id: r\nlighting:\n  projected_shadows:\n"
                          "    light: {x: 0, y: 0}\n    z: .nan\n");
           }) == "room.projected-shadows-z-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n"
+                         "  lights:\n"
+                         "    - {id: lamp, type: omni, at: {x: 0, y: 0}, radius: 10}\n"
+                         "  projected_shadows: {source: missing}\n");
+          }) == "room.projected-shadows-source-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n"
+                         "  lights:\n"
+                         "    - {id: lamp, type: omni, at: {x: 0, y: 0}, radius: 10}\n"
+                         "  projected_shadows: {source: lamp, light: {x: 0, y: 0}}\n");
+          }) == "room.projected-shadows-light-missing");
 }
 
 TEST_CASE("parse_room reads the optional object baseline (perspective sort line)") {

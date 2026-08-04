@@ -106,6 +106,7 @@ struct RoomLight {
     std::string attach;
     geom::Point offset{0.0f, 0.0f};
     float radius = 1.0f;
+    float height = 1.0f; // virtual distance above the image plane (normal maps)
     std::array<float, 3> color{1.0f, 1.0f, 1.0f};
     float intensity = 1.0f;
     // Screen-space degrees: 0 points right, 90 down. Spotlights only.
@@ -116,13 +117,26 @@ struct RoomLight {
     LightModulation modulation;
 };
 
+/// A polygon whose boundary blocks direct dynamic light. This is a 2D
+/// line-of-sight approximation evaluated in the existing lighting pass.
+struct LightOccluder {
+    std::string id;
+    geom::Polygon area;
+    bool enabled = true;
+};
+
 /// Ambient illumination plus the room's dynamic omni/spot lights. The lighting
 /// pass multiplies the fully composed scene by ambient + light contributions,
 /// before the authored room post-process stack (including grading).
 struct RoomLighting {
     std::array<float, 3> ambient_color{1.0f, 1.0f, 1.0f};
     float ambient_intensity = 0.35f;
+    std::string normal_map; // optional room-space tangent normal map
+    geom::Point normal_origin{0.0f, 0.0f};
+    float normal_scale = 1.0f;
+    float normal_strength = 1.0f;
     std::vector<RoomLight> lights;
+    std::vector<LightOccluder> occluders;
 };
 
 /// A live avatar silhouette projected onto the room plane away from a 2D light
@@ -136,6 +150,9 @@ struct ProjectedShadow {
 
     bool enabled = true;
     geom::Point light{0.0f, 0.0f};
+    // Optional dynamic-light id. When set, the live light position drives the
+    // shadow and a disabled/missing attachment suppresses it for that frame.
+    std::string source;
     Casters casters = Casters::PLAYER;
     float length = 0.45f;
     float width = 0.75f;

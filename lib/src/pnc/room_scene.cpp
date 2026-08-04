@@ -745,9 +745,15 @@ end
         const auto enabled = api_light_enabled(id);
         return enabled ? sol::make_object(s, *enabled) : sol::make_object(s, sol::lua_nil);
     });
-    L.set_function("_light_set_intensity", [this](const std::string& id, double intensity) {
-        api_light_set_intensity(id, static_cast<float>(intensity));
-    });
+    L.set_function(
+        "_light_set_intensity",
+        [this](const std::string& id,
+               double intensity,
+               sol::optional<double> transition_seconds) {
+            api_light_set_intensity(id,
+                                    static_cast<float>(intensity),
+                                    static_cast<float>(transition_seconds.value_or(0.0)));
+        });
     L.set_function("_light_intensity", [this](const std::string& id) -> sol::object {
         sol::state& s = ctx_.scripting.lua();
         const auto intensity = api_light_intensity(id);
@@ -761,12 +767,37 @@ do
   function L:enable() return self:set_enabled(true) end
   function L:disable() return self:set_enabled(false) end
   function L:enabled() return _light_enabled(self.id) end
-  function L:set_intensity(intensity) _light_set_intensity(self.id, intensity); return self end
+  function L:set_intensity(intensity, transition_seconds)
+    _light_set_intensity(self.id, intensity, transition_seconds)
+    return self
+  end
   function L:intensity() return _light_intensity(self.id) end
   function light(id) return setmetatable({ id = id }, L) end
 end
 )LUA",
                               "=light_handle");
+
+    L.set_function("_light_occluder_set_enabled",
+                   [this](const std::string& id, bool enabled) {
+                       api_light_occluder_set_enabled(id, enabled);
+                   });
+    L.set_function("_light_occluder_enabled", [this](const std::string& id) -> sol::object {
+        sol::state& s = ctx_.scripting.lua();
+        const auto enabled = api_light_occluder_enabled(id);
+        return enabled ? sol::make_object(s, *enabled) : sol::make_object(s, sol::lua_nil);
+    });
+    ctx_.scripting.run_string(R"LUA(
+do
+  local O = {}
+  O.__index = O
+  function O:set_enabled(enabled) _light_occluder_set_enabled(self.id, enabled); return self end
+  function O:enable() return self:set_enabled(true) end
+  function O:disable() return self:set_enabled(false) end
+  function O:enabled() return _light_occluder_enabled(self.id) end
+  function light_occluder(id) return setmetatable({ id = id }, O) end
+end
+)LUA",
+                              "=light_occluder_handle");
 
     // Room-view-state controls (issue #32). `block_input` gates clicks during
     // cutscene-like sections; `unblock_input` restores normal play.
@@ -1949,6 +1980,9 @@ void RoomScene::update(float dt) {
         }
         return;
     }
+    if (room_) {
+        room_->update_lights(dt);
+    }
     if (player_ && room_) {
         player_->update(dt, room_->data());
         room_->update_npcs(dt);
@@ -2291,6 +2325,84 @@ void RoomScene::draw(sf::RenderTarget& target) const {
             });
         const RoomLighting* lighting =
             room_->data().dynamic_lighting ? &*room_->data().dynamic_lighting : nullptr;
+        std::vector<ResolvedRoomLight> resolved_lights;
+        if (lighting) {
+            resolved_lights.reserve(lighting->lights.size());
+            for (const RoomLight& light : lighting->lights) {
+                geom::Point position = light.at;
+                const Avatar* attached_avatar = nullptr;
+                bool resolved_attachment = true;
+                if (light.attach == "player") {
+                    attached_avatar = player_ ? &*player_ : nullptr;
+                    resolved_attachment = attached_avatar != nullptr;
+                } else if (light.attach.starts_with("avatar:")) {
+                    attached_avatar = resolve_avatar(light.attach.substr(7));
+                    resolved_attachment = attached_avatar != nullptr;
+                } else if (light.attach.starts_with("object:")) {
+                    const std::string id = light.attach.substr(7);
+                    resolved_attachment =
+                        room_->data().objects.count(id) > 0 && room_->object_visible(id);
+                    if (resolved_attachment) {
+                        position = room_->object_position(id);
+                    }
+                }
+                if (!resolved_attachment) {
+                    continue;
+                }
+                if (attached_avatar) {
+                    position = attached_avatar->position();
+                }
+                position = position + light.offset;
+
+                float direction = light.direction;
+                if (light.follow_facing && attached_avatar) {
+                    const std::string facing = attached_avatar->facing();
+                    if (facing == "down") {
+                        direction += 90.0f;
+                    } else if (facing == "left") {
+                        direction += 180.0f;
+                    } else if (facing == "up") {
+                        direction += 270.0f;
+                    }
+                }
+                resolved_lights.push_back({&light,
+                                           position,
+                                           direction,
+                                           room_->light_enabled(light.id),
+                                           room_->light_intensity(light.id)});
+            }
+        }
+        std::vector<const LightOccluder*> resolved_occluders;
+        if (lighting) {
+            resolved_occluders.reserve(lighting->occluders.size());
+            for (const LightOccluder& occluder : lighting->occluders) {
+                if (room_->light_occluder_enabled(occluder.id)) {
+                    resolved_occluders.push_back(&occluder);
+                }
+            }
+        }
+
+        std::optional<ProjectedShadow> resolved_projected_shadow;
+        if (room_->data().projected_shadow &&
+            !room_->data().projected_shadow->source.empty()) {
+            const ProjectedShadow& authored = *room_->data().projected_shadow;
+            const auto source = std::find_if(
+                resolved_lights.begin(),
+                resolved_lights.end(),
+                [&authored](const ResolvedRoomLight& light) {
+                    return light.light && light.light->id == authored.source;
+                });
+            if (source != resolved_lights.end() && source->enabled && source->intensity > 0.0f) {
+                resolved_projected_shadow = authored;
+                resolved_projected_shadow->light = source->position;
+                const float effective = source->intensity *
+                                        evaluate_light_modulation(source->light->modulation,
+                                                                  shader_time_);
+                resolved_projected_shadow->opacity *= std::clamp(effective, 0.0f, 1.0f);
+            }
+        }
+        const ProjectedShadow* projected_shadow_override =
+            resolved_projected_shadow ? &*resolved_projected_shadow : nullptr;
         const bool scenery_effects_active = post_active || lighting;
         bool scenery_composited = false;
 
@@ -2333,7 +2445,8 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                                player_ ? &*player_ : nullptr,
                                room_->npcs(),
                                ctx_.log,
-                               ShaderEnv{shader_time_});
+                               ShaderEnv{shader_time_},
+                               projected_shadow_override);
                 post_process_target_->display();
 
                 const sf::IntRect full(0,
@@ -2346,55 +2459,13 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                     if (!lighting_renderer_) {
                         lighting_renderer_ = std::make_unique<RoomLightingRenderer>();
                     }
-                    std::vector<ResolvedRoomLight> resolved;
-                    resolved.reserve(lighting->lights.size());
-                    for (const RoomLight& light : lighting->lights) {
-                        geom::Point position = light.at;
-                        const Avatar* attached_avatar = nullptr;
-                        bool resolved_attachment = true;
-                        if (light.attach == "player") {
-                            attached_avatar = player_ ? &*player_ : nullptr;
-                            resolved_attachment = attached_avatar != nullptr;
-                        } else if (light.attach.starts_with("avatar:")) {
-                            attached_avatar = resolve_avatar(light.attach.substr(7));
-                            resolved_attachment = attached_avatar != nullptr;
-                        } else if (light.attach.starts_with("object:")) {
-                            const std::string id = light.attach.substr(7);
-                            resolved_attachment =
-                                room_->data().objects.count(id) > 0 && room_->object_visible(id);
-                            if (resolved_attachment) {
-                                position = room_->object_position(id);
-                            }
-                        }
-                        if (!resolved_attachment) {
-                            continue;
-                        }
-                        if (attached_avatar) {
-                            position = attached_avatar->position();
-                        }
-                        position = position + light.offset;
-
-                        float direction = light.direction;
-                        if (light.follow_facing && attached_avatar) {
-                            const std::string facing = attached_avatar->facing();
-                            if (facing == "down") {
-                                direction += 90.0f;
-                            } else if (facing == "left") {
-                                direction += 180.0f;
-                            } else if (facing == "up") {
-                                direction += 270.0f;
-                            }
-                        }
-                        resolved.push_back({&light,
-                                            position,
-                                            direction,
-                                            room_->light_enabled(light.id),
-                                            room_->light_intensity(light.id)});
-                    }
                     if (lighting_renderer_->make_pass(*lighting,
-                                                      resolved,
+                                                      resolved_lights,
+                                                      resolved_occluders,
                                                       camera_->view_rect(),
                                                       shader_time_,
+                                                      room_dir_,
+                                                      ctx_.resources,
                                                       ctx_.log,
                                                       lighting_pass)) {
                         lighting_prefix = &lighting_pass;
@@ -2428,7 +2499,8 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                            player_ ? &*player_ : nullptr,
                            room_->npcs(),
                            ctx_.log,
-                           ShaderEnv{shader_time_});
+                           ShaderEnv{shader_time_},
+                           projected_shadow_override);
         }
 
         // World-space overlays are intentionally outside the post-process so
@@ -2880,16 +2952,19 @@ std::optional<bool> RoomScene::api_light_enabled(const std::string& id) const {
     return room_->light_enabled(id);
 }
 
-void RoomScene::api_light_set_intensity(const std::string& id, float intensity) {
+void RoomScene::api_light_set_intensity(const std::string& id,
+                                        float intensity,
+                                        float transition_seconds) {
     if (!room_ || !room_->has_light(id)) {
         ctx_.log.error("light('" + id + "'):set_intensity — no such light in the room");
         return;
     }
-    if (!std::isfinite(intensity)) {
-        ctx_.log.error("light('" + id + "'):set_intensity — intensity must be finite");
+    if (!std::isfinite(intensity) || !std::isfinite(transition_seconds)) {
+        ctx_.log.error(
+            "light('" + id + "'):set_intensity — intensity and transition must be finite");
         return;
     }
-    room_->set_light_intensity(id, intensity);
+    room_->set_light_intensity(id, intensity, transition_seconds);
 }
 
 std::optional<float> RoomScene::api_light_intensity(const std::string& id) const {
@@ -2897,6 +2972,22 @@ std::optional<float> RoomScene::api_light_intensity(const std::string& id) const
         return std::nullopt;
     }
     return room_->light_intensity(id);
+}
+
+void RoomScene::api_light_occluder_set_enabled(const std::string& id, bool enabled) {
+    if (!room_ || !room_->has_light_occluder(id)) {
+        ctx_.log.error("light_occluder('" + id +
+                       "'):set_enabled — no such light occluder in the room");
+        return;
+    }
+    room_->set_light_occluder_enabled(id, enabled);
+}
+
+std::optional<bool> RoomScene::api_light_occluder_enabled(const std::string& id) const {
+    if (!room_ || !room_->has_light_occluder(id)) {
+        return std::nullopt;
+    }
+    return room_->light_occluder_enabled(id);
 }
 
 void RoomScene::api_object_play(const std::string& id, const std::string& sequence) {

@@ -294,7 +294,9 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
 
         const YAML::Node ambient = lighting["ambient"];
         const YAML::Node lights = lighting["lights"];
-        if (ambient || lights) {
+        const YAML::Node normal = lighting["normal_map"];
+        const YAML::Node occluders = lighting["occluders"];
+        if (ambient || lights || normal || occluders) {
             RoomLighting config;
             if (ambient) {
                 if (!ambient.IsMap()) {
@@ -316,6 +318,30 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                           "room '" + room.id +
                               "': ambient light 'intensity' must be between 0 and 1",
                           ambient ? ambient["intensity"] : YAML::Node());
+            }
+
+            if (normal) {
+                if (!normal.IsMap() || !normal["image"]) {
+                    room_fail("room.normal-map-invalid",
+                              "room '" + room.id +
+                                  "': 'lighting.normal_map' needs an image",
+                              normal);
+                }
+                config.normal_map = normal["image"].as<std::string>();
+                if (normal["origin"]) {
+                    config.normal_origin = parse_point(normal["origin"]);
+                }
+                config.normal_scale = normal["scale"] ? normal["scale"].as<float>() : 1.0f;
+                config.normal_strength =
+                    normal["strength"] ? normal["strength"].as<float>() : 1.0f;
+                if (config.normal_map.empty() || !std::isfinite(config.normal_scale) ||
+                    config.normal_scale <= 0.0f || !std::isfinite(config.normal_strength) ||
+                    config.normal_strength < 0.0f || config.normal_strength > 2.0f) {
+                    room_fail("room.normal-map-params-invalid",
+                              "room '" + room.id +
+                                  "': normal map needs non-empty image, scale > 0, and strength 0..2",
+                              normal);
+                }
             }
 
             if (lights) {
@@ -384,16 +410,19 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                                   node);
                     }
                     light.radius = radius.as<float>();
+                    light.height =
+                        node["height"] ? node["height"].as<float>() : light.radius * 0.5f;
                     light.intensity = node["intensity"] ? node["intensity"].as<float>() : 1.0f;
                     light.enabled = node["enabled"] ? node["enabled"].as<bool>() : true;
                     if (node["color"]) {
                         light.color =
                             parse_light_color(node["color"], "lighting.lights[].color", room.id);
                     }
-                    if (!std::isfinite(light.radius) || light.radius <= 0.0f) {
+                    if (!std::isfinite(light.radius) || light.radius <= 0.0f ||
+                        !std::isfinite(light.height) || light.height <= 0.0f) {
                         room_fail("room.light-radius-invalid",
                                   "room '" + room.id + "': light '" + light.id +
-                                      "' radius must be a finite number greater than zero",
+                                      "' radius and height must be finite numbers greater than zero",
                                   radius);
                     }
                     if (!std::isfinite(light.intensity) || light.intensity < 0.0f ||
@@ -481,6 +510,36 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                     config.lights.push_back(std::move(light));
                 }
             }
+
+            if (occluders) {
+                if (!occluders.IsSequence()) {
+                    room_fail("room.light-occluders-not-sequence",
+                              "room '" + room.id +
+                                  "': 'lighting.occluders' must be a sequence",
+                              occluders);
+                }
+                std::set<std::string> ids;
+                for (const YAML::Node& node : occluders) {
+                    if (!node.IsMap() || !node["id"] || !node["area"]) {
+                        room_fail("room.light-occluder-invalid",
+                                  "room '" + room.id +
+                                      "': each light occluder needs id and area",
+                                  node);
+                    }
+                    LightOccluder occluder;
+                    occluder.id = node["id"].as<std::string>();
+                    occluder.area = parse_polygon(node["area"]);
+                    occluder.enabled = node["enabled"] ? node["enabled"].as<bool>() : true;
+                    if (occluder.id.empty() || !ids.insert(occluder.id).second ||
+                        occluder.area.size() < 2) {
+                        room_fail("room.light-occluder-params-invalid",
+                                  "room '" + room.id +
+                                      "': light occluder ids must be unique and areas need at least 2 points",
+                                  node);
+                    }
+                    config.occluders.push_back(std::move(occluder));
+                }
+            }
             room.dynamic_lighting = std::move(config);
         }
 
@@ -490,15 +549,35 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                           "room '" + room.id + "': 'lighting.projected_shadows' must be a mapping",
                           projected);
             }
-            if (!projected["light"]) {
+            const bool has_light_point = static_cast<bool>(projected["light"]);
+            const bool has_source = static_cast<bool>(projected["source"]);
+            if (has_light_point == has_source) {
                 room_fail("room.projected-shadows-light-missing",
-                          "room '" + room.id + "': projected shadows need 'light: {x, y}'",
+                          "room '" + room.id +
+                              "': projected shadows need exactly one of 'light: {x, y}' or "
+                              "'source: <dynamic-light-id>'",
                           projected);
             }
 
             ProjectedShadow shadow;
             shadow.enabled = projected["enabled"] ? projected["enabled"].as<bool>() : true;
-            shadow.light = parse_point(projected["light"]);
+            if (has_light_point) {
+                shadow.light = parse_point(projected["light"]);
+            } else {
+                shadow.source = projected["source"].as<std::string>();
+                const bool known = room.dynamic_lighting &&
+                                   std::any_of(room.dynamic_lighting->lights.begin(),
+                                               room.dynamic_lighting->lights.end(),
+                                               [&shadow](const RoomLight& light) {
+                                                   return light.id == shadow.source;
+                                               });
+                if (shadow.source.empty() || !known) {
+                    room_fail("room.projected-shadows-source-invalid",
+                              "room '" + room.id + "': projected shadow source '" +
+                                  shadow.source + "' is not a declared dynamic light",
+                              projected["source"]);
+                }
+            }
             shadow.length = projected["length"] ? projected["length"].as<float>() : 0.45f;
             shadow.width = projected["width"] ? projected["width"].as<float>() : 0.75f;
             shadow.opacity = projected["opacity"] ? projected["opacity"].as<float>() : 0.18f;

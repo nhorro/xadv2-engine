@@ -10,10 +10,12 @@
 
 namespace sf {
 class Shader;
+class Texture;
 }
 
 namespace pac::core {
 class Diagnostics;
+class ResourceCache;
 }
 
 namespace pac::pnc {
@@ -43,17 +45,26 @@ public:
 
     bool make_pass(const RoomLighting& lighting,
                    const std::vector<ResolvedRoomLight>& resolved,
+                   const std::vector<const LightOccluder*>& occluders,
                    sf::FloatRect camera_view,
                    float time,
+                   const std::string& room_dir,
+                   pac::core::ResourceCache& resources,
                    pac::core::Diagnostics& log,
                    gfx::RuntimeShaderPass& out) const;
 
 private:
-    bool ensure_shader(pac::core::Diagnostics& log) const;
+    bool ensure_shader(bool advanced, pac::core::Diagnostics& log) const;
 
     mutable std::unique_ptr<sf::Shader> shader_;
+    mutable std::unique_ptr<sf::Shader> advanced_shader_;
     mutable bool shader_attempted_ = false;
+    mutable bool advanced_shader_attempted_ = false;
     mutable bool light_limit_warned_ = false;
+    mutable bool occluder_limit_warned_ = false;
+    mutable std::string normal_logical_;
+    mutable const sf::Texture* normal_texture_ = nullptr;
+    mutable bool normal_attempted_ = false;
 };
 
 } // namespace pac::pnc

@@ -413,7 +413,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `id` | req | string | — | Room id (matches the file name). |
 | `ambience` | opt | `{transition?, base?, random?}` | — | Room soundscape: one persistent streamed base loop plus randomly scheduled one-shot layers. Entering a room without this field fades out any previous room ambience. See **Room ambience** below. |
 | `post_process` | opt | `{enabled?, shader?/shaders?}` | — | Shader stack applied once to the fully composed scenery viewport. Layers, objects, walk-behinds, avatar sprites, and their shadows are included; speech, debug overlays, and the room UI remain unprocessed. `enabled: false` bypasses the stack without removing its parameters. See **Room post-processing** below. |
-| `lighting` | opt | `{ambient?, lights?, projected_shadows?}` | — | Room-level illumination and shadows. `ambient` plus `lights` runs one dynamic-light pass over the composed scenery before grading; `projected_shadows` draws live avatar silhouettes. See **Dynamic room lighting** and **Projected avatar shadows** below. |
+| `lighting` | opt | `{ambient?, lights?, normal_map?, occluders?, projected_shadows?}` | — | Room-level illumination and shadows. Ambient, direct lights, optional normals/occlusion, and live avatar silhouettes compose before grading. See **Dynamic room lighting** and **Projected avatar shadows** below. |
 | `background` | req | `{color?, layers}` | — | See below. |
 | `perspective` | opt | `{top: {y, scale}, bottom: {y, scale}}` | base scale | Avatar render scale interpolated by walking-pivot y, clamped outside `[top.y, bottom.y]`. Omitted ⇒ each avatar keeps its base scale. See [04 § Perspective scaling](04-point-and-click-concepts.md). |
 | `walkable` | req | polygon | — | Navigable area. |
@@ -629,6 +629,11 @@ colour grading runs after it. Speech, debug overlays, and UI remain unaffected.
 ```yaml
 lighting:
   ambient: {color: [0.58, 0.64, 0.78], intensity: 0.36}
+  normal_map:
+    image: archive_normals.png
+    origin: {x: 0, y: 0}
+    scale: 1
+    strength: 0.8
   lights:
     - id: desk_lamp
       type: omni
@@ -648,6 +653,9 @@ lighting:
       softness: 10
       color: [0.90, 0.95, 1.0]
       intensity: 1.0
+  occluders:
+    - id: closed_door
+      area: [{x: 720, y: 180}, {x: 720, y: 520}]
 ```
 
 `ambient` defaults to white at intensity `0.35` whenever dynamic lighting is
@@ -665,6 +673,7 @@ Each entry in `lights` supports:
 | `attach` | req* | `player` / `avatar:<id>` / `object:<id>` | — | Follow a live entity. A missing/hidden attachment suppresses the light for that frame. |
 | `offset` | opt | `{x, y}` | `{0, 0}` | World-pixel offset from an attachment. |
 | `radius` / `range` | req | positive number | — | Radial reach in room pixels (`range` is a spotlight-friendly alias). |
+| `height` | opt | positive number | `radius / 2` | Virtual distance above the image plane used by normal mapping. No effect without `normal_map`. |
 | `color` | opt | `[r, g, b]` in `[0, 1]` | white | Light colour. |
 | `intensity` | opt | number in `[0, 4]` | `1` | Peak contribution before modulation. The LDR compositor clamps final illumination to 1. |
 | `enabled` | opt | bool | `true` | Initial inclusion in the pass; scripts can override it through `light(id)` until the room reloads. |
@@ -680,12 +689,25 @@ fire/torches), or `faulty` (noise plus occasional dropouts). `amount` is `0..1`,
 `speed` is positive, and `seed` is any finite number. Defaults are `amount: 0.08`,
 `speed: 6`, `seed: 0` when a modulation block exists.
 
+`normal_map` is an optional room-space tangent normal texture. `image` is
+required; `origin` defaults to `{0, 0}`, `scale` defaults to `1`, and `strength`
+is `0..2` (default `1`). Neutral/flat is RGB `(128, 128, 255)`; red points right,
+green points down, and blue points out of the image. It modulates direct light
+over the composed scenery while ambient remains unchanged.
+
+Each `occluders` entry has a unique `id`, an `area`, and optional `enabled`
+(default `true`). Two points define one blocking segment; three or more define a
+closed polygon boundary. Direct light rays do not cross these edges. At most 32
+enabled edges are uploaded, in authoring order; excess edges log one warning.
+Scripts may toggle a changing barrier with `light_occluder(id)`.
+
 Lights outside the camera are culled. When more than eight overlap it, the engine
 draws the first eight authored visible lights and logs one warning. This fixed
 budget keeps the single-pass shader predictable on ordinary laptop GPUs.
 Scripts can also call `light(id):enable()`, `:disable()`, or
-`:set_intensity(value)`; these transient overrides reset to the values above on
-room load, and authored modulation still applies to the overridden intensity.
+`:set_intensity(value, transition_seconds?)`; these transient overrides reset to
+the values above on room load, and authored modulation still applies to the
+overridden intensity.
 
 **Projected avatar shadows** are an optional room-level 2D treatment:
 
@@ -693,7 +715,7 @@ room load, and authored modulation still applies to the overridden intensity.
 lighting:
   projected_shadows:
     enabled: true
-    light: {x: 180, y: 180}
+    source: desk_lamp
     casters: player
     length: 0.62
     width: 0.78
@@ -707,7 +729,8 @@ lighting:
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `enabled` | opt | bool | `true` | Bypass projected shadows when false. The appearance's normal contact ellipse is then drawn at full opacity. |
-| `light` | req | `{x, y}` | — | Light origin in room coordinates. Each shadow points from this origin through the caster's current walking pivot. |
+| `light` | req* | `{x, y}` | — | Fixed light origin in room coordinates. Exactly one of `light` / `source` is required. |
+| `source` | req* | dynamic-light id | — | Follow a declared light's live origin. Disabled/missing attachments suppress the projected shadow; runtime/modulated intensity scales its opacity. |
 | `casters` | opt | `player` / `all` | `player` | Apply the treatment only to the player, or to the player and every present NPC. |
 | `length` | opt | positive number | `0.45` | Fraction of the live sprite height projected along the floor direction. |
 | `width` | opt | positive number | `0.75` | Scale of the silhouette across the projection direction. |

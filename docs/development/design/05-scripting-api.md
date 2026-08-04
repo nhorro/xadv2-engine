@@ -981,7 +981,7 @@ survive leaving the room, store that decision with `set_state` and reapply it in
 | `:set_enabled(enabled)` | bool | handle | Include or exclude the light from the lighting pass. |
 | `:enable()` / `:disable()` | — | handle | Convenience aliases for `:set_enabled`. |
 | `:enabled()` | — | bool or `nil` | Current runtime value, or `nil` when the light id is absent. |
-| `:set_intensity(value)` | number | handle | Set peak intensity, clamped to `0..4`; authored modulation still applies. |
+| `:set_intensity(value [, transition_seconds])` | number, optional seconds | handle | Set peak intensity, clamped to `0..4`; a positive duration applies a smooth transition and authored modulation still applies. |
 | `:intensity()` | — | number or `nil` | Current peak intensity, or `nil` when the light id is absent. |
 
 ```lua
@@ -993,6 +993,15 @@ function room.hotspots.switch.use()
   local lamp = light("desk_lamp")
   lamp:set_enabled(not lamp:enabled())
 end
+```
+
+`light_occluder(id)` controls a polygon declared in `lighting.occluders`. Its
+`:set_enabled(bool)`, `:enable()`, `:disable()`, and `:enabled()` methods mirror
+the light handle. This state is also transient, making it suitable for opening a
+door after the room script has reapplied the saved story state:
+
+```lua
+light_occluder("vault_door"):set_enabled(not get_state("vault.open"))
 ```
 
 #### Object handle

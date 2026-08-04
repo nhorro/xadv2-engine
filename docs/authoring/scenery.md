@@ -49,6 +49,7 @@ darkness with `ambient` and place radial `omni` or directional `spot` lights:
 ```yaml
 lighting:
   ambient: { color: [0.65, 0.70, 0.85], intensity: 0.4 }
+  normal_map: { image: room_normals.png, strength: 0.8 }
   lights:
     - id: lamp
       type: omni
@@ -65,6 +66,12 @@ lighting:
       follow_facing: true
       angle: 50
       softness: 12
+  occluders:
+    - id: closed_door
+      area: [{ x: 720, y: 180 }, { x: 720, y: 520 }]
+  projected_shadows:
+    source: lamp
+    casters: all
 ```
 
 Use `sine` for regular pulsing, `flicker` for fire/torches, and `faulty` for
@@ -77,12 +84,25 @@ Scripts may switch an authored light or change its peak intensity at runtime:
 
 ```lua
 light("lamp"):disable()
-light("torch"):set_intensity(0.55)
+light("torch"):set_intensity(0.55, 0.4) -- smooth 0.4-second transition
+light_occluder("closed_door"):disable()
 ```
 
 These overrides reset when the room reloads. Reapply them from `on_load` using
 saved story state when the change must persist. Modulation continues to multiply
 the runtime intensity.
+
+`occluders` block direct light along authored polygon boundaries. A two-point
+area is one wall segment; a larger area is closed automatically. Use the runtime
+handle when a door or barrier changes. `projected_shadows.source` follows a
+dynamic light (including attachments, modulation, and runtime intensity); use
+the older `light: {x, y}` form for an independent fixed direction.
+
+An optional room-space tangent normal map adds surface direction without extra
+passes. Neutral/flat is RGB `(128, 128, 255)`; red points right, green points
+down, and blue points out of the image. It is sampled over the complete composed
+scene, so keep moving-character corridors close to flat unless their lighting
+should inherit the receiver surface.
 
 The engine renders the first eight visible lights that overlap the camera. See
 [Data formats](data-formats.md#room--roomsidyaml) for all cone, colour, and

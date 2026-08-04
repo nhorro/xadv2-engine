@@ -364,14 +364,17 @@ Lights live in room coordinates and are transformed through the current camera
 each frame. They may remain at an authored point or attach to the player, an NPC,
 or an object. Attached spotlights can follow an avatar's cardinal facing. Their
 intensity may use a deterministic sine, smooth-noise flicker, or faulty-bulb
-dropout modulation without another shader pass. Off-camera lights are culled and
-the shader accepts at most eight visible lights, warning once when a room exceeds
-that budget.
+dropout modulation without another shader pass; scripted peak intensity can also
+ease between values. Off-camera lights are culled and the shader accepts at most
+eight visible lights, warning once when a room exceeds that budget.
 
-This first implementation is deliberately painterly and LDR: it multiplies the
-neutral scene by clamped ambient-plus-light illumination. It does not consume
-normal maps, discover wall geometry, or calculate per-light occlusion. The
-existing projected avatar silhouettes remain a separate depth-sorted treatment.
+Optional authored polygon boundaries perform screen-space line-of-sight
+occlusion for each direct light. The shader accepts up to 32 boundary edges;
+this fixed budget keeps the worst case predictable and avoids allocating one
+shadow-map render target per light. A room-space tangent normal map can modulate
+direct illumination using each light's virtual `height`. Both features remain in
+the same engine-owned pass. The pipeline is deliberately painterly and LDR: it
+multiplies the neutral scene by clamped ambient-plus-light illumination.
 
 ### Projected avatar shadows
 
@@ -390,7 +393,9 @@ sprite, allowing furniture to cover the projected silhouette while the avatar
 continues to sort normally by its feet. It does not discover occlusion or
 receiver geometry inside a baked background. Rooms should use modest length and
 opacity, preserve part of the appearance's ellipse as a contact shadow, and place
-the light consistently with the painted art. See design 06 for the YAML controls.
+the light consistently with the painted art. The origin may be a fixed `light`
+point or a dynamic-light `source`; the latter follows live attachments and fades
+its opacity with runtime/modulated intensity. See design 06 for the YAML controls.
 
 ### Region shader inheritance
 

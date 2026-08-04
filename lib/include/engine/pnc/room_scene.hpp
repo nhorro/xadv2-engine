@@ -158,8 +158,12 @@ public:
     // are room-scoped and reset to the authored values on the next room load.
     void api_light_set_enabled(const std::string& id, bool enabled);
     [[nodiscard]] std::optional<bool> api_light_enabled(const std::string& id) const;
-    void api_light_set_intensity(const std::string& id, float intensity);
+    void api_light_set_intensity(const std::string& id,
+                                 float intensity,
+                                 float transition_seconds);
     [[nodiscard]] std::optional<float> api_light_intensity(const std::string& id) const;
+    void api_light_occluder_set_enabled(const std::string& id, bool enabled);
+    [[nodiscard]] std::optional<bool> api_light_occluder_enabled(const std::string& id) const;
     /// Load AnimatedSprite/CompositeSprite visuals for YAML-backed objects and
     /// seat their initial sequence. Static textures stay in RoomRenderer.
     void build_object_sprites();

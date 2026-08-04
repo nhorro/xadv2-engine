@@ -110,8 +110,14 @@ public:
     [[nodiscard]] bool has_light(const std::string& light_id) const;
     void set_light_enabled(const std::string& light_id, bool enabled);
     [[nodiscard]] bool light_enabled(const std::string& light_id) const;
-    void set_light_intensity(const std::string& light_id, float intensity);
+    void set_light_intensity(const std::string& light_id,
+                             float intensity,
+                             float transition_seconds = 0.0f);
     [[nodiscard]] float light_intensity(const std::string& light_id) const;
+    void update_lights(float dt);
+    [[nodiscard]] bool has_light_occluder(const std::string& occluder_id) const;
+    void set_light_occluder_enabled(const std::string& occluder_id, bool enabled);
+    [[nodiscard]] bool light_occluder_enabled(const std::string& occluder_id) const;
 
     // Named obstacles (#143): enable/disable a walkable blocker by id. The flag
     // lives on the obstacle in `data_` so the pathfinder (RoomData::is_walkable /
@@ -167,7 +173,15 @@ private:
     std::map<std::string, bool> layer_visible_;
     std::map<std::string, bool> hotspot_enabled_;
     std::map<std::string, bool> light_enabled_;
-    std::map<std::string, float> light_intensity_;
+    struct LightRuntime {
+        float intensity = 1.0f;
+        float start = 1.0f;
+        float target = 1.0f;
+        float elapsed = 0.0f;
+        float duration = 0.0f;
+    };
+    std::map<std::string, LightRuntime> light_rt_;
+    std::map<std::string, bool> light_occluder_enabled_;
     std::map<std::string, Avatar> npcs_;
 
     // Transient per-object runtime pose (#142), seeded from each RoomObject def.

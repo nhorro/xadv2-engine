@@ -1,6 +1,10 @@
 local room = {}
 
 function room.on_load()
+    -- Exercise the runtime handles; story logic can ease this level or disable
+    -- the partition later (for example, when a door opens).
+    light("painting_lamp"):set_intensity(0.82, 0.6)
+    light_occluder("right_partition"):enable()
     talk("player", "That painting again. I've walked past it a hundred times.")
 end
 

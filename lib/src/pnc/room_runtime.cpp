@@ -51,7 +51,10 @@ void RoomRuntime::seed_runtime_state() {
     if (data_.dynamic_lighting) {
         for (const RoomLight& light : data_.dynamic_lighting->lights) {
             light_enabled_[light.id] = light.enabled;
-            light_intensity_[light.id] = light.intensity;
+            light_rt_[light.id] = {light.intensity, light.intensity, light.intensity, 0.0f, 0.0f};
+        }
+        for (const LightOccluder& occluder : data_.dynamic_lighting->occluders) {
+            light_occluder_enabled_[occluder.id] = occluder.enabled;
         }
     }
 }
@@ -289,16 +292,68 @@ bool RoomRuntime::light_enabled(const std::string& light_id) const {
     return it != light_enabled_.end() && it->second;
 }
 
-void RoomRuntime::set_light_intensity(const std::string& light_id, float intensity) {
-    const auto it = light_intensity_.find(light_id);
-    if (it != light_intensity_.end() && std::isfinite(intensity)) {
-        it->second = std::clamp(intensity, 0.0f, 4.0f);
+void RoomRuntime::set_light_intensity(const std::string& light_id,
+                                      float intensity,
+                                      float transition_seconds) {
+    const auto it = light_rt_.find(light_id);
+    if (it == light_rt_.end() || !std::isfinite(intensity) ||
+        !std::isfinite(transition_seconds)) {
+        return;
     }
+    LightRuntime& rt = it->second;
+    const float target = std::clamp(intensity, 0.0f, 4.0f);
+    const float duration = std::max(transition_seconds, 0.0f);
+    if (duration <= 0.0f || target == rt.intensity) {
+        rt.intensity = target;
+        rt.start = target;
+        rt.target = target;
+        rt.elapsed = 0.0f;
+        rt.duration = 0.0f;
+        return;
+    }
+    rt.start = rt.intensity;
+    rt.target = target;
+    rt.elapsed = 0.0f;
+    rt.duration = duration;
 }
 
 float RoomRuntime::light_intensity(const std::string& light_id) const {
-    const auto it = light_intensity_.find(light_id);
-    return it != light_intensity_.end() ? it->second : 0.0f;
+    const auto it = light_rt_.find(light_id);
+    return it != light_rt_.end() ? it->second.intensity : 0.0f;
+}
+
+void RoomRuntime::update_lights(float dt) {
+    for (auto& [id, rt] : light_rt_) {
+        if (rt.duration <= 0.0f) {
+            continue;
+        }
+        rt.elapsed += std::max(dt, 0.0f);
+        const float progress = std::clamp(rt.elapsed / rt.duration, 0.0f, 1.0f);
+        // Smoothstep avoids a visibly mechanical start/stop while preserving
+        // deterministic duration and exact endpoints.
+        const float eased = progress * progress * (3.0f - 2.0f * progress);
+        rt.intensity = rt.start + (rt.target - rt.start) * eased;
+        if (progress >= 1.0f) {
+            rt.intensity = rt.target;
+            rt.duration = 0.0f;
+        }
+    }
+}
+
+bool RoomRuntime::has_light_occluder(const std::string& occluder_id) const {
+    return light_occluder_enabled_.count(occluder_id) > 0;
+}
+
+void RoomRuntime::set_light_occluder_enabled(const std::string& occluder_id, bool enabled) {
+    const auto it = light_occluder_enabled_.find(occluder_id);
+    if (it != light_occluder_enabled_.end()) {
+        it->second = enabled;
+    }
+}
+
+bool RoomRuntime::light_occluder_enabled(const std::string& occluder_id) const {
+    const auto it = light_occluder_enabled_.find(occluder_id);
+    return it != light_occluder_enabled_.end() && it->second;
 }
 
 void RoomRuntime::set_obstacle_enabled(const std::string& obstacle_id, bool enabled) {
