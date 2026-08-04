@@ -177,6 +177,13 @@ TEST_CASE("shader_source_uses matches whole words only") {
 
     // A substring that is part of a longer identifier is not a match.
     CHECK_FALSE(shader_source_uses("uniform float u_time_scale;", "u_time"));
+
+    // Documentation comments are not GLSL declarations. Stock shaders mention
+    // reserved uniforms they intentionally omit, which must not trigger binds.
+    CHECK_FALSE(
+        shader_source_uses("// u_time is unused\n/* u_resolution too */\nvoid main(){}", "u_time"));
+    CHECK_FALSE(shader_source_uses("// u_time is unused\n/* u_resolution too */\nvoid main(){}",
+                                   "u_resolution"));
 }
 
 TEST_CASE("shader parse errors carry stable codes") {

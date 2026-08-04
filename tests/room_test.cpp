@@ -473,6 +473,94 @@ TEST_CASE("parse_room validates room ambience layers") {
           }) == "room.ambience-random-id-invalid");
 }
 
+TEST_CASE("parse_room reads ambient, omni, spot, attachments, and modulation") {
+    const RoomData r = parse_room(R"YAML(
+id: r
+lighting:
+  ambient: { color: [0.55, 0.60, 0.75], intensity: 0.32 }
+  lights:
+    - id: lamp
+      type: omni
+      at: {x: 320, y: 180}
+      radius: 240
+      color: [1.0, 0.78, 0.42]
+      intensity: 0.85
+      modulation: {type: flicker, amount: 0.06, speed: 7, seed: 12}
+    - id: flashlight
+      type: spot
+      attach: player
+      offset: {x: 18, y: -52}
+      range: 420
+      direction: -4
+      follow_facing: true
+      angle: 42
+      softness: 10
+)YAML");
+
+    REQUIRE(r.dynamic_lighting.has_value());
+    const RoomLighting& lighting = *r.dynamic_lighting;
+    CHECK(lighting.ambient_color[0] == doctest::Approx(0.55f));
+    CHECK(lighting.ambient_color[1] == doctest::Approx(0.60f));
+    CHECK(lighting.ambient_color[2] == doctest::Approx(0.75f));
+    CHECK(lighting.ambient_intensity == doctest::Approx(0.32f));
+    REQUIRE(lighting.lights.size() == 2);
+
+    const RoomLight& lamp = lighting.lights[0];
+    CHECK(lamp.id == "lamp");
+    CHECK(lamp.type == RoomLight::Type::OMNI);
+    CHECK(lamp.at.x == doctest::Approx(320.0f));
+    CHECK(lamp.radius == doctest::Approx(240.0f));
+    CHECK(lamp.intensity == doctest::Approx(0.85f));
+    CHECK(lamp.modulation.type == LightModulation::Type::FLICKER);
+    CHECK(lamp.modulation.amount == doctest::Approx(0.06f));
+    CHECK(lamp.modulation.speed == doctest::Approx(7.0f));
+    CHECK(lamp.modulation.seed == doctest::Approx(12.0f));
+
+    const RoomLight& flashlight = lighting.lights[1];
+    CHECK(flashlight.type == RoomLight::Type::SPOT);
+    CHECK(flashlight.attach == "player");
+    CHECK(flashlight.offset.x == doctest::Approx(18.0f));
+    CHECK(flashlight.offset.y == doctest::Approx(-52.0f));
+    CHECK(flashlight.radius == doctest::Approx(420.0f));
+    CHECK(flashlight.direction == doctest::Approx(-4.0f));
+    CHECK(flashlight.follow_facing);
+    CHECK(flashlight.angle == doctest::Approx(42.0f));
+    CHECK(flashlight.softness == doctest::Approx(10.0f));
+}
+
+TEST_CASE("parse_room keeps projected shadows independent from dynamic lighting") {
+    const RoomData r = parse_room(R"YAML(
+id: r
+lighting:
+  projected_shadows: {light: {x: 10, y: 20}}
+)YAML");
+    CHECK_FALSE(r.dynamic_lighting.has_value());
+    CHECK(r.projected_shadow.has_value());
+}
+
+TEST_CASE("parse_room validates dynamic lights") {
+    CHECK(error_code([] { parse_room("id: r\nlighting:\n  ambient: {intensity: 1.5}\n"); }) ==
+          "room.ambient-light-intensity-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  lights:\n"
+                         "    - {id: a, type: glow, at: {x: 0, y: 0}, radius: 10}\n");
+          }) == "room.light-type-invalid");
+    CHECK(error_code([] {
+              parse_room(
+                  "id: r\nlighting:\n  lights:\n"
+                  "    - {id: a, type: omni, at: {x: 0, y: 0}, attach: player, radius: 10}\n");
+          }) == "room.light-position-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  lights:\n"
+                         "    - {id: a, type: spot, at: {x: 0, y: 0}, range: 10}\n");
+          }) == "room.spotlight-direction-missing");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  lights:\n"
+                         "    - id: a\n      type: omni\n      at: {x: 0, y: 0}\n"
+                         "      radius: 10\n      modulation: {type: flicker, amount: 2}\n");
+          }) == "room.light-modulation-params-invalid");
+}
+
 TEST_CASE("parse_room reads projected avatar shadows from room lighting") {
     const RoomData r = parse_room(R"YAML(
 id: r

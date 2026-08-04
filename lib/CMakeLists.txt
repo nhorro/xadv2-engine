@@ -143,6 +143,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/pnc/speech_manager.cpp
     src/pnc/room_runtime.cpp
     src/pnc/room_renderer.cpp
+    src/pnc/room_lighting.cpp
     src/pnc/debug_overlay.cpp
     src/pnc/dev_actions.cpp
     src/pnc/command.cpp

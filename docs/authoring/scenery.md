@@ -1,7 +1,7 @@
 # Scenery authoring
 
 A practical, recipe-style guide to building what fills a room: **layers,
-regions, objects, NPCs, hotspots, obstacles, walk-behinds, and perspective**.
+lighting, regions, objects, NPCs, hotspots, obstacles, walk-behinds, and perspective**.
 Each section is "I want to… → do this", with the YAML that declares it and the
 Lua that drives it.
 
@@ -40,6 +40,42 @@ background:
 
 > Use a layer for static scenery and foreground occluders. For a piece that
 > *changes* use a **region**; for one that *moves or animates* use an **object**.
+
+## Dynamic lighting
+
+Keep source artwork bright or neutral, then establish the room's baseline
+darkness with `ambient` and place radial `omni` or directional `spot` lights:
+
+```yaml
+lighting:
+  ambient: { color: [0.65, 0.70, 0.85], intensity: 0.4 }
+  lights:
+    - id: lamp
+      type: omni
+      at: { x: 520, y: 210 }
+      radius: 280
+      color: [1.0, 0.78, 0.45]
+      intensity: 0.9
+      modulation: { type: flicker, amount: 0.04, speed: 5 }
+    - id: torch
+      type: spot
+      attach: player
+      offset: { x: 0, y: -55 }
+      range: 360
+      follow_facing: true
+      angle: 50
+      softness: 12
+```
+
+Use `sine` for regular pulsing, `flicker` for fire/torches, and `faulty` for
+lamps with abrupt dropouts. Modulation is part of the one lighting pass. Lights
+may also attach to `avatar:<id>` or `object:<id>`; a missing or hidden attachment
+temporarily suppresses the light. Room `post_process` grading runs afterward, so
+use it for the final palette/mood rather than repeating a grade on every layer.
+
+The engine renders the first eight visible lights that overlap the camera. See
+[Data formats](data-formats.md#room--roomsidyaml) for all cone, colour, and
+modulation fields.
 
 ---
 

@@ -118,6 +118,32 @@ core::AmbienceRange parse_ambience_range(const YAML::Node& node,
     return result;
 }
 
+std::array<float, 3>
+parse_light_color(const YAML::Node& node, const std::string& field, const std::string& room_id) {
+    if (!node.IsSequence() || node.size() != 3) {
+        room_fail("room.light-color-invalid",
+                  "room '" + room_id + "': '" + field + "' must be [r, g, b]",
+                  node);
+    }
+    std::array<float, 3> color{};
+    for (std::size_t i = 0; i < color.size(); ++i) {
+        color[i] = node[i].as<float>();
+        if (!std::isfinite(color[i]) || color[i] < 0.0f || color[i] > 1.0f) {
+            room_fail("room.light-color-invalid",
+                      "room '" + room_id + "': '" + field +
+                          "' components must be finite numbers between 0 and 1",
+                      node[i]);
+        }
+    }
+    return color;
+}
+
+bool valid_light_attachment(const std::string& attach) {
+    return attach == "player" ||
+           (attach.starts_with("avatar:") && attach.size() > std::string("avatar:").size()) ||
+           (attach.starts_with("object:") && attach.size() > std::string("object:").size());
+}
+
 } // namespace
 
 RoomData parse_room(const std::string& yaml_text, const std::string& expected_id) {
@@ -265,6 +291,199 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                       "room '" + room.id + "': 'lighting' must be a mapping",
                       lighting);
         }
+
+        const YAML::Node ambient = lighting["ambient"];
+        const YAML::Node lights = lighting["lights"];
+        if (ambient || lights) {
+            RoomLighting config;
+            if (ambient) {
+                if (!ambient.IsMap()) {
+                    room_fail("room.ambient-light-not-map",
+                              "room '" + room.id + "': 'lighting.ambient' must be a mapping",
+                              ambient);
+                }
+                if (ambient["color"]) {
+                    config.ambient_color =
+                        parse_light_color(ambient["color"], "lighting.ambient.color", room.id);
+                }
+                if (ambient["intensity"]) {
+                    config.ambient_intensity = ambient["intensity"].as<float>();
+                }
+            }
+            if (!std::isfinite(config.ambient_intensity) || config.ambient_intensity < 0.0f ||
+                config.ambient_intensity > 1.0f) {
+                room_fail("room.ambient-light-intensity-invalid",
+                          "room '" + room.id +
+                              "': ambient light 'intensity' must be between 0 and 1",
+                          ambient ? ambient["intensity"] : YAML::Node());
+            }
+
+            if (lights) {
+                if (!lights.IsSequence()) {
+                    room_fail("room.lights-not-sequence",
+                              "room '" + room.id + "': 'lighting.lights' must be a sequence",
+                              lights);
+                }
+                std::set<std::string> ids;
+                for (const YAML::Node& node : lights) {
+                    if (!node.IsMap() || !node["id"] || !node["type"]) {
+                        room_fail("room.light-invalid",
+                                  "room '" + room.id +
+                                      "': every dynamic light needs an 'id' and 'type'",
+                                  node);
+                    }
+                    RoomLight light;
+                    light.id = node["id"].as<std::string>();
+                    if (light.id.empty() || !ids.insert(light.id).second) {
+                        room_fail("room.light-id-invalid",
+                                  "room '" + room.id +
+                                      "': dynamic light ids must be non-empty and unique",
+                                  node["id"]);
+                    }
+
+                    const std::string type = node["type"].as<std::string>();
+                    if (type == "omni") {
+                        light.type = RoomLight::Type::OMNI;
+                    } else if (type == "spot") {
+                        light.type = RoomLight::Type::SPOT;
+                    } else {
+                        room_fail("room.light-type-invalid",
+                                  "room '" + room.id +
+                                      "': dynamic light 'type' must be 'omni' or 'spot'",
+                                  node["type"]);
+                    }
+
+                    const bool has_at = static_cast<bool>(node["at"]);
+                    const bool has_attach = static_cast<bool>(node["attach"]);
+                    if (has_at == has_attach) {
+                        room_fail("room.light-position-invalid",
+                                  "room '" + room.id + "': light '" + light.id +
+                                      "' needs exactly one of 'at' or 'attach'",
+                                  node);
+                    }
+                    if (has_at) {
+                        light.at = parse_point(node["at"]);
+                    } else {
+                        light.attach = node["attach"].as<std::string>();
+                        if (!valid_light_attachment(light.attach)) {
+                            room_fail("room.light-attachment-invalid",
+                                      "room '" + room.id + "': light '" + light.id +
+                                          "' attach must be player, avatar:<id>, or object:<id>",
+                                      node["attach"]);
+                        }
+                    }
+                    if (node["offset"]) {
+                        light.offset = parse_point(node["offset"]);
+                    }
+
+                    const YAML::Node radius = node["radius"] ? node["radius"] : node["range"];
+                    if (!radius) {
+                        room_fail("room.light-radius-missing",
+                                  "room '" + room.id + "': light '" + light.id +
+                                      "' needs 'radius' (or 'range')",
+                                  node);
+                    }
+                    light.radius = radius.as<float>();
+                    light.intensity = node["intensity"] ? node["intensity"].as<float>() : 1.0f;
+                    light.enabled = node["enabled"] ? node["enabled"].as<bool>() : true;
+                    if (node["color"]) {
+                        light.color =
+                            parse_light_color(node["color"], "lighting.lights[].color", room.id);
+                    }
+                    if (!std::isfinite(light.radius) || light.radius <= 0.0f) {
+                        room_fail("room.light-radius-invalid",
+                                  "room '" + room.id + "': light '" + light.id +
+                                      "' radius must be a finite number greater than zero",
+                                  radius);
+                    }
+                    if (!std::isfinite(light.intensity) || light.intensity < 0.0f ||
+                        light.intensity > 4.0f) {
+                        room_fail("room.light-intensity-invalid",
+                                  "room '" + room.id + "': light '" + light.id +
+                                      "' intensity must be between 0 and 4",
+                                  node["intensity"]);
+                    }
+
+                    if (light.type == RoomLight::Type::SPOT) {
+                        const bool follows_facing =
+                            node["follow_facing"] && node["follow_facing"].as<bool>();
+                        if (!node["direction"] && !follows_facing) {
+                            room_fail("room.spotlight-direction-missing",
+                                      "room '" + room.id + "': spotlight '" + light.id +
+                                          "' needs 'direction' or 'follow_facing: true'",
+                                      node);
+                        }
+                        light.direction = node["direction"] ? node["direction"].as<float>() : 0.0f;
+                        light.angle = node["angle"] ? node["angle"].as<float>() : 45.0f;
+                        light.softness = node["softness"] ? node["softness"].as<float>() : 8.0f;
+                        light.follow_facing =
+                            node["follow_facing"] ? node["follow_facing"].as<bool>() : false;
+                        if (!std::isfinite(light.direction) || !std::isfinite(light.angle) ||
+                            !std::isfinite(light.softness) || light.angle <= 0.0f ||
+                            light.angle >= 180.0f || light.softness < 0.0f ||
+                            light.softness >= light.angle * 0.5f) {
+                            room_fail("room.spotlight-cone-invalid",
+                                      "room '" + room.id + "': spotlight '" + light.id +
+                                          "' needs 0 < angle < 180 and 0 <= softness < angle/2",
+                                      node);
+                        }
+                        const bool avatar_attached =
+                            light.attach == "player" || light.attach.starts_with("avatar:");
+                        if (light.follow_facing && !avatar_attached) {
+                            room_fail("room.spotlight-follow-facing-invalid",
+                                      "room '" + room.id + "': spotlight '" + light.id +
+                                          "' can follow facing only when attached to an avatar",
+                                      node["follow_facing"]);
+                        }
+                    }
+
+                    if (const YAML::Node modulation = node["modulation"]) {
+                        if (!modulation.IsMap() || !modulation["type"]) {
+                            room_fail("room.light-modulation-invalid",
+                                      "room '" + room.id + "': light '" + light.id +
+                                          "' modulation must be a mapping with a type",
+                                      modulation);
+                        }
+                        const std::string mod_type = modulation["type"].as<std::string>();
+                        if (mod_type == "none") {
+                            light.modulation.type = LightModulation::Type::NONE;
+                        } else if (mod_type == "sine") {
+                            light.modulation.type = LightModulation::Type::SINE;
+                        } else if (mod_type == "flicker") {
+                            light.modulation.type = LightModulation::Type::FLICKER;
+                        } else if (mod_type == "faulty") {
+                            light.modulation.type = LightModulation::Type::FAULTY;
+                        } else {
+                            room_fail(
+                                "room.light-modulation-type-invalid",
+                                "room '" + room.id + "': light '" + light.id +
+                                    "' modulation type must be none, sine, flicker, or faulty",
+                                modulation["type"]);
+                        }
+                        light.modulation.amount =
+                            modulation["amount"] ? modulation["amount"].as<float>() : 0.08f;
+                        light.modulation.speed =
+                            modulation["speed"] ? modulation["speed"].as<float>() : 6.0f;
+                        light.modulation.seed =
+                            modulation["seed"] ? modulation["seed"].as<float>() : 0.0f;
+                        if (!std::isfinite(light.modulation.amount) ||
+                            light.modulation.amount < 0.0f || light.modulation.amount > 1.0f ||
+                            !std::isfinite(light.modulation.speed) ||
+                            light.modulation.speed <= 0.0f ||
+                            !std::isfinite(light.modulation.seed)) {
+                            room_fail(
+                                "room.light-modulation-params-invalid",
+                                "room '" + room.id + "': light '" + light.id +
+                                    "' modulation needs amount 0..1, speed > 0, and finite seed",
+                                modulation);
+                        }
+                    }
+                    config.lights.push_back(std::move(light));
+                }
+            }
+            room.dynamic_lighting = std::move(config);
+        }
+
         if (const YAML::Node projected = lighting["projected_shadows"]) {
             if (!projected.IsMap()) {
                 room_fail("room.projected-shadows-not-map",

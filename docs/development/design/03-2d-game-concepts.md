@@ -350,6 +350,29 @@ one declaration treats every visual element consistently and costs one stack per
 frame rather than one pass per drawable. `enabled: false` keeps the authored
 settings in place while bypassing the compositor for quick comparison.
 
+### Dynamic room lighting
+
+`lighting.ambient` and `lighting.lights` add one engine-owned pass over the same
+fully composed scenery texture used by room post-processing. Ambient darkness,
+all visible radial omnilights, and all visible directional spotlights are
+evaluated together; authored `post_process` shaders then run afterward, keeping
+colour grading as the final scenery treatment. The lighting prefix shares the
+post-process `ShaderChain` ping-pong targets, so enabling it adds one shader pass
+but no additional render-target pool.
+
+Lights live in room coordinates and are transformed through the current camera
+each frame. They may remain at an authored point or attach to the player, an NPC,
+or an object. Attached spotlights can follow an avatar's cardinal facing. Their
+intensity may use a deterministic sine, smooth-noise flicker, or faulty-bulb
+dropout modulation without another shader pass. Off-camera lights are culled and
+the shader accepts at most eight visible lights, warning once when a room exceeds
+that budget.
+
+This first implementation is deliberately painterly and LDR: it multiplies the
+neutral scene by clamped ambient-plus-light illumination. It does not consume
+normal maps, discover wall geometry, or calculate per-light occlusion. The
+existing projected avatar silhouettes remain a separate depth-sorted treatment.
+
 ### Projected avatar shadows
 
 A room may opt into a painterly projected shadow under `lighting.projected_shadows`.

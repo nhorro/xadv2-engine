@@ -7,6 +7,7 @@
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/System/Vector2.hpp>
 
+#include <array>
 #include <map>
 #include <optional>
 #include <string>
@@ -77,6 +78,51 @@ struct RoomAvatarPlacement {
 struct RoomPostProcess {
     bool enabled = true;
     std::vector<gfx::ShaderEffect> shaders;
+};
+
+/// Time-varying multiplier for a dynamic light. Modulation changes the light's
+/// intensity inside the lighting pass, so fire/faulty-lamp animation does not add
+/// another full-screen shader pass.
+struct LightModulation {
+    enum class Type { NONE, SINE, FLICKER, FAULTY };
+
+    Type type = Type::NONE;
+    float amount = 0.0f; // 0..1 variation depth around the authored intensity
+    float speed = 1.0f;  // cycles/noise cells per second
+    float seed = 0.0f;   // deterministic phase/noise variation
+};
+
+/// One world-space dynamic light. Omnilights use radial falloff; spotlights add
+/// a directional cone with an angular penumbra. `attach` may be `player`,
+/// `avatar:<id>`, or `object:<id>`; attached positions use `offset` in world
+/// pixels, while an unattached light uses `at`.
+struct RoomLight {
+    enum class Type { OMNI, SPOT };
+
+    std::string id;
+    Type type = Type::OMNI;
+    bool enabled = true;
+    geom::Point at{0.0f, 0.0f};
+    std::string attach;
+    geom::Point offset{0.0f, 0.0f};
+    float radius = 1.0f;
+    std::array<float, 3> color{1.0f, 1.0f, 1.0f};
+    float intensity = 1.0f;
+    // Screen-space degrees: 0 points right, 90 down. Spotlights only.
+    float direction = 0.0f;
+    float angle = 45.0f;   // full outer cone angle in degrees
+    float softness = 8.0f; // angular fade width at each cone edge
+    bool follow_facing = false;
+    LightModulation modulation;
+};
+
+/// Ambient illumination plus the room's dynamic omni/spot lights. The lighting
+/// pass multiplies the fully composed scene by ambient + light contributions,
+/// before the authored room post-process stack (including grading).
+struct RoomLighting {
+    std::array<float, 3> ambient_color{1.0f, 1.0f, 1.0f};
+    float ambient_intensity = 0.35f;
+    std::vector<RoomLight> lights;
 };
 
 /// A live avatar silhouette projected onto the room plane away from a 2D light
@@ -231,6 +277,7 @@ struct RoomData {
     int version = 1;
     std::string id;
     std::optional<RoomPostProcess> post_process;
+    std::optional<RoomLighting> dynamic_lighting;
     std::optional<ProjectedShadow> projected_shadow;
     std::optional<core::AmbienceDefinition> ambience;
     sf::Color background_color = sf::Color::Black;

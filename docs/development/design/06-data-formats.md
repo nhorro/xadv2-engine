@@ -413,7 +413,7 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `id` | req | string | — | Room id (matches the file name). |
 | `ambience` | opt | `{transition?, base?, random?}` | — | Room soundscape: one persistent streamed base loop plus randomly scheduled one-shot layers. Entering a room without this field fades out any previous room ambience. See **Room ambience** below. |
 | `post_process` | opt | `{enabled?, shader?/shaders?}` | — | Shader stack applied once to the fully composed scenery viewport. Layers, objects, walk-behinds, avatar sprites, and their shadows are included; speech, debug overlays, and the room UI remain unprocessed. `enabled: false` bypasses the stack without removing its parameters. See **Room post-processing** below. |
-| `lighting` | opt | `{projected_shadows?}` | — | Room-level lighting treatments. `projected_shadows` derives a live, softened silhouette from the current avatar frame and projects it away from a room-space light point. See **Projected avatar shadows** below. |
+| `lighting` | opt | `{ambient?, lights?, projected_shadows?}` | — | Room-level illumination and shadows. `ambient` plus `lights` runs one dynamic-light pass over the composed scenery before grading; `projected_shadows` draws live avatar silhouettes. See **Dynamic room lighting** and **Projected avatar shadows** below. |
 | `background` | req | `{color?, layers}` | — | See below. |
 | `perspective` | opt | `{top: {y, scale}, bottom: {y, scale}}` | base scale | Avatar render scale interpolated by walking-pivot y, clamped outside `[top.y, bottom.y]`. Omitted ⇒ each avatar keeps its base scale. See [04 § Perspective scaling](04-point-and-click-concepts.md). |
 | `walkable` | req | polygon | — | Navigable area. |
@@ -620,6 +620,69 @@ post_process:
 Set the outer `enabled: false` to compare against the unprocessed room while
 keeping the authored shader and parameters intact. A `shaders:` list is accepted
 instead of `shader:` for an ordered multi-pass stack.
+
+**Dynamic room lighting** darkens the fully composed scenery with an ambient
+term, adds up to eight visible omnilights / spotlights, then hands the result to
+`post_process`. Local layer/object/avatar shaders therefore run before lighting;
+colour grading runs after it. Speech, debug overlays, and UI remain unaffected.
+
+```yaml
+lighting:
+  ambient: {color: [0.58, 0.64, 0.78], intensity: 0.36}
+  lights:
+    - id: desk_lamp
+      type: omni
+      at: {x: 520, y: 230}
+      radius: 260
+      color: [1.0, 0.76, 0.42]
+      intensity: 0.85
+      modulation: {type: flicker, amount: 0.04, speed: 5, seed: 12}
+    - id: flashlight
+      type: spot
+      attach: player
+      offset: {x: 24, y: -65}
+      range: 420
+      direction: -4
+      follow_facing: true
+      angle: 42
+      softness: 10
+      color: [0.90, 0.95, 1.0]
+      intensity: 1.0
+```
+
+`ambient` defaults to white at intensity `0.35` whenever dynamic lighting is
+declared. Its colour components and intensity are in `[0, 1]`. Keep source art
+neutral/bright and use ambient illumination for runtime darkness; this preserves
+colour information for lights to reveal.
+
+Each entry in `lights` supports:
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `id` | req | unique string | — | Stable authoring id. |
+| `type` | req | `omni` / `spot` | — | Radial point light or directional cone. |
+| `at` | req* | `{x, y}` | — | Static origin in room coordinates. Exactly one of `at` / `attach` is required. |
+| `attach` | req* | `player` / `avatar:<id>` / `object:<id>` | — | Follow a live entity. A missing/hidden attachment suppresses the light for that frame. |
+| `offset` | opt | `{x, y}` | `{0, 0}` | World-pixel offset from an attachment. |
+| `radius` / `range` | req | positive number | — | Radial reach in room pixels (`range` is a spotlight-friendly alias). |
+| `color` | opt | `[r, g, b]` in `[0, 1]` | white | Light colour. |
+| `intensity` | opt | number in `[0, 4]` | `1` | Peak contribution before modulation. The LDR compositor clamps final illumination to 1. |
+| `enabled` | opt | bool | `true` | Initial inclusion in the pass. |
+| `direction` | spot* | degrees | — | Direction in screen coordinates: `0` right, `90` down. Required unless `follow_facing` is true. When following, it becomes an offset from the avatar's cardinal direction. |
+| `follow_facing` | spot opt | bool | `false` | Rotate with an attached player/avatar. Invalid on static/object-attached lights. |
+| `angle` | spot opt | degrees | `45` | Full outer cone angle; greater than 0 and less than 180. |
+| `softness` | spot opt | degrees | `8` | Angular penumbra width at each edge; less than `angle / 2`. |
+| `modulation` | opt | map | none | Time-varying intensity; see below. |
+
+`modulation` is evaluated before uniforms are uploaded and does not add a render
+pass. Its `type` is `none`, `sine`, `flicker` (smooth deterministic noise for
+fire/torches), or `faulty` (noise plus occasional dropouts). `amount` is `0..1`,
+`speed` is positive, and `seed` is any finite number. Defaults are `amount: 0.08`,
+`speed: 6`, `seed: 0` when a modulation block exists.
+
+Lights outside the camera are culled. When more than eight overlap it, the engine
+draws the first eight authored visible lights and logs one warning. This fixed
+budget keeps the single-pass shader predictable on ordinary laptop GPUs.
 
 **Projected avatar shadows** are an optional room-level 2D treatment:
 

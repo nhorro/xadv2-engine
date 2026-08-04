@@ -24,6 +24,7 @@
 #include "engine/pnc/pause_overlay.hpp"
 #include "engine/pnc/room.hpp"
 #include "pnc/dialog_internal.hpp"
+#include "pnc/room_lighting.hpp"
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
@@ -2254,9 +2255,12 @@ void RoomScene::draw(sf::RenderTarget& target) const {
             std::any_of(post->shaders.begin(), post->shaders.end(), [](const auto& fx) {
                 return fx.enabled && fx.controller.empty();
             });
+        const RoomLighting* lighting =
+            room_->data().dynamic_lighting ? &*room_->data().dynamic_lighting : nullptr;
+        const bool scenery_effects_active = post_active || lighting;
         bool scenery_composited = false;
 
-        if (post_active) {
+        if (scenery_effects_active) {
             const sf::Vector2u post_size{vres.x,
                                          static_cast<unsigned>(std::ceil(scenery_height()))};
             if (!post_process_target_ || post_process_target_->getSize() != post_size) {
@@ -2302,13 +2306,75 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                                        0,
                                        static_cast<int>(post_size.x),
                                        static_cast<int>(post_size.y));
-                const sf::Texture* graded =
+                gfx::RuntimeShaderPass lighting_pass;
+                const gfx::RuntimeShaderPass* lighting_prefix = nullptr;
+                if (lighting) {
+                    if (!lighting_renderer_) {
+                        lighting_renderer_ = std::make_unique<RoomLightingRenderer>();
+                    }
+                    std::vector<ResolvedRoomLight> resolved;
+                    resolved.reserve(lighting->lights.size());
+                    for (const RoomLight& light : lighting->lights) {
+                        geom::Point position = light.at;
+                        const Avatar* attached_avatar = nullptr;
+                        bool resolved_attachment = true;
+                        if (light.attach == "player") {
+                            attached_avatar = player_ ? &*player_ : nullptr;
+                            resolved_attachment = attached_avatar != nullptr;
+                        } else if (light.attach.starts_with("avatar:")) {
+                            attached_avatar = resolve_avatar(light.attach.substr(7));
+                            resolved_attachment = attached_avatar != nullptr;
+                        } else if (light.attach.starts_with("object:")) {
+                            const std::string id = light.attach.substr(7);
+                            resolved_attachment =
+                                room_->data().objects.count(id) > 0 && room_->object_visible(id);
+                            if (resolved_attachment) {
+                                position = room_->object_position(id);
+                            }
+                        }
+                        if (!resolved_attachment) {
+                            continue;
+                        }
+                        if (attached_avatar) {
+                            position = attached_avatar->position();
+                        }
+                        position = position + light.offset;
+
+                        float direction = light.direction;
+                        if (light.follow_facing && attached_avatar) {
+                            const std::string facing = attached_avatar->facing();
+                            if (facing == "down") {
+                                direction += 90.0f;
+                            } else if (facing == "left") {
+                                direction += 180.0f;
+                            } else if (facing == "up") {
+                                direction += 270.0f;
+                            }
+                        }
+                        resolved.push_back({&light, position, direction});
+                    }
+                    if (lighting_renderer_->make_pass(*lighting,
+                                                      resolved,
+                                                      camera_->view_rect(),
+                                                      shader_time_,
+                                                      ctx_.log,
+                                                      lighting_pass)) {
+                        lighting_prefix = &lighting_pass;
+                    }
+                }
+
+                static const std::vector<gfx::ShaderEffect> kNoPostEffects;
+                const std::vector<gfx::ShaderEffect>& post_effects =
+                    post_active ? post->shaders : kNoPostEffects;
+                const sf::Texture* processed =
                     post_process_chain_.apply(ctx_.resources,
                                               post_process_target_->getTexture(),
                                               full,
-                                              post->shaders,
-                                              shader_time_);
-                const sf::Texture& output = graded ? *graded : post_process_target_->getTexture();
+                                              post_effects,
+                                              shader_time_,
+                                              lighting_prefix);
+                const sf::Texture& output =
+                    processed ? *processed : post_process_target_->getTexture();
                 target.setView(ctx_.display.view());
                 target.draw(sf::Sprite(output, full));
                 scenery_composited = true;

@@ -39,6 +39,8 @@ class SceneParams;
 
 namespace pac::pnc {
 
+class RoomLightingRenderer;
+
 /// SCUMM-style room gameplay (M4): rooms (YAML + Lua) + cast + inventory, a
 /// scrolling camera over the scenery viewport, the SCUMM panel + command builder
 /// + dispatcher, regions/objects with z-order, and zone-driven room transitions.
@@ -363,11 +365,12 @@ private:
     // spoke (e.g. called talk()) and skip the "nothing happens" fallback caption.
     bool spoke_during_command_ = false;
     RoomRenderer renderer_;
-    // Room-level post-processing composites only the scenery into this target,
-    // then runs the room's shader stack once. Both are pooled across frames and
-    // rooms; unprocessed rooms keep the direct-render path.
+    // Room-level lighting/post-processing composites only the scenery into this
+    // target, runs the built-in lighting prefix, then the authored shader stack.
+    // The targets are pooled; rooms using neither keep the direct-render path.
     mutable std::unique_ptr<sf::RenderTexture> post_process_target_;
     mutable gfx::ShaderChain post_process_chain_;
+    mutable std::unique_ptr<RoomLightingRenderer> lighting_renderer_;
     mutable std::size_t post_process_rt_bytes_ = 0;
     DebugOverlay debug_overlay_;
     // Dev overlay layer toggles (#37). Seeded from ctx_.dev in enter(); flipped by

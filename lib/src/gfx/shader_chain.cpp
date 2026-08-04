@@ -48,8 +48,10 @@ const sf::Texture* ShaderChain::apply(pac::core::ResourceCache& resources,
                                       const sf::Texture& source,
                                       const sf::IntRect& source_rect,
                                       const std::vector<ShaderEffect>& effects,
-                                      float time) {
-    if (effects.empty() || source_rect.width <= 0 || source_rect.height <= 0) {
+                                      float time,
+                                      const RuntimeShaderPass* prefix) {
+    if ((effects.empty() && (!prefix || !prefix->shader)) || source_rect.width <= 0 ||
+        source_rect.height <= 0) {
         return nullptr;
     }
 
@@ -87,6 +89,23 @@ const sf::Texture* ShaderChain::apply(pac::core::ResourceCache& resources,
     src->display();
 
     bool any_applied = false;
+    if (prefix && prefix->shader) {
+        if (prefix->bind) {
+            prefix->bind(*prefix->shader);
+        }
+        dst->setView(view);
+        dst->clear(sf::Color::Transparent);
+        sf::Sprite blit(src->getTexture(),
+                        sf::IntRect(0, 0, static_cast<int>(w), static_cast<int>(h)));
+        sf::RenderStates states;
+        states.shader = prefix->shader;
+        dst->draw(blit, states);
+        dst->display();
+
+        std::swap(src, dst);
+        any_applied = true;
+        pac::core::note_shader_passes(1);
+    }
     for (const ShaderEffect& fx : effects) {
         if (!fx.enabled || !fx.controller.empty()) {
             // Controller is a design-for escape hatch (warned at room load);
