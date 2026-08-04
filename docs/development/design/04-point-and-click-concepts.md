@@ -275,7 +275,7 @@ composition, animation, foreground occlusion, and future shader effects.
 | `origin` | Optional `{x, y}` room-space top-left where the layer is drawn (default the world origin `(0,0)`), so layers may differ in size and be placed freely — a foreground occluder, a parallax-ready backdrop, a decal. |
 | `scale` | Optional uniform render scale about `origin` (default `1.0` = native pixel size). Aspect ratio is **always preserved** — layers are never distorted, only uniformly enlarged/shrunk. Mainly a development aid for sizing furniture-style occluder layers; in production layers should ship at their correct native size (`scale: 1`). |
 | `interactive` | Whether this layer can receive pointer interactions. Usually false. |
-| `visible` | Optional initial visibility (default `true`). Toggled at runtime with `set_layer_visible(id, bool)`; requires the layer to carry an `id`. World bounds are derived from **all** layers, hidden or not, so toggling never reshapes the room. |
+| `visible` | Optional initial visibility (default `true`). Toggled at runtime with `set_layer_visible(id, bool)`; requires the layer to carry an `id`. Visibility does not affect bounds contribution, so toggling never reshapes the room. |
 | `shader` | Optional shader resource or shader config. Design-for. |
 | `animation` | Optional animation description. Design-for. |
 
@@ -304,13 +304,16 @@ changes and save/load.
 #### World bounds
 
 A room has no authored `size`. Its world bounds are **derived** from the layers:
-each layer occupies `[origin, origin + native image size × scale)`, the world is
-the union of those rects anchored at `(0,0)`, and it is floored to the room-view
-size so the
+each layer with `extend_bounds` enabled (the default) occupies
+`[origin, origin + native image size × scale)`, the world is the union of those
+rects anchored at `(0,0)`, and it is floored to the room-view size so the
 world is never smaller than the visible scenery viewport. Only the right/bottom
 extents grow the world; a layer at a negative `origin` spills off the top-left and
 is simply never scrolled to. Anything not covered by a layer shows
 `background.color` — leaving a gap is an authoring mistake, not a format error.
+Layers with `extend_bounds: false` still draw normally inside the resulting room,
+but any pixels outside it are clipped. This is useful for foreground furniture
+whose source canvas should not change the dimensions established by the base art.
 This keeps the world coordinate system a consequence of the art rather than a
 number to keep in sync with it. Because the derivation needs image pixel
 dimensions, it happens render-side when textures load (`compute_room_bounds`); the

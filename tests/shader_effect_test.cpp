@@ -139,6 +139,23 @@ objects:
           doctest::Approx(0.2f));
 }
 
+TEST_CASE("room post-process accepts a toggle and shader parameters") {
+    const RoomData r = parse_room(R"YAML(
+id: r
+post_process:
+  enabled: false
+  shader:
+    source: shaders/room_grade.frag
+    params: { strength: 0.75 }
+)YAML");
+    REQUIRE(r.post_process.has_value());
+    CHECK_FALSE(r.post_process->enabled);
+    REQUIRE(r.post_process->shaders.size() == 1);
+    CHECK(r.post_process->shaders[0].source == "shaders/room_grade.frag");
+    CHECK(std::get<float>(param(r.post_process->shaders[0], "strength").value) ==
+          doctest::Approx(0.75f));
+}
+
 TEST_CASE("shader_source_uses matches whole words only") {
     using pac::core::shader_source_uses;
 
@@ -179,4 +196,12 @@ TEST_CASE("shader parse errors carry stable codes") {
                          "    - { id: bg, image: a.png, shader: { source: s.frag, "
                          "params: { c: { type: mat4, value: 1 } } } }\n");
           }) == "room.shader-param-type");
+
+    CHECK(error_code([] {
+              parse_room("id: r\npost_process: false\n");
+          }) == "room.post-process-not-map");
+
+    CHECK(error_code([] {
+              parse_room("id: r\npost_process: { enabled: true }\n");
+          }) == "room.post-process-no-shaders");
 }

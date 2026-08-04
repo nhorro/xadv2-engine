@@ -25,6 +25,7 @@ class ShaderChain;
 namespace pac::pnc {
 
 struct RoomData;
+struct ProjectedShadow;
 
 /// The in-room visual instance of a character: an AnimatedSprite driven by a
 /// headless `Mover`. The Mover owns all movement state and logic; the Avatar only
@@ -38,6 +39,13 @@ public:
 
     void set_position(geom::Point p);
     geom::Point position() const { return mover_.position(); }
+    void set_visible(bool visible) { visible_ = visible; }
+    [[nodiscard]] bool visible() const { return visible_; }
+    /// Transient multiplier shared by the projected and contact shadows. Values
+    /// are clamped to 0..1; a positive transition duration linearly interpolates
+    /// from the current value so scripted reveals can be interrupted cleanly.
+    void set_shadow_opacity(float opacity, float transition_seconds = 0.0f);
+    [[nodiscard]] float shadow_opacity() const { return shadow_opacity_; }
     void face(const std::string& direction) { face(direction_from_string(direction)); }
     void face(Direction direction);
     std::string facing() const { return to_string(mover_.facing()); }
@@ -67,7 +75,18 @@ public:
     void draw(sf::RenderTarget& target,
               pac::core::ResourceCache& resources,
               float time = 0.0f,
-              pac::gfx::ShaderChain* chain = nullptr) const;
+              pac::gfx::ShaderChain* chain = nullptr,
+              const ProjectedShadow* projected_shadow = nullptr) const;
+
+    /// Split rendering used when a room assigns shadows a floor depth separate
+    /// from the avatar's feet depth. `draw_shadows` includes both the projected
+    /// silhouette (when configured) and the ordinary contact ellipse.
+    void draw_shadows(sf::RenderTarget& target,
+                      const ProjectedShadow* projected_shadow = nullptr) const;
+    void draw_sprite(sf::RenderTarget& target,
+                     pac::core::ResourceCache& resources,
+                     float time = 0.0f,
+                     pac::gfx::ShaderChain* chain = nullptr) const;
 
     /// Set the shader stack carried by the avatar's animated sprite (mirrors the
     /// cast appearance's `shaders:`). Cleared with an empty vector.
@@ -79,7 +98,10 @@ public:
 
     /// World-space bounds of the current animation frame (position + perspective
     /// scale applied). Hit-tests a hotspot bound to this avatar (#141).
-    [[nodiscard]] sf::FloatRect bounds() const { return sprite_.global_bounds(); }
+    [[nodiscard]] sf::FloatRect bounds() const {
+        return visible_ ? sprite_.global_bounds()
+                        : sf::FloatRect(position().x, position().y, 0.0f, 0.0f);
+    }
 
     /// Play an explicit animation sequence, overriding the mover-driven
     /// stand/walk animation. A non-looping sequence plays once and then control
@@ -106,7 +128,12 @@ private:
 
     /// Draw the ground shadow blob (if any) centered on the walking pivot, sized
     /// by the shadow's unit size times the avatar's current render scale.
-    void draw_shadow(sf::RenderTarget& target) const;
+    void draw_shadow(sf::RenderTarget& target, float opacity_scale = 1.0f) const;
+    /// Re-draw the current animation frame as a flattened, tinted alpha
+    /// silhouette projected away from the room's authored light point.
+    void draw_projected_shadow(sf::RenderTarget& target,
+                               const ProjectedShadow& shadow,
+                               float opacity_scale = 1.0f) const;
 
     // Scripted animation override (#149): the sequence set by play(). While
     // non-empty it supersedes the mover-driven stand/walk animation; a one-shot
@@ -115,6 +142,12 @@ private:
     bool talking_ = false;
 
     gfx::AnimatedSprite sprite_;
+    bool visible_ = true;
+    float shadow_opacity_ = 1.0f;
+    float shadow_opacity_start_ = 1.0f;
+    float shadow_opacity_target_ = 1.0f;
+    float shadow_opacity_elapsed_ = 0.0f;
+    float shadow_opacity_duration_ = 0.0f;
     Mover mover_;
     float scale_ = 1.0f;      // base scale; the fallback when the room has no perspective
     float draw_scale_ = 1.0f; // last applied render scale (perspective), for the shadow

@@ -102,6 +102,22 @@ TEST_CASE("cancel_scope removes tasks and never resumes them") {
     CHECK(s.active_task_count() == 0);
 }
 
+TEST_CASE("cancel_task removes only the selected coroutine") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    sol::state& L = s.lua();
+    sol::function sleeper = L.script("return function() wait(100.0) end");
+    const TaskId first = pac::core::spawn_call(s, sleeper).task_id;
+    const TaskId second = pac::core::spawn_call(s, sleeper).task_id;
+    REQUIRE(s.is_task_alive(first));
+    REQUIRE(s.is_task_alive(second));
+
+    s.cancel_task(first);
+    CHECK_FALSE(s.is_task_alive(first));
+    CHECK(s.is_task_alive(second));
+    CHECK(s.active_task_count() == 1);
+}
+
 TEST_CASE("a task spawning children mid-resume does not corrupt the scheduler") {
     // Regression: resume() must not hold a Task& across the coroutine call.
     // spawn() push_back()s into the tasks vector and can reallocate it; a held
@@ -315,13 +331,12 @@ end)
 // M9 #186: `on_room_resume(fn)` hands a beat from a close-up back to its room —
 // the close-up runs while the room is frozen beneath the overlay, so it cannot
 // play blocking choreography itself. The load-bearing guarantee is lifetime:
-// RoomScene captures `fn` as a sol::function while the close-up scope is live;
-// the close-up then leaves and its scope is cancelled; the beat must still fire
-// later, spawned (via the same spawn_call seam as #183) in the ROOM scope. Scope
-// cancellation reaps running tasks, not Lua values, so a registry-anchored
-// function and the upvalues it closed over survive — even under GC pressure (the
-// live_threads anchor, PR #171). The RoomScene fire gate that calls this is
-// exercised by the sample game; here we characterize the scripting-level contract.
+// RoomScene rebinds `fn` as a main-state protected function while the close-up
+// scope is live; the close-up then leaves and its scope is cancelled; the beat
+// must still fire later, spawned (via the same spawn_call seam as #183) in the
+// ROOM scope. The main-state registry anchor and its closed-over upvalues survive
+// coroutine collection under GC pressure. The RoomScene fire gate that calls
+// this is exercised by the sample game; here we characterize the contract.
 TEST_CASE("on_room_resume: a beat captured in a cancelled scope still fires in the room scope") {
     Diagnostics log = quiet();
     Scripting s(log);
@@ -329,14 +344,14 @@ TEST_CASE("on_room_resume: a beat captured in a cancelled scope still fires in t
 
     // Stand in for RoomScene::Lua::pending_resume — the C++-side anchor that keeps
     // the handed-back beat alive across the close-up teardown.
-    sol::function pending;
+    sol::main_protected_function pending;
 
     // Inside the close-up scope, register a beat. It closes over a close-up local
     // (the strongest lifetime case) and blocks (wait), like a real arrival beat.
     const ScopeId closeup = s.open_scope();
     s.set_current_scope(closeup);
     L.script("fired = 0");
-    pending = L.script(R"LUA(
+    const sol::function authored = L.script(R"LUA(
 local captured = 41 -- a close-up upvalue the beat closes over
 return function()
   wait(0.25)
@@ -344,6 +359,7 @@ return function()
 end
 )LUA")
                   .get<sol::function>();
+    pending = sol::main_protected_function(L.lua_state(), authored);
     s.set_current_scope(s.global_scope());
 
     // The close-up leaves: cancel its scope (CloseUpScene::leave), then churn GC.
@@ -370,6 +386,50 @@ end
     }
     CHECK_FALSE(s.is_task_alive(call.task_id));
     CHECK(s.run_string("assert(fired == 42, 'got ' .. fired)"));
+}
+
+// A Lua function received by a C++ binding inherits the lua_State of the
+// coroutine making that call. Keeping a plain sol::function beyond the task's
+// lifetime is therefore unsafe: after the scheduler releases and GC collects
+// the coroutine, even its destructor calls luaL_unref through a dangling state.
+// RoomScene uses this main-state rebinding for both skippable-cutscene finalizers
+// and on_room_resume callbacks.
+TEST_CASE("deferred callback is rebound to main Lua state before its coroutine drains") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    sol::state& L = s.lua();
+
+    sol::main_protected_function pending;
+    L.set_function("anchor_for_later", [&L, &pending](sol::function fn) {
+        pending = sol::main_protected_function(L.lua_state(), fn);
+    });
+    L.script("fired = 0");
+
+    // The callback closes over a local owned by the short-lived outer task, and
+    // reaches C++ while that coroutine is the active Lua state.
+    sol::function outer = L.script(R"LUA(
+return function()
+  local captured = 42
+  anchor_for_later(function() fired = captured end)
+end
+)LUA")
+                              .get<sol::function>();
+    const auto call = spawn_call(s, outer);
+    CHECK(call.done);
+    s.update(0.0f); // release the completed task's thread anchor
+    CHECK_FALSE(s.is_task_alive(call.task_id));
+    for (int i = 0; i < 5; ++i) {
+        L["collectgarbage"]("collect");
+    }
+
+    REQUIRE(pending.valid());
+    const sol::protected_function_result result = pending();
+    CHECK(result.valid());
+    CHECK(s.run_string("assert(fired == 42)"));
+
+    // The original crash happened on this cleanup path, not on invocation.
+    pending = sol::main_protected_function{};
+    L["collectgarbage"]("collect");
 }
 
 // M9 #183 / PR #171: a flood of auto-spawned handlers that each yield once must

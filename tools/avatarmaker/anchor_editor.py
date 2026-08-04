@@ -67,6 +67,20 @@ HTML = r"""<!doctype html>
       background: #191919;
     }
     .toolbar input { width: 100%; }
+    .toolbar .toggle {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      color: #cfcfcf;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .toolbar .toggle input {
+      width: auto;
+      margin: 0;
+      padding: 0;
+      accent-color: #a8a8a8;
+    }
     .frames {
       overflow: auto;
       padding: 8px;
@@ -165,6 +179,10 @@ HTML = r"""<!doctype html>
           <option value="6">6x</option>
           <option value="8">8x</option>
         </select>
+        <label class="toggle" title="Overlay the selected anchor from other frames matching the frame filter">
+          <input id="ghost-pivots" type="checkbox">
+          Ghost pivots
+        </label>
       </div>
       <div class="canvas-wrap">
         <canvas id="canvas" width="1" height="1"></canvas>
@@ -192,6 +210,7 @@ HTML = r"""<!doctype html>
       selectedIndex: 0,
       selectedAnchor: "",
       zoom: 2,
+      ghostPivots: false,
       dirty: false,
     };
 
@@ -214,18 +233,27 @@ HTML = r"""<!doctype html>
       return `${rect.x}, ${rect.y}, ${rect.width}x${rect.height}`;
     }
 
+    function frameFilter() {
+      return document.getElementById("filter").value.trim().toLowerCase();
+    }
+
+    function matchesFrameFilter(sprite, filter = frameFilter()) {
+      return !filter || sprite.id.toLowerCase().includes(filter);
+    }
+
     function renderFrameList() {
-      const filter = document.getElementById("filter").value.toLowerCase();
+      const filter = frameFilter();
       framesEl.replaceChildren();
       state.atlas.sprites.forEach((sprite, index) => {
-        if (filter && !sprite.id.toLowerCase().includes(filter)) return;
+        if (!matchesFrameFilter(sprite, filter)) return;
         const button = document.createElement("button");
         button.className = "frame-button" + (index === state.selectedIndex ? " selected" : "");
         button.textContent = sprite.id;
         button.onclick = () => {
           state.selectedIndex = index;
           const names = Object.keys(sprite.anchors || {});
-          state.selectedAnchor = names[0] || state.selectedAnchor;
+          if (!state.selectedAnchor) state.selectedAnchor = names[0] || "";
+          document.getElementById("anchor-name").value = state.selectedAnchor;
           renderAll();
         };
         framesEl.appendChild(button);
@@ -241,6 +269,7 @@ HTML = r"""<!doctype html>
         <div><strong>Source rect</strong></div>
         <div>${rectText(sprite.source_rect)}</div>
         <p class="hint">Select or add an anchor name, then click the frame. Coordinates are stored relative to this frame rect.</p>
+        <p class="hint">The Ghost pivots option overlays the selected anchor from other frames matching the frame filter, so related animation frames can be aligned.</p>
       `;
     }
 
@@ -298,6 +327,43 @@ HTML = r"""<!doctype html>
         rect.x, rect.y, rect.width, rect.height,
         0, 0, rect.width * zoom, rect.height * zoom
       );
+
+      if (state.ghostPivots && state.selectedAnchor) {
+        const filter = frameFilter();
+        const groups = new Map();
+        state.atlas.sprites.forEach((otherSprite, index) => {
+          if (index === state.selectedIndex || !matchesFrameFilter(otherSprite, filter)) return;
+          const point = otherSprite.anchors?.[state.selectedAnchor];
+          if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+          const key = `${point.x},${point.y}`;
+          if (!groups.has(key)) groups.set(key, { point, frameIds: [] });
+          groups.get(key).frameIds.push(otherSprite.id);
+        });
+
+        for (const { point, frameIds } of groups.values()) {
+          const x = point.x * zoom;
+          const y = point.y * zoom;
+          const label = frameIds.length <= 3 ? frameIds.join(", ") : `${frameIds.length} frames`;
+          ctx.save();
+          ctx.strokeStyle = "rgba(205, 205, 205, 0.52)";
+          ctx.fillStyle = "rgba(220, 220, 220, 0.66)";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.moveTo(x - 9, y);
+          ctx.lineTo(x + 9, y);
+          ctx.moveTo(x, y - 9);
+          ctx.lineTo(x, y + 9);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(x, y, 5, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.font = "11px sans-serif";
+          ctx.fillText(label, x + 7, y + 14);
+          ctx.restore();
+        }
+      }
 
       const anchors = sprite.anchors || {};
       for (const [name, point] of Object.entries(anchors)) {
@@ -375,9 +441,16 @@ HTML = r"""<!doctype html>
     document.getElementById("anchor-name").addEventListener("keydown", (event) => {
       if (event.key === "Enter") addAnchorName();
     });
-    document.getElementById("filter").oninput = renderFrameList;
+    document.getElementById("filter").oninput = () => {
+      renderFrameList();
+      renderCanvas();
+    };
     document.getElementById("zoom").onchange = (event) => {
       state.zoom = Number(event.target.value);
+      renderCanvas();
+    };
+    document.getElementById("ghost-pivots").onchange = (event) => {
+      state.ghostPivots = event.target.checked;
       renderCanvas();
     };
     document.getElementById("save").onclick = async () => {
@@ -405,6 +478,9 @@ HTML = r"""<!doctype html>
       const response = await fetch("/api/state");
       state.atlas = await response.json();
       state.atlas.sprites.forEach((sprite) => { sprite.anchors ||= {}; });
+      const names = Object.keys(currentSprite().anchors);
+      state.selectedAnchor = names[0] || "";
+      document.getElementById("anchor-name").value = state.selectedAnchor;
       state.image.onload = renderAll;
       state.image.src = "/api/image";
     }

@@ -48,6 +48,7 @@ public:
     ScopeId open_scope();
     void set_current_scope(ScopeId scope);
     ScopeId current_scope() const;
+    void cancel_task(TaskId id);   // cancel one coroutine without tearing down its scope
     void cancel_scope(ScopeId scope); // cancel + remove every task in the scope
 
     // --- scheduler ---

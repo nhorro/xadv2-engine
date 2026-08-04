@@ -1134,15 +1134,17 @@ function resizeCanvas(cssWidth, cssHeight, origin, scale) {
 }
 
 // Room world bounds, mirroring the engine's compute_room_bounds: the union of
-// every layer's rect [origin, origin + native image size × scale), anchored at
-// (0,0). Origin is the layer's x/y (also accepts an `origin:{x,y}`), default
-// (0,0). Until images load we fall back to a default so the canvas is still
-// usable (img.onload re-runs draw(), which recomputes once sizes are known).
+// each bounds-extending layer's rect [origin, origin + native image size ×
+// scale), anchored at (0,0). Origin is the layer's x/y (also accepts an
+// `origin:{x,y}`), default (0,0). Until images load we fall back to a default so
+// the canvas is still usable (img.onload re-runs draw(), which recomputes once
+// sizes are known).
 function computeRoomSize() {
   const layers = Array.isArray(state.room?.background?.layers) ? state.room.background.layers : [];
   let width = 0;
   let height = 0;
   for (const layer of layers) {
+    if (layer.extend_bounds === false) continue;
     if (!layer.image) continue;
     const img = state.imageCache.get(layer.image);
     if (!img || !img.complete || !img.naturalWidth) continue;

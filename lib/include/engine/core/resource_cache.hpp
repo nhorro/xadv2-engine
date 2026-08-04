@@ -40,9 +40,10 @@ bool shader_source_uses(const std::string& source, const std::string& ident);
 /// addresses are stable for the cache's lifetime (callers may hold pointers).
 class ResourceCache {
 public:
-    ResourceCache(ResourceSource& source, Diagnostics& log);
+    ResourceCache(ResourceSource& source, Diagnostics& log, bool smooth_textures = true);
 
     ResourceSource& source() const { return source_; }
+    [[nodiscard]] bool smooth_textures() const { return smooth_textures_; }
 
     /// Throws ResourceError if the asset is missing or fails to decode.
     const sf::Texture& texture(const std::string& logical);
@@ -89,6 +90,7 @@ public:
 private:
     ResourceSource& source_;
     Diagnostics& log_;
+    bool smooth_textures_ = true;
     std::map<std::string, sf::Texture> textures_;
     std::map<std::string, sf::Font> fonts_;
     std::map<std::string, sf::SoundBuffer> sounds_;

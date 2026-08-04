@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstddef>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,9 @@ public:
                                  float fade_seconds = 2.5f,
                                  bool preserve_offset = false,
                                  bool loop = true);
+    /// Fade the active track to silence, then stop its stream. Unlike
+    /// `set_volume`, this does not alter the user's configured music volume.
+    void fade_out(float fade_seconds = 2.5f);
     void update(float delta_seconds);
     void stop();
     void set_volume(float volume01);
@@ -69,6 +73,7 @@ private:
     float elapsed_ = 0.0f;
     float fade_duration_ = 2.5f;
     bool fading_ = false;
+    bool stopping_ = false;
 };
 
 /// Short overlapping sound effects, played from cached sound buffers.
@@ -89,17 +94,110 @@ private:
     ResourceCache& resources_;
     Diagnostics& log_;
     std::vector<sf::Sound> voices_;
+    std::vector<float> voice_gains_;
     float volume_ = 1.0f;
+};
+
+/// Inclusive floating-point range used by randomly scheduled ambience layers.
+struct AmbienceRange {
+    float min = 0.0f;
+    float max = 0.0f;
+};
+
+/// The continuously streamed foundation of a room ambience. Only one base is
+/// needed for the common case (city, wind, machinery); room changes keep the
+/// stream alive when `sound` is unchanged and only glide its gain.
+struct AmbienceBaseLayer {
+    std::string sound;
+    float volume = 1.0f;
+};
+
+/// A layer which chooses one of `sounds` after a random delay, with independently
+/// randomized volume and stereo pan for each occurrence.
+struct AmbienceRandomLayer {
+    std::string id;
+    std::vector<std::string> sounds;
+    AmbienceRange delay{5.0f, 15.0f};
+    AmbienceRange volume{1.0f, 1.0f};
+    AmbienceRange pan{-1.0f, 1.0f};
+};
+
+/// Complete ambience requested by a room. `transition` controls both crossfades
+/// between different bases and gain glides for the same persistent base.
+struct AmbienceDefinition {
+    float transition = 2.5f;
+    AmbienceBaseLayer base;
+    std::vector<AmbienceRandomLayer> random;
+};
+
+/// Persistent room ambience: a streamed base loop plus scheduled, pannable
+/// one-shots. It deliberately lives beside music rather than inside RoomScene so
+/// an identical base survives room destruction and re-entry without restarting.
+class AmbiencePlayer {
+public:
+    AmbiencePlayer(ResourceCache& resources, Diagnostics& log, SoundPlayer& sfx);
+
+    void configure(const AmbienceDefinition& definition);
+    void
+    set_base(const std::string& logical, float volume01 = 1.0f, float transition_seconds = 2.5f);
+    void set_base_volume(float volume01, float transition_seconds = 1.0f);
+    void stop(float transition_seconds = 2.5f);
+    void update(float delta_seconds);
+    void set_volume(float volume01);
+
+    /// Runtime controls for YAML-declared random layers. Volume is a multiplier
+    /// over the authored random range; both return false for an unknown id.
+    [[nodiscard]] bool set_random_layer_enabled(const std::string& id, bool enabled);
+    [[nodiscard]] bool set_random_layer_volume(const std::string& id, float volume01);
+
+    [[nodiscard]] const std::string& base_sound() const;
+
+private:
+    enum class Transition { NONE, VOLUME, CROSSFADE, STOP };
+    struct RuntimeRandomLayer {
+        AmbienceRandomLayer definition;
+        float remaining = 0.0f;
+        float volume_scale = 1.0f;
+        bool enabled = true;
+    };
+
+    bool open(int deck, const std::string& logical);
+    void cancel_transition();
+    void apply_loop_volumes();
+    void update_loop(float delta_seconds);
+    float random_in(AmbienceRange range);
+    float next_delay(const AmbienceRandomLayer& layer);
+
+    ResourceCache& resources_;
+    Diagnostics& log_;
+    SoundPlayer& sfx_;
+    std::array<sf::Music, 2> decks_;
+    std::array<std::string, 2> logical_;
+    int active_ = 0;
+    int incoming_ = -1;
+    float global_volume_ = 1.0f;
+    float current_gain_ = 0.0f;
+    float start_gain_ = 0.0f;
+    float target_gain_ = 0.0f;
+    float elapsed_ = 0.0f;
+    float transition_duration_ = 0.0f;
+    Transition transition_ = Transition::NONE;
+    std::vector<RuntimeRandomLayer> random_layers_;
+    std::mt19937 random_;
 };
 
 /// Bundle of the global audio services, with volumes driven by Settings.
 struct AudioServices {
     MusicPlayer music;
     SoundPlayer sfx;
+    AmbiencePlayer ambience;
 
     AudioServices(ResourceCache& resources, Diagnostics& log, const Settings& settings);
     void apply_settings(const Settings& settings);
-    void update(float delta_seconds) { music.update(delta_seconds); }
+    void update(float delta_seconds) {
+        music.update(delta_seconds);
+        ambience.update(delta_seconds);
+    }
 };
 
 } // namespace pac::core

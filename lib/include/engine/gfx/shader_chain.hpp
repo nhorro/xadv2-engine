@@ -26,7 +26,8 @@ namespace pac::gfx {
 /// shader declares them. The result is a `sf::Texture` the caller draws as a
 /// normal sprite at whatever world transform the drawable demands — the chain is
 /// transform-agnostic, so layers (scaled at the origin), regions (placed at the
-/// polygon's bounds top-left), objects, and animated sprites all share it.
+/// polygon's bounds top-left), objects, animated sprites, and a room's composed
+/// scenery post-process all share it.
 ///
 /// `apply` reuses two pooled render textures sized to the largest source seen,
 /// so a steady scene reaches a steady allocation; an effect that fails to load

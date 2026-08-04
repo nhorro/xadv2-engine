@@ -5,8 +5,8 @@
 
 namespace pac::core {
 
-ResourceCache::ResourceCache(ResourceSource& source, Diagnostics& log)
-    : source_(source), log_(log) {}
+ResourceCache::ResourceCache(ResourceSource& source, Diagnostics& log, bool smooth_textures)
+    : source_(source), log_(log), smooth_textures_(smooth_textures) {}
 
 const sf::Texture& ResourceCache::texture(const std::string& logical) {
     const auto it = textures_.find(logical);
@@ -19,6 +19,7 @@ const sf::Texture& ResourceCache::texture(const std::string& logical) {
         textures_.erase(pos);
         throw ResourceError("failed to load texture '" + logical + "'");
     }
+    pos->second.setSmooth(smooth_textures_);
     return pos->second;
 }
 

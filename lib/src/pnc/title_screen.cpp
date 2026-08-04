@@ -87,6 +87,13 @@ TitleScreen::TitleScreen(pac::core::EngineContext& ctx, const pac::core::ScenePa
 }
 
 void TitleScreen::enter() {
+    // The title is a clean audio boundary. Room ambience is persistent by design
+    // (so connected rooms can share a loop), therefore returning from gameplay
+    // must explicitly discard it along with any still-playing one-shot effects.
+    // Music is separate and the title track below remains unaffected.
+    ctx_.audio.sfx.stop_all();
+    ctx_.audio.ambience.stop(/*transition_seconds=*/0.0f);
+
     // Every time we return to the title (e.g. quit-to-title), re-check whether
     // a save exists so Continue shows/hides accordingly.
     rebuild_entries();

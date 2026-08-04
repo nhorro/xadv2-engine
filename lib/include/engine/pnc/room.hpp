@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/core/audio.hpp"
 #include "engine/geom/geometry.hpp"
 #include "engine/gfx/shader_effect.hpp"
 
@@ -19,8 +20,8 @@ struct BackgroundLayer {
     float z = 0.0f;
     bool interactive = false;
     // Room-space top-left where the layer's image is drawn. Layers may differ in
-    // size and be placed freely (e.g. a foreground occluder); the room's world
-    // bounds are derived from the union of all layer rects (see
+    // size and be placed freely (e.g. a foreground occluder); by default the
+    // room's world bounds include this rect (see `extend_bounds` and
     // compute_room_bounds). Defaults to the world origin (0,0).
     geom::Point origin{0, 0};
     // Uniform render scale applied about the top-left `origin`. Aspect ratio is
@@ -30,8 +31,11 @@ struct BackgroundLayer {
     float scale = 1.0f;
     // Initial visibility. Toggled at runtime via set_layer_visible (Lua), which
     // requires the layer to carry an `id`. Persisted per room like object/region
-    // state. World bounds are still derived from all layers, hidden or not.
+    // state. Visibility does not affect whether a layer extends world bounds.
     bool visible = true;
+    // Whether this layer may enlarge the room's world bounds. Foreground art can
+    // opt out so pixels beyond the base scenery canvas are simply clipped.
+    bool extend_bounds = true;
     // Shaders applied when drawing this layer (design 03 §Shaders). MVP applies
     // the first; the vector is a design-for ordered stack (multi-pass needs
     // render-to-texture, not yet built).
@@ -64,6 +68,38 @@ struct RoomAvatarPlacement {
     std::string enter_from;
     std::string orientation = "down";
     bool player = false;
+};
+
+/// Optional post-process over the fully composed scenery viewport. Unlike
+/// per-drawable shaders, this runs once after layers, regions, objects, shadows,
+/// walk-behinds, and avatars have been drawn; speech, debug overlays, and the
+/// room UI remain unprocessed.
+struct RoomPostProcess {
+    bool enabled = true;
+    std::vector<gfx::ShaderEffect> shaders;
+};
+
+/// A live avatar silhouette projected onto the room plane away from a 2D light
+/// point. This is an intentionally painterly 2D approximation rather than a
+/// geometry-aware shadow map: `length` maps sprite height onto the floor,
+/// `width` controls the silhouette's cross-axis scale, and `softness` feathers
+/// the result with a small set of offset draws. The existing appearance ellipse
+/// remains as a contact shadow, scaled by `contact_shadow`.
+struct ProjectedShadow {
+    enum class Casters { PLAYER, ALL };
+
+    bool enabled = true;
+    geom::Point light{0.0f, 0.0f};
+    Casters casters = Casters::PLAYER;
+    float length = 0.45f;
+    float width = 0.75f;
+    float opacity = 0.18f;
+    float softness = 4.0f;
+    float contact_shadow = 0.55f;
+    sf::Color color{12, 14, 18};
+    // Optional fixed floor depth for both the projected silhouette and contact
+    // ellipse. When omitted, shadows keep sorting together with their avatar.
+    std::optional<float> z;
 };
 
 /// Trigger polygon for room exits / scripted events (fires on_zone_enter/exit).
@@ -117,6 +153,9 @@ struct RoomObject {
     // (like a layer's `scale`). 1.0 = native pixel size. The room editor sets this
     // when resizing an object; `z: auto` uses the scaled bottom edge (#147).
     float scale = 1.0f;
+    // Clockwise degrees about the object's pivot (animated/composite) or its
+    // authored top-left (static texture). Script may change it transiently.
+    float rotation = 0.0f;
     bool visible = true;
     // Optional explicit sort line (world Y), in the same space as an avatar's
     // walking-pivot y. When set, the object sorts at this depth against avatars:
@@ -191,6 +230,9 @@ struct RoomConfigs {
 struct RoomData {
     int version = 1;
     std::string id;
+    std::optional<RoomPostProcess> post_process;
+    std::optional<ProjectedShadow> projected_shadow;
+    std::optional<core::AmbienceDefinition> ambience;
     sf::Color background_color = sf::Color::Black;
     std::vector<BackgroundLayer> layers;
     geom::Polygon walkable;

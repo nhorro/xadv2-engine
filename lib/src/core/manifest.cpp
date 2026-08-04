@@ -178,6 +178,14 @@ Manifest parse_manifest(const std::string& yaml_text) {
     m.window.width = win["width"] ? win["width"].as<unsigned>() : m.resolution.x;
     m.window.height = win["height"] ? win["height"].as<unsigned>() : m.resolution.y;
 
+    if (const YAML::Node rendering = root["rendering"]) {
+        if (!rendering.IsMap()) {
+            manifest_fail("manifest.rendering-not-map", "'rendering' must be a mapping", rendering);
+        }
+        m.rendering.smooth_textures =
+            rendering["smooth_textures"] ? rendering["smooth_textures"].as<bool>() : true;
+    }
+
     const YAML::Node resources = root["resources"];
     if (!resources || !resources["src"] || resources["src"].as<std::string>().empty()) {
         manifest_fail("manifest.resources-src-missing", "'resources.src' is required", root);

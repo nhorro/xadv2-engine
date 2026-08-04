@@ -3,6 +3,10 @@
 #include <functional>
 #include <string>
 
+namespace sf {
+class RenderTarget;
+}
+
 namespace pac::core {
 
 struct EngineContext;
@@ -28,6 +32,11 @@ struct RunOptions {
 /// before the entry scene is constructed.
 struct ApplicationHooks {
     std::function<void(EngineContext&, const Manifest&)> configure;
+    /// Optional game-owned per-frame services. `update` runs at the engine's
+    /// fixed simulation cadence, after the active scene; `draw` runs in virtual
+    /// screen coordinates after the scene stack has rendered.
+    std::function<void(float)> update;
+    std::function<void(sf::RenderTarget&)> draw;
 };
 
 /// Parse the standard game command line into `opts` and return the manifest path

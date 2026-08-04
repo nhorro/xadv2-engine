@@ -69,6 +69,14 @@ void AnimatedSprite::draw(sf::RenderTarget& target,
                           pac::core::ResourceCache& resources,
                           float time,
                           ShaderChain* chain) const {
+    draw_transformed(target, getTransform(), resources, time, chain);
+}
+
+void AnimatedSprite::draw_transformed(sf::RenderTarget& target,
+                                      const sf::Transform& transform,
+                                      pac::core::ResourceCache& resources,
+                                      float time,
+                                      ShaderChain* chain) const {
     sf::Sprite sprite;
     sf::IntRect rect;
     sf::Vector2f origin;
@@ -90,7 +98,7 @@ void AnimatedSprite::draw(sf::RenderTarget& target,
     }
 
     sf::RenderStates states;
-    states.transform *= getTransform();
+    states.transform *= transform;
 
     if (applicable <= 1) {
         if (applicable == 1) {
@@ -136,12 +144,29 @@ void AnimatedSprite::draw(sf::RenderTarget& target,
     target.draw(blit, states);
 }
 
+void AnimatedSprite::draw_transformed(sf::RenderTarget& target,
+                                      const sf::Transform& transform,
+                                      sf::Color tint) const {
+    sf::Sprite sprite;
+    sf::IntRect rect;
+    sf::Vector2f origin;
+    if (!build_current_sprite(sheet_, player_, pivot_, tint, sprite, rect, origin)) {
+        return;
+    }
+    sf::RenderStates states;
+    states.transform = transform;
+    target.draw(sprite, states);
+}
+
 sf::FloatRect AnimatedSprite::global_bounds() const {
+    return getTransform().transformRect(local_bounds());
+}
+
+sf::FloatRect AnimatedSprite::local_bounds() const {
     const std::string frame_id = player_.current_frame_id();
     const Frame* frame = frame_id.empty() ? nullptr : sheet_.frame(frame_id);
     if (!frame) {
-        const sf::Vector2f p = getPosition();
-        return sf::FloatRect(p.x, p.y, 0.0f, 0.0f);
+        return sf::FloatRect(0.0f, 0.0f, 0.0f, 0.0f);
     }
     // The frame is drawn with its pivot anchor at the origin (see draw()), so in
     // local space it spans [-pivot, size - pivot). getTransform() then applies
@@ -156,10 +181,16 @@ sf::FloatRect AnimatedSprite::global_bounds() const {
                               -pivot.y,
                               static_cast<float>(frame->rect.width),
                               static_cast<float>(frame->rect.height));
-    return getTransform().transformRect(local);
+    return local;
 }
 
 std::optional<sf::Vector2f> AnimatedSprite::anchor_world(const std::string& name) const {
+    const std::optional<sf::Vector2f> local = anchor_local(name);
+    return local ? std::optional<sf::Vector2f>(getTransform().transformPoint(*local))
+                 : std::nullopt;
+}
+
+std::optional<sf::Vector2f> AnimatedSprite::anchor_local(const std::string& name) const {
     const std::string frame_id = player_.current_frame_id();
     const Frame* frame = frame_id.empty() ? nullptr : sheet_.frame(frame_id);
     if (!frame) {
@@ -177,7 +208,7 @@ std::optional<sf::Vector2f> AnimatedSprite::anchor_world(const std::string& name
         pivot = *p;
     }
     const float local_x = player_.current_h_mirror() ? pivot.x - a->x : a->x - pivot.x;
-    return getTransform().transformPoint(local_x, a->y - pivot.y);
+    return sf::Vector2f(local_x, a->y - pivot.y);
 }
 
 AnimatedSprite load_animated_sprite(pac::core::ResourceCache& res,

@@ -248,8 +248,11 @@ children:
 Children may animate independently of parents. For example, the body can walk
 while the head talks or turns.
 
-Composite sprites shall expose the same high-level rendering operations as
-animated sprites where meaningful: position, scale, opacity, and draw.
+Composite sprites expose the same room-object operations as animated sprites:
+position, scale, rotation, shader stack, sequence playback, bounds, anchors and
+draw. A composite sequence may independently select each node's sprite sequence
+and run a simple time-based rotation track; full keyframe timelines remain a
+future authoring extension.
 
 ## Shaders
 
@@ -262,9 +265,10 @@ uniforms) needs no engine code per shader.
 This is a generic 2D concept (`pac::gfx`): the data types live there, loading is a
 `ResourceCache` resource, and each genre layer wires them onto its drawables. The
 point-and-click slice applies them to room **background layers, regions, objects,
-and avatars** (PCs and NPCs; declared on the cast appearance — design 04). A
-walk-behind currently draws unshaded (it's a textured polygon, not a sprite, so it
-needs a polygon-aware multi-pass path that is out of scope for now).
+and avatars** (PCs and NPCs; declared on the cast appearance — design 04). A room
+can also declare a **post-process** stack over its fully composed scenery
+viewport. That path includes walk-behinds and avatar shadows naturally; speech,
+authoring overlays, and the room UI are drawn afterward and remain unprocessed.
 
 ### Loading
 
@@ -335,6 +339,35 @@ scene reaches a steady allocation. Single-shader keeps the direct-draw fast path
 (no RT). A pass that fails to load (missing source, unsupported GPU, compile
 error) is logged once by the resource cache and skipped; the rest of the chain
 still runs.
+
+### Room post-processing
+
+`rooms/<id>.yaml` may declare `post_process: {enabled, shader/shaders}`. The room
+renderer first composites the complete scenery viewport—background, depth-sorted
+drawables, walk-behinds, characters, and shadows—then runs the configured stack
+once over that texture. This is the preferred path for a colour grade because
+one declaration treats every visual element consistently and costs one stack per
+frame rather than one pass per drawable. `enabled: false` keeps the authored
+settings in place while bypassing the compositor for quick comparison.
+
+### Projected avatar shadows
+
+A room may opt into a painterly projected shadow under `lighting.projected_shadows`.
+The renderer reuses each caster's current animated frame as a dark silhouette,
+lays it onto the room plane away from the configured 2D light point, and draws a
+small set of offset samples for a soft edge. Because the source is the live frame,
+the outline changes with walking, facing, and acting; because the direction is
+recomputed from the caster's feet, it also changes as the character crosses the
+room.
+
+This is deliberately a 2D approximation, not a geometry-aware shadow map. It
+depth-sorts with its avatar by default. A room with foreground props may instead
+give the shadow a fixed floor `z`: this separates the shadow pass from the avatar
+sprite, allowing furniture to cover the projected silhouette while the avatar
+continues to sort normally by its feet. It does not discover occlusion or
+receiver geometry inside a baked background. Rooms should use modest length and
+opacity, preserve part of the appearance's ellipse as a contact shadow, and place
+the light consistently with the painted art. See design 06 for the YAML controls.
 
 ### Region shader inheritance
 
@@ -612,12 +645,13 @@ in a different coordinate space, so clicks and avatar movement break.
 
 ## Music and sound
 
-The engine exposes two global audio services.
+The engine exposes three global audio services.
 
 | Service | Purpose |
 |---------|---------|
 | `MusicPlayer` | Two streamed decks for immediate changes and crossfades. |
 | `SoundPlayer` | Short overlapping sound effects. |
+| `AmbiencePlayer` | A persistent streamed room loop plus randomly scheduled one-shots. |
 
 ### Music player
 
@@ -650,6 +684,22 @@ and a stereo **pan** (-1 left .. 0 center .. +1 right). Panning is a simple ster
 balance that affects **mono** buffers only — a stereo clip plays as authored. A
 position-aware/spatial mix (pan/volume derived from a source's world position
 relative to the camera or player) is design-for.
+
+### Ambience player
+
+Room ambience uses the SFX setting and has two kinds of layer: one streamed,
+looping `base`, and any number of named `random` layers. A random layer chooses a
+clip, delay, volume, and pan from its authored ranges each time it fires.
+
+The player survives room runtime destruction. When adjacent rooms request the
+same base sound, its playback offset is left untouched and only its room gain is
+interpolated. A different base uses an equal-power crossfade; entering a room
+without ambience fades the old base to silence. Named random layers shared by
+adjacent rooms preserve their countdown and Lua enable/volume overrides.
+
+Rooms normally declare the full mix in YAML. Lua may replace or fade the base,
+stop the mix, or adjust a named random layer for story-dependent variations; see
+design 05 and 06.
 
 Lua API:
 

@@ -136,6 +136,11 @@ struct EvidenceProgress {
     int total = 0;
 };
 
+/// Runtime query for the small "new content" mark drawn over inventory items.
+/// The owning room keeps the flag in persistent state; the panel only asks
+/// whether the item currently needs the mark.
+using InventoryNotificationQuery = std::function<bool(const std::string&)>;
+
 /// The bottom SCUMM panel: a command bar, a verb grid, and a text inventory list.
 /// It translates clicks into intents; the room view runs them through the command
 /// builder/dispatcher. Lives in virtual coordinates.
@@ -162,7 +167,8 @@ public:
               const InventoryModel& inventory,
               const CommandState& command_state,
               sf::Vector2f cursor,
-              EvidenceProgress evidence = {}) const;
+              EvidenceProgress evidence = {},
+              InventoryNotificationQuery has_notification = {}) const;
 
     /// Draw dialog options in place of the verb/inventory layout. Used while
     /// the room view is in ViewState::DIALOG. Options are plain text (no boxes,
@@ -258,7 +264,12 @@ private:
     void draw_inventory_icons(sf::RenderTarget& target,
                               const InventoryModel& inventory,
                               const CommandState& command_state,
-                              sf::Vector2f cursor) const;
+                              sf::Vector2f cursor,
+                              const InventoryNotificationQuery& has_notification) const;
+    /// A compact amber circle with an exclamation mark, anchored to a slot/row's
+    /// upper-right corner. It remains legible with either icon or text inventory.
+    void draw_inventory_notification(sf::RenderTarget& target,
+                                     sf::FloatRect rect) const;
     void draw_evidence_indicator(sf::RenderTarget& target,
                                  const pac::core::Strings& strings,
                                  EvidenceProgress evidence) const;

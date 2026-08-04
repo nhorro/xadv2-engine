@@ -87,6 +87,31 @@ void bind_core_api(EngineContext& ctx) {
             ctx.audio.sfx.play(path, volume.value_or(1.0f), pan.value_or(0.0f));
         });
     lua.set_function("stop_sounds", [&ctx]() { ctx.audio.sfx.stop_all(); });
+    lua.set_function(
+        "set_ambience",
+        [&ctx](const std::string& path, sol::optional<float> volume, sol::optional<float> seconds) {
+            ctx.audio.ambience.set_base(path, volume.value_or(1.0f), seconds.value_or(2.5f));
+        });
+    lua.set_function("set_ambience_volume", [&ctx](float volume, sol::optional<float> seconds) {
+        ctx.audio.ambience.set_base_volume(volume, seconds.value_or(1.0f));
+    });
+    lua.set_function("stop_ambience", [&ctx](sol::optional<float> seconds) {
+        ctx.audio.ambience.stop(seconds.value_or(2.5f));
+    });
+    lua.set_function("set_ambience_layer_enabled", [&ctx](const std::string& id, bool enabled) {
+        const bool found = ctx.audio.ambience.set_random_layer_enabled(id, enabled);
+        if (!found) {
+            ctx.log.warn("set_ambience_layer_enabled: unknown layer '" + id + "'");
+        }
+        return found;
+    });
+    lua.set_function("set_ambience_layer_volume", [&ctx](const std::string& id, float volume) {
+        const bool found = ctx.audio.ambience.set_random_layer_volume(id, volume);
+        if (!found) {
+            ctx.log.warn("set_ambience_layer_volume: unknown layer '" + id + "'");
+        }
+        return found;
+    });
 
     // --- global state (scalars only) ---
     lua.set_function("get_state", [&ctx](const std::string& key) -> sol::object {
@@ -120,6 +145,16 @@ void bind_core_api(EngineContext& ctx) {
         const std::string key = "__case_term." + id;
         const bool added = !ctx.state.has(key);
         ctx.state.set(key, true);
+        if (added) {
+            sol::protected_function hook = ctx.scripting.lua()["__on_content_added"];
+            if (hook.valid()) {
+                sol::protected_function_result result = hook("term", id);
+                if (!result.valid()) {
+                    const sol::error error = result;
+                    ctx.log.error(std::string("__on_content_added: ") + error.what());
+                }
+            }
+        }
         return added;
     });
     lua.set_function("has_case_term", [&ctx](const std::string& id) {

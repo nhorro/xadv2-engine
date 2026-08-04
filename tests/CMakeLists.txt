@@ -36,6 +36,7 @@ add_executable(pac_core_tests
     geometry_test.cpp
     spritesheet_test.cpp
     animation_test.cpp
+    composite_sprite_test.cpp
     avatar_test.cpp
     shader_effect_test.cpp
     state_store_test.cpp

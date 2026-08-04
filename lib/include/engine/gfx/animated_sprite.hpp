@@ -7,6 +7,7 @@
 
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/Graphics/Drawable.hpp>
+#include <SFML/Graphics/Transform.hpp>
 #include <SFML/Graphics/Transformable.hpp>
 
 #include <functional>
@@ -49,10 +50,20 @@ public:
     /// there is no valid current frame. Used for hit-testing a moving avatar.
     [[nodiscard]] sf::FloatRect global_bounds() const;
 
+    /// Current frame bounds in pivot-relative local coordinates. This is the
+    /// geometry draw() transforms into world space and is also the primitive a
+    /// CompositeSprite uses when unioning the bounds of its attached parts.
+    [[nodiscard]] sf::FloatRect local_bounds() const;
+
     /// World position of a named anchor on the current frame (transform applied),
     /// or nullopt when the frame has no such anchor. Mirrors global_bounds()'s
     /// pivot/transform handling.
     [[nodiscard]] std::optional<sf::Vector2f> anchor_world(const std::string& name) const;
+
+    /// Position of an anchor relative to this animation's pivot, including the
+    /// current sequence's horizontal mirroring. Composite attachments use this
+    /// without temporarily mutating the child's world transform.
+    [[nodiscard]] std::optional<sf::Vector2f> anchor_local(const std::string& name) const;
 
     void set_color(sf::Color color) { color_ = color; }
 
@@ -68,6 +79,22 @@ public:
               pac::core::ResourceCache& resources,
               float time,
               ShaderChain* chain) const;
+
+    /// Shader-aware draw with an explicit local-to-world transform. This is the
+    /// normal rendering path for a part inside a CompositeSprite.
+    void draw_transformed(sf::RenderTarget& target,
+                          const sf::Transform& transform,
+                          pac::core::ResourceCache& resources,
+                          float time,
+                          ShaderChain* chain) const;
+
+    /// Draw the current frame with an explicit local-to-world transform and tint,
+    /// bypassing this sprite's normal position/scale and shader stack. Used by
+    /// the point-and-click renderer to reuse the live alpha silhouette for a
+    /// projected ground shadow while preserving frame mirroring and pivot.
+    void draw_transformed(sf::RenderTarget& target,
+                          const sf::Transform& transform,
+                          sf::Color tint) const;
 
 private:
     Spritesheet sheet_;

@@ -36,6 +36,7 @@ void RoomRuntime::seed_runtime_state() {
         ObjectRuntime rt;
         rt.position = object.position;
         rt.scale = object.scale;
+        rt.rotation = object.rotation;
         object_rt_[id] = rt;
     }
     for (const BackgroundLayer& layer : data_.layers) {
@@ -169,6 +170,21 @@ void RoomRuntime::set_object_scale(const std::string& object_id, float scale) {
     }
 }
 
+float RoomRuntime::object_rotation(const std::string& object_id) const {
+    const auto it = object_rt_.find(object_id);
+    if (it != object_rt_.end()) {
+        return it->second.rotation;
+    }
+    const auto d = data_.objects.find(object_id);
+    return d != data_.objects.end() ? d->second.rotation : 0.0f;
+}
+
+void RoomRuntime::set_object_rotation(const std::string& object_id, float degrees) {
+    if (std::isfinite(degrees)) {
+        object_rt_[object_id].rotation = degrees;
+    }
+}
+
 void RoomRuntime::object_move_to(const std::string& object_id, geom::Point target, float speed) {
     auto& rt = object_rt_[object_id];
     rt.target = target;
@@ -203,6 +219,7 @@ void RoomRuntime::update_objects(float dt) {
         ObjectRuntime& rt = object_rt_[id];
         sprite.setPosition(rt.position.x, rt.position.y);
         sprite.setScale(rt.scale, rt.scale);
+        sprite.setRotation(rt.rotation);
         sprite.update(dt);
         if (!rt.acting.empty() && sprite.finished()) {
             rt.acting.clear();
@@ -210,7 +227,7 @@ void RoomRuntime::update_objects(float dt) {
     }
 }
 
-void RoomRuntime::set_object_sprite(const std::string& object_id, gfx::AnimatedSprite sprite) {
+void RoomRuntime::set_object_sprite(const std::string& object_id, gfx::VisualSprite sprite) {
     object_sprites_.insert_or_assign(object_id, std::move(sprite));
 }
 
@@ -218,7 +235,7 @@ bool RoomRuntime::object_animated(const std::string& object_id) const {
     return object_sprites_.count(object_id) > 0;
 }
 
-const gfx::AnimatedSprite* RoomRuntime::object_sprite(const std::string& object_id) const {
+const gfx::VisualSprite* RoomRuntime::object_sprite(const std::string& object_id) const {
     const auto it = object_sprites_.find(object_id);
     return it != object_sprites_.end() ? &it->second : nullptr;
 }

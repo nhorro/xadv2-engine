@@ -8,6 +8,7 @@
 #include "engine/pnc/speech_manager.hpp"
 
 #include <SFML/Graphics/ConvexShape.hpp>
+#include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
@@ -997,7 +998,8 @@ void ScummPanel::draw(sf::RenderTarget& target,
                       const InventoryModel& inventory,
                       const CommandState& command_state,
                       sf::Vector2f cursor,
-                      EvidenceProgress evidence) const {
+                      EvidenceProgress evidence,
+                      InventoryNotificationQuery has_notification) const {
     draw_backdrop(target, &inventory, &command_state, cursor);
 
     if (const sf::Font* command_font = font_or_default(command_font_)) {
@@ -1087,7 +1089,8 @@ void ScummPanel::draw(sf::RenderTarget& target,
     }
 
     if (config_.layout.inventory_style == InventoryStyle::ICONS) {
-        draw_inventory_icons(target, inventory, command_state, cursor);
+        draw_inventory_icons(target, inventory, command_state, cursor,
+                             has_notification);
     } else {
         const sf::Font* inventory_font = font_or_default(inventory_font_);
         const int page = clamped_inventory_page(inventory, command_state.inventory_page_index);
@@ -1111,6 +1114,9 @@ void ScummPanel::draw(sf::RenderTarget& target,
                 place_text(text, cell.rect, config_.skin.inventory_text.align);
                 target.draw(text);
             }
+            if (has_notification && has_notification(cell.item_id)) {
+                draw_inventory_notification(target, cell.rect);
+            }
         }
         draw_inventory_arrows(target, inventory, command_state, cursor);
     }
@@ -1124,7 +1130,8 @@ void ScummPanel::draw(sf::RenderTarget& target,
 void ScummPanel::draw_inventory_icons(sf::RenderTarget& target,
                                       const InventoryModel& inventory,
                                       const CommandState& command_state,
-                                      sf::Vector2f cursor) const {
+                                      sf::Vector2f cursor,
+                                      const InventoryNotificationQuery& has_notification) const {
     const IconInventoryLayout layout = icon_inventory_layout();
     const std::vector<std::string>& items = inventory.list();
     const sf::Font* inventory_font = font_or_default(inventory_font_);
@@ -1168,6 +1175,9 @@ void ScummPanel::draw_inventory_icons(sf::RenderTarget& target,
             center_text(text, rect);
             target.draw(text);
         }
+        if (has_notification && has_notification(item_id)) {
+            draw_inventory_notification(target, rect);
+        }
     }
 
     // Vertical paging arrows (same look as the dialog arrows), only when needed.
@@ -1186,6 +1196,34 @@ void ScummPanel::draw_inventory_icons(sf::RenderTarget& target,
         draw_v_arrow(target, layout.prev_arrow, true, arrow_color(layout.prev_arrow, prev));
         draw_v_arrow(target, layout.next_arrow, false, arrow_color(layout.next_arrow, next));
     }
+}
+
+void ScummPanel::draw_inventory_notification(sf::RenderTarget& target,
+                                             sf::FloatRect rect) const {
+    const float radius = std::clamp(std::min(rect.width, rect.height) * 0.115f,
+                                    7.0f, 11.0f);
+    const sf::Vector2f center{rect.left + rect.width - radius * 0.85f,
+                              rect.top + radius * 0.85f};
+    sf::CircleShape badge(radius);
+    badge.setOrigin(radius, radius);
+    badge.setPosition(center);
+    badge.setFillColor(sf::Color(245, 193, 72, 255));
+    badge.setOutlineColor(sf::Color(34, 27, 18, 245));
+    badge.setOutlineThickness(std::max(1.0f, radius * 0.12f));
+    target.draw(badge);
+
+    const sf::Font* font = font_or_default(inventory_font_);
+    if (!font) {
+        return;
+    }
+    sf::Text mark("!", *font,
+                  std::max(10u, scaled_text_size(static_cast<unsigned>(radius * 1.55f))));
+    mark.setFillColor(sf::Color(35, 27, 17, 255));
+    center_text(mark, {center.x - radius, center.y - radius,
+                       radius * 2.0f, radius * 2.0f});
+    // Cormorant's exclamation sits optically a little high inside its glyph box.
+    mark.move(0.0f, radius * 0.03f);
+    target.draw(mark);
 }
 
 void ScummPanel::draw_evidence_indicator(sf::RenderTarget& target,

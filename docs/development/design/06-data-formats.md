@@ -26,6 +26,7 @@ Worked example: [02 — Architecture overview](02-architecture-overview.md).
 | `id` | req | string | — | Stable game id used as the per-game subdirectory under the per-user data path (e.g. `~/.local/share/<id>/saves/`). Must match `[a-z0-9_-]+`. Two games using this engine get separate save folders by choosing distinct ids. |
 | `resolution` | req | `{width, height}` | — | Virtual design resolution. |
 | `window` | req | `{fullscreen, width, height}` | — | Initial display mode. `fullscreen: true` starts the game fullscreen at the **desktop's native video mode**, with the virtual `resolution` letterboxed within it (no mode switch — this keeps input mapping correct). `width`/`height` are the initial **windowed** client size (default to `resolution`). Player settings override these at runtime via the settings scene. |
+| `rendering` | opt | `{smooth_textures?}` | — | Rendering policy. `smooth_textures` defaults to `true`, enabling linear filtering for loaded textures and shader/post-process render targets to reduce temporal shimmer when art moves or scales fractionally. Pixel-art games can set it to `false` for nearest-neighbour sampling. |
 | `resources` | req | `{src}` | — | Resource source root. `src` is a directory (MVP) or archive (design-for). |
 | `strings` | req* | path | — | Single-language shorthand: the UI strings resource (engine-emitted text). Mutually exclusive with `languages`; exactly one is required. See [UI strings](#ui-strings--stringslangyaml). |
 | `languages` | req* | `[{id, name?, strings}]` | — | UI-strings languages (R3). Each entry: `id` (stable ASCII id stored in settings), `name` (opt display label in its own language, defaults to `id`), `strings` (path to that language's file). The MVP ships one entry (Spanish); the list is design-ready for more. |
@@ -410,6 +411,9 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 |-------|-----|------|---------|---------|
 | `version` | opt | int | 1 | Data-format version. |
 | `id` | req | string | — | Room id (matches the file name). |
+| `ambience` | opt | `{transition?, base?, random?}` | — | Room soundscape: one persistent streamed base loop plus randomly scheduled one-shot layers. Entering a room without this field fades out any previous room ambience. See **Room ambience** below. |
+| `post_process` | opt | `{enabled?, shader?/shaders?}` | — | Shader stack applied once to the fully composed scenery viewport. Layers, objects, walk-behinds, avatar sprites, and their shadows are included; speech, debug overlays, and the room UI remain unprocessed. `enabled: false` bypasses the stack without removing its parameters. See **Room post-processing** below. |
+| `lighting` | opt | `{projected_shadows?}` | — | Room-level lighting treatments. `projected_shadows` derives a live, softened silhouette from the current avatar frame and projects it away from a room-space light point. See **Projected avatar shadows** below. |
 | `background` | req | `{color?, layers}` | — | See below. |
 | `perspective` | opt | `{top: {y, scale}, bottom: {y, scale}}` | base scale | Avatar render scale interpolated by walking-pivot y, clamped outside `[top.y, bottom.y]`. Omitted ⇒ each avatar keeps its base scale. See [04 § Perspective scaling](04-point-and-click-concepts.md). |
 | `walkable` | req | polygon | — | Navigable area. |
@@ -429,15 +433,49 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 | `id` | req | string | — | Layer id. |
 | `image` | req | path | — | Layer image. |
 | `z` | req | number | — | Draw depth; larger is nearer the camera. |
-| `origin` | opt | `{x, y}` | `{0, 0}` | Room-space top-left of the layer image (layers may differ in size and be placed freely). The room's world bounds are the union of all layer rects, floored to the room view; see [04 § World bounds](04-point-and-click-concepts.md). |
+| `origin` | opt | `{x, y}` | `{0, 0}` | Room-space top-left of the layer image (layers may differ in size and be placed freely). Bounds-extending layer rects determine the room's world bounds, floored to the room view; see [04 § World bounds](04-point-and-click-concepts.md). |
 | `scale` | opt | number | `1.0` | Uniform render scale about `origin`, **aspect always preserved** (never distorted). A development aid for sizing furniture-style occluders; production layers ship native (`1.0`). The room editor resizes about the layer's base (bottom-centre) and can set `z` to the scaled base line. |
 | `interactive` | opt | bool | `false` | Whether the layer receives pointer interaction. |
 | `visible` | opt | bool | `true` | Initial visibility. Toggle at runtime with `set_layer_visible(id, bool)` (needs an `id`); persisted per room. |
+| `extend_bounds` | opt | bool | `true` | Whether the layer can enlarge the room's world bounds. Set `false` on foreground art that should be clipped to the base scenery canvas. |
 | `shader` | opt | shader ref | — | A shader applied when drawing the layer. See **Shaders** below. |
 | `shaders` | opt | `[shader ref]` | — | Ordered shader stack — the engine runs them as a multi-pass chain in this order. See **Shaders** below. |
 | `animation` | opt | anim ref | — | Design-for. |
 
 `background.color` (`{r, g, b, a}`) is an optional solid fill behind all layers.
+
+**Room ambience** uses resources-root-relative logical paths:
+
+```yaml
+ambience:
+  transition: 3.0
+  base:
+    sound: sounds/city.ogg
+    volume: 0.8
+  random:
+    - id: traffic
+      sounds: [sounds/car_pass.ogg, sounds/horn.ogg]
+      delay: {min: 5, max: 16}
+      volume: {min: 0.2, max: 0.55}
+      pan: {min: -0.9, max: 0.9}
+```
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `transition` | opt | non-negative number | `2.5` | Seconds used to crossfade different bases, glide the same base to its new room volume, or fade an omitted base out. |
+| `base.sound` | req when `base` exists | path | — | Streamed looping foundation. Adjacent rooms using the same path share uninterrupted playback. |
+| `base.volume` | opt | number `0..1` | `1` | Room-relative base gain, scaled by the player's SFX setting. |
+| `random[].id` | req | unique string | — | Runtime control id used by `set_ambience_layer_enabled` and `set_ambience_layer_volume`. Keep it stable across connected rooms to preserve its countdown and Lua overrides. |
+| `random[].sound` | req if `sounds` omitted | path | — | A single candidate one-shot. |
+| `random[].sounds` | req if `sound` omitted | `[path]` | — | Candidate one-shots; one is chosen uniformly each occurrence. |
+| `random[].delay` | opt | number or `{min, max}` seconds | `{5, 15}` | Random delay before each occurrence, including the first. Minimum is `0.01`. |
+| `random[].volume` | opt | number or `{min, max}` in `0..1` | `1` | Per-occurrence gain, scaled by the player's SFX setting and any Lua layer multiplier. |
+| `random[].pan` | opt | number or `{min, max}` in `-1..1` | `{-1, 1}` | Per-occurrence stereo position. Panning affects mono clips; stereo clips play as authored. |
+
+`base` and `random` are independently optional, so a room may have only a bed,
+only sporadic details, or both. A random layer's short clips are decoded through
+the sound cache; the base streams from the resource source and works identically
+with loose files and `resources.pak`.
 
 **`regions`** — map of region id → region:
 
@@ -455,11 +493,12 @@ Worked example: [04 — Point & click concepts](04-point-and-click-concepts.md).
 
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
-| `sprite` | req | path | — | Object visual: a **static image** (e.g. `*.png`; the loader accepts `image` as a deprecated alias), or an **animation** (`*.anim.yml` / `*.yaml`) which makes this an *animated object* — an `AnimatedSprite` that can play sequences and be moved/resized from script (see [05 § Object handle](05-scripting-api.md)). One of `sprite`/`image` is required, else the loader fails with `room.object-sprite-missing`. |
-| `sequence` | opt | string | — | For an **animated** object: the initial sequence to play (looping). Recommended so the object shows a frame on load; otherwise it stays blank until `object(id):play(...)`. |
-| `position` | req | `{x, y}` | — | World position — the **top-left** for a static image, the sprite **pivot** for an animated object. |
+| `sprite` | req | path | — | A static image, `*.anim.yml` AnimatedSprite, or `*.composite.yml` CompositeSprite. YAML-backed visuals share the object animation API. |
+| `sequence` | opt | string | — | Initial animation/composite sequence. Recommended so the object shows a frame on load. |
+| `position` | req | `{x, y}` | — | World position — the **top-left** for a static image, the visual **pivot** for animated/composite objects. |
 | `z` | opt | `auto` \| number | `auto` | `auto` = the sprite's bottom edge (scaled); a number overrides. |
 | `scale` | opt | number | `1.0` | Uniform render scale about `position`, aspect always preserved (like a layer's `scale`); must be > 0. The room editor sets this when resizing an object. |
+| `rotation` | opt | number | `0` | Clockwise degrees about `position`; scriptable through the object handle. |
 | `baseline` | opt | number | — | Floor-line world-Y. When set, the object sorts at this depth against avatar feet (occludes feet above the line, is occluded by feet below) — for a perspective object's foreground piece. Overrides `z`. |
 | `visible` | opt | bool | `true` | Initial visibility; `show_object`/`hide_object` change it at runtime. |
 | `shader` / `shaders` | opt | shader ref / `[shader ref]` | — | Shader(s) applied when drawing the object. See **Shaders** below. |
@@ -561,6 +600,62 @@ shader:
     center: [0.5, 0.3]         # vec2
     tint:   [0.2, 0.4, 0.8, 1.0]   # vec4
 ```
+
+**Room post-processing** uses the same shader refs and parameter types, but runs
+after the scenery has been composed rather than once per drawable:
+
+```yaml
+post_process:
+  enabled: true
+  shader:
+    source: shaders/color_grade.frag
+    params:
+      tint: [0.92, 0.97, 1.04]
+      brightness: -0.05
+      contrast: 1.08
+      saturation: 0.82
+      strength: 0.75
+```
+
+Set the outer `enabled: false` to compare against the unprocessed room while
+keeping the authored shader and parameters intact. A `shaders:` list is accepted
+instead of `shader:` for an ordered multi-pass stack.
+
+**Projected avatar shadows** are an optional room-level 2D treatment:
+
+```yaml
+lighting:
+  projected_shadows:
+    enabled: true
+    light: {x: 180, y: 180}
+    casters: player
+    length: 0.62
+    width: 0.78
+    opacity: 0.30
+    softness: 3.0
+    contact_shadow: 0.60
+    z: 1
+    color: {r: 14, g: 17, b: 22}
+```
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `enabled` | opt | bool | `true` | Bypass projected shadows when false. The appearance's normal contact ellipse is then drawn at full opacity. |
+| `light` | req | `{x, y}` | — | Light origin in room coordinates. Each shadow points from this origin through the caster's current walking pivot. |
+| `casters` | opt | `player` / `all` | `player` | Apply the treatment only to the player, or to the player and every present NPC. |
+| `length` | opt | positive number | `0.45` | Fraction of the live sprite height projected along the floor direction. |
+| `width` | opt | positive number | `0.75` | Scale of the silhouette across the projection direction. |
+| `opacity` | opt | number in `[0, 1]` | `0.18` | Target opacity at the fully overlapped center of the softened silhouette. |
+| `softness` | opt | non-negative number | `4.0` | Room-pixel radius of the sampled penumbra. Zero draws one crisp silhouette. |
+| `contact_shadow` | opt | number in `[0, 1]` | `0.55` | Opacity multiplier for the appearance's ordinary ellipse, retained to keep the feet grounded. |
+| `z` | opt | number | avatar depth | Fixed floor depth for both the projected silhouette and contact ellipse. Use a value above the base floor layer and below foreground props so furniture occludes shadows independently of avatar sorting. |
+| `color` | opt | `{r, g, b}` | `{12, 14, 18}` | Shadow tint before the room's optional post-process is applied. |
+
+The silhouette follows the caster's current animation, perspective scale, and
+position. It is drawn immediately before that avatar at the same depth, so later
+foreground layers can cover it. It is intentionally not clipped to walkable
+polygons and cannot infer surfaces or occluders painted into a flat background;
+author it as a subtle unifying effect rather than a physically exact shadow.
 
 ## Cutscene — `cutscenes/<id>.yaml`
 
@@ -761,9 +856,28 @@ Worked example: [03 — 2D game concepts](03-2d-game-concepts.md).
 | `version` | opt | int | 1 | Data-format version. |
 | `root` | req | `{id, animation}` | — | Root animated sprite (e.g. body). |
 | `children` | opt | `[child]` | — | Attached animated sprites. |
+| `sequences` | req | map | — | High-level sequences mapping node ids to part playback/rotation. |
 
 **`child`:** `id`, `parent` (id), `animation` (path), `parent_anchor` (anchor on
-the parent), `child_anchor` (anchor on the child, aligned to `parent_anchor`).
+the parent), `child_anchor` (anchor on the child, aligned to `parent_anchor`), and
+optional `offset`, `scale`, `rotation`, `z`. Lower `z` nodes draw first, allowing
+wheels or props to sit behind the root artwork.
+
+Each `sequences.<id>.parts.<node>` may select the node's ordinary AnimatedSprite
+`sequence` and/or a rotation track:
+
+```yaml
+sequences:
+  moving:
+    parts:
+      body: { sequence: idle }
+      wheel:
+        sequence: idle
+        rotation: { from: 0, to: -360, duration: 0.72, loop: true }
+```
+
+Rotation is evaluated from elapsed time, independently of frame rate. Playing a
+new composite sequence resets every node to its authored local rotation.
 
 ## Dialog — `dialogs/<id>.lua`
 

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -87,6 +88,36 @@ std::vector<gfx::ShaderEffect> parse_shaders(const YAML::Node& owner) {
     return detail::parse_shaders(owner, kSource, "room");
 }
 
+core::AmbienceRange parse_ambience_range(const YAML::Node& node,
+                                         core::AmbienceRange fallback,
+                                         float allowed_min,
+                                         float allowed_max,
+                                         const std::string& field,
+                                         const std::string& room_id) {
+    if (!node) {
+        return fallback;
+    }
+    core::AmbienceRange result;
+    if (node.IsScalar()) {
+        result.min = result.max = node.as<float>();
+    } else if (node.IsMap() && node["min"] && node["max"]) {
+        result.min = node["min"].as<float>();
+        result.max = node["max"].as<float>();
+    } else {
+        room_fail("room.ambience-range-invalid",
+                  "room '" + room_id + "': ambience '" + field + "' must be a number or {min, max}",
+                  node);
+    }
+    if (!std::isfinite(result.min) || !std::isfinite(result.max) || result.min < allowed_min ||
+        result.max > allowed_max || result.min > result.max) {
+        room_fail("room.ambience-range-invalid",
+                  "room '" + room_id + "': ambience '" + field +
+                      "' range is outside its allowed bounds or min is greater than max",
+                  node);
+    }
+    return result;
+}
+
 } // namespace
 
 RoomData parse_room(const std::string& yaml_text, const std::string& expected_id) {
@@ -113,6 +144,208 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                   root["id"]);
     }
 
+    if (const YAML::Node ambience = root["ambience"]) {
+        if (!ambience.IsMap()) {
+            room_fail("room.ambience-not-map",
+                      "room '" + room.id + "': 'ambience' must be a mapping",
+                      ambience);
+        }
+        core::AmbienceDefinition definition;
+        definition.transition = ambience["transition"] ? ambience["transition"].as<float>() : 2.5f;
+        if (!std::isfinite(definition.transition) || definition.transition < 0.0f) {
+            room_fail("room.ambience-transition-invalid",
+                      "room '" + room.id + "': ambience 'transition' must be a non-negative number",
+                      ambience["transition"]);
+        }
+
+        if (const YAML::Node base = ambience["base"]) {
+            if (!base.IsMap() || !base["sound"]) {
+                room_fail("room.ambience-base-invalid",
+                          "room '" + room.id + "': ambience 'base' must be a mapping with a sound",
+                          base);
+            }
+            definition.base.sound = base["sound"].as<std::string>();
+            if (definition.base.sound.empty()) {
+                room_fail("room.ambience-base-invalid",
+                          "room '" + room.id + "': ambience base sound must not be empty",
+                          base["sound"]);
+            }
+            definition.base.volume = parse_ambience_range(base["volume"],
+                                                          {1.0f, 1.0f},
+                                                          0.0f,
+                                                          1.0f,
+                                                          "base.volume",
+                                                          room.id)
+                                         .min;
+        }
+
+        std::set<std::string> ids;
+        if (const YAML::Node random = ambience["random"]) {
+            if (!random.IsSequence()) {
+                room_fail("room.ambience-random-not-sequence",
+                          "room '" + room.id + "': ambience 'random' must be a sequence",
+                          random);
+            }
+            for (const YAML::Node& node : random) {
+                if (!node.IsMap() || !node["id"]) {
+                    room_fail("room.ambience-random-invalid",
+                              "room '" + room.id + "': each random ambience layer needs an id",
+                              node);
+                }
+                core::AmbienceRandomLayer layer;
+                layer.id = node["id"].as<std::string>();
+                if (layer.id.empty() || !ids.insert(layer.id).second) {
+                    room_fail("room.ambience-random-id-invalid",
+                              "room '" + room.id +
+                                  "': random ambience layer ids must be non-empty and unique",
+                              node["id"]);
+                }
+                if (const YAML::Node sounds = node["sounds"]) {
+                    if (!sounds.IsSequence()) {
+                        room_fail("room.ambience-sounds-invalid",
+                                  "room '" + room.id + "': ambience layer '" + layer.id +
+                                      "' sounds must be a sequence",
+                                  sounds);
+                    }
+                    for (const YAML::Node& sound : sounds) {
+                        layer.sounds.push_back(sound.as<std::string>());
+                    }
+                } else if (node["sound"]) {
+                    layer.sounds.push_back(node["sound"].as<std::string>());
+                }
+                if (layer.sounds.empty() ||
+                    std::any_of(layer.sounds.begin(),
+                                layer.sounds.end(),
+                                [](const std::string& sound) { return sound.empty(); })) {
+                    room_fail("room.ambience-sounds-invalid",
+                              "room '" + room.id + "': ambience layer '" + layer.id +
+                                  "' needs at least one non-empty sound",
+                              node);
+                }
+                layer.delay = parse_ambience_range(node["delay"],
+                                                   {5.0f, 15.0f},
+                                                   0.01f,
+                                                   86400.0f,
+                                                   "delay",
+                                                   room.id);
+                layer.volume = parse_ambience_range(node["volume"],
+                                                    {1.0f, 1.0f},
+                                                    0.0f,
+                                                    1.0f,
+                                                    "volume",
+                                                    room.id);
+                layer.pan =
+                    parse_ambience_range(node["pan"], {-1.0f, 1.0f}, -1.0f, 1.0f, "pan", room.id);
+                definition.random.push_back(std::move(layer));
+            }
+        }
+        room.ambience = std::move(definition);
+    }
+
+    if (const YAML::Node post = root["post_process"]) {
+        if (!post.IsMap()) {
+            room_fail("room.post-process-not-map",
+                      "room '" + room.id + "': 'post_process' must be a mapping",
+                      post);
+        }
+        RoomPostProcess config;
+        config.enabled = post["enabled"] ? post["enabled"].as<bool>() : true;
+        config.shaders = parse_shaders(post);
+        if (config.shaders.empty()) {
+            room_fail("room.post-process-no-shaders",
+                      "room '" + room.id + "': 'post_process' needs a 'shader' or 'shaders' entry",
+                      post);
+        }
+        room.post_process = std::move(config);
+    }
+
+    if (const YAML::Node lighting = root["lighting"]) {
+        if (!lighting.IsMap()) {
+            room_fail("room.lighting-not-map",
+                      "room '" + room.id + "': 'lighting' must be a mapping",
+                      lighting);
+        }
+        if (const YAML::Node projected = lighting["projected_shadows"]) {
+            if (!projected.IsMap()) {
+                room_fail("room.projected-shadows-not-map",
+                          "room '" + room.id + "': 'lighting.projected_shadows' must be a mapping",
+                          projected);
+            }
+            if (!projected["light"]) {
+                room_fail("room.projected-shadows-light-missing",
+                          "room '" + room.id + "': projected shadows need 'light: {x, y}'",
+                          projected);
+            }
+
+            ProjectedShadow shadow;
+            shadow.enabled = projected["enabled"] ? projected["enabled"].as<bool>() : true;
+            shadow.light = parse_point(projected["light"]);
+            shadow.length = projected["length"] ? projected["length"].as<float>() : 0.45f;
+            shadow.width = projected["width"] ? projected["width"].as<float>() : 0.75f;
+            shadow.opacity = projected["opacity"] ? projected["opacity"].as<float>() : 0.18f;
+            shadow.softness = projected["softness"] ? projected["softness"].as<float>() : 4.0f;
+            shadow.contact_shadow =
+                projected["contact_shadow"] ? projected["contact_shadow"].as<float>() : 0.55f;
+            if (projected["z"]) {
+                shadow.z = projected["z"].as<float>();
+                if (!std::isfinite(*shadow.z)) {
+                    room_fail("room.projected-shadows-z-invalid",
+                              "room '" + room.id +
+                                  "': projected shadow 'z' must be a finite number",
+                              projected["z"]);
+                }
+            }
+
+            if (const YAML::Node color = projected["color"]) {
+                shadow.color = sf::Color(color["r"].as<unsigned>(),
+                                         color["g"].as<unsigned>(),
+                                         color["b"].as<unsigned>());
+            }
+            if (projected["casters"]) {
+                const std::string casters = projected["casters"].as<std::string>();
+                if (casters == "player") {
+                    shadow.casters = ProjectedShadow::Casters::PLAYER;
+                } else if (casters == "all") {
+                    shadow.casters = ProjectedShadow::Casters::ALL;
+                } else {
+                    room_fail("room.projected-shadows-casters-invalid",
+                              "room '" + room.id +
+                                  "': projected shadow 'casters' must be 'player' or 'all'",
+                              projected["casters"]);
+                }
+            }
+
+            if (!(shadow.length > 0.0f)) {
+                room_fail("room.projected-shadows-length-invalid",
+                          "room '" + room.id + "': projected shadow 'length' must be > 0",
+                          projected["length"]);
+            }
+            if (!(shadow.width > 0.0f)) {
+                room_fail("room.projected-shadows-width-invalid",
+                          "room '" + room.id + "': projected shadow 'width' must be > 0",
+                          projected["width"]);
+            }
+            if (shadow.opacity < 0.0f || shadow.opacity > 1.0f) {
+                room_fail("room.projected-shadows-opacity-invalid",
+                          "room '" + room.id +
+                              "': projected shadow 'opacity' must be between 0 and 1",
+                          projected["opacity"]);
+            }
+            if (shadow.softness < 0.0f) {
+                room_fail("room.projected-shadows-softness-invalid",
+                          "room '" + room.id + "': projected shadow 'softness' must be >= 0",
+                          projected["softness"]);
+            }
+            if (shadow.contact_shadow < 0.0f || shadow.contact_shadow > 1.0f) {
+                room_fail("room.projected-shadows-contact-invalid",
+                          "room '" + room.id +
+                              "': projected shadow 'contact_shadow' must be between 0 and 1",
+                          projected["contact_shadow"]);
+            }
+            room.projected_shadow = shadow;
+        }
+    }
+
     if (const YAML::Node bg = root["background"]) {
         if (const YAML::Node color = bg["color"]) {
             room.background_color = sf::Color(color["r"].as<unsigned>(),
@@ -132,6 +365,8 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
             layer.z = ln["z"] ? ln["z"].as<float>() : 0.0f;
             layer.interactive = ln["interactive"] ? ln["interactive"].as<bool>() : false;
             layer.visible = ln["visible"] ? ln["visible"].as<bool>() : true;
+            layer.extend_bounds =
+                ln["extend_bounds"] ? ln["extend_bounds"].as<bool>() : true;
             if (const YAML::Node origin = ln["origin"]) {
                 layer.origin = parse_point(origin);
             }
@@ -254,6 +489,13 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                           "room '" + room.id + "': object '" + object.id +
                               "' has a non-positive scale (must be > 0)",
                           node["scale"]);
+            }
+            object.rotation = node["rotation"] ? node["rotation"].as<float>() : 0.0f;
+            if (!std::isfinite(object.rotation)) {
+                room_fail("room.object-rotation-invalid",
+                          "room '" + room.id + "': object '" + object.id +
+                              "' has a non-finite rotation",
+                          node["rotation"]);
             }
             object.visible = node["visible"] ? node["visible"].as<bool>() : true;
             object.shaders = parse_shaders(node);

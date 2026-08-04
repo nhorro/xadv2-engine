@@ -113,8 +113,9 @@ hotspot — see [Hotspots](#hotspots-making-things-interactive).
 
 An **object** is a sprite placed in the room. It is *visual only* — interactivity
 comes from a [hotspot](#hotspots-making-things-interactive). An object's `sprite`
-is either a **static image** or an **animation** (`*.anim.yml`), which makes it an
-**animated object** you can drive from script.
+is either a **static image**, an **animation** (`*.anim.yml`), or a composed
+hierarchy (`*.composite.yml`). Animated and composite objects share the same Lua
+surface.
 
 ```yaml
 objects:
@@ -125,10 +126,15 @@ objects:
     sprite: lab/fan.anim.yml
     sequence: spin           # initial looping sequence
     position: { x: 900, y: 300 }   # = the sprite pivot for animated objects
+  vehicle:
+    sprite: vehicles/bus.composite.yml
+    sequence: stopped
+    position: { x: 1400, y: 540 }
 ```
 
 - `z:` is `auto` by default (sorts by the scaled bottom edge); set a number or a `baseline:` for perspective pieces.
 - `scale:` resizes it (uniform, aspect-locked). The [room editor](tools/room-editor.md) sets `position`/`scale` visually.
+- `rotation:` is clockwise degrees around the visual pivot and can also be changed from Lua.
 
 Drive it from Lua with the **`object(id)` handle**:
 
@@ -137,6 +143,7 @@ object("box"):set_scale(1.5)
 object("box"):move_to({ x = 700, y = 520 }, 200)   -- free linear move; yields until it arrives
 
 object("fan"):play("spin")                          -- loop a sequence
+object("vehicle"):play("moving")                   -- may animate independent parts
 object("door"):play_until_end("open")               -- one-shot; yields until it finishes
 show_object("box"); hide_object("box")              -- visibility (persisted per room)
 ```

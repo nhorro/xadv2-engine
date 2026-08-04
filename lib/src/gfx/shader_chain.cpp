@@ -59,6 +59,12 @@ const sf::Texture* ShaderChain::apply(pac::core::ResourceCache& resources,
     if (!rt_[0] || !rt_[1]) {
         return nullptr;
     }
+    // The final texture may be scaled when blitted back into the scene/window.
+    // Match source filtering so an opted-in painterly game does not reintroduce
+    // nearest-neighbour shimmer at the intermediate render-target boundary.
+    for (auto& rt : rt_) {
+        rt->setSmooth(resources.smooth_textures());
+    }
 
     // Blit `source_rect` of `source` into RT0 at (0,0)..(w,h). The RT is sized to
     // the largest source seen, so we constrain the view to the current sub-rect

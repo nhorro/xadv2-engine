@@ -26,6 +26,12 @@ struct WindowConfig {
     unsigned height = 720;
 };
 
+struct RenderingConfig {
+    // Linear filtering for textures and intermediate render targets. Enabled by
+    // default so fractionally scaled painterly art does not shimmer in motion.
+    bool smooth_textures = true;
+};
+
 struct SettingsDefaults {
     float music_volume = 1.0f;
     float sfx_volume = 1.0f;
@@ -68,6 +74,7 @@ struct Manifest {
     int version = 1;
     sf::Vector2u resolution{1280, 720};
     WindowConfig window;
+    RenderingConfig rendering;
     std::string resources_src; // resolved to a host root by load_manifest
     // Logical path to the default language's UI-strings file. Always set: it
     // mirrors `languages[default_language].strings_path` and is the resource the
