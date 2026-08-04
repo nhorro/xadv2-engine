@@ -7,6 +7,7 @@
 
 #include <sol/sol.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -46,6 +47,12 @@ void RoomRuntime::seed_runtime_state() {
     }
     for (const auto& [id, hs] : data_.hotspots) {
         hotspot_enabled_[id] = hs.enabled;
+    }
+    if (data_.dynamic_lighting) {
+        for (const RoomLight& light : data_.dynamic_lighting->lights) {
+            light_enabled_[light.id] = light.enabled;
+            light_intensity_[light.id] = light.intensity;
+        }
     }
 }
 
@@ -264,6 +271,34 @@ void RoomRuntime::set_hotspot_enabled(const std::string& hotspot_id, bool enable
 bool RoomRuntime::hotspot_enabled(const std::string& hotspot_id) const {
     const auto it = hotspot_enabled_.find(hotspot_id);
     return it != hotspot_enabled_.end() ? it->second : true;
+}
+
+bool RoomRuntime::has_light(const std::string& light_id) const {
+    return light_enabled_.count(light_id) > 0;
+}
+
+void RoomRuntime::set_light_enabled(const std::string& light_id, bool enabled) {
+    const auto it = light_enabled_.find(light_id);
+    if (it != light_enabled_.end()) {
+        it->second = enabled;
+    }
+}
+
+bool RoomRuntime::light_enabled(const std::string& light_id) const {
+    const auto it = light_enabled_.find(light_id);
+    return it != light_enabled_.end() && it->second;
+}
+
+void RoomRuntime::set_light_intensity(const std::string& light_id, float intensity) {
+    const auto it = light_intensity_.find(light_id);
+    if (it != light_intensity_.end() && std::isfinite(intensity)) {
+        it->second = std::clamp(intensity, 0.0f, 4.0f);
+    }
+}
+
+float RoomRuntime::light_intensity(const std::string& light_id) const {
+    const auto it = light_intensity_.find(light_id);
+    return it != light_intensity_.end() ? it->second : 0.0f;
 }
 
 void RoomRuntime::set_obstacle_enabled(const std::string& obstacle_id, bool enabled) {

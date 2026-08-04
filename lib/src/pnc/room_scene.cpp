@@ -734,6 +734,40 @@ end
 )LUA",
                               "=object_handle");
 
+    // Dynamic room-light control. The authored type, colour, radius/cone,
+    // attachment, and modulation remain declarative; scripts control the two
+    // properties most useful for story beats and switches.
+    L.set_function("_light_set_enabled", [this](const std::string& id, bool enabled) {
+        api_light_set_enabled(id, enabled);
+    });
+    L.set_function("_light_enabled", [this](const std::string& id) -> sol::object {
+        sol::state& s = ctx_.scripting.lua();
+        const auto enabled = api_light_enabled(id);
+        return enabled ? sol::make_object(s, *enabled) : sol::make_object(s, sol::lua_nil);
+    });
+    L.set_function("_light_set_intensity", [this](const std::string& id, double intensity) {
+        api_light_set_intensity(id, static_cast<float>(intensity));
+    });
+    L.set_function("_light_intensity", [this](const std::string& id) -> sol::object {
+        sol::state& s = ctx_.scripting.lua();
+        const auto intensity = api_light_intensity(id);
+        return intensity ? sol::make_object(s, *intensity) : sol::make_object(s, sol::lua_nil);
+    });
+    ctx_.scripting.run_string(R"LUA(
+do
+  local L = {}
+  L.__index = L
+  function L:set_enabled(enabled) _light_set_enabled(self.id, enabled); return self end
+  function L:enable() return self:set_enabled(true) end
+  function L:disable() return self:set_enabled(false) end
+  function L:enabled() return _light_enabled(self.id) end
+  function L:set_intensity(intensity) _light_set_intensity(self.id, intensity); return self end
+  function L:intensity() return _light_intensity(self.id) end
+  function light(id) return setmetatable({ id = id }, L) end
+end
+)LUA",
+                              "=light_handle");
+
     // Room-view-state controls (issue #32). `block_input` gates clicks during
     // cutscene-like sections; `unblock_input` restores normal play.
     // `set_room_view_state(name)` is the general-purpose setter for the same
@@ -2351,7 +2385,11 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                                 direction += 270.0f;
                             }
                         }
-                        resolved.push_back({&light, position, direction});
+                        resolved.push_back({&light,
+                                            position,
+                                            direction,
+                                            room_->light_enabled(light.id),
+                                            room_->light_intensity(light.id)});
                     }
                     if (lighting_renderer_->make_pass(*lighting,
                                                       resolved,
@@ -2825,6 +2863,40 @@ std::optional<float> RoomScene::api_object_rotation(const std::string& id) const
         return std::nullopt;
     }
     return room_->object_rotation(id);
+}
+
+void RoomScene::api_light_set_enabled(const std::string& id, bool enabled) {
+    if (!room_ || !room_->has_light(id)) {
+        ctx_.log.error("light('" + id + "'):set_enabled — no such light in the room");
+        return;
+    }
+    room_->set_light_enabled(id, enabled);
+}
+
+std::optional<bool> RoomScene::api_light_enabled(const std::string& id) const {
+    if (!room_ || !room_->has_light(id)) {
+        return std::nullopt;
+    }
+    return room_->light_enabled(id);
+}
+
+void RoomScene::api_light_set_intensity(const std::string& id, float intensity) {
+    if (!room_ || !room_->has_light(id)) {
+        ctx_.log.error("light('" + id + "'):set_intensity — no such light in the room");
+        return;
+    }
+    if (!std::isfinite(intensity)) {
+        ctx_.log.error("light('" + id + "'):set_intensity — intensity must be finite");
+        return;
+    }
+    room_->set_light_intensity(id, intensity);
+}
+
+std::optional<float> RoomScene::api_light_intensity(const std::string& id) const {
+    if (!room_ || !room_->has_light(id)) {
+        return std::nullopt;
+    }
+    return room_->light_intensity(id);
 }
 
 void RoomScene::api_object_play(const std::string& id, const std::string& sequence) {

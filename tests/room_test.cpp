@@ -538,6 +538,46 @@ lighting:
     CHECK(r.projected_shadow.has_value());
 }
 
+TEST_CASE("RoomRuntime seeds and controls transient dynamic-light state") {
+    RoomRuntime room(parse_room(R"YAML(
+id: r
+lighting:
+  lights:
+    - id: lamp
+      type: omni
+      at: {x: 10, y: 20}
+      radius: 100
+      intensity: 0.75
+    - id: emergency
+      type: omni
+      at: {x: 30, y: 40}
+      radius: 80
+      intensity: 0.2
+      enabled: false
+)YAML"));
+
+    CHECK(room.has_light("lamp"));
+    CHECK(room.light_enabled("lamp"));
+    CHECK(room.light_intensity("lamp") == doctest::Approx(0.75f));
+    CHECK_FALSE(room.light_enabled("emergency"));
+
+    room.set_light_enabled("lamp", false);
+    room.set_light_intensity("lamp", 1.4f);
+    CHECK_FALSE(room.light_enabled("lamp"));
+    CHECK(room.light_intensity("lamp") == doctest::Approx(1.4f));
+
+    room.set_light_intensity("lamp", 99.0f);
+    CHECK(room.light_intensity("lamp") == doctest::Approx(4.0f));
+    room.set_light_intensity("lamp", -2.0f);
+    CHECK(room.light_intensity("lamp") == doctest::Approx(0.0f));
+
+    room.set_light_enabled("missing", true);
+    room.set_light_intensity("missing", 1.0f);
+    CHECK_FALSE(room.has_light("missing"));
+    CHECK_FALSE(room.light_enabled("missing"));
+    CHECK(room.light_intensity("missing") == doctest::Approx(0.0f));
+}
+
 TEST_CASE("parse_room validates dynamic lights") {
     CHECK(error_code([] { parse_room("id: r\nlighting:\n  ambient: {intensity: 1.5}\n"); }) ==
           "room.ambient-light-intensity-invalid");

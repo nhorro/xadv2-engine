@@ -104,6 +104,15 @@ public:
     void set_hotspot_enabled(const std::string& hotspot_id, bool enabled);
     [[nodiscard]] bool hotspot_enabled(const std::string& hotspot_id) const;
 
+    // Dynamic-light overrides are transient and reset from YAML on room load.
+    // Unknown ids are ignored; callers can use has_light() to report a useful
+    // script error without accidentally creating runtime state.
+    [[nodiscard]] bool has_light(const std::string& light_id) const;
+    void set_light_enabled(const std::string& light_id, bool enabled);
+    [[nodiscard]] bool light_enabled(const std::string& light_id) const;
+    void set_light_intensity(const std::string& light_id, float intensity);
+    [[nodiscard]] float light_intensity(const std::string& light_id) const;
+
     // Named obstacles (#143): enable/disable a walkable blocker by id. The flag
     // lives on the obstacle in `data_` so the pathfinder (RoomData::is_walkable /
     // active_obstacles) sees it. Unknown / unnamed obstacles are ignored.
@@ -157,6 +166,8 @@ private:
     std::map<std::string, bool> object_visible_;
     std::map<std::string, bool> layer_visible_;
     std::map<std::string, bool> hotspot_enabled_;
+    std::map<std::string, bool> light_enabled_;
+    std::map<std::string, float> light_intensity_;
     std::map<std::string, Avatar> npcs_;
 
     // Transient per-object runtime pose (#142), seeded from each RoomObject def.

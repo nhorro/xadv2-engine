@@ -159,8 +159,7 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
     std::size_t count = 0;
     std::size_t visible_count = 0;
     for (const ResolvedRoomLight& resolved_light : resolved) {
-        if (!resolved_light.light || !resolved_light.light->enabled ||
-            resolved_light.light->intensity <= 0.0f) {
+        if (!resolved_light.light || !resolved_light.enabled || resolved_light.intensity <= 0.0f) {
             continue;
         }
         const RoomLight& light = *resolved_light.light;
@@ -177,7 +176,7 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
 
         positions[count] = sf::Glsl::Vec4(x, y, light.radius, 0.0f);
         const float intensity =
-            std::clamp(light.intensity * evaluate_light_modulation(light.modulation, time),
+            std::clamp(resolved_light.intensity * evaluate_light_modulation(light.modulation, time),
                        0.0f,
                        4.0f);
         colors[count] = sf::Glsl::Vec4(light.color[0], light.color[1], light.color[2], intensity);

@@ -667,7 +667,7 @@ Each entry in `lights` supports:
 | `radius` / `range` | req | positive number | — | Radial reach in room pixels (`range` is a spotlight-friendly alias). |
 | `color` | opt | `[r, g, b]` in `[0, 1]` | white | Light colour. |
 | `intensity` | opt | number in `[0, 4]` | `1` | Peak contribution before modulation. The LDR compositor clamps final illumination to 1. |
-| `enabled` | opt | bool | `true` | Initial inclusion in the pass. |
+| `enabled` | opt | bool | `true` | Initial inclusion in the pass; scripts can override it through `light(id)` until the room reloads. |
 | `direction` | spot* | degrees | — | Direction in screen coordinates: `0` right, `90` down. Required unless `follow_facing` is true. When following, it becomes an offset from the avatar's cardinal direction. |
 | `follow_facing` | spot opt | bool | `false` | Rotate with an attached player/avatar. Invalid on static/object-attached lights. |
 | `angle` | spot opt | degrees | `45` | Full outer cone angle; greater than 0 and less than 180. |
@@ -683,6 +683,9 @@ fire/torches), or `faulty` (noise plus occasional dropouts). `amount` is `0..1`,
 Lights outside the camera are culled. When more than eight overlap it, the engine
 draws the first eight authored visible lights and logs one warning. This fixed
 budget keeps the single-pass shader predictable on ordinary laptop GPUs.
+Scripts can also call `light(id):enable()`, `:disable()`, or
+`:set_intensity(value)`; these transient overrides reset to the values above on
+room load, and authored modulation still applies to the overridden intensity.
 
 **Projected avatar shadows** are an optional room-level 2D treatment:
 

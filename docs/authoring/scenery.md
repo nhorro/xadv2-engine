@@ -73,6 +73,17 @@ may also attach to `avatar:<id>` or `object:<id>`; a missing or hidden attachmen
 temporarily suppresses the light. Room `post_process` grading runs afterward, so
 use it for the final palette/mood rather than repeating a grade on every layer.
 
+Scripts may switch an authored light or change its peak intensity at runtime:
+
+```lua
+light("lamp"):disable()
+light("torch"):set_intensity(0.55)
+```
+
+These overrides reset when the room reloads. Reapply them from `on_load` using
+saved story state when the change must persist. Modulation continues to multiply
+the runtime intensity.
+
 The engine renders the first eight visible lights that overlap the camera. See
 [Data formats](data-formats.md#room--roomsidyaml) for all cone, colour, and
 modulation fields.

@@ -968,6 +968,33 @@ must not carry over.
 | `enable_obstacle(id)` | obstacle id | — | Re-enable a named obstacle (it blocks the walkable area again). Persisted per room. |
 | `disable_obstacle(id)` | obstacle id | — | Disable a named obstacle so the player/NPCs can path through where it was (e.g. once a blocking crate is removed). Persisted per room. |
 
+#### Light handle
+
+`light(id)` returns a handle to a dynamic light declared in the current room's
+`lighting.lights`. Runtime enabled/intensity overrides are **transient**: they
+reset to the YAML values whenever the room loads. If a story decision must
+survive leaving the room, store that decision with `set_state` and reapply it in
+`on_load`.
+
+| Method | Parameters | Returns | Meaning |
+|--------|------------|---------|---------|
+| `:set_enabled(enabled)` | bool | handle | Include or exclude the light from the lighting pass. |
+| `:enable()` / `:disable()` | — | handle | Convenience aliases for `:set_enabled`. |
+| `:enabled()` | — | bool or `nil` | Current runtime value, or `nil` when the light id is absent. |
+| `:set_intensity(value)` | number | handle | Set peak intensity, clamped to `0..4`; authored modulation still applies. |
+| `:intensity()` | — | number or `nil` | Current peak intensity, or `nil` when the light id is absent. |
+
+```lua
+function room.on_load()
+  light("desk_lamp"):set_enabled(get_state("archive.power_on") == true)
+end
+
+function room.hotspots.switch.use()
+  local lamp = light("desk_lamp")
+  lamp:set_enabled(not lamp:enabled())
+end
+```
+
 #### Object handle
 
 `object(id)` returns a handle to a room object (the id is its `objects:` key).

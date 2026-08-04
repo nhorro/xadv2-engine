@@ -22,6 +22,8 @@ struct ResolvedRoomLight {
     const RoomLight* light = nullptr;
     geom::Point position;
     float direction = 0.0f;
+    bool enabled = true;
+    float intensity = 1.0f;
 };
 
 /// Deterministic modulation multiplier for an authored light intensity. Kept
