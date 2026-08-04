@@ -122,6 +122,20 @@ background:
     CHECK(r.layers[1].visible == false);
 }
 
+TEST_CASE("parse_room reads whether a layer extends the room bounds") {
+    const char* yaml = R"YAML(
+id: r
+background:
+  layers:
+    - { id: room, image: c/room.png }
+    - { id: chair, image: c/chair.png, extend_bounds: false }
+)YAML";
+    const RoomData r = parse_room(yaml);
+    REQUIRE(r.layers.size() == 2);
+    CHECK(r.layers[0].extend_bounds == true); // omitted -> preserves union behavior
+    CHECK(r.layers[1].extend_bounds == false);
+}
+
 TEST_CASE("RoomRuntime seeds and toggles layer visibility") {
     const char* yaml = R"YAML(
 id: r
@@ -244,16 +258,19 @@ TEST_CASE("RoomRuntime moves and scales objects from script (#142)") {
     const char* yaml = R"YAML(
 id: r
 objects:
-  cart: { sprite: o/cart.png, position: { x: 0, y: 0 }, scale: 1.0 }
+  cart: { sprite: o/cart.png, position: { x: 0, y: 0 }, scale: 1.0, rotation: 15 }
 )YAML";
     RoomRuntime room(parse_room(yaml));
     CHECK(room.object_position("cart").x == doctest::Approx(0.0f)); // seeded from def
     CHECK(room.object_scale("cart") == doctest::Approx(1.0f));
+    CHECK(room.object_rotation("cart") == doctest::Approx(15.0f));
 
     room.set_object_scale("cart", 2.0f);
     CHECK(room.object_scale("cart") == doctest::Approx(2.0f));
     room.set_object_scale("cart", -1.0f); // non-positive ignored
     CHECK(room.object_scale("cart") == doctest::Approx(2.0f));
+    room.set_object_rotation("cart", 90.0f);
+    CHECK(room.object_rotation("cart") == doctest::Approx(90.0f));
 
     room.object_move_to("cart", {100, 0}, 100.0f); // 100 px/s toward x=100
     CHECK(room.object_moving("cart"));
@@ -409,6 +426,307 @@ hotspots:
     const RoomData r = parse_room(yaml);
     CHECK(r.hotspots.at("near_only").requires_approach);        // omitted -> default true
     CHECK_FALSE(r.hotspots.at("distant_ok").requires_approach); // explicit opt-out
+}
+
+TEST_CASE("parse_room reads streamed and random room ambience layers") {
+    const RoomData r = parse_room(R"YAML(
+id: street
+ambience:
+  transition: 3.0
+  base: { sound: sounds/city.ogg, volume: 0.75 }
+  random:
+    - id: traffic
+      sounds: [sounds/car.ogg, sounds/horn.ogg]
+      delay: { min: 4, max: 12 }
+      volume: { min: 0.2, max: 0.6 }
+      pan: { min: -0.9, max: 0.9 }
+)YAML");
+
+    REQUIRE(r.ambience.has_value());
+    CHECK(r.ambience->transition == doctest::Approx(3.0f));
+    CHECK(r.ambience->base.sound == "sounds/city.ogg");
+    CHECK(r.ambience->base.volume == doctest::Approx(0.75f));
+    REQUIRE(r.ambience->random.size() == 1);
+    const pac::core::AmbienceRandomLayer& traffic = r.ambience->random.front();
+    CHECK(traffic.id == "traffic");
+    REQUIRE(traffic.sounds.size() == 2);
+    CHECK(traffic.sounds[0] == "sounds/car.ogg");
+    CHECK(traffic.sounds[1] == "sounds/horn.ogg");
+    CHECK(traffic.delay.min == doctest::Approx(4.0f));
+    CHECK(traffic.delay.max == doctest::Approx(12.0f));
+    CHECK(traffic.volume.min == doctest::Approx(0.2f));
+    CHECK(traffic.volume.max == doctest::Approx(0.6f));
+    CHECK(traffic.pan.min == doctest::Approx(-0.9f));
+    CHECK(traffic.pan.max == doctest::Approx(0.9f));
+}
+
+TEST_CASE("parse_room validates room ambience layers") {
+    CHECK(error_code([] { parse_room("id: r\nambience: []\n"); }) == "room.ambience-not-map");
+    CHECK(error_code([] {
+              parse_room("id: r\nambience:\n  random:\n    - id: birds\n"
+                         "      sound: sounds/bird.ogg\n      pan: {min: 0.5, max: -0.5}\n");
+          }) == "room.ambience-range-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nambience:\n  random:\n"
+                         "    - {id: birds, sound: a.ogg}\n"
+                         "    - {id: birds, sound: b.ogg}\n");
+          }) == "room.ambience-random-id-invalid");
+}
+
+TEST_CASE("parse_room reads ambient, omni, spot, attachments, and modulation") {
+    const RoomData r = parse_room(R"YAML(
+id: r
+lighting:
+  ambient: { color: [0.55, 0.60, 0.75], intensity: 0.32 }
+  normal_map:
+    image: normals/room.png
+    origin: {x: 4, y: 8}
+    scale: 2
+    strength: 0.75
+  lights:
+    - id: lamp
+      type: omni
+      at: {x: 320, y: 180}
+      radius: 240
+      height: 90
+      color: [1.0, 0.78, 0.42]
+      intensity: 0.85
+      modulation: {type: flicker, amount: 0.06, speed: 7, seed: 12}
+    - id: flashlight
+      type: spot
+      attach: player
+      offset: {x: 18, y: -52}
+      range: 420
+      direction: -4
+      follow_facing: true
+      angle: 42
+      softness: 10
+  occluders:
+    - id: partition
+      area: [{x: 500, y: 100}, {x: 500, y: 400}]
+)YAML");
+
+    REQUIRE(r.dynamic_lighting.has_value());
+    const RoomLighting& lighting = *r.dynamic_lighting;
+    CHECK(lighting.ambient_color[0] == doctest::Approx(0.55f));
+    CHECK(lighting.ambient_color[1] == doctest::Approx(0.60f));
+    CHECK(lighting.ambient_color[2] == doctest::Approx(0.75f));
+    CHECK(lighting.ambient_intensity == doctest::Approx(0.32f));
+    CHECK(lighting.normal_map == "normals/room.png");
+    CHECK(lighting.normal_origin.x == doctest::Approx(4.0f));
+    CHECK(lighting.normal_origin.y == doctest::Approx(8.0f));
+    CHECK(lighting.normal_scale == doctest::Approx(2.0f));
+    CHECK(lighting.normal_strength == doctest::Approx(0.75f));
+    REQUIRE(lighting.lights.size() == 2);
+
+    const RoomLight& lamp = lighting.lights[0];
+    CHECK(lamp.id == "lamp");
+    CHECK(lamp.type == RoomLight::Type::OMNI);
+    CHECK(lamp.at.x == doctest::Approx(320.0f));
+    CHECK(lamp.radius == doctest::Approx(240.0f));
+    CHECK(lamp.height == doctest::Approx(90.0f));
+    CHECK(lamp.intensity == doctest::Approx(0.85f));
+    CHECK(lamp.modulation.type == LightModulation::Type::FLICKER);
+    CHECK(lamp.modulation.amount == doctest::Approx(0.06f));
+    CHECK(lamp.modulation.speed == doctest::Approx(7.0f));
+    CHECK(lamp.modulation.seed == doctest::Approx(12.0f));
+
+    const RoomLight& flashlight = lighting.lights[1];
+    CHECK(flashlight.type == RoomLight::Type::SPOT);
+    CHECK(flashlight.attach == "player");
+    CHECK(flashlight.offset.x == doctest::Approx(18.0f));
+    CHECK(flashlight.offset.y == doctest::Approx(-52.0f));
+    CHECK(flashlight.radius == doctest::Approx(420.0f));
+    CHECK(flashlight.height == doctest::Approx(210.0f));
+    CHECK(flashlight.direction == doctest::Approx(-4.0f));
+    CHECK(flashlight.follow_facing);
+    CHECK(flashlight.angle == doctest::Approx(42.0f));
+    CHECK(flashlight.softness == doctest::Approx(10.0f));
+    REQUIRE(lighting.occluders.size() == 1);
+    CHECK(lighting.occluders[0].id == "partition");
+    CHECK(lighting.occluders[0].area.size() == 2);
+}
+
+TEST_CASE("parse_room keeps projected shadows independent from dynamic lighting") {
+    const RoomData r = parse_room(R"YAML(
+id: r
+lighting:
+  projected_shadows: {light: {x: 10, y: 20}}
+)YAML");
+    CHECK_FALSE(r.dynamic_lighting.has_value());
+    CHECK(r.projected_shadow.has_value());
+}
+
+TEST_CASE("RoomRuntime seeds and controls transient dynamic-light state") {
+    RoomRuntime room(parse_room(R"YAML(
+id: r
+lighting:
+  lights:
+    - id: lamp
+      type: omni
+      at: {x: 10, y: 20}
+      radius: 100
+      intensity: 0.75
+    - id: emergency
+      type: omni
+      at: {x: 30, y: 40}
+      radius: 80
+      intensity: 0.2
+      enabled: false
+  occluders:
+    - id: door
+      area: [{x: 50, y: 0}, {x: 50, y: 80}]
+)YAML"));
+
+    CHECK(room.has_light("lamp"));
+    CHECK(room.light_enabled("lamp"));
+    CHECK(room.light_intensity("lamp") == doctest::Approx(0.75f));
+    CHECK_FALSE(room.light_enabled("emergency"));
+    CHECK(room.has_light_occluder("door"));
+    CHECK(room.light_occluder_enabled("door"));
+    room.set_light_occluder_enabled("door", false);
+    CHECK_FALSE(room.light_occluder_enabled("door"));
+
+    room.set_light_enabled("lamp", false);
+    room.set_light_intensity("lamp", 1.4f);
+    CHECK_FALSE(room.light_enabled("lamp"));
+    CHECK(room.light_intensity("lamp") == doctest::Approx(1.4f));
+
+    room.set_light_intensity("lamp", 99.0f);
+    CHECK(room.light_intensity("lamp") == doctest::Approx(4.0f));
+    room.set_light_intensity("lamp", -2.0f);
+    CHECK(room.light_intensity("lamp") == doctest::Approx(0.0f));
+
+    room.set_light_intensity("lamp", 2.0f, 2.0f);
+    room.update_lights(0.5f);
+    CHECK(room.light_intensity("lamp") == doctest::Approx(0.3125f));
+    room.update_lights(0.5f);
+    CHECK(room.light_intensity("lamp") == doctest::Approx(1.0f));
+    room.update_lights(1.0f);
+    CHECK(room.light_intensity("lamp") == doctest::Approx(2.0f));
+
+    room.set_light_enabled("missing", true);
+    room.set_light_intensity("missing", 1.0f);
+    CHECK_FALSE(room.has_light("missing"));
+    CHECK_FALSE(room.light_enabled("missing"));
+    CHECK(room.light_intensity("missing") == doctest::Approx(0.0f));
+}
+
+TEST_CASE("parse_room validates dynamic lights") {
+    CHECK(error_code([] { parse_room("id: r\nlighting:\n  ambient: {intensity: 1.5}\n"); }) ==
+          "room.ambient-light-intensity-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  lights:\n"
+                         "    - {id: a, type: glow, at: {x: 0, y: 0}, radius: 10}\n");
+          }) == "room.light-type-invalid");
+    CHECK(error_code([] {
+              parse_room(
+                  "id: r\nlighting:\n  lights:\n"
+                  "    - {id: a, type: omni, at: {x: 0, y: 0}, attach: player, radius: 10}\n");
+          }) == "room.light-position-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  lights:\n"
+                         "    - {id: a, type: spot, at: {x: 0, y: 0}, range: 10}\n");
+          }) == "room.spotlight-direction-missing");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  lights:\n"
+                         "    - id: a\n      type: omni\n      at: {x: 0, y: 0}\n"
+                         "      radius: 10\n      modulation: {type: flicker, amount: 2}\n");
+          }) == "room.light-modulation-params-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  normal_map: {image: n.png, scale: 0}\n");
+          }) == "room.normal-map-params-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  occluders:\n"
+                         "    - {id: wall, area: [{x: 0, y: 0}]}\n");
+          }) == "room.light-occluder-params-invalid");
+}
+
+TEST_CASE("parse_room connects projected shadows to a dynamic light") {
+    const RoomData r = parse_room(R"YAML(
+id: r
+lighting:
+  lights:
+    - {id: lamp, type: omni, at: {x: 10, y: 20}, radius: 100}
+  projected_shadows:
+    source: lamp
+)YAML");
+    REQUIRE(r.projected_shadow.has_value());
+    CHECK(r.projected_shadow->source == "lamp");
+}
+
+TEST_CASE("parse_room reads projected avatar shadows from room lighting") {
+    const RoomData r = parse_room(R"YAML(
+id: r
+lighting:
+  projected_shadows:
+    enabled: true
+    light: { x: 180, y: 120 }
+    casters: all
+    length: 0.42
+    width: 0.7
+    opacity: 0.16
+    softness: 5
+    contact_shadow: 0.5
+    color: { r: 10, g: 12, b: 16 }
+)YAML");
+
+    REQUIRE(r.projected_shadow.has_value());
+    const ProjectedShadow& shadow = *r.projected_shadow;
+    CHECK(shadow.enabled);
+    CHECK(shadow.light.x == doctest::Approx(180.0f));
+    CHECK(shadow.light.y == doctest::Approx(120.0f));
+    CHECK(shadow.casters == ProjectedShadow::Casters::ALL);
+    CHECK(shadow.length == doctest::Approx(0.42f));
+    CHECK(shadow.width == doctest::Approx(0.7f));
+    CHECK(shadow.opacity == doctest::Approx(0.16f));
+    CHECK(shadow.softness == doctest::Approx(5.0f));
+    CHECK(shadow.contact_shadow == doctest::Approx(0.5f));
+    CHECK(shadow.color == sf::Color(10, 12, 16));
+    CHECK_FALSE(shadow.z.has_value());
+}
+
+TEST_CASE("parse_room reads an optional fixed projected-shadow depth") {
+    const RoomData r = parse_room(R"YAML(
+id: r
+lighting:
+  projected_shadows:
+    light: { x: 180, y: 120 }
+    z: 1
+)YAML");
+    REQUIRE(r.projected_shadow.has_value());
+    REQUIRE(r.projected_shadow->z.has_value());
+    CHECK(*r.projected_shadow->z == doctest::Approx(1.0f));
+}
+
+TEST_CASE("parse_room validates projected avatar shadow parameters") {
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  projected_shadows: { enabled: true }\n");
+          }) == "room.projected-shadows-light-missing");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  projected_shadows:\n"
+                         "    light: {x: 0, y: 0}\n    opacity: 1.5\n");
+          }) == "room.projected-shadows-opacity-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  projected_shadows:\n"
+                         "    light: {x: 0, y: 0}\n    casters: furniture\n");
+          }) == "room.projected-shadows-casters-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  projected_shadows:\n"
+                         "    light: {x: 0, y: 0}\n    z: .nan\n");
+          }) == "room.projected-shadows-z-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n"
+                         "  lights:\n"
+                         "    - {id: lamp, type: omni, at: {x: 0, y: 0}, radius: 10}\n"
+                         "  projected_shadows: {source: missing}\n");
+          }) == "room.projected-shadows-source-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n"
+                         "  lights:\n"
+                         "    - {id: lamp, type: omni, at: {x: 0, y: 0}, radius: 10}\n"
+                         "  projected_shadows: {source: lamp, light: {x: 0, y: 0}}\n");
+          }) == "room.projected-shadows-light-missing");
 }
 
 TEST_CASE("parse_room reads the optional object baseline (perspective sort line)") {

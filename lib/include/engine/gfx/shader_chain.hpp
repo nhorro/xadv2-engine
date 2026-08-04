@@ -6,18 +6,29 @@
 #include <SFML/Graphics/RenderTexture.hpp>
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <vector>
 
 namespace sf {
+class Shader;
 class Texture;
-}
+} // namespace sf
 
 namespace pac::core {
 class ResourceCache;
 }
 
 namespace pac::gfx {
+
+/// One engine-driven shader pass inserted before an authored ShaderEffect stack.
+/// The owner supplies the compiled shader and binds its runtime uniforms immediately
+/// before the draw. This keeps dynamic, scene-derived effects (such as room lights)
+/// in the same ping-pong chain without teaching generic gfx code about room data.
+struct RuntimeShaderPass {
+    sf::Shader* shader = nullptr;
+    std::function<void(sf::Shader&)> bind;
+};
 
 /// Multi-pass fragment-shader applier. The chain renders a textured rect into an
 /// off-screen render texture and ping-pongs it through `effects` in order: each
@@ -26,7 +37,8 @@ namespace pac::gfx {
 /// shader declares them. The result is a `sf::Texture` the caller draws as a
 /// normal sprite at whatever world transform the drawable demands — the chain is
 /// transform-agnostic, so layers (scaled at the origin), regions (placed at the
-/// polygon's bounds top-left), objects, and animated sprites all share it.
+/// polygon's bounds top-left), objects, animated sprites, and a room's composed
+/// scenery post-process all share it.
 ///
 /// `apply` reuses two pooled render textures sized to the largest source seen,
 /// so a steady scene reaches a steady allocation; an effect that fails to load
@@ -48,7 +60,8 @@ public:
                              const sf::Texture& source,
                              const sf::IntRect& source_rect,
                              const std::vector<ShaderEffect>& effects,
-                             float time);
+                             float time,
+                             const RuntimeShaderPass* prefix = nullptr);
 
 private:
     void ensure_size(unsigned width, unsigned height);

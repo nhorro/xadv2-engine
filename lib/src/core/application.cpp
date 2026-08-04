@@ -288,7 +288,7 @@ int run(const std::string& manifest_path,
     settings_store.load(settings);
     settings.clamp();
 
-    ResourceCache resources(source, log);
+    ResourceCache resources(source, log, manifest.rendering.smooth_textures);
 
     // Active UI-strings language (issue #72): the stored preference when it names
     // a known language, else the manifest default. Construction loads the strings
@@ -474,6 +474,9 @@ int run(const std::string& manifest_path,
             audio.update(kFixedDt);
             scripting.update(kFixedDt);
             scenes.update(kFixedDt);
+            if (hooks.update) {
+                hooks.update(kFixedDt);
+            }
             scenes.apply_pending();
             accumulator -= kFixedDt;
             ++steps;
@@ -518,6 +521,9 @@ int run(const std::string& manifest_path,
         window.clear(sf::Color::Black); // letterbox bars
         window.setView(display.view());
         scenes.draw(window);
+        if (hooks.draw) {
+            hooks.draw(window);
+        }
 
         // Thumbnail refresh (issue #119): every ~0.5s while the active scene
         // is in a thumbnail-friendly state (RoomScene COMMAND), capture the

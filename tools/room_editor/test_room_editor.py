@@ -55,6 +55,45 @@ class RoomEditorTests(TestCase):
         self.assertNotIn("old", result["objects"])  # replaced wholesale, like regions
         self.assertEqual(result["objects"]["crate"]["scale"], 1.5)
 
+    def test_apply_room_patch_persists_lights_and_preserves_other_lighting(self):
+        room = {
+            "id": "test",
+            "lighting": {
+                "ambient": {"intensity": 0.4},
+                "normal_map": {"image": "room_normals.png"},
+                "projected_shadows": {"source": "old_lamp"},
+                "lights": [
+                    {
+                        "id": "old_lamp",
+                        "type": "omni",
+                        "at": {"x": 10, "y": 20},
+                        "radius": 100,
+                        "modulation": {"type": "flicker", "amount": 0.1},
+                    }
+                ],
+            },
+        }
+        patch = {
+            "lighting": {
+                "lights": [
+                    {
+                        "id": "new_spot",
+                        "type": "spot",
+                        "at": {"x": 30, "y": 40},
+                        "range": 240,
+                        "direction": 20,
+                        "angle": 50,
+                    }
+                ]
+            }
+        }
+
+        result = apply_room_patch(room, patch)
+        self.assertEqual(result["lighting"]["lights"][0]["id"], "new_spot")
+        self.assertEqual(result["lighting"]["ambient"]["intensity"], 0.4)
+        self.assertEqual(result["lighting"]["normal_map"]["image"], "room_normals.png")
+        self.assertEqual(result["lighting"]["projected_shadows"]["source"], "old_lamp")
+
     def test_find_missing_assets_reports_missing_files(self):
         room = {
             "background": {"layers": [{"id": "bg", "image": "missing.png", "z": 0}]},
@@ -109,6 +148,7 @@ class RoomEditorTests(TestCase):
             objects.mkdir()
             (rooms / "background.png").write_bytes(b"room")
             (objects / "desk.png").write_bytes(b"object")
+            (data / "root.png").write_bytes(b"root")
 
             assets = list_assets(data, relative_to=rooms)
             self.assertIn("background.png", assets)
@@ -117,8 +157,14 @@ class RoomEditorTests(TestCase):
                 resolve_asset_within(data, rooms, "../props/desk.png"),
                 (objects / "desk.png").resolve(),
             )
+            self.assertEqual(
+                resolve_asset_within(data, rooms, "/root.png"),
+                (data / "root.png").resolve(),
+            )
             with self.assertRaises(ValueError):
                 resolve_asset_within(data, rooms, "../../outside.png")
+            with self.assertRaises(ValueError):
+                resolve_asset_within(data, rooms, "/../../outside.png")
 
     def test_save_room_yaml_writes_polygons_inline(self):
         room = {

@@ -1,5 +1,6 @@
 #include "engine/gfx/animated_sprite.hpp"
 #include "engine/pnc/avatar.hpp"
+#include "engine/pnc/room.hpp"
 
 #include <doctest/doctest.h>
 #include <SFML/Graphics/Texture.hpp>
@@ -84,4 +85,31 @@ TEST_CASE("Avatar without a talk rig safely remains standing") {
     avatar.talk();
     CHECK_FALSE(avatar.talking());
     CHECK(avatar.current_animation() == "stand_down");
+}
+
+TEST_CASE("Avatar shadow opacity clamps, transitions, and can be interrupted") {
+    sf::Texture texture;
+    pnc::Avatar avatar(gfx::AnimatedSprite(sheet(texture), animation({"stand_down"})));
+    pnc::RoomData room;
+
+    CHECK(avatar.shadow_opacity() == doctest::Approx(1.0f));
+
+    avatar.set_shadow_opacity(-1.0f);
+    CHECK(avatar.shadow_opacity() == doctest::Approx(0.0f));
+
+    avatar.set_shadow_opacity(1.0f, 2.0f);
+    avatar.update(0.5f, room);
+    CHECK(avatar.shadow_opacity() == doctest::Approx(0.25f));
+    avatar.update(0.5f, room);
+    CHECK(avatar.shadow_opacity() == doctest::Approx(0.5f));
+
+    // A new request starts at the live interpolated value, not the old endpoint.
+    avatar.set_shadow_opacity(0.2f, 1.0f);
+    avatar.update(0.5f, room);
+    CHECK(avatar.shadow_opacity() == doctest::Approx(0.35f));
+    avatar.update(0.5f, room);
+    CHECK(avatar.shadow_opacity() == doctest::Approx(0.2f));
+
+    avatar.set_shadow_opacity(2.0f);
+    CHECK(avatar.shadow_opacity() == doctest::Approx(1.0f));
 }

@@ -116,7 +116,7 @@ construction differs.
 | `type` | Parameters | Backed by | Scope |
 |--------|------------|-----------|-------|
 | `animated_sprite` | `sprite`: an `*.anim.yaml` | `pac::gfx::AnimatedSprite` | MVP |
-| `composite` | `composite`: a `*.composite.yaml` | `pac::gfx::CompositeSprite` | MVP |
+| `composite` | `composite`: a `*.composite.yaml` | `pac::gfx::CompositeSprite` | Room objects implemented; avatar strategy pending |
 | `skeletal` | renderer-specific | future layered/skeletal renderer | Design-for |
 
 `shadow` is a common, optional appearance field handled by the point-and-click
@@ -384,6 +384,13 @@ When the body finishes — or is cancelled by `change_room` / room unload —
 the engine restores the `command` view state from the C++ side, so even an
 interrupted cutscene leaves the room responsive. (Lua cleanup doesn't run
 on scope cancellation, so a `finally` in Lua wouldn't be enough.)
+
+`skippable_cutscene(body, on_skip)` is the opt-in form for long, non-interactive
+room sequences. While it is active, ESC cancels only its body task, clears active
+speech, calls the synchronous `on_skip` finalizer, and restores command mode.
+The finalizer must not yield; it should place every actor/object/camera and story
+flag in the same canonical end state as normal completion. Ordinary `cutscene`
+blocks continue to ignore ESC.
 
 Inside a cutscene body (and elsewhere — they're plain Lua globals), three
 flat verbs mirror the most common stage directions:
@@ -867,6 +874,8 @@ resolution order.
 | `:look_at(target)` | target | — | Face target. |
 | `:face(direction)` | `"up"`, `"right"`, `"down"`, `"left"` | — | Set orientation. |
 | `:position()` | — | point (`{x, y}`) | Return current position. |
+| `:set_visible(visible)` | bool | — | Show/hide the avatar transiently. `:show()` and `:hide()` are aliases. |
+| `:set_shadow_opacity(opacity, transition_seconds?)` | number, optional seconds | — | Set a transient 0..1 multiplier for both projected and contact shadows. A positive duration interpolates from the current value. |
 | `:play(sequence)` | string | — | Play an animation sequence, overriding stand/walk until it finishes (one-shot) or movement interrupts it. No-op if the sequence is absent. |
 | `:play_until_end(sequence)` | string | — | Play a **non-looping** sequence and yield until it finishes. (A looping sequence would never end — use `:play`.) |
 | `:anchor(name)` | string | point (`{x, y}`) or `nil` | World position of a named sprite anchor on the current frame, or `nil` if absent. |
@@ -959,6 +968,42 @@ must not carry over.
 | `enable_obstacle(id)` | obstacle id | — | Re-enable a named obstacle (it blocks the walkable area again). Persisted per room. |
 | `disable_obstacle(id)` | obstacle id | — | Disable a named obstacle so the player/NPCs can path through where it was (e.g. once a blocking crate is removed). Persisted per room. |
 
+#### Light handle
+
+`light(id)` returns a handle to a dynamic light declared in the current room's
+`lighting.lights`. Runtime enabled/intensity overrides are **transient**: they
+reset to the YAML values whenever the room loads. If a story decision must
+survive leaving the room, store that decision with `set_state` and reapply it in
+`on_load`.
+
+| Method | Parameters | Returns | Meaning |
+|--------|------------|---------|---------|
+| `:set_enabled(enabled)` | bool | handle | Include or exclude the light from the lighting pass. |
+| `:enable()` / `:disable()` | — | handle | Convenience aliases for `:set_enabled`. |
+| `:enabled()` | — | bool or `nil` | Current runtime value, or `nil` when the light id is absent. |
+| `:set_intensity(value [, transition_seconds])` | number, optional seconds | handle | Set peak intensity, clamped to `0..4`; a positive duration applies a smooth transition and authored modulation still applies. |
+| `:intensity()` | — | number or `nil` | Current peak intensity, or `nil` when the light id is absent. |
+
+```lua
+function room.on_load()
+  light("desk_lamp"):set_enabled(get_state("archive.power_on") == true)
+end
+
+function room.hotspots.switch.use()
+  local lamp = light("desk_lamp")
+  lamp:set_enabled(not lamp:enabled())
+end
+```
+
+`light_occluder(id)` controls a polygon declared in `lighting.occluders`. Its
+`:set_enabled(bool)`, `:enable()`, `:disable()`, and `:enabled()` methods mirror
+the light handle. This state is also transient, making it suitable for opening a
+door after the room script has reapplied the saved story state:
+
+```lua
+light_occluder("vault_door"):set_enabled(not get_state("vault.open"))
+```
+
 #### Object handle
 
 `object(id)` returns a handle to a room object (the id is its `objects:` key).
@@ -972,13 +1017,15 @@ room load, like an avatar's pose (only object *visibility* persists).
 | `:set_position(x, y)` | numbers | — | Place the object immediately (cancels a move). |
 | `:position()` | — | point (`{x, y}`) | Current world position. |
 | `:set_scale(s)` | number > 0 | — | Uniform render scale (resize); aspect preserved. |
-| `:play(sequence)` | string | — | Play an animation sequence (looping per its def). **Animated objects only** (sprite is an `*.anim.yml`); no-op + warn otherwise. |
-| `:play_until_end(sequence)` | string | — | Play a non-looping sequence and yield until it finishes. **Animated objects only.** |
+| `:set_rotation(degrees)` | number | — | Set clockwise object rotation. Applies to static, animated, and composite visuals. |
+| `:rotation()` | — | number or `nil` | Current object rotation in degrees. |
+| `:play(sequence)` | string | — | Play an animation or composite sequence; no-op + warn for a static texture. |
+| `:play_until_end(sequence)` | string | — | Play a non-looping animation/composite sequence and yield until it finishes. |
 
-An object whose `sprite` is an animation (`*.anim.yml`) is an **animated object** —
-an `AnimatedSprite` like an avatar. Its `position` is the sprite **pivot** (not the
-top-left used for a static texture), and it plays its `sequence:` on load. `play`
-and `play_until_end` are no-ops on a static-texture object.
+An object whose `sprite` is an animation (`*.anim.yml`) or composite
+(`*.composite.yml`) owns a `VisualSprite`. Its `position` is the visual pivot (not
+the top-left used for a static texture), and it plays its `sequence:` on load.
+`play` and `play_until_end` are no-ops on a static-texture object.
 
 ### Inventory
 
@@ -998,6 +1045,11 @@ and `play_until_end` are no-ops on a static-texture object.
 | `stop_music()` | — | — | Stop current music. |
 | `play_sound(path, volume?, pan?)` | logical path, optional number (0..1), optional number (-1..1) | — | Play a short sound effect. `volume` scales the global SFX volume; `pan` places it L/R (-1 left, 0 center, +1 right). Panning affects mono clips only; a position-aware/spatial path is design-for. |
 | `stop_sounds()` | — | — | Stop all active sound effects. |
+| `set_ambience(path, volume?, seconds?)` | logical path, optional number, optional number | — | Replace the streamed ambience base, crossfading over `seconds` (default `2.5`). If `path` is already playing, it is not restarted; only its volume glides. YAML random layers remain active. |
+| `set_ambience_volume(volume, seconds?)` | number (0..1), optional number | — | Glide the current ambience base to a new room-relative volume (default `1.0` second). |
+| `stop_ambience(seconds?)` | optional number | — | Clear random layers and fade out the ambience base (default `2.5` seconds). |
+| `set_ambience_layer_enabled(id, enabled)` | string, bool | bool | Enable/disable a YAML-declared random layer. Returns false for an unknown id. |
+| `set_ambience_layer_volume(id, volume)` | string, number (0..1) | bool | Set a multiplier over a random layer's authored volume range. Returns false for an unknown id. |
 
 Use `play_music` when the new cue must start immediately. Use `crossfade_music`
 for room-to-room ambience or score changes:
@@ -1012,6 +1064,15 @@ duration:
 
 ```lua
 crossfade_music("music/archive_danger.ogg", 1.5, true)
+```
+
+Room YAML should supply the normal ambience. Runtime calls are for variations,
+for example suppressing traffic during a story beat without disturbing the city
+loop:
+
+```lua
+set_ambience_layer_enabled("traffic", false)
+set_ambience_volume(0.25, 1.5)
 ```
 
 ### Input and room-view control

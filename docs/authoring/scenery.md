@@ -1,7 +1,7 @@
 # Scenery authoring
 
 A practical, recipe-style guide to building what fills a room: **layers,
-regions, objects, NPCs, hotspots, obstacles, walk-behinds, and perspective**.
+lighting, regions, objects, NPCs, hotspots, obstacles, walk-behinds, and perspective**.
 Each section is "I want to… → do this", with the YAML that declares it and the
 Lua that drives it.
 
@@ -40,6 +40,99 @@ background:
 
 > Use a layer for static scenery and foreground occluders. For a piece that
 > *changes* use a **region**; for one that *moves or animates* use an **object**.
+
+## Dynamic lighting
+
+For a beginner-first walkthrough—from a basic playable room through the complete
+rendering pipeline, room-editor primitives, shadows, and final grading—see
+[From a playable room to a lit room](room-lighting-tutorial.md).
+
+Keep source artwork bright or neutral, then establish the room's baseline
+darkness with `ambient` and place radial `omni` or directional `spot` lights:
+
+```yaml
+lighting:
+  ambient: { color: [0.65, 0.70, 0.85], intensity: 0.4 }
+  normal_map: { image: room_normals.png, strength: 0.8 }
+  lights:
+    - id: lamp
+      type: omni
+      at: { x: 520, y: 210 }
+      radius: 280
+      color: [1.0, 0.78, 0.45]
+      intensity: 0.9
+      modulation: { type: flicker, amount: 0.04, speed: 5 }
+    - id: torch
+      type: spot
+      attach: player
+      offset: { x: 0, y: -55 }
+      range: 360
+      follow_facing: true
+      angle: 50
+      softness: 12
+  occluders:
+    - id: closed_door
+      area: [{ x: 720, y: 180 }, { x: 720, y: 520 }]
+  projected_shadows:
+    source: lamp
+    casters: all
+```
+
+Use `sine` for regular pulsing, `flicker` for fire/torches, and `faulty` for
+lamps with abrupt dropouts. Modulation is part of the one lighting pass. Lights
+may also attach to `avatar:<id>` or `object:<id>`; a missing or hidden attachment
+temporarily suppresses the light. Room `post_process` grading runs afterward, so
+use it for the final palette/mood rather than repeating a grade on every layer.
+
+### Tune lighting and grading in game
+
+When the manifest enables `development.edit_mode`, press **F9** from the normal
+room command view to replace the SCUMM panel with a live tuning overlay. While
+it is open, all mouse and keyboard input is captured by the overlay; the room,
+animated lights, and post-processing continue to render.
+
+- **Ambient** edits the room's RGB ambient colour and intensity.
+- **Lights** selects each authored light and exposes core colour/intensity,
+  radius/cone geometry, and modulation controls.
+- **Grading** selects any post-process pass, parameter, and vector component.
+  Common grading names receive useful ranges; other numeric shader parameters
+  receive a range derived from their current value.
+- **View: Live/YAML** compares the working values with the loaded room data.
+- **Reset** restores the working copy without reloading the room.
+- **Copy YAML** (or `Ctrl+C`) copies complete `lighting:` and `post_process:`
+  sections, including preserved normal maps, occluders, and projected shadows.
+
+Press **F9** or **Escape** to close the overlay. Its changes are intentionally
+temporary until the copied YAML is pasted into the room file; scripts and saved
+game state are not modified.
+
+Scripts may switch an authored light or change its peak intensity at runtime:
+
+```lua
+light("lamp"):disable()
+light("torch"):set_intensity(0.55, 0.4) -- smooth 0.4-second transition
+light_occluder("closed_door"):disable()
+```
+
+These overrides reset when the room reloads. Reapply them from `on_load` using
+saved story state when the change must persist. Modulation continues to multiply
+the runtime intensity.
+
+`occluders` block direct light along authored polygon boundaries. A two-point
+area is one wall segment; a larger area is closed automatically. Use the runtime
+handle when a door or barrier changes. `projected_shadows.source` follows a
+dynamic light (including attachments, modulation, and runtime intensity); use
+the older `light: {x, y}` form for an independent fixed direction.
+
+An optional room-space tangent normal map adds surface direction without extra
+passes. Neutral/flat is RGB `(128, 128, 255)`; red points right, green points
+down, and blue points out of the image. It is sampled over the complete composed
+scene, so keep moving-character corridors close to flat unless their lighting
+should inherit the receiver surface.
+
+The engine renders the first eight visible lights that overlap the camera. See
+[Data formats](../development/design/06-data-formats.md#room-roomsidyaml) for all cone, colour, and
+modulation fields.
 
 ---
 
@@ -113,8 +206,9 @@ hotspot — see [Hotspots](#hotspots-making-things-interactive).
 
 An **object** is a sprite placed in the room. It is *visual only* — interactivity
 comes from a [hotspot](#hotspots-making-things-interactive). An object's `sprite`
-is either a **static image** or an **animation** (`*.anim.yml`), which makes it an
-**animated object** you can drive from script.
+is either a **static image**, an **animation** (`*.anim.yml`), or a composed
+hierarchy (`*.composite.yml`). Animated and composite objects share the same Lua
+surface.
 
 ```yaml
 objects:
@@ -125,10 +219,15 @@ objects:
     sprite: lab/fan.anim.yml
     sequence: spin           # initial looping sequence
     position: { x: 900, y: 300 }   # = the sprite pivot for animated objects
+  vehicle:
+    sprite: vehicles/bus.composite.yml
+    sequence: stopped
+    position: { x: 1400, y: 540 }
 ```
 
 - `z:` is `auto` by default (sorts by the scaled bottom edge); set a number or a `baseline:` for perspective pieces.
 - `scale:` resizes it (uniform, aspect-locked). The [room editor](tools/room-editor.md) sets `position`/`scale` visually.
+- `rotation:` is clockwise degrees around the visual pivot and can also be changed from Lua.
 
 Drive it from Lua with the **`object(id)` handle**:
 
@@ -137,6 +236,7 @@ object("box"):set_scale(1.5)
 object("box"):move_to({ x = 700, y = 520 }, 200)   -- free linear move; yields until it arrives
 
 object("fan"):play("spin")                          -- loop a sequence
+object("vehicle"):play("moving")                   -- may animate independent parts
 object("door"):play_until_end("open")               -- one-shot; yields until it finishes
 show_object("box"); hide_object("box")              -- visibility (persisted per room)
 ```

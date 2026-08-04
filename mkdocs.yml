@@ -111,6 +111,7 @@ nav:
       - Lua API reference: authoring/lua-api.md
       - Data formats: authoring/data-formats.md
       - Scenery authoring: authoring/scenery.md
+      - Lighting, shadows & grading: authoring/room-lighting-tutorial.md
       - Tools:
           - authoring/tools/index.md
           - Scaffolder: authoring/tools/scaffolder.md

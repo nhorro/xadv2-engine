@@ -1,8 +1,9 @@
 # Room editor
 
-A minimal web-based editor for the xadv2-engine room YAML format. It edits the
-**background layers** and **geometry** sections (walkable area, named points,
-zones) and preserves every other room field intact.
+A minimal web-based editor for the xadv2-engine room YAML format. It edits
+**background layers**, **geometry**, **objects**, **hotspots**, editor-only avatar
+previews, and **dynamic omni/spot lights**, while preserving room fields that are
+not directly visualized.
 
 !!! note "Canonical reference"
     Full usage and patch format:
@@ -49,6 +50,12 @@ Useful extras: `--host` / `--port` (bind address).
   Previews depth-sort against furniture and are never saved into room YAML.
 - Browse object and background assets throughout the game data directory while
   keeping their YAML paths relative to the room.
+- In **lights** mode, create omni or spot primitives; drag the centre to position
+  a light, the diamond to set its reach, and a spotlight's direction/cone handles
+  to aim it. The inspector edits static or attached placement, colour, intensity,
+  range, height, cone softness, and enabled state. Ambient, modulation, normal
+  maps, light occluders, and projected shadows remain editable in YAML and are
+  preserved on save.
 - Scroll beyond the room background on every side. The workspace follows the
   farthest editable entity with extra margin, allowing negative coordinates and
   off-screen staging points or paths.
@@ -84,6 +91,7 @@ geometry:
 
 ## See also
 
+- [Tutorial: lighting, shadows, and grading](../room-lighting-tutorial.md)
 - [Point & click concepts § rooms, layers, zones](../../development/design/04-point-and-click-concepts.md)
 - [Data formats](../data-formats.md)
 

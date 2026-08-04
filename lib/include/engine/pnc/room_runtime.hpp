@@ -2,6 +2,7 @@
 
 #include "engine/core/scripting.hpp"
 #include "engine/geom/geometry.hpp"
+#include "engine/gfx/visual_sprite.hpp"
 #include "engine/pnc/avatar.hpp"
 #include "engine/pnc/room.hpp"
 
@@ -79,6 +80,8 @@ public:
     void set_object_position(const std::string& object_id, geom::Point p);
     [[nodiscard]] float object_scale(const std::string& object_id) const;
     void set_object_scale(const std::string& object_id, float scale);
+    [[nodiscard]] float object_rotation(const std::string& object_id) const;
+    void set_object_rotation(const std::string& object_id, float degrees);
     void object_move_to(const std::string& object_id, geom::Point target, float speed);
     [[nodiscard]] bool object_moving(const std::string& object_id) const;
     void update_objects(float dt);
@@ -88,9 +91,9 @@ public:
     // NPC avatar). update_objects advances it and syncs its transform to the
     // runtime pose. `object_play` plays a sequence; pass track_until_end=true for
     // a one-shot whose completion `object_acting` reports (drives play_until_end).
-    void set_object_sprite(const std::string& object_id, gfx::AnimatedSprite sprite);
+    void set_object_sprite(const std::string& object_id, gfx::VisualSprite sprite);
     [[nodiscard]] bool object_animated(const std::string& object_id) const;
-    [[nodiscard]] const gfx::AnimatedSprite* object_sprite(const std::string& object_id) const;
+    [[nodiscard]] const gfx::VisualSprite* object_sprite(const std::string& object_id) const;
     bool
     object_play(const std::string& object_id, const std::string& sequence, bool track_until_end);
     [[nodiscard]] bool object_acting(const std::string& object_id) const;
@@ -100,6 +103,21 @@ public:
 
     void set_hotspot_enabled(const std::string& hotspot_id, bool enabled);
     [[nodiscard]] bool hotspot_enabled(const std::string& hotspot_id) const;
+
+    // Dynamic-light overrides are transient and reset from YAML on room load.
+    // Unknown ids are ignored; callers can use has_light() to report a useful
+    // script error without accidentally creating runtime state.
+    [[nodiscard]] bool has_light(const std::string& light_id) const;
+    void set_light_enabled(const std::string& light_id, bool enabled);
+    [[nodiscard]] bool light_enabled(const std::string& light_id) const;
+    void set_light_intensity(const std::string& light_id,
+                             float intensity,
+                             float transition_seconds = 0.0f);
+    [[nodiscard]] float light_intensity(const std::string& light_id) const;
+    void update_lights(float dt);
+    [[nodiscard]] bool has_light_occluder(const std::string& occluder_id) const;
+    void set_light_occluder_enabled(const std::string& occluder_id, bool enabled);
+    [[nodiscard]] bool light_occluder_enabled(const std::string& occluder_id) const;
 
     // Named obstacles (#143): enable/disable a walkable blocker by id. The flag
     // lives on the obstacle in `data_` so the pathfinder (RoomData::is_walkable /
@@ -154,19 +172,30 @@ private:
     std::map<std::string, bool> object_visible_;
     std::map<std::string, bool> layer_visible_;
     std::map<std::string, bool> hotspot_enabled_;
+    std::map<std::string, bool> light_enabled_;
+    struct LightRuntime {
+        float intensity = 1.0f;
+        float start = 1.0f;
+        float target = 1.0f;
+        float elapsed = 0.0f;
+        float duration = 0.0f;
+    };
+    std::map<std::string, LightRuntime> light_rt_;
+    std::map<std::string, bool> light_occluder_enabled_;
     std::map<std::string, Avatar> npcs_;
 
     // Transient per-object runtime pose (#142), seeded from each RoomObject def.
     struct ObjectRuntime {
         geom::Point position{0.0f, 0.0f};
         float scale = 1.0f;
+        float rotation = 0.0f;
         geom::Point target{0.0f, 0.0f};
         float speed = 240.0f;
         bool moving = false;
         std::string acting; // one-shot sequence in progress (for play_until_end)
     };
     std::map<std::string, ObjectRuntime> object_rt_;
-    std::map<std::string, gfx::AnimatedSprite> object_sprites_; // animated objects (#142)
+    std::map<std::string, gfx::VisualSprite> object_sprites_; // animated/composite objects
 };
 
 } // namespace pac::pnc

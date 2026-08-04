@@ -22,6 +22,8 @@ namespace pac::pnc {
 /// full-screen background image (solid black when none), with optional looping
 /// music. Mouse hover highlights an entry; click triggers it; Escape exits. The
 /// menu block is anchored at a configurable screen-fraction position.
+/// Entering the title stops all active SFX and room ambience; optional title
+/// music uses the separate music service and starts afterward.
 ///
 /// Configured entirely from the manifest scene `parameters`:
 ///   background  (opt path)   full-screen image; solid black if omitted

@@ -5,8 +5,8 @@
 
 namespace pac::core {
 
-ResourceCache::ResourceCache(ResourceSource& source, Diagnostics& log)
-    : source_(source), log_(log) {}
+ResourceCache::ResourceCache(ResourceSource& source, Diagnostics& log, bool smooth_textures)
+    : source_(source), log_(log), smooth_textures_(smooth_textures) {}
 
 const sf::Texture& ResourceCache::texture(const std::string& logical) {
     const auto it = textures_.find(logical);
@@ -19,6 +19,7 @@ const sf::Texture& ResourceCache::texture(const std::string& logical) {
         textures_.erase(pos);
         throw ResourceError("failed to load texture '" + logical + "'");
     }
+    pos->second.setSmooth(smooth_textures_);
     return pos->second;
 }
 
@@ -84,15 +85,52 @@ bool shader_source_uses(const std::string& source, const std::string& ident) {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
                c == '_';
     };
-    std::size_t pos = source.find(ident);
+    // Ignore comments before looking for identifiers. Stock shaders document
+    // reserved uniforms (including ones they intentionally do not use), and a
+    // comment-only match would make SFML try to bind an absent uniform every
+    // frame. Preserve newlines so diagnostics still point at the right line.
+    std::string code = source;
+    bool line_comment = false;
+    bool block_comment = false;
+    for (std::size_t i = 0; i < code.size(); ++i) {
+        if (line_comment) {
+            if (code[i] == '\n') {
+                line_comment = false;
+            } else {
+                code[i] = ' ';
+            }
+            continue;
+        }
+        if (block_comment) {
+            if (code[i] == '*' && i + 1 < code.size() && code[i + 1] == '/') {
+                code[i] = code[i + 1] = ' ';
+                ++i;
+                block_comment = false;
+            } else if (code[i] != '\n') {
+                code[i] = ' ';
+            }
+            continue;
+        }
+        if (code[i] == '/' && i + 1 < code.size() && code[i + 1] == '/') {
+            code[i] = code[i + 1] = ' ';
+            ++i;
+            line_comment = true;
+        } else if (code[i] == '/' && i + 1 < code.size() && code[i + 1] == '*') {
+            code[i] = code[i + 1] = ' ';
+            ++i;
+            block_comment = true;
+        }
+    }
+
+    std::size_t pos = code.find(ident);
     while (pos != std::string::npos) {
-        const bool left_ok = (pos == 0) || !is_ident(source[pos - 1]);
+        const bool left_ok = (pos == 0) || !is_ident(code[pos - 1]);
         const std::size_t end = pos + ident.size();
-        const bool right_ok = (end >= source.size()) || !is_ident(source[end]);
+        const bool right_ok = (end >= code.size()) || !is_ident(code[end]);
         if (left_ok && right_ok) {
             return true;
         }
-        pos = source.find(ident, pos + 1);
+        pos = code.find(ident, pos + 1);
     }
     return false;
 }

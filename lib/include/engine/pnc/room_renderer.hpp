@@ -21,6 +21,7 @@ namespace pac::pnc {
 class RoomRuntime;
 class Avatar;
 struct RoomData;
+struct ProjectedShadow;
 
 /// Per-frame inputs the renderer feeds to a shader's reserved uniforms (design 03
 /// §Shaders). `time` (seconds since the scene began) drives `u_time`;
@@ -35,12 +36,13 @@ struct ShaderEnv {
 /// (ping-pong RT chain in `gfx::ShaderChain`).
 void warn_unsupported_shader_features(const RoomData& data, pac::core::Diagnostics& log);
 
-/// Derive a room's world bounds from its background layers: the bounding box of
-/// every layer rect — a layer occupies [origin, origin + native texture size ×
-/// scale), origin defaulting to the world origin (0,0) and scale to 1.0 — anchored
-/// at (0,0) and floored to
-/// `viewport` so the world is never smaller than the room view. Layers that fail
-/// to load contribute nothing; uncovered world area shows `background_color`.
+/// Derive a room's world bounds from background layers whose `extend_bounds` is
+/// true: a contributing layer occupies [origin, origin + native texture size ×
+/// scale), origin defaulting to the world origin (0,0) and scale to 1.0. The
+/// result is anchored at (0,0) and floored to `viewport` so the world is never
+/// smaller than the room view. Non-contributing layers still draw, but pixels
+/// beyond these bounds are clipped. Layers that fail to load contribute nothing;
+/// uncovered world area shows `background_color`.
 /// Texture sizes come from `resources`, so this is render-side, not headless.
 [[nodiscard]] sf::Vector2u compute_room_bounds(const RoomData& data,
                                                const std::string& room_dir,
@@ -62,7 +64,8 @@ public:
               const Avatar* player,
               const std::vector<const Avatar*>& npcs,
               pac::core::Diagnostics& log,
-              const ShaderEnv& shaders = {}) const;
+              const ShaderEnv& shaders = {},
+              const ProjectedShadow* projected_shadow_override = nullptr) const;
 
 private:
     // Pooled across draws so a steady scene reaches a steady allocation; the

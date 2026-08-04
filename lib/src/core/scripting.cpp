@@ -307,6 +307,17 @@ struct Scripting::Impl {
         tasks.remove_if([scope](const Task& t) { return t.scope == scope; });
     }
 
+    void cancel_task(TaskId id) {
+        if (text_owner == id) {
+            current_text.clear();
+            text_owner = 0;
+        }
+        if (find(id)) {
+            release_thread(id);
+            tasks.remove_if([id](const Task& t) { return t.id == id; });
+        }
+    }
+
     std::size_t count(ScopeId scope) const {
         std::size_t n = 0;
         for (const Task& t : tasks) {
@@ -399,6 +410,9 @@ void Scripting::set_current_scope(ScopeId scope) {
 }
 ScopeId Scripting::current_scope() const {
     return impl_->current_scope;
+}
+void Scripting::cancel_task(TaskId id) {
+    impl_->cancel_task(id);
 }
 void Scripting::cancel_scope(ScopeId scope) {
     impl_->cancel_scope(scope);

@@ -20,8 +20,8 @@ struct Shadow {
     sf::Color color = sf::Color(0, 0, 0, 70);
 };
 
-/// A reusable visual definition. M3 supports `animated_sprite`; `composite` is
-/// parsed but realized later. `shadow` is an optional ground blob (issue #75).
+/// A reusable avatar visual definition. CompositeSprite is implemented for room
+/// objects in gfx/pnc; wiring it as an Avatar strategy remains pending here.
 /// `shaders` is an optional declarative stack applied to the animated sprite at
 /// draw time (issue #106 — same data model as a layer/region/object shader, see
 /// design 03 §Shaders); the per-room avatar instance inherits this list.

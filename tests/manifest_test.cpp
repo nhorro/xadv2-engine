@@ -44,6 +44,7 @@ TEST_CASE("valid manifest parses with expected fields") {
     CHECK(m.version == 1);
     CHECK(m.resolution.x == 1280u);
     CHECK(m.resolution.y == 720u);
+    CHECK(m.rendering.smooth_textures);
     CHECK(m.resources_src == ".");
     CHECK(m.strings_path == "strings/es.yaml");
     CHECK(m.settings.music_volume == doctest::Approx(0.8f));
@@ -60,6 +61,27 @@ TEST_CASE("valid manifest parses with expected fields") {
     CHECK(title->parameters.get_or("new_game", "") == "gameplay");
     CHECK(title->parameters.get_or("exit", "") == "QUIT");
     CHECK(m.find_scene("nope") == nullptr);
+}
+
+TEST_CASE("texture smoothing defaults on, supports opt-out, and rendering must be a mapping") {
+    const Manifest defaults =
+        parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                       "resources: { src: . }\nstrings: s\nentry: a\n"
+                       "scenes: [{id: a, type: B}]\n");
+    CHECK(defaults.rendering.smooth_textures);
+
+    const Manifest pixel_art =
+        parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                       "rendering: { smooth_textures: false }\n"
+                       "resources: { src: . }\nstrings: s\nentry: a\n"
+                       "scenes: [{id: a, type: B}]\n");
+    CHECK_FALSE(pixel_art.rendering.smooth_textures);
+
+    CHECK(error_code([] {
+              parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                             "rendering: linear\nresources: { src: . }\nstrings: s\nentry: a\n"
+                             "scenes: [{id: a, type: B}]\n");
+          }) == "manifest.rendering-not-map");
 }
 
 TEST_CASE("speech config is optional and validates its font size") {

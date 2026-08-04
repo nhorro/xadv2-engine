@@ -19,6 +19,7 @@
 #include <SFML/Graphics/Shader.hpp>
 #include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Texture.hpp>
+#include <SFML/Graphics/Transform.hpp>
 #include <SFML/Graphics/VertexArray.hpp>
 #include <SFML/Graphics/View.hpp>
 
@@ -90,7 +91,8 @@ void draw_shaded_sprite(sf::RenderTarget& target,
                         sf::Vector2f position,
                         float uniform_scale,
                         const std::vector<gfx::ShaderEffect>& effects,
-                        float time) {
+                        float time,
+                        float rotation = 0.0f) {
     const std::size_t n = applicable_count(effects);
     if (n <= 1) {
         sf::Sprite sprite(tex, sub);
@@ -98,6 +100,7 @@ void draw_shaded_sprite(sf::RenderTarget& target,
         if (uniform_scale != 1.0f) {
             sprite.setScale(uniform_scale, uniform_scale);
         }
+        sprite.setRotation(rotation);
         sf::RenderStates states;
         if (n == 1) {
             const gfx::ShaderEffect* fx = first_applicable(effects);
@@ -120,6 +123,7 @@ void draw_shaded_sprite(sf::RenderTarget& target,
         if (uniform_scale != 1.0f) {
             sprite.setScale(uniform_scale, uniform_scale);
         }
+        sprite.setRotation(rotation);
         target.draw(sprite);
         return;
     }
@@ -128,6 +132,7 @@ void draw_shaded_sprite(sf::RenderTarget& target,
     if (uniform_scale != 1.0f) {
         blit.setScale(uniform_scale, uniform_scale);
     }
+    blit.setRotation(rotation);
     target.draw(blit);
 }
 
@@ -140,7 +145,8 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                         const Avatar* player,
                         const std::vector<const Avatar*>& npcs,
                         pac::core::Diagnostics& log,
-                        const ShaderEnv& shaders) const {
+                        const ShaderEnv& shaders,
+                        const ProjectedShadow* projected_shadow_override) const {
     const RoomData& data = room.data();
     const float shader_time = shaders.time;
 
@@ -269,7 +275,7 @@ void RoomRenderer::draw(sf::RenderTarget& target,
         // Animated object (#142): its AnimatedSprite is advanced + transform-synced
         // by RoomRuntime::update_objects; draw the current frame. z from the live
         // frame bounds (scaled bottom edge) unless an explicit baseline/z is set.
-        if (const gfx::AnimatedSprite* spr =
+        if (const gfx::VisualSprite* spr =
                 room.object_animated(id) ? room.object_sprite(id) : nullptr) {
             const sf::FloatRect b = spr->global_bounds();
             float z = object.baseline ? *object.baseline
@@ -284,12 +290,22 @@ void RoomRenderer::draw(sf::RenderTarget& target,
         // Position/scale come from the runtime pose (scriptable move/resize, #142),
         // falling back to the def for objects never touched by script.
         const float obj_scale = room.object_scale(id);
+        const float obj_rotation = room.object_rotation(id);
         const geom::Point pos = room.object_position(id);
         float z = object.baseline ? *object.baseline : object.z;
         try {
             const sf::Texture& tex = resources.texture(image);
             if (!object.baseline && object.z_auto) {
-                z = pos.y + static_cast<float>(tex.getSize().y) * obj_scale;
+                sf::Transform transform;
+                transform.translate(pos.x, pos.y);
+                transform.rotate(obj_rotation);
+                transform.scale(obj_scale, obj_scale);
+                const sf::FloatRect bounds = transform.transformRect(
+                    {0.0f,
+                     0.0f,
+                     static_cast<float>(tex.getSize().x),
+                     static_cast<float>(tex.getSize().y)});
+                z = bounds.top + bounds.height;
             }
         } catch (const std::exception& e) {
             log.error(e.what());
@@ -298,7 +314,15 @@ void RoomRenderer::draw(sf::RenderTarget& target,
         const std::vector<gfx::ShaderEffect>* fx = &object.shaders;
         items.emplace_back(
             z,
-            [this, &resources, &log, image, pos, obj_scale, fx, shader_time](sf::RenderTarget& t) {
+            [this,
+             &resources,
+             &log,
+             image,
+             pos,
+             obj_scale,
+             obj_rotation,
+             fx,
+             shader_time](sf::RenderTarget& t) {
                 try {
                     const sf::Texture& tex = resources.texture(image);
                     const sf::IntRect full(0,
@@ -313,7 +337,8 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                                        sf::Vector2f(pos.x, pos.y),
                                        obj_scale,
                                        *fx,
-                                       shader_time);
+                                       shader_time,
+                                       obj_rotation);
                 } catch (const std::exception& e) {
                     log.error(e.what());
                 }
@@ -363,18 +388,40 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                            });
     }
 
-    if (player) {
-        items.emplace_back(player->z(),
-                           [player, &resources, shader_time, this](sf::RenderTarget& t) {
-                               player->draw(t, resources, shader_time, &chain_);
-                           });
+    const ProjectedShadow* player_shadow = nullptr;
+    if (data.projected_shadow && data.projected_shadow->enabled) {
+        player_shadow = data.projected_shadow->source.empty() ? &*data.projected_shadow
+                                                              : projected_shadow_override;
     }
-    for (const Avatar* npc : npcs) {
-        if (npc) {
-            items.emplace_back(npc->z(), [npc, &resources, shader_time, this](sf::RenderTarget& t) {
-                npc->draw(t, resources, shader_time, &chain_);
-            });
+    const ProjectedShadow* npc_shadow =
+        player_shadow && player_shadow->casters == ProjectedShadow::Casters::ALL ? player_shadow
+                                                                                 : nullptr;
+
+    const auto add_avatar = [&](const Avatar* avatar, const ProjectedShadow* shadow) {
+        if (!avatar) {
+            return;
         }
+        if (shadow && shadow->z) {
+            items.emplace_back(
+                *shadow->z,
+                [avatar, shadow](sf::RenderTarget& t) { avatar->draw_shadows(t, shadow); });
+            items.emplace_back(
+                avatar->z(),
+                [avatar, &resources, shader_time, this](sf::RenderTarget& t) {
+                    avatar->draw_sprite(t, resources, shader_time, &chain_);
+                });
+            return;
+        }
+        items.emplace_back(
+            avatar->z(),
+            [avatar, shadow, &resources, shader_time, this](sf::RenderTarget& t) {
+                avatar->draw(t, resources, shader_time, &chain_, shadow);
+            });
+    };
+
+    add_avatar(player, player_shadow);
+    for (const Avatar* npc : npcs) {
+        add_avatar(npc, npc_shadow);
     }
 
     std::stable_sort(items.begin(), items.end(), [](const auto& a, const auto& b) {
@@ -396,6 +443,9 @@ sf::Vector2u compute_room_bounds(const RoomData& data,
     float right = viewport.x;
     float bottom = viewport.y;
     for (const BackgroundLayer& layer : data.layers) {
+        if (!layer.extend_bounds) {
+            continue;
+        }
         try {
             const sf::Texture& tex =
                 resources.texture(pac::core::logical_join(room_dir, layer.image));
@@ -426,6 +476,9 @@ void warn_unsupported_shader_features(const RoomData& data, pac::core::Diagnosti
     }
     for (const auto& [id, object] : data.objects) {
         check("object '" + id + "'", object.shaders);
+    }
+    if (data.post_process) {
+        check("post-process", data.post_process->shaders);
     }
 }
 

@@ -1,6 +1,59 @@
 version: 1
 id: gallery
 
+post_process:
+  shader:
+    source: shaders/color_grade.frag
+    params:
+      tint: [1.0, 1.0, 1.0]
+      brightness: 0.0
+      contrast: 1.04
+      saturation: 0.92
+      strength: 0.35
+
+lighting:
+  # Ambient is the room's baseline illumination: it darkens the neutral art in
+  # the same pass that adds all visible lights.
+  ambient: { color: [0.78, 0.82, 1.0], intensity: 0.48 }
+  # A room-wide normal map is optional. This deliberately tiny study texture is
+  # scaled over the room so the example keeps its assets lightweight.
+  normal_map:
+    image: /backgrounds/gallery_normals.png
+    scale: 160
+    strength: 0.8
+  lights:
+    - id: painting_lamp
+      type: omni
+      at: { x: 640, y: 180 }
+      radius: 360
+      height: 190
+      color: [1.0, 0.78, 0.46]
+      intensity: 0.82
+      modulation: { type: sine, amount: 0.025, speed: 0.7 }
+    - id: player_lantern
+      type: spot
+      attach: player
+      offset: { x: 0, y: -45 }
+      range: 300
+      follow_facing: true
+      angle: 58
+      softness: 14
+      color: [1.0, 0.88, 0.62]
+      intensity: 0.55
+  # Polygon boundaries block direct light without another render pass. A
+  # two-point area is a single wall segment; 3+ points form a closed polygon.
+  occluders:
+    - id: right_partition
+      area: [{ x: 900, y: 80 }, { x: 900, y: 410 }]
+  projected_shadows:
+    source: painting_lamp
+    casters: player
+    length: 0.42
+    width: 0.72
+    opacity: 0.2
+    softness: 4
+    contact_shadow: 0.55
+
 background:
   color: { r: 24, g: 22, b: 36 }
   layers:

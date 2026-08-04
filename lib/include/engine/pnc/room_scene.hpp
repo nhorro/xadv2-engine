@@ -19,6 +19,8 @@
 #include "engine/pnc/scumm_panel.hpp"
 #include "engine/pnc/speech_manager.hpp"
 
+#include <cstddef>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -27,6 +29,7 @@
 
 namespace sf {
 class Font;
+class RenderTexture;
 }
 
 namespace pac::core {
@@ -35,6 +38,9 @@ class SceneParams;
 } // namespace pac::core
 
 namespace pac::pnc {
+
+class RoomLightingRenderer;
+class RoomTuningOverlay;
 
 /// SCUMM-style room gameplay (M4): rooms (YAML + Lua) + cast + inventory, a
 /// scrolling camera over the scenery viewport, the SCUMM panel + command builder
@@ -66,7 +72,8 @@ public:
     /// (the fade is a black quad over everything). Gating on a clear screen keeps
     /// `ctx.thumbnail` on the last non-faded gameplay frame.
     bool wants_thumbnail() const override {
-        return view_state_ == ViewState::COMMAND && room_fade_.alpha255() == 0;
+        return view_state_ == ViewState::COMMAND && room_fade_.alpha255() == 0 &&
+               !tuning_overlay_active();
     }
 
     // --- genre Lua API targets (invoked by the bound script globals) ---
@@ -107,6 +114,10 @@ public:
     [[nodiscard]] std::string api_avatar_move_to(const std::string& id, geom::Point target);
     void api_avatar_face(const std::string& id, const std::string& direction);
     void api_avatar_look_at(const std::string& id, geom::Point target);
+    void api_avatar_set_visible(const std::string& id, bool visible);
+    void api_avatar_set_shadow_opacity(const std::string& id,
+                                       float opacity,
+                                       float transition_seconds);
     [[nodiscard]] std::optional<geom::Point> api_avatar_position(const std::string& id) const;
     void api_avatar_play(const std::string& id, const std::string& sequence);
     /// Start a one-shot sequence and return the event the Lua wrapper waits on
@@ -135,6 +146,8 @@ public:
     void api_object_set_position(const std::string& id, geom::Point p);
     [[nodiscard]] std::optional<geom::Point> api_object_position(const std::string& id) const;
     void api_object_set_scale(const std::string& id, float scale);
+    void api_object_set_rotation(const std::string& id, float degrees);
+    [[nodiscard]] std::optional<float> api_object_rotation(const std::string& id) const;
     void api_object_play(const std::string& id, const std::string& sequence);
     /// Play a one-shot sequence on an animated object and return the event the Lua
     /// wrapper waits on (empty when the object isn't animated / lacks the sequence,
@@ -142,9 +155,19 @@ public:
     [[nodiscard]] std::string api_object_play_until_end(const std::string& id,
                                                         const std::string& sequence);
     [[nodiscard]] bool object_exists(const std::string& id) const;
-    /// Load AnimatedSprites for objects whose `sprite` is an animation (*.yml /
-    /// *.yaml) and seat their initial `sequence`. Called at room load (needs
-    /// resources); static-texture objects are left to the renderer (#142).
+
+    // Scripted dynamic-light control — the `light(id)` Lua handle. Overrides
+    // are room-scoped and reset to the authored values on the next room load.
+    void api_light_set_enabled(const std::string& id, bool enabled);
+    [[nodiscard]] std::optional<bool> api_light_enabled(const std::string& id) const;
+    void api_light_set_intensity(const std::string& id,
+                                 float intensity,
+                                 float transition_seconds);
+    [[nodiscard]] std::optional<float> api_light_intensity(const std::string& id) const;
+    void api_light_occluder_set_enabled(const std::string& id, bool enabled);
+    [[nodiscard]] std::optional<bool> api_light_occluder_enabled(const std::string& id) const;
+    /// Load AnimatedSprite/CompositeSprite visuals for YAML-backed objects and
+    /// seat their initial sequence. Static textures stay in RoomRenderer.
     void build_object_sprites();
 
     // Scripted NPC presence (#140). `spawn_npc` creates a room NPC from a cast
@@ -185,6 +208,7 @@ public:
     bool restore(const pac::core::GameState& state);
 
 private:
+    [[nodiscard]] bool tuning_overlay_active() const;
     void load_room(const std::string& id, const std::string& entry_point);
     void unload_room();
     void seat_player(const std::string& entry_point, bool allow_entry_walk);
@@ -253,6 +277,7 @@ private:
     };
     [[nodiscard]] std::vector<MenuButton> menu_buttons() const;
     void handle_menu_event(const sf::Event& event);
+    void skip_active_cutscene();
     void draw_menu(sf::RenderTarget& target) const;
     void draw_ambient(sf::RenderTarget& target) const; // float_text labels (world space)
     void trigger_menu(const MenuButton& button);
@@ -354,6 +379,14 @@ private:
     // spoke (e.g. called talk()) and skip the "nothing happens" fallback caption.
     bool spoke_during_command_ = false;
     RoomRenderer renderer_;
+    // Room-level lighting/post-processing composites only the scenery into this
+    // target, runs the built-in lighting prefix, then the authored shader stack.
+    // The targets are pooled; rooms using neither keep the direct-render path.
+    mutable std::unique_ptr<sf::RenderTexture> post_process_target_;
+    mutable gfx::ShaderChain post_process_chain_;
+    mutable std::unique_ptr<RoomLightingRenderer> lighting_renderer_;
+    std::unique_ptr<RoomTuningOverlay> tuning_overlay_;
+    mutable std::size_t post_process_rt_bytes_ = 0;
     DebugOverlay debug_overlay_;
     // Dev overlay layer toggles (#37). Seeded from ctx_.dev in enter(); flipped by
     // F1-F4. Only rendered / responsive to keys when ctx_.dev.edit_mode is set.
@@ -370,6 +403,9 @@ private:
     // yielded (M9 #183). While set, the view is BLOCKED and update() polls
     // is_task_alive; when the task drains, finish_execution + restore COMMAND.
     std::optional<pac::core::TaskId> awaiting_handler_task_;
+    // Present only for an explicitly skippable cutscene. ESC cancels that one
+    // task, invokes this synchronous finalizer, and restores command mode.
+    std::function<void()> cutscene_skip_;
 
     struct PendingPlayerEntry {
         geom::Point target;

@@ -210,7 +210,7 @@ Acceptance:
 - Lua API MVP includes flow/coroutines, speech/dialog, room/camera, avatar handle
   subset, state, scenery, inventory, audio, input blocking, and resource
   validation.
-- `CompositeSprite`, packed archives, voice-over playback, runtime
+- Composite avatar appearances, packed archives, voice-over playback, runtime
   multi-language selector, thumbnails, and full grid A* are deferred unless
   needed after the playable MVP.
 

@@ -6,6 +6,7 @@
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
 #include "engine/core/load_error.hpp"
+#include "engine/core/render_stats.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
 #include "engine/core/save_service.hpp"
@@ -23,10 +24,14 @@
 #include "engine/pnc/pause_overlay.hpp"
 #include "engine/pnc/room.hpp"
 #include "pnc/dialog_internal.hpp"
+#include "pnc/room_lighting.hpp"
+#include "pnc/room_tuning_overlay.hpp"
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
+#include <SFML/Graphics/RenderTexture.hpp>
+#include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Text.hpp>
 #include <SFML/Graphics/Texture.hpp>
 #include <SFML/Graphics/View.hpp>
@@ -34,6 +39,7 @@
 #include <sol/sol.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <optional>
 #include <utility>
@@ -68,6 +74,20 @@ std::string config_seen_key(const std::string& room, const std::string& config) 
     return "__config." + room + "." + config + ".seen";
 }
 
+sf::FloatRect tuning_panel_region(const ScummPanel& panel, sf::Vector2u runtime_size) {
+    const ScummPanelLayout& layout = panel.config().layout;
+    const float sx = layout.design_size.x > 0.0f
+                         ? static_cast<float>(runtime_size.x) / layout.design_size.x
+                         : 1.0f;
+    const float sy = layout.design_size.y > 0.0f
+                         ? static_cast<float>(runtime_size.y) / layout.design_size.y
+                         : 1.0f;
+    return {layout.panel_rect.left * sx,
+            layout.panel_rect.top * sy,
+            layout.panel_rect.width * sx,
+            layout.panel_rect.height * sy};
+}
+
 std::optional<pac::core::StateValue> to_state_value(const sol::object& v) {
     if (v.is<bool>()) {
         return pac::core::StateValue{v.as<bool>()};
@@ -97,11 +117,13 @@ struct RoomScene::Lua {
     // the room they were registered for. Fired once (via the same spawn_call seam
     // as #183/#184) when that room is the live, ticking scene again — the bridge
     // a close-up uses to hand a blocking beat back to its frozen room. Held as a
-    // sol::function (registry-anchored, so the close-up scope teardown can't
-    // invalidate it); transient — it fires within a frame of the close-up closing,
-    // so there is no save window and it stays out of GameState. Kept in the pimpl
-    // so sol2 never reaches room_scene.hpp.
-    std::map<std::string, sol::function> pending_resume;
+    // main_protected_function: the value may arrive from a short-lived coroutine.
+    // A plain sol::function remembers that coroutine's lua_State; after its task
+    // drains and GC collects the thread, merely destroying the reference can call
+    // luaL_unref through a dangling state. Rebinding to Lua's main state keeps the
+    // registry anchor valid through close-up/task teardown. Transient — it fires
+    // within a frame of the close-up closing, so it stays out of GameState.
+    std::map<std::string, sol::main_protected_function> pending_resume;
 
     VerbResult call_inventory(const std::string& item,
                               const std::string& verb,
@@ -161,31 +183,29 @@ struct RoomScene::Lua {
     /// scenario without mutating production game logic.
     std::optional<std::string> call_on_start() {
         std::optional<std::string> room_override;
-        const auto call = [this, &room_override](
-                              const sol::table& table,
-                              bool valid,
-                              const std::string& label) {
-            if (!valid) {
-                return;
-            }
-            sol::optional<sol::protected_function> fn = table["on_start"];
-            if (!fn) {
-                return;
-            }
-            const sol::protected_function_result r = (*fn)();
-            if (!r.valid()) {
-                const sol::error e = r;
-                log->error(label + " on_start error: " + e.what());
-                return;
-            }
-            if (r.return_count() == 0) {
-                return;
-            }
-            const sol::object value(r[0]);
-            if (value.is<std::string>() && !value.as<std::string>().empty()) {
-                room_override = value.as<std::string>();
-            }
-        };
+        const auto call =
+            [this, &room_override](const sol::table& table, bool valid, const std::string& label) {
+                if (!valid) {
+                    return;
+                }
+                sol::optional<sol::protected_function> fn = table["on_start"];
+                if (!fn) {
+                    return;
+                }
+                const sol::protected_function_result r = (*fn)();
+                if (!r.valid()) {
+                    const sol::error e = r;
+                    log->error(label + " on_start error: " + e.what());
+                    return;
+                }
+                if (r.return_count() == 0) {
+                    return;
+                }
+                const sol::object value(r[0]);
+                if (value.is<std::string>() && !value.as<std::string>().empty()) {
+                    room_override = value.as<std::string>();
+                }
+            };
 
         call(game_table, game_valid, "game");
         call(development_table, development_valid, "development logic");
@@ -216,7 +236,15 @@ RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams
     }
 }
 
-RoomScene::~RoomScene() = default;
+RoomScene::~RoomScene() {
+    if (post_process_rt_bytes_ != 0) {
+        pac::core::add_shader_rt_bytes(-static_cast<std::ptrdiff_t>(post_process_rt_bytes_));
+    }
+}
+
+bool RoomScene::tuning_overlay_active() const {
+    return tuning_overlay_ && tuning_overlay_->active();
+}
 
 float RoomScene::scenery_height() const {
     // Set from the panel config in enter(); the fraction is the pre-panel fallback
@@ -416,12 +444,16 @@ function remark(speaker, text)
 end
 function move(id, target) return avatar(id):move_to(target) end
 function face(id, dir) return avatar(id):face(dir) end
-function cutscene(body)
+function cutscene(body, on_skip)
   return function(...)
     local args = { ... }
     local tid = spawn(function() body(table.unpack(args)) end)
-    _cutscene_arm(tid)
+    _cutscene_arm(tid, on_skip)
   end
+end
+function skippable_cutscene(body, on_skip)
+  assert(type(on_skip) == "function", "skippable_cutscene needs an on_skip finalizer")
+  return cutscene(body, on_skip)
 end
 )LUA",
                               "=room_lua_prelude");
@@ -577,6 +609,18 @@ end
     L.set_function("_avatar_play", [this](const std::string& id, const std::string& seq) {
         api_avatar_play(id, seq);
     });
+    L.set_function("_avatar_set_visible", [this](const std::string& id, bool visible) {
+        api_avatar_set_visible(id, visible);
+    });
+    L.set_function("_avatar_set_shadow_opacity",
+                   [this](const std::string& id,
+                          double opacity,
+                          sol::optional<double> transition_seconds) {
+                       api_avatar_set_shadow_opacity(
+                           id,
+                           static_cast<float>(opacity),
+                           static_cast<float>(transition_seconds.value_or(0.0)));
+                   });
     L.set_function("_avatar_play_until_end", [this](const std::string& id, const std::string& seq) {
         return api_avatar_play_until_end(id, seq);
     });
@@ -605,6 +649,13 @@ do
   function M:look_at(target) _avatar_look_at(self.id, target); return self end
   function M:face(direction) _avatar_face(self.id, direction); return self end
   function M:position() return _avatar_position(self.id) end
+  function M:set_visible(visible) _avatar_set_visible(self.id, visible); return self end
+  function M:show() return self:set_visible(true) end
+  function M:hide() return self:set_visible(false) end
+  function M:set_shadow_opacity(opacity, transition_seconds)
+    _avatar_set_shadow_opacity(self.id, opacity, transition_seconds)
+    return self
+  end
   function M:play(sequence) _avatar_play(self.id, sequence); return self end
   function M:play_until_end(sequence)
     local ev = _avatar_play_until_end(self.id, sequence)
@@ -663,6 +714,14 @@ end
     L.set_function("_object_set_scale", [this](const std::string& id, double s) {
         api_object_set_scale(id, static_cast<float>(s));
     });
+    L.set_function("_object_set_rotation", [this](const std::string& id, double degrees) {
+        api_object_set_rotation(id, static_cast<float>(degrees));
+    });
+    L.set_function("_object_rotation", [this](const std::string& id) -> sol::object {
+        sol::state& s = ctx_.scripting.lua();
+        const auto rotation = api_object_rotation(id);
+        return rotation ? sol::make_object(s, *rotation) : sol::make_object(s, sol::lua_nil);
+    });
     L.set_function("_object_play", [this](const std::string& id, const std::string& seq) {
         api_object_play(id, seq);
     });
@@ -681,6 +740,8 @@ do
   function O:set_position(x, y) _object_set_position(self.id, x, y); return self end
   function O:position() return _object_position(self.id) end
   function O:set_scale(s) _object_set_scale(self.id, s); return self end
+  function O:set_rotation(degrees) _object_set_rotation(self.id, degrees); return self end
+  function O:rotation() return _object_rotation(self.id) end
   function O:play(sequence) _object_play(self.id, sequence); return self end
   function O:play_until_end(sequence)
     local ev = _object_play_until_end(self.id, sequence)
@@ -691,6 +752,71 @@ do
 end
 )LUA",
                               "=object_handle");
+
+    // Dynamic room-light control. The authored type, colour, radius/cone,
+    // attachment, and modulation remain declarative; scripts control the two
+    // properties most useful for story beats and switches.
+    L.set_function("_light_set_enabled", [this](const std::string& id, bool enabled) {
+        api_light_set_enabled(id, enabled);
+    });
+    L.set_function("_light_enabled", [this](const std::string& id) -> sol::object {
+        sol::state& s = ctx_.scripting.lua();
+        const auto enabled = api_light_enabled(id);
+        return enabled ? sol::make_object(s, *enabled) : sol::make_object(s, sol::lua_nil);
+    });
+    L.set_function(
+        "_light_set_intensity",
+        [this](const std::string& id,
+               double intensity,
+               sol::optional<double> transition_seconds) {
+            api_light_set_intensity(id,
+                                    static_cast<float>(intensity),
+                                    static_cast<float>(transition_seconds.value_or(0.0)));
+        });
+    L.set_function("_light_intensity", [this](const std::string& id) -> sol::object {
+        sol::state& s = ctx_.scripting.lua();
+        const auto intensity = api_light_intensity(id);
+        return intensity ? sol::make_object(s, *intensity) : sol::make_object(s, sol::lua_nil);
+    });
+    ctx_.scripting.run_string(R"LUA(
+do
+  local L = {}
+  L.__index = L
+  function L:set_enabled(enabled) _light_set_enabled(self.id, enabled); return self end
+  function L:enable() return self:set_enabled(true) end
+  function L:disable() return self:set_enabled(false) end
+  function L:enabled() return _light_enabled(self.id) end
+  function L:set_intensity(intensity, transition_seconds)
+    _light_set_intensity(self.id, intensity, transition_seconds)
+    return self
+  end
+  function L:intensity() return _light_intensity(self.id) end
+  function light(id) return setmetatable({ id = id }, L) end
+end
+)LUA",
+                              "=light_handle");
+
+    L.set_function("_light_occluder_set_enabled",
+                   [this](const std::string& id, bool enabled) {
+                       api_light_occluder_set_enabled(id, enabled);
+                   });
+    L.set_function("_light_occluder_enabled", [this](const std::string& id) -> sol::object {
+        sol::state& s = ctx_.scripting.lua();
+        const auto enabled = api_light_occluder_enabled(id);
+        return enabled ? sol::make_object(s, *enabled) : sol::make_object(s, sol::lua_nil);
+    });
+    ctx_.scripting.run_string(R"LUA(
+do
+  local O = {}
+  O.__index = O
+  function O:set_enabled(enabled) _light_occluder_set_enabled(self.id, enabled); return self end
+  function O:enable() return self:set_enabled(true) end
+  function O:disable() return self:set_enabled(false) end
+  function O:enabled() return _light_occluder_enabled(self.id) end
+  function light_occluder(id) return setmetatable({ id = id }, O) end
+end
+)LUA",
+                              "=light_occluder_handle");
 
     // Room-view-state controls (issue #32). `block_input` gates clicks during
     // cutscene-like sections; `unblock_input` restores normal play.
@@ -714,11 +840,31 @@ end
     // unload_room) — update() restores COMMAND from C++. The restoration MUST
     // be C++-side because scope cancellation does not run Lua cleanup (per
     // design 05 §Coroutine rules), so a Lua `finally` is not an option.
-    L.set_function("_cutscene_arm", [this](pac::core::TaskId tid) {
+    L.set_function("_cutscene_arm",
+                   [this](pac::core::TaskId tid, sol::optional<sol::function> on_skip) {
         if (view_state_ == ViewState::COMMAND) {
             view_state_ = ViewState::BLOCKED;
         }
         awaiting_handler_task_ = tid;
+        cutscene_skip_ = {};
+        if (on_skip) {
+            // `_cutscene_arm` normally runs inside the wrapper's short-lived
+            // coroutine. Anchor the finalizer against the main Lua state before
+            // that coroutine drains; otherwise the later std::function cleanup
+            // dereferences a collected lua_State (SEGV in luaL_unref/lua_rawgeti).
+            sol::main_protected_function finalizer(
+                ctx_.scripting.lua().lua_state(), *on_skip);
+            cutscene_skip_ = [this, finalizer = std::move(finalizer)]() mutable {
+                const pac::core::ScopeId previous = ctx_.scripting.current_scope();
+                ctx_.scripting.set_current_scope(room_scope_);
+                const sol::protected_function_result result = finalizer();
+                ctx_.scripting.set_current_scope(previous);
+                if (!result.valid()) {
+                    const sol::error error = result;
+                    ctx_.log.error(std::string("cutscene skip finalizer: ") + error.what());
+                }
+            };
+        }
     });
     // M9 #186 on_room_resume(fn): defer a room beat until this room is the live,
     // ticking scene again. The intended caller is a close-up's on_exit — it runs
@@ -727,8 +873,8 @@ end
     // the room. The room beneath is still alive (just covered), so `this` and
     // `current_room_id_` are valid; we record `fn` against that room and fire it
     // from update() once the room ticks again (see the fire block there). The fn
-    // is anchored as a sol::function, so the close-up scope teardown — which
-    // cancels running tasks but not Lua values — leaves it intact.
+    // is rebound to the main Lua state, so the close-up scope teardown — which
+    // can collect the coroutine that supplied it — leaves the reference intact.
     L.set_function("on_room_resume", [this](sol::function fn) {
         if (!fn.valid()) {
             ctx_.log.error("on_room_resume: expected a function");
@@ -738,7 +884,8 @@ end
             ctx_.log.warn("on_room_resume: overwriting a pending beat for room '" +
                           current_room_id_ + "'");
         }
-        lua_->pending_resume[current_room_id_] = std::move(fn);
+        lua_->pending_resume[current_room_id_] = sol::main_protected_function(
+            ctx_.scripting.lua().lua_state(), fn);
     });
     L.set_function("set_room_view_state", [this](std::string name) {
         if (name == "command") {
@@ -815,6 +962,9 @@ void RoomScene::leave() {
 }
 
 void RoomScene::load_room(const std::string& id, const std::string& entry_point) {
+    if (tuning_overlay_) {
+        tuning_overlay_->close();
+    }
     const std::string room_logical = rooms_dir_ + "/" + id + ".yaml";
     const std::string lua_logical = rooms_dir_ + "/" + id + ".lua";
     room_dir_ = pac::core::logical_dir(room_logical);
@@ -835,6 +985,11 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     current_zone_.clear();
     command_controller_.reset();
     warn_unsupported_shader_features(room_->data(), ctx_.log);
+
+    // Apply the room's declarative ambience before on_load. AmbiencePlayer lives
+    // outside RoomRuntime, so an identical base continues at its current offset;
+    // on_load may then make story-dependent adjustments through the Lua API.
+    ctx_.audio.ambience.configure(room_->data().ambience.value_or(pac::core::AmbienceDefinition{}));
 
     room_scope_ = ctx_.scripting.open_scope();
     ctx_.scripting.set_current_scope(room_scope_);
@@ -888,8 +1043,7 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
                            "' has no usable avatar; the player will not appear (see error above)");
         }
     }
-    const bool allow_entry_walk =
-        entry_point.empty() && !pending_restore_player_.has_value();
+    const bool allow_entry_walk = entry_point.empty() && !pending_restore_player_.has_value();
     seat_player(entry_point, allow_entry_walk);
     if (player_ && camera_) {
         // Frame the authored destination, not the off-screen source. Otherwise
@@ -1051,12 +1205,11 @@ void RoomScene::seat_player(const std::string& entry_point, bool allow_entry_wal
         player_->set_position(*start);
         player_->face(orientation);
         pending_player_entry_.reset();
-        if (allow_entry_walk && player_placement &&
-            !player_placement->enter_from.empty()) {
+        if (allow_entry_walk && player_placement && !player_placement->enter_from.empty()) {
             const geom::Point* from = data.point(player_placement->enter_from);
             if (!from) {
-                ctx_.log.error("RoomScene: player entry point '" +
-                               player_placement->enter_from + "' does not exist");
+                ctx_.log.error("RoomScene: player entry point '" + player_placement->enter_from +
+                               "' does not exist");
             } else {
                 player_->set_position(*from);
                 player_->follow_path(
@@ -1071,6 +1224,9 @@ void RoomScene::seat_player(const std::string& entry_point, bool allow_entry_wal
 }
 
 void RoomScene::unload_room() {
+    if (tuning_overlay_) {
+        tuning_overlay_->close();
+    }
     if (room_) {
         room_->call_hook("on_unload");
         // Snapshot live runtime state so per-room flags persist across the
@@ -1125,6 +1281,7 @@ void RoomScene::unload_room() {
     // see a stale task id and call finish_execution on the freshly-reset
     // builder).
     awaiting_handler_task_.reset();
+    cutscene_skip_ = {};
     // A deferred on_room_resume beat (M9 #186) is scoped to the room it was
     // registered against; a room change drops it (it does not survive into the
     // next room — close-ups, its only caller, never change rooms).
@@ -1218,7 +1375,54 @@ geom::Point RoomScene::virtual_to_world(sf::Vector2f vp) const {
     return {tl.x + vp.x, tl.y + vp.y};
 }
 
+void RoomScene::skip_active_cutscene() {
+    if (!awaiting_handler_task_ || !cutscene_skip_) {
+        return;
+    }
+    const pac::core::TaskId task = *awaiting_handler_task_;
+    std::function<void()> finalizer = std::move(cutscene_skip_);
+    cutscene_skip_ = {};
+    awaiting_handler_task_.reset();
+
+    // Cancel first: the coroutine must not resume after the finalizer places the
+    // room in its canonical post-cutscene state. The finalizer is synchronous by
+    // contract (no waits/talk/move_to).
+    ctx_.scripting.cancel_task(task);
+    speech_.skip();
+    finalizer();
+
+    if (view_state_ == ViewState::BLOCKED) {
+        view_state_ = ViewState::COMMAND;
+    }
+    command_controller_.finish_execution();
+    if (camera_) {
+        camera_->follow_player();
+    }
+    sync_command_hover();
+}
+
 void RoomScene::handle_event(const sf::Event& event) {
+    // F9 opens a dev-only render tuning panel over the SCUMM controls. It is a
+    // separate input layer rather than ViewState::BLOCKED: the room keeps
+    // rendering and updating while every player-facing input is consumed here.
+    if (ctx_.dev.edit_mode && event.type == sf::Event::KeyPressed &&
+        event.key.code == sf::Keyboard::F9) {
+        if (tuning_overlay_active()) {
+            tuning_overlay_->close();
+        } else if (view_state_ == ViewState::COMMAND && room_ && panel_) {
+            if (!tuning_overlay_) {
+                tuning_overlay_ = std::make_unique<RoomTuningOverlay>();
+            }
+            tuning_overlay_->open(room_->data(),
+                                  tuning_panel_region(*panel_, ctx_.display.virtual_resolution()),
+                                  font_);
+        }
+        return;
+    }
+    if (tuning_overlay_active()) {
+        tuning_overlay_->handle_event(event);
+        return;
+    }
     // Track the pointer (virtual coords) so the top bar can preview the element
     // under the cursor each frame (issue #28). Coordinates are already mapped to
     // virtual space by the application's event rewrite.
@@ -1267,6 +1471,8 @@ void RoomScene::handle_event(const sf::Event& event) {
             view_state_ = ViewState::MENU;
         } else if (view_state_ == ViewState::MENU) {
             view_state_ = ViewState::COMMAND;
+        } else if (view_state_ == ViewState::BLOCKED && cutscene_skip_) {
+            skip_active_cutscene();
         }
         return;
     }
@@ -1625,7 +1831,7 @@ std::optional<sf::FloatRect> RoomScene::object_frame_bounds(const std::string& o
         return std::nullopt;
     }
     // Animated object: its current frame bounds (transform already synced) (#142).
-    if (const gfx::AnimatedSprite* spr = room_->object_sprite(object_id)) {
+    if (const gfx::VisualSprite* spr = room_->object_sprite(object_id)) {
         return spr->global_bounds();
     }
     try {
@@ -1820,6 +2026,9 @@ void RoomScene::update(float dt) {
         }
         return;
     }
+    if (room_) {
+        room_->update_lights(dt);
+    }
     if (player_ && room_) {
         player_->update(dt, room_->data());
         room_->update_npcs(dt);
@@ -1970,6 +2179,7 @@ void RoomScene::update(float dt) {
     // us (room change while running).
     if (awaiting_handler_task_ && !ctx_.scripting.is_task_alive(*awaiting_handler_task_)) {
         awaiting_handler_task_.reset();
+        cutscene_skip_ = {};
         if (view_state_ == ViewState::BLOCKED) {
             view_state_ = ViewState::COMMAND;
         }
@@ -2151,15 +2361,204 @@ void RoomScene::draw(sf::RenderTarget& target) const {
         sf::View scenery(camera_->view_rect());
         scenery.setViewport(ctx_.display.viewport_for(
             sf::FloatRect(0.0f, 0.0f, static_cast<float>(vres.x), scenery_height())));
+
+        const RoomPostProcess* post =
+            tuning_overlay_active()
+                ? tuning_overlay_->effective_post_process(room_->data())
+                : (room_->data().post_process ? &*room_->data().post_process : nullptr);
+        const bool post_active =
+            post && post->enabled &&
+            std::any_of(post->shaders.begin(), post->shaders.end(), [](const auto& fx) {
+                return fx.enabled && fx.controller.empty();
+            });
+        const RoomLighting* lighting =
+            tuning_overlay_active()
+                ? tuning_overlay_->effective_lighting(room_->data())
+                : (room_->data().dynamic_lighting ? &*room_->data().dynamic_lighting : nullptr);
+        std::vector<ResolvedRoomLight> resolved_lights;
+        if (lighting) {
+            resolved_lights.reserve(lighting->lights.size());
+            for (const RoomLight& light : lighting->lights) {
+                geom::Point position = light.at;
+                const Avatar* attached_avatar = nullptr;
+                bool resolved_attachment = true;
+                if (light.attach == "player") {
+                    attached_avatar = player_ ? &*player_ : nullptr;
+                    resolved_attachment = attached_avatar != nullptr;
+                } else if (light.attach.starts_with("avatar:")) {
+                    attached_avatar = resolve_avatar(light.attach.substr(7));
+                    resolved_attachment = attached_avatar != nullptr;
+                } else if (light.attach.starts_with("object:")) {
+                    const std::string id = light.attach.substr(7);
+                    resolved_attachment =
+                        room_->data().objects.count(id) > 0 && room_->object_visible(id);
+                    if (resolved_attachment) {
+                        position = room_->object_position(id);
+                    }
+                }
+                if (!resolved_attachment) {
+                    continue;
+                }
+                if (attached_avatar) {
+                    position = attached_avatar->position();
+                }
+                position = position + light.offset;
+
+                float direction = light.direction;
+                if (light.follow_facing && attached_avatar) {
+                    const std::string facing = attached_avatar->facing();
+                    if (facing == "down") {
+                        direction += 90.0f;
+                    } else if (facing == "left") {
+                        direction += 180.0f;
+                    } else if (facing == "up") {
+                        direction += 270.0f;
+                    }
+                }
+                const bool tuning_values =
+                    tuning_overlay_active() && tuning_overlay_->using_working_values();
+                resolved_lights.push_back(
+                    {&light,
+                     position,
+                     direction,
+                     tuning_values ? light.enabled : room_->light_enabled(light.id),
+                     tuning_values ? light.intensity : room_->light_intensity(light.id)});
+            }
+        }
+        std::vector<const LightOccluder*> resolved_occluders;
+        if (lighting) {
+            resolved_occluders.reserve(lighting->occluders.size());
+            for (const LightOccluder& occluder : lighting->occluders) {
+                if (room_->light_occluder_enabled(occluder.id)) {
+                    resolved_occluders.push_back(&occluder);
+                }
+            }
+        }
+
+        std::optional<ProjectedShadow> resolved_projected_shadow;
+        if (room_->data().projected_shadow &&
+            !room_->data().projected_shadow->source.empty()) {
+            const ProjectedShadow& authored = *room_->data().projected_shadow;
+            const auto source = std::find_if(
+                resolved_lights.begin(),
+                resolved_lights.end(),
+                [&authored](const ResolvedRoomLight& light) {
+                    return light.light && light.light->id == authored.source;
+                });
+            if (source != resolved_lights.end() && source->enabled && source->intensity > 0.0f) {
+                resolved_projected_shadow = authored;
+                resolved_projected_shadow->light = source->position;
+                const float effective = source->intensity *
+                                        evaluate_light_modulation(source->light->modulation,
+                                                                  shader_time_);
+                resolved_projected_shadow->opacity *= std::clamp(effective, 0.0f, 1.0f);
+            }
+        }
+        const ProjectedShadow* projected_shadow_override =
+            resolved_projected_shadow ? &*resolved_projected_shadow : nullptr;
+        const bool scenery_effects_active = post_active || lighting;
+        bool scenery_composited = false;
+
+        if (scenery_effects_active) {
+            const sf::Vector2u post_size{vres.x,
+                                         static_cast<unsigned>(std::ceil(scenery_height()))};
+            if (!post_process_target_ || post_process_target_->getSize() != post_size) {
+                auto next = std::make_unique<sf::RenderTexture>();
+                if (next->create(post_size.x, post_size.y)) {
+                    next->setSmooth(ctx_.resources.smooth_textures());
+                    post_process_target_ = std::move(next);
+                    const std::size_t next_bytes =
+                        static_cast<std::size_t>(post_size.x) * post_size.y * 4;
+                    pac::core::add_shader_rt_bytes(
+                        static_cast<std::ptrdiff_t>(next_bytes) -
+                        static_cast<std::ptrdiff_t>(post_process_rt_bytes_));
+                    post_process_rt_bytes_ = next_bytes;
+                } else {
+                    post_process_target_.reset();
+                    if (post_process_rt_bytes_ != 0) {
+                        pac::core::add_shader_rt_bytes(
+                            -static_cast<std::ptrdiff_t>(post_process_rt_bytes_));
+                        post_process_rt_bytes_ = 0;
+                    }
+                    ctx_.log.error("room '" + room_->data().id +
+                                   "': could not create the scenery post-process target");
+                }
+            }
+
+            if (post_process_target_) {
+                // Render the camera's world rectangle into a viewport-sized
+                // texture. The room renderer includes every scenery drawable;
+                // overlays are deliberately drawn later on the main target.
+                post_process_target_->setView(sf::View(camera_->view_rect()));
+                post_process_target_->clear(sf::Color::Transparent);
+                renderer_.draw(*post_process_target_,
+                               *room_,
+                               room_dir_,
+                               ctx_.resources,
+                               player_ ? &*player_ : nullptr,
+                               room_->npcs(),
+                               ctx_.log,
+                               ShaderEnv{shader_time_},
+                               projected_shadow_override);
+                post_process_target_->display();
+
+                const sf::IntRect full(0,
+                                       0,
+                                       static_cast<int>(post_size.x),
+                                       static_cast<int>(post_size.y));
+                gfx::RuntimeShaderPass lighting_pass;
+                const gfx::RuntimeShaderPass* lighting_prefix = nullptr;
+                if (lighting) {
+                    if (!lighting_renderer_) {
+                        lighting_renderer_ = std::make_unique<RoomLightingRenderer>();
+                    }
+                    if (lighting_renderer_->make_pass(*lighting,
+                                                      resolved_lights,
+                                                      resolved_occluders,
+                                                      camera_->view_rect(),
+                                                      shader_time_,
+                                                      room_dir_,
+                                                      ctx_.resources,
+                                                      ctx_.log,
+                                                      lighting_pass)) {
+                        lighting_prefix = &lighting_pass;
+                    }
+                }
+
+                static const std::vector<gfx::ShaderEffect> kNoPostEffects;
+                const std::vector<gfx::ShaderEffect>& post_effects =
+                    post_active ? post->shaders : kNoPostEffects;
+                const sf::Texture* processed =
+                    post_process_chain_.apply(ctx_.resources,
+                                              post_process_target_->getTexture(),
+                                              full,
+                                              post_effects,
+                                              shader_time_,
+                                              lighting_prefix);
+                const sf::Texture& output =
+                    processed ? *processed : post_process_target_->getTexture();
+                target.setView(ctx_.display.view());
+                target.draw(sf::Sprite(output, full));
+                scenery_composited = true;
+            }
+        }
+
+        if (!scenery_composited) {
+            target.setView(scenery);
+            renderer_.draw(target,
+                           *room_,
+                           room_dir_,
+                           ctx_.resources,
+                           player_ ? &*player_ : nullptr,
+                           room_->npcs(),
+                           ctx_.log,
+                           ShaderEnv{shader_time_},
+                           projected_shadow_override);
+        }
+
+        // World-space overlays are intentionally outside the post-process so
+        // authoring guides and text retain their exact UI colours.
         target.setView(scenery);
-        renderer_.draw(target,
-                       *room_,
-                       room_dir_,
-                       ctx_.resources,
-                       player_ ? &*player_ : nullptr,
-                       room_->npcs(),
-                       ctx_.log,
-                       ShaderEnv{shader_time_});
         if (ctx_.dev.edit_mode) {
             debug_overlay_.draw_world(target,
                                       debug_flags_,
@@ -2169,14 +2568,16 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                                       font_);
         }
         speech_.draw(target, speech_font_); // world coordinates, over the scenery
-        draw_ambient(target);        // float_text labels, world coordinates
+        draw_ambient(target);               // float_text labels, world coordinates
     }
 
     target.setView(ctx_.display.view());
     // The SCUMM panel is hidden in BLOCKED (cutscene-like) state — design 04 §Room
     // view states: a blocked room shows a black/hidden panel. The window clears to
     // black, so not drawing it leaves a clean black bar under the scenery.
-    if (panel_ && view_state_ != ViewState::BLOCKED) {
+    if (tuning_overlay_active()) {
+        tuning_overlay_->draw(target);
+    } else if (panel_ && view_state_ != ViewState::BLOCKED) {
         if (view_state_ == ViewState::DIALOG) {
             // Options show only while awaiting a choice; while a line is being
             // spoken the option list is empty, so we draw nothing and leave a
@@ -2219,7 +2620,13 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                          inventory_,
                          command_controller_.state(),
                          hover_vp_,
-                         evidence);
+                         evidence,
+                         [this](const std::string& item_id) {
+                             const auto value =
+                                 ctx_.state.get("inventory.notification." + item_id);
+                             return value && std::holds_alternative<bool>(*value) &&
+                                    std::get<bool>(*value);
+                         });
         }
     }
     if (view_state_ == ViewState::MENU) {
@@ -2511,6 +2918,25 @@ std::optional<geom::Point> RoomScene::api_avatar_anchor(const std::string& id,
     return a->anchor(name);
 }
 
+void RoomScene::api_avatar_set_visible(const std::string& id, bool visible) {
+    if (Avatar* avatar = resolve_avatar(id)) {
+        avatar->set_visible(visible);
+    } else {
+        ctx_.log.error("avatar('" + id + "'):set_visible — no such avatar in the room");
+    }
+}
+
+void RoomScene::api_avatar_set_shadow_opacity(const std::string& id,
+                                              float opacity,
+                                              float transition_seconds) {
+    if (Avatar* avatar = resolve_avatar(id)) {
+        avatar->set_shadow_opacity(opacity, transition_seconds);
+    } else {
+        ctx_.log.error("avatar('" + id +
+                       "'):set_shadow_opacity — no such avatar in the room");
+    }
+}
+
 bool RoomScene::object_exists(const std::string& id) const {
     return room_ && room_->data().objects.count(id) > 0;
 }
@@ -2549,6 +2975,74 @@ void RoomScene::api_object_set_scale(const std::string& id, float scale) {
     if (scale > 0.0f) {
         room_->set_object_scale(id, scale);
     }
+}
+
+void RoomScene::api_object_set_rotation(const std::string& id, float degrees) {
+    if (!object_exists(id)) {
+        ctx_.log.error("object('" + id + "'):set_rotation — no such object in the room");
+        return;
+    }
+    room_->set_object_rotation(id, degrees);
+}
+
+std::optional<float> RoomScene::api_object_rotation(const std::string& id) const {
+    if (!object_exists(id)) {
+        return std::nullopt;
+    }
+    return room_->object_rotation(id);
+}
+
+void RoomScene::api_light_set_enabled(const std::string& id, bool enabled) {
+    if (!room_ || !room_->has_light(id)) {
+        ctx_.log.error("light('" + id + "'):set_enabled — no such light in the room");
+        return;
+    }
+    room_->set_light_enabled(id, enabled);
+}
+
+std::optional<bool> RoomScene::api_light_enabled(const std::string& id) const {
+    if (!room_ || !room_->has_light(id)) {
+        return std::nullopt;
+    }
+    return room_->light_enabled(id);
+}
+
+void RoomScene::api_light_set_intensity(const std::string& id,
+                                        float intensity,
+                                        float transition_seconds) {
+    if (!room_ || !room_->has_light(id)) {
+        ctx_.log.error("light('" + id + "'):set_intensity — no such light in the room");
+        return;
+    }
+    if (!std::isfinite(intensity) || !std::isfinite(transition_seconds)) {
+        ctx_.log.error(
+            "light('" + id + "'):set_intensity — intensity and transition must be finite");
+        return;
+    }
+    room_->set_light_intensity(id, intensity, transition_seconds);
+}
+
+std::optional<float> RoomScene::api_light_intensity(const std::string& id) const {
+    if (!room_ || !room_->has_light(id)) {
+        return std::nullopt;
+    }
+    return room_->light_intensity(id);
+}
+
+void RoomScene::api_light_occluder_set_enabled(const std::string& id, bool enabled) {
+    if (!room_ || !room_->has_light_occluder(id)) {
+        ctx_.log.error("light_occluder('" + id +
+                       "'):set_enabled — no such light occluder in the room");
+        return;
+    }
+    room_->set_light_occluder_enabled(id, enabled);
+}
+
+std::optional<bool> RoomScene::api_light_occluder_enabled(const std::string& id) const {
+    if (!room_ || !room_->has_light_occluder(id)) {
+        return std::nullopt;
+    }
+    return room_->light_occluder_enabled(id);
 }
 
 void RoomScene::api_object_play(const std::string& id, const std::string& sequence) {
@@ -2591,9 +3085,12 @@ void RoomScene::build_object_sprites() {
             continue;
         }
         try {
-            gfx::AnimatedSprite sprite =
-                gfx::load_animated_sprite(ctx_.resources,
-                                          pac::core::logical_join(room_dir_, object.sprite));
+            gfx::VisualSprite sprite =
+                gfx::load_visual_sprite(ctx_.resources,
+                                        pac::core::logical_join(room_dir_, object.sprite));
+            if (!object.shaders.empty()) {
+                sprite.set_shaders(object.shaders);
+            }
             room_->set_object_sprite(id, std::move(sprite));
         } catch (const std::exception& e) {
             ctx_.log.error("object '" + id + "': could not load animation '" + object.sprite +
@@ -2781,6 +3278,18 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
         ctx_.log.error("start_dialog('" + dialog_id + "'): cannot start while the menu is open");
         return;
     }
+
+    // Optional game-level subscriber for presentation that must react to every
+    // successfully started dialog without coupling story scripts to it.
+    sol::protected_function hook = ctx_.scripting.lua()["__on_dialog_started"];
+    if (hook.valid()) {
+        sol::protected_function_result result = hook(dialog_id);
+        if (!result.valid()) {
+            const sol::error error = result;
+            ctx_.log.error(std::string("__on_dialog_started: ") + error.what());
+        }
+    }
+
     prepare_dialog_participants(speaker_id);
     dialog_text_anchor_.reset();
     DialogHost host;
@@ -3168,6 +3677,7 @@ bool RoomScene::restore(const pac::core::GameState& state) {
     // deferred on_room_resume beat (M9 #186) is transient too — restored saves
     // never carry one (it fires within a frame of registration) — so clear it.
     awaiting_handler_task_.reset();
+    cutscene_skip_ = {};
     if (lua_) {
         lua_->pending_resume.clear();
     }

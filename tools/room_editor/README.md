@@ -5,9 +5,15 @@ A minimal Python-based room YAML editor for the xadv2-engine room format.
 ## Features
 
 - Load and save room YAML files.
-- Edit background layers and geometry sections only.
+- Edit background layers, geometry, objects, and dynamic lights.
 - Preserve other room fields intact.
 - Visual web-based editor for room geometry and points (runs in the browser).
+- Create and edit omni and spot lights in **lights** mode. Drag a light's centre
+  to move it, its diamond handle to change range, and a spotlight's blue/pink
+  handles to set direction and cone angle. The inspector also supports static
+  positions and `player`, `avatar:<id>`, or `object:<id>` attachments.
+- Preserve lighting fields that are not directly visualised—including ambient
+  light, modulation, normal maps, occluders, and projected shadows—when saving.
 - Preview PC/NPC cast sprites using the first frame of their default sequence.
   Avatar previews can be moved and scaled, are depth-sorted with furniture, and
   show copyable pivot position/scale values. They are editor-only and are not

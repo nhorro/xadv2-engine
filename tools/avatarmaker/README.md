@@ -36,6 +36,12 @@ Then open the printed local URL in a browser. The editor lets you inspect each
 frame and add named anchors such as `walking_pivot`, `neck_pivot`, or
 `left_hand_pivot`.
 
+Enable **Ghost pivots** to overlay the selected anchor from other frames as
+translucent gray reference markers. The frame filter controls which frames count
+as related: for example, filter by `wf` before enabling the overlay to compare
+only the forward-walking cycle. Frames that share the same anchor coordinates
+are grouped into a single ghost marker.
+
 Clicking on the frame stores anchor coordinates relative to the top-left corner
 of that sprite rect:
 

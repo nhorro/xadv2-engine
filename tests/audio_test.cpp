@@ -17,6 +17,15 @@ TEST_CASE("music crossfade uses a clamped equal-power envelope") {
     CHECK(middle.outgoing * middle.outgoing + middle.incoming * middle.incoming ==
           doctest::Approx(1.0f));
 
-    CHECK(music_crossfade_gains(2.0f).outgoing == doctest::Approx(0.0f).epsilon(0.00001));
-    CHECK(music_crossfade_gains(2.0f).incoming == doctest::Approx(1.0f));
+    const auto finished = music_crossfade_gains(2.0f);
+    CHECK(finished.outgoing == 0.0f);
+    CHECK(finished.incoming == doctest::Approx(1.0f));
+    CHECK(finished.outgoing >= 0.0f);
+    CHECK(finished.incoming <= 1.0f);
+
+    const auto invalid = music_crossfade_gains(std::nanf(""));
+    CHECK(std::isfinite(invalid.outgoing));
+    CHECK(std::isfinite(invalid.incoming));
+    CHECK(invalid.outgoing >= 0.0f);
+    CHECK(invalid.incoming >= 0.0f);
 }
