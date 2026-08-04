@@ -579,7 +579,7 @@ point/object/obstacle reference, or an NPC entry without `at`. Configs compose w
 ad-hoc `spawn_npc`/`despawn_npc` inside beats — a temporary actor added after the
 reconcile lives until the next config change reconciles back to the declared set.
 
-**Shaders** (on a layer, region, object, or [appearance](#cast--castyaml)) — see [03 § Shaders](03-2d-game-concepts.md) for the model. A **shader ref** is either a string (shorthand for `{source: <string>}`) or a mapping:
+**Shaders** (on a layer, region, object, or [appearance](#cast-castyaml)) — see [03 § Shaders](03-2d-game-concepts.md) for the model. A **shader ref** is either a string (shorthand for `{source: <string>}`) or a mapping:
 
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|

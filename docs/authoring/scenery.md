@@ -43,6 +43,10 @@ background:
 
 ## Dynamic lighting
 
+For a beginner-first walkthrough—from a basic playable room through the complete
+rendering pipeline, room-editor primitives, shadows, and final grading—see
+[From a playable room to a lit room](room-lighting-tutorial.md).
+
 Keep source artwork bright or neutral, then establish the room's baseline
 darkness with `ambient` and place radial `omni` or directional `spot` lights:
 
@@ -127,7 +131,7 @@ scene, so keep moving-character corridors close to flat unless their lighting
 should inherit the receiver surface.
 
 The engine renders the first eight visible lights that overlap the camera. See
-[Data formats](data-formats.md#room--roomsidyaml) for all cone, colour, and
+[Data formats](../development/design/06-data-formats.md#room-roomsidyaml) for all cone, colour, and
 modulation fields.
 
 ---

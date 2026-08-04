@@ -31,7 +31,11 @@ Lua API, the data formats, and the asset tools.
 4. **Follow the [Scenery authoring guide](scenery.md)** — recipes for building room
    contents: layers, regions, objects (static & animated), NPCs, hotspots,
    obstacles, walk-behinds, and perspective.
-5. **Use the [tools](tools/index.md)** to prepare backgrounds, spritesheets, and
+5. **Take a room from playable to cinematic with the
+   [lighting, shadows, and grading tutorial](room-lighting-tutorial.md)** — it
+   explains the rendering pipeline, editor primitives, YAML parameters, live F9
+   tuning, and practical recipes.
+6. **Use the [tools](tools/index.md)** to prepare backgrounds, spritesheets, and
    rooms.
 
 ## Concepts you need
