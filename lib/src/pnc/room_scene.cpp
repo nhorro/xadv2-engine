@@ -25,6 +25,7 @@
 #include "engine/pnc/room.hpp"
 #include "pnc/dialog_internal.hpp"
 #include "pnc/room_lighting.hpp"
+#include "pnc/room_tuning_overlay.hpp"
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
@@ -71,6 +72,20 @@ std::string config_cur_key(const std::string& room) {
 }
 std::string config_seen_key(const std::string& room, const std::string& config) {
     return "__config." + room + "." + config + ".seen";
+}
+
+sf::FloatRect tuning_panel_region(const ScummPanel& panel, sf::Vector2u runtime_size) {
+    const ScummPanelLayout& layout = panel.config().layout;
+    const float sx = layout.design_size.x > 0.0f
+                         ? static_cast<float>(runtime_size.x) / layout.design_size.x
+                         : 1.0f;
+    const float sy = layout.design_size.y > 0.0f
+                         ? static_cast<float>(runtime_size.y) / layout.design_size.y
+                         : 1.0f;
+    return {layout.panel_rect.left * sx,
+            layout.panel_rect.top * sy,
+            layout.panel_rect.width * sx,
+            layout.panel_rect.height * sy};
 }
 
 std::optional<pac::core::StateValue> to_state_value(const sol::object& v) {
@@ -225,6 +240,10 @@ RoomScene::~RoomScene() {
     if (post_process_rt_bytes_ != 0) {
         pac::core::add_shader_rt_bytes(-static_cast<std::ptrdiff_t>(post_process_rt_bytes_));
     }
+}
+
+bool RoomScene::tuning_overlay_active() const {
+    return tuning_overlay_ && tuning_overlay_->active();
 }
 
 float RoomScene::scenery_height() const {
@@ -943,6 +962,9 @@ void RoomScene::leave() {
 }
 
 void RoomScene::load_room(const std::string& id, const std::string& entry_point) {
+    if (tuning_overlay_) {
+        tuning_overlay_->close();
+    }
     const std::string room_logical = rooms_dir_ + "/" + id + ".yaml";
     const std::string lua_logical = rooms_dir_ + "/" + id + ".lua";
     room_dir_ = pac::core::logical_dir(room_logical);
@@ -1202,6 +1224,9 @@ void RoomScene::seat_player(const std::string& entry_point, bool allow_entry_wal
 }
 
 void RoomScene::unload_room() {
+    if (tuning_overlay_) {
+        tuning_overlay_->close();
+    }
     if (room_) {
         room_->call_hook("on_unload");
         // Snapshot live runtime state so per-room flags persist across the
@@ -1377,6 +1402,27 @@ void RoomScene::skip_active_cutscene() {
 }
 
 void RoomScene::handle_event(const sf::Event& event) {
+    // F9 opens a dev-only render tuning panel over the SCUMM controls. It is a
+    // separate input layer rather than ViewState::BLOCKED: the room keeps
+    // rendering and updating while every player-facing input is consumed here.
+    if (ctx_.dev.edit_mode && event.type == sf::Event::KeyPressed &&
+        event.key.code == sf::Keyboard::F9) {
+        if (tuning_overlay_active()) {
+            tuning_overlay_->close();
+        } else if (view_state_ == ViewState::COMMAND && room_ && panel_) {
+            if (!tuning_overlay_) {
+                tuning_overlay_ = std::make_unique<RoomTuningOverlay>();
+            }
+            tuning_overlay_->open(room_->data(),
+                                  tuning_panel_region(*panel_, ctx_.display.virtual_resolution()),
+                                  font_);
+        }
+        return;
+    }
+    if (tuning_overlay_active()) {
+        tuning_overlay_->handle_event(event);
+        return;
+    }
     // Track the pointer (virtual coords) so the top bar can preview the element
     // under the cursor each frame (issue #28). Coordinates are already mapped to
     // virtual space by the application's event rewrite.
@@ -2317,14 +2363,18 @@ void RoomScene::draw(sf::RenderTarget& target) const {
             sf::FloatRect(0.0f, 0.0f, static_cast<float>(vres.x), scenery_height())));
 
         const RoomPostProcess* post =
-            room_->data().post_process ? &*room_->data().post_process : nullptr;
+            tuning_overlay_active()
+                ? tuning_overlay_->effective_post_process(room_->data())
+                : (room_->data().post_process ? &*room_->data().post_process : nullptr);
         const bool post_active =
             post && post->enabled &&
             std::any_of(post->shaders.begin(), post->shaders.end(), [](const auto& fx) {
                 return fx.enabled && fx.controller.empty();
             });
         const RoomLighting* lighting =
-            room_->data().dynamic_lighting ? &*room_->data().dynamic_lighting : nullptr;
+            tuning_overlay_active()
+                ? tuning_overlay_->effective_lighting(room_->data())
+                : (room_->data().dynamic_lighting ? &*room_->data().dynamic_lighting : nullptr);
         std::vector<ResolvedRoomLight> resolved_lights;
         if (lighting) {
             resolved_lights.reserve(lighting->lights.size());
@@ -2365,11 +2415,14 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                         direction += 270.0f;
                     }
                 }
-                resolved_lights.push_back({&light,
-                                           position,
-                                           direction,
-                                           room_->light_enabled(light.id),
-                                           room_->light_intensity(light.id)});
+                const bool tuning_values =
+                    tuning_overlay_active() && tuning_overlay_->using_working_values();
+                resolved_lights.push_back(
+                    {&light,
+                     position,
+                     direction,
+                     tuning_values ? light.enabled : room_->light_enabled(light.id),
+                     tuning_values ? light.intensity : room_->light_intensity(light.id)});
             }
         }
         std::vector<const LightOccluder*> resolved_occluders;
@@ -2522,7 +2575,9 @@ void RoomScene::draw(sf::RenderTarget& target) const {
     // The SCUMM panel is hidden in BLOCKED (cutscene-like) state — design 04 §Room
     // view states: a blocked room shows a black/hidden panel. The window clears to
     // black, so not drawing it leaves a clean black bar under the scenery.
-    if (panel_ && view_state_ != ViewState::BLOCKED) {
+    if (tuning_overlay_active()) {
+        tuning_overlay_->draw(target);
+    } else if (panel_ && view_state_ != ViewState::BLOCKED) {
         if (view_state_ == ViewState::DIALOG) {
             // Options show only while awaiting a choice; while a line is being
             // spoken the option list is empty, so we draw nothing and leave a

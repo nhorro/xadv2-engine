@@ -44,6 +44,7 @@ add_executable(pac_core_tests
     scripting_test.cpp
     room_test.cpp
     room_lighting_test.cpp
+    room_tuning_overlay_test.cpp
     cast_test.cpp
     closeup_test.cpp
     case_resolution_test.cpp

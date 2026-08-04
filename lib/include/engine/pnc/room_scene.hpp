@@ -40,6 +40,7 @@ class SceneParams;
 namespace pac::pnc {
 
 class RoomLightingRenderer;
+class RoomTuningOverlay;
 
 /// SCUMM-style room gameplay (M4): rooms (YAML + Lua) + cast + inventory, a
 /// scrolling camera over the scenery viewport, the SCUMM panel + command builder
@@ -71,7 +72,8 @@ public:
     /// (the fade is a black quad over everything). Gating on a clear screen keeps
     /// `ctx.thumbnail` on the last non-faded gameplay frame.
     bool wants_thumbnail() const override {
-        return view_state_ == ViewState::COMMAND && room_fade_.alpha255() == 0;
+        return view_state_ == ViewState::COMMAND && room_fade_.alpha255() == 0 &&
+               !tuning_overlay_active();
     }
 
     // --- genre Lua API targets (invoked by the bound script globals) ---
@@ -206,6 +208,7 @@ public:
     bool restore(const pac::core::GameState& state);
 
 private:
+    [[nodiscard]] bool tuning_overlay_active() const;
     void load_room(const std::string& id, const std::string& entry_point);
     void unload_room();
     void seat_player(const std::string& entry_point, bool allow_entry_walk);
@@ -382,6 +385,7 @@ private:
     mutable std::unique_ptr<sf::RenderTexture> post_process_target_;
     mutable gfx::ShaderChain post_process_chain_;
     mutable std::unique_ptr<RoomLightingRenderer> lighting_renderer_;
+    std::unique_ptr<RoomTuningOverlay> tuning_overlay_;
     mutable std::size_t post_process_rt_bytes_ = 0;
     DebugOverlay debug_overlay_;
     // Dev overlay layer toggles (#37). Seeded from ctx_.dev in enter(); flipped by

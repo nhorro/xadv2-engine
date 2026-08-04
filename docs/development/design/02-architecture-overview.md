@@ -812,6 +812,7 @@ dialog or the pause menu):
 | `F6` | Jump to the next room (cyclic) found in the rooms directory. |
 | `F7` | Add the first defined inventory item the player isn't holding. |
 | `F8` | Remove the most recently added held inventory item. |
+| `F9` | Toggle the live lighting/post-process tuning overlay. It captures input, replaces the SCUMM panel, and can copy adjusted YAML to the clipboard. |
 
 The reload follows the script-task-ownership rules: cancelling the room scope ends
 its coroutines without running Lua cleanup, so authored teardown belongs in

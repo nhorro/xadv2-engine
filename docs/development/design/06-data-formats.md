@@ -34,7 +34,7 @@ Worked example: [02 — Architecture overview](02-architecture-overview.md).
 | `speech` | opt | `{font?, font_size?}` | scene font, `24` | Shared typography for character `talk` / `remark` lines in rooms and close-ups. `font` is a logical resource path; when omitted, the active scene's UI font is used as a compatibility fallback. `font_size` is a positive integer in virtual pixels. |
 | `settings` | opt | map | — | Default player-facing settings (e.g. `audio.music_volume`, `audio.sfx_volume`). User settings override these. |
 | `cursor` | opt | `{image, interact?, hotspot?}` | OS cursor | Custom point-and-click cursor. `image` is the resting cursor; `interact` (opt) shows over an interactive hotspot; `hotspot` (opt `{x, y}`, default `0,0`) is the active click pixel within both images. Omitted ⇒ the OS cursor is used. |
-| `development` | opt | map | — | Dev-only flags: `edit_mode` (master gate for the debug overlays), `show_walkboxes`, `show_hotspots`, `show_anchors`, `show_state` (seed the overlay layers), `allow_room_reload`, `profiling` (resource-profiling mode, #112), `profiling_interval` (seconds between samples, default `2.0`). Not persisted as player settings. |
+| `development` | opt | map | — | Dev-only flags: `edit_mode` (master gate for the F1–F9 overlays, actions, and live render tuner), `show_walkboxes`, `show_hotspots`, `show_anchors`, `show_state` (seed the overlay layers), `allow_room_reload`, `profiling` (resource-profiling mode, #112), `profiling_interval` (seconds between samples, default `2.0`). Not persisted as player settings. |
 | `entry` | req | scene id | — | Initial scene. |
 | `scenes` | req | `[scene]` | — | Scene list and outcome wiring. |
 

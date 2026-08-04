@@ -80,6 +80,28 @@ may also attach to `avatar:<id>` or `object:<id>`; a missing or hidden attachmen
 temporarily suppresses the light. Room `post_process` grading runs afterward, so
 use it for the final palette/mood rather than repeating a grade on every layer.
 
+### Tune lighting and grading in game
+
+When the manifest enables `development.edit_mode`, press **F9** from the normal
+room command view to replace the SCUMM panel with a live tuning overlay. While
+it is open, all mouse and keyboard input is captured by the overlay; the room,
+animated lights, and post-processing continue to render.
+
+- **Ambient** edits the room's RGB ambient colour and intensity.
+- **Lights** selects each authored light and exposes core colour/intensity,
+  radius/cone geometry, and modulation controls.
+- **Grading** selects any post-process pass, parameter, and vector component.
+  Common grading names receive useful ranges; other numeric shader parameters
+  receive a range derived from their current value.
+- **View: Live/YAML** compares the working values with the loaded room data.
+- **Reset** restores the working copy without reloading the room.
+- **Copy YAML** (or `Ctrl+C`) copies complete `lighting:` and `post_process:`
+  sections, including preserved normal maps, occluders, and projected shadows.
+
+Press **F9** or **Escape** to close the overlay. Its changes are intentionally
+temporary until the copied YAML is pasted into the room file; scripts and saved
+game state are not modified.
+
 Scripts may switch an authored light or change its peak intensity at runtime:
 
 ```lua
