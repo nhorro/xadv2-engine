@@ -46,6 +46,27 @@ const hotspotIdInput = document.getElementById('hotspot-id');
 const hotspotRenameButton = document.getElementById('hotspot-rename');
 const hotspotNameInput = document.getElementById('hotspot-name');
 const hotspotAffordances = document.getElementById('hotspot-affordances');
+const lightsPanel = document.getElementById('lights-panel');
+const lightIdInput = document.getElementById('light-id');
+const lightTypeInput = document.getElementById('light-type');
+const lightPositionModeInput = document.getElementById('light-position-mode');
+const lightStaticPosition = document.getElementById('light-static-position');
+const lightAttachedPosition = document.getElementById('light-attached-position');
+const lightXInput = document.getElementById('light-x');
+const lightYInput = document.getElementById('light-y');
+const lightAttachInput = document.getElementById('light-attach');
+const lightOffsetXInput = document.getElementById('light-offset-x');
+const lightOffsetYInput = document.getElementById('light-offset-y');
+const lightRadiusInput = document.getElementById('light-radius');
+const lightHeightInput = document.getElementById('light-height');
+const lightDirectionInput = document.getElementById('light-direction');
+const lightAngleInput = document.getElementById('light-angle');
+const lightSoftnessInput = document.getElementById('light-softness');
+const lightSpotControls = document.getElementById('light-spot-controls');
+const lightColorInput = document.getElementById('light-color');
+const lightIntensityInput = document.getElementById('light-intensity');
+const lightEnabledInput = document.getElementById('light-enabled');
+const lightPositionHint = document.getElementById('light-position-hint');
 const avatarsPanel = document.getElementById('avatars-panel');
 const avatarCharacterSelect = document.getElementById('avatar-character');
 const avatarsList = document.getElementById('avatars-list');
@@ -65,12 +86,15 @@ let pointerMoveFrame = null;
 // affordanceVerbs), so a custom/unknown verb is never hidden or dropped.
 const KNOWN_VERBS = ['look_at', 'talk_to', 'pick_up', 'use', 'give', 'open', 'close', 'push', 'pull'];
 
-const modeOptions = ['walkable', 'obstacles', 'zones', 'regions', 'hotspots', 'points', 'layers', 'objects', 'avatars', 'preview'];
+const modeOptions = ['walkable', 'obstacles', 'zones', 'regions', 'hotspots', 'points', 'lights', 'layers', 'objects', 'avatars', 'preview'];
+const requestedMode = new URLSearchParams(window.location.search).get('mode');
+if (modeOptions.includes(requestedMode)) state.mode = requestedMode;
 const entityPrefix = {
   zones: 'zone',
   regions: 'region',
   hotspots: 'hotspot',
   points: 'point',
+  lights: 'light',
 };
 
 function setStatus(message, isError = false) {
@@ -177,6 +201,12 @@ function getEntities() {
   if (state.mode === 'zones') return (state.room.zones || []).map((zone) => ({ id: zone.id, label: zone.id }));
   if (state.mode === 'regions') return Object.keys(state.room.regions || {}).map((id) => ({ id, label: id }));
   if (state.mode === 'hotspots') return Object.keys(state.room.hotspots || {}).map((id) => ({ id, label: id }));
+  if (state.mode === 'lights') {
+    return lightsList().map((light) => ({
+      id: light.id,
+      label: `${light.id} · ${light.type || 'omni'}`,
+    }));
+  }
   if (state.mode === 'objects') return Object.keys(state.room.objects || {}).map((id) => ({ id, label: id }));
   if (state.mode === 'avatars') {
     return state.avatarPreviews.map((preview) => ({
@@ -913,15 +943,393 @@ async function copyAvatarValues() {
   }
 }
 
+function lightingMap() {
+  if (!state.room) return {};
+  if (!state.room.lighting || typeof state.room.lighting !== 'object') {
+    state.room.lighting = {};
+  }
+  return state.room.lighting;
+}
+
+function lightsList() {
+  const lighting = state.room?.lighting;
+  return Array.isArray(lighting?.lights) ? lighting.lights : [];
+}
+
+function selectedLight() {
+  if (state.mode !== 'lights' || !state.selectedEntity) return null;
+  return lightsList().find((light) => light.id === state.selectedEntity) || null;
+}
+
+function lightRadius(light) {
+  const value = Number(light?.radius ?? light?.range);
+  return Number.isFinite(value) && value > 0 ? value : 240;
+}
+
+function setLightRadius(light, radius) {
+  const value = Math.max(1, Math.round(radius * 1000) / 1000);
+  // Preserve the author's alias where possible (`range` reads naturally for a
+  // spotlight); never leave both keys behind.
+  if (Object.prototype.hasOwnProperty.call(light, 'range') &&
+      !Object.prototype.hasOwnProperty.call(light, 'radius')) {
+    light.range = value;
+  } else {
+    light.radius = value;
+    delete light.range;
+  }
+}
+
+function lightDirection(light) {
+  const value = Number(light?.direction);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function lightAttachmentPlacement(light) {
+  const attach = typeof light?.attach === 'string' ? light.attach : '';
+  const placements = Array.isArray(state.room?.avatars) ? state.room.avatars : [];
+  if (attach === 'player') return placements.find((avatar) => avatar.player) || null;
+  if (attach.startsWith('avatar:')) {
+    const id = attach.slice('avatar:'.length);
+    return placements.find((avatar) => avatar.id === id) || null;
+  }
+  return null;
+}
+
+function lightFacingDirection(light) {
+  if (!light?.follow_facing) return 0;
+  const facing = lightAttachmentPlacement(light)?.orientation || 'down';
+  return { right: 0, down: 90, left: 180, up: 270 }[facing] ?? 0;
+}
+
+function lightPreviewDirection(light) {
+  return normalizedDegrees(lightDirection(light) + lightFacingDirection(light));
+}
+
+function normalizedDegrees(value) {
+  let degrees = value % 360;
+  if (degrees < -180) degrees += 360;
+  if (degrees >= 180) degrees -= 360;
+  return Math.round(degrees * 1000) / 1000;
+}
+
+function lightColor(light) {
+  const color = Array.isArray(light?.color) && light.color.length >= 3
+    ? light.color
+    : [1, 1, 1];
+  return color.slice(0, 3).map((value) => Math.max(0, Math.min(1, Number(value) || 0)));
+}
+
+function lightColorCss(light, alpha = 1) {
+  const [r, g, b] = lightColor(light).map((value) => Math.round(value * 255));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function lightColorHex(light) {
+  return `#${lightColor(light)
+    .map((value) => Math.round(value * 255).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+function hexLightColor(hex) {
+  const value = /^#[0-9a-f]{6}$/i.test(hex) ? hex.slice(1) : 'ffffff';
+  return [0, 2, 4].map((offset) =>
+    Math.round((parseInt(value.slice(offset, offset + 2), 16) / 255) * 1000) / 1000
+  );
+}
+
+function pointFromPlacement(placement) {
+  if (!placement) return null;
+  if (placement.start && typeof placement.start === 'object') return placement.start;
+  if (typeof placement.start === 'string') return state.room?.points?.[placement.start] || null;
+  return null;
+}
+
+function lightAttachmentBase(light) {
+  const attach = typeof light?.attach === 'string' ? light.attach : '';
+  if (!attach) return null;
+  if (attach.startsWith('object:')) {
+    const object = state.room?.objects?.[attach.slice('object:'.length)];
+    return object?.position || null;
+  }
+  const placement = lightAttachmentPlacement(light);
+  if (placement) return pointFromPlacement(placement);
+  return null;
+}
+
+function lightWorldPosition(light) {
+  if (!light) return null;
+  if (light.at && Number.isFinite(Number(light.at.x)) && Number.isFinite(Number(light.at.y))) {
+    return { x: Number(light.at.x), y: Number(light.at.y) };
+  }
+  const base = lightAttachmentBase(light);
+  if (!base) return null;
+  return {
+    x: Number(base.x) + (Number(light.offset?.x) || 0),
+    y: Number(base.y) + (Number(light.offset?.y) || 0),
+  };
+}
+
+function setLightWorldPosition(light, position) {
+  if (!light) return false;
+  const rounded = { x: Math.round(position.x), y: Math.round(position.y) };
+  if (light.attach) {
+    const base = lightAttachmentBase(light);
+    if (!base) return false;
+    const offset = {
+      x: Math.round(rounded.x - Number(base.x)),
+      y: Math.round(rounded.y - Number(base.y)),
+    };
+    if (offset.x === 0 && offset.y === 0) delete light.offset;
+    else light.offset = offset;
+  } else {
+    light.at = rounded;
+  }
+  return true;
+}
+
+function lightHandles(light) {
+  const origin = lightWorldPosition(light);
+  if (!origin) return null;
+  const radius = lightRadius(light);
+  const direction = lightPreviewDirection(light) * Math.PI / 180;
+  if (light.type !== 'spot') {
+    return {
+      origin,
+      range: { x: origin.x + radius, y: origin.y },
+    };
+  }
+  const angle = Math.max(1, Math.min(179, Number(light.angle) || 45));
+  const handleRadius = radius * 0.78;
+  const pointAt = (distance, radians) => ({
+    x: origin.x + Math.cos(radians) * distance,
+    y: origin.y + Math.sin(radians) * distance,
+  });
+  return {
+    origin,
+    range: pointAt(radius, direction),
+    direction: pointAt(Math.min(radius * 0.52, 90), direction),
+    angleA: pointAt(handleRadius, direction - angle * Math.PI / 360),
+    angleB: pointAt(handleRadius, direction + angle * Math.PI / 360),
+  };
+}
+
+function updateLightPositionFields() {
+  const attached = lightPositionModeInput.value === 'attached';
+  lightStaticPosition.style.display = attached ? 'none' : '';
+  lightAttachedPosition.style.display = attached ? '' : 'none';
+}
+
+function changeLightPositionMode() {
+  const light = selectedLight();
+  if (!light) {
+    updateLightPositionFields();
+    return;
+  }
+  const position = lightWorldPosition(light);
+  if (lightPositionModeInput.value === 'static') {
+    if (position) {
+      lightXInput.value = Math.round(position.x);
+      lightYInput.value = Math.round(position.y);
+    }
+  } else {
+    const attach = lightAttachInput.value.trim() || 'player';
+    lightAttachInput.value = attach;
+    const base = lightAttachmentBase({ attach });
+    if (position && base) {
+      lightOffsetXInput.value = Math.round(position.x - Number(base.x));
+      lightOffsetYInput.value = Math.round(position.y - Number(base.y));
+    }
+  }
+  updateLightPositionFields();
+}
+
+function updateLightPanel() {
+  lightsPanel.style.display = state.mode === 'lights' ? '' : 'none';
+  if (state.mode !== 'lights') return;
+  const light = selectedLight();
+  const disabled = !light;
+  lightsPanel.querySelectorAll('#light-info input, #light-info select, #light-info button')
+    .forEach((element) => { element.disabled = disabled; });
+  if (!light) {
+    lightIdInput.value = '';
+    lightPositionHint.textContent = 'No light selected.';
+    return;
+  }
+
+  lightIdInput.value = light.id || '';
+  lightTypeInput.value = light.type === 'spot' ? 'spot' : 'omni';
+  lightPositionModeInput.value = light.attach ? 'attached' : 'static';
+  lightXInput.value = light.at?.x ?? '';
+  lightYInput.value = light.at?.y ?? '';
+  lightAttachInput.value = light.attach || 'player';
+  lightOffsetXInput.value = light.offset?.x ?? 0;
+  lightOffsetYInput.value = light.offset?.y ?? 0;
+  lightRadiusInput.value = lightRadius(light);
+  lightHeightInput.value = Number.isFinite(Number(light.height)) ? light.height : '';
+  lightDirectionInput.value = lightDirection(light);
+  lightAngleInput.value = Number(light.angle) || 45;
+  lightSoftnessInput.value = Number.isFinite(Number(light.softness)) ? light.softness : 8;
+  lightColorInput.value = lightColorHex(light);
+  lightIntensityInput.value = Number.isFinite(Number(light.intensity)) ? light.intensity : 1;
+  lightEnabledInput.checked = light.enabled !== false;
+  lightSpotControls.style.display = lightTypeInput.value === 'spot' ? '' : 'none';
+  updateLightPositionFields();
+
+  const position = lightWorldPosition(light);
+  if (light.attach) {
+    lightPositionHint.textContent = position
+      ? `Previewing ${light.attach} at initial room placement (${Math.round(position.x)}, ${Math.round(position.y)})${light.follow_facing ? '; direction is relative to its initial facing' : ''}.`
+      : `Attachment ${light.attach} cannot be resolved in this room; edit its offset numerically.`;
+  } else {
+    lightPositionHint.textContent = 'Static room-space light.';
+  }
+}
+
+function applyLightFields() {
+  const light = selectedLight();
+  if (!light) return;
+  const oldId = light.id;
+  const id = lightIdInput.value.trim();
+  if (!id || /\s/.test(id)) {
+    setStatus('Light id must be non-empty and contain no spaces.', true);
+    return;
+  }
+  if (lightsList().some((candidate) => candidate !== light && candidate.id === id)) {
+    setStatus(`A light '${id}' already exists.`, true);
+    return;
+  }
+
+  const radius = Number(lightRadiusInput.value);
+  const height = lightHeightInput.value === '' ? null : Number(lightHeightInput.value);
+  const intensity = Number(lightIntensityInput.value);
+  if (!Number.isFinite(radius) || radius <= 0 ||
+      (height !== null && (!Number.isFinite(height) || height <= 0)) ||
+      !Number.isFinite(intensity) || intensity < 0 || intensity > 4) {
+    setStatus('Range/height must be positive and power must be between 0 and 4.', true);
+    return;
+  }
+
+  const type = lightTypeInput.value === 'spot' ? 'spot' : 'omni';
+  let direction = 0;
+  let angle = 45;
+  let softness = 8;
+  if (type === 'spot') {
+    direction = Number(lightDirectionInput.value);
+    angle = Number(lightAngleInput.value);
+    softness = Number(lightSoftnessInput.value);
+    if (!Number.isFinite(direction) || !Number.isFinite(angle) ||
+        !Number.isFinite(softness) || angle <= 0 || angle >= 180 ||
+        softness < 0 || softness >= angle / 2) {
+      setStatus('Spotlights need 0 < angle < 180 and 0 ≤ softness < angle/2.', true);
+      return;
+    }
+  }
+
+  if (lightPositionModeInput.value === 'attached') {
+    const attach = lightAttachInput.value.trim();
+    const ox = Number(lightOffsetXInput.value);
+    const oy = Number(lightOffsetYInput.value);
+    if (!attach || !Number.isFinite(ox) || !Number.isFinite(oy)) {
+      setStatus('Attached lights need a target and finite offsets.', true);
+      return;
+    }
+    light.attach = attach;
+    delete light.at;
+    if (ox === 0 && oy === 0) delete light.offset;
+    else light.offset = { x: Math.round(ox), y: Math.round(oy) };
+    if (light.follow_facing && attach !== 'player' && !attach.startsWith('avatar:')) {
+      delete light.follow_facing;
+    }
+  } else {
+    const x = Number(lightXInput.value);
+    const y = Number(lightYInput.value);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      setStatus('Static lights need finite x and y coordinates.', true);
+      return;
+    }
+    light.at = { x: Math.round(x), y: Math.round(y) };
+    delete light.attach;
+    delete light.offset;
+    delete light.follow_facing;
+  }
+
+  light.id = id;
+  light.type = type;
+  setLightRadius(light, radius);
+  if (height === null) delete light.height;
+  else light.height = Math.round(height * 1000) / 1000;
+  light.color = hexLightColor(lightColorInput.value);
+  light.intensity = Math.round(intensity * 1000) / 1000;
+  if (lightEnabledInput.checked) delete light.enabled;
+  else light.enabled = false;
+  if (type === 'spot') {
+    light.direction = normalizedDegrees(direction);
+    light.angle = Math.round(angle * 1000) / 1000;
+    light.softness = Math.round(softness * 1000) / 1000;
+  } else {
+    delete light.direction;
+    delete light.angle;
+    delete light.softness;
+    delete light.follow_facing;
+  }
+
+  const shadows = state.room.lighting?.projected_shadows;
+  if (shadows?.source === oldId) shadows.source = id;
+  state.selectedEntity = id;
+  updateUI();
+  setStatus(`Updated ${type} light '${id}'.`);
+}
+
+function nextLightId(type) {
+  const base = type === 'spot' ? 'spotlight' : 'omnilight';
+  const ids = new Set(lightsList().map((light) => light.id));
+  let index = 1;
+  while (ids.has(`${base}_${index}`)) index += 1;
+  return `${base}_${index}`;
+}
+
+function addLight(type) {
+  if (!state.room) return;
+  const lighting = lightingMap();
+  if (!Array.isArray(lighting.lights)) lighting.lights = [];
+  const roomSize = computeRoomSize();
+  const id = nextLightId(type);
+  const light = {
+    id,
+    type,
+    at: { x: Math.round(roomSize.width / 2), y: Math.round(roomSize.height / 2) },
+    color: [1, 1, 1],
+    intensity: 1,
+  };
+  if (type === 'spot') {
+    light.range = 320;
+    light.direction = 0;
+    light.angle = 50;
+    light.softness = 10;
+  } else {
+    light.radius = 240;
+  }
+  lighting.lights.push(light);
+  state.mode = 'lights';
+  state.selectedEntity = id;
+  state.selectedVertex = null;
+  updateUI();
+  setStatus(`Added ${type === 'spot' ? 'spotlight' : 'omnilight'} '${id}'.`);
+}
+
 function updateUI() {
   updateModeOptions();
   updateEntityOptions();
   updateLayersList();
   updateObjectsPanel();
   updateAvatarPanel();
+  updateLightPanel();
   updateVertexList();
   updateSnapshotSource();
   updateHotspotProps();
+  const polygonMode = ['walkable', 'obstacles', 'zones', 'regions', 'hotspots'].includes(state.mode);
+  addVertexButton.disabled = !polygonMode;
+  deleteVertexButton.disabled = !polygonMode;
   draw();
 }
 
@@ -1193,6 +1601,17 @@ function computeWorkspaceBounds(roomSize) {
   for (const region of Object.values(state.room?.regions || {})) includePolygon(bounds, region?.area);
   for (const hotspot of Object.values(state.room?.hotspots || {})) includePolygon(bounds, hotspot?.area);
   for (const point of Object.values(state.room?.points || {})) includePoint(bounds, point);
+  for (const light of lightsList()) {
+    const position = lightWorldPosition(light);
+    if (!position) continue;
+    const radius = lightRadius(light);
+    includeRect(bounds, {
+      x: position.x - radius,
+      y: position.y - radius,
+      w: radius * 2,
+      h: radius * 2,
+    });
+  }
   for (const object of Object.values(objectsMap())) includeRect(bounds, objectRect(object));
   for (const preview of state.avatarPreviews) {
     includeRect(bounds, avatarPreviewRect(preview));
@@ -1283,6 +1702,7 @@ function draw() {
   drawPolygons();
   drawTempRegion();
   drawPoints();
+  drawLights();
   drawSelectedHandles();
   drawLayerHandles();
   drawAvatarHandles();
@@ -1468,6 +1888,95 @@ function drawPoints() {
   });
 }
 
+function drawLightHandle(point, shape, fill) {
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  if (shape === 'diamond') {
+    ctx.moveTo(point.x, point.y - 8);
+    ctx.lineTo(point.x + 8, point.y);
+    ctx.lineTo(point.x, point.y + 8);
+    ctx.lineTo(point.x - 8, point.y);
+    ctx.closePath();
+  } else {
+    ctx.arc(point.x, point.y, shape === 'small' ? 6 : 8, 0, Math.PI * 2);
+  }
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawLights() {
+  if (state.mode !== 'lights') return;
+  for (const light of lightsList()) {
+    const handles = lightHandles(light);
+    if (!handles) continue;
+    const selected = light.id === state.selectedEntity;
+    const radius = lightRadius(light);
+    const direction = lightPreviewDirection(light) * Math.PI / 180;
+    const inner = lightColorCss(light, selected ? 0.28 : 0.16);
+    const outer = lightColorCss(light, 0);
+    const gradient = ctx.createRadialGradient(
+      handles.origin.x,
+      handles.origin.y,
+      0,
+      handles.origin.x,
+      handles.origin.y,
+      radius
+    );
+    gradient.addColorStop(0, inner);
+    gradient.addColorStop(1, outer);
+
+    ctx.save();
+    ctx.lineWidth = selected ? 2.5 : 1.5;
+    ctx.strokeStyle = lightColorCss(light, selected ? 0.95 : 0.62);
+    ctx.setLineDash(selected ? [] : [7, 5]);
+    if (light.type === 'spot') {
+      const angle = Math.max(1, Math.min(179, Number(light.angle) || 45)) * Math.PI / 180;
+      ctx.beginPath();
+      ctx.moveTo(handles.origin.x, handles.origin.y);
+      ctx.arc(handles.origin.x,
+              handles.origin.y,
+              radius,
+              direction - angle / 2,
+              direction + angle / 2);
+      ctx.closePath();
+      ctx.save();
+      ctx.clip();
+      ctx.fillStyle = gradient;
+      ctx.fillRect(handles.origin.x - radius,
+                   handles.origin.y - radius,
+                   radius * 2,
+                   radius * 2);
+      ctx.restore();
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(handles.origin.x, handles.origin.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.fillStyle = selected ? '#ffffff' : lightColorCss(light, 0.9);
+    ctx.font = `${selected ? 'bold ' : ''}12px sans-serif`;
+    ctx.fillText(`${light.id} · ${light.type || 'omni'}`,
+                 handles.origin.x + 12,
+                 handles.origin.y - 12);
+    ctx.restore();
+
+    drawLightHandle(handles.origin, 'circle', selected ? '#ffffff' : lightColorCss(light, 0.9));
+    if (selected) {
+      drawLightHandle(handles.range, 'diamond', '#facc15');
+      if (light.type === 'spot') {
+        drawLightHandle(handles.direction, 'small', '#38bdf8');
+        drawLightHandle(handles.angleA, 'small', '#fb7185');
+        drawLightHandle(handles.angleB, 'small', '#fb7185');
+      }
+    }
+  }
+}
+
 function drawSelectedHandles() {
   if (state.mode === 'points' || state.mode === 'avatars' || state.mode === 'preview') return;
   const polygon = getRoomPolygon();
@@ -1562,9 +2071,64 @@ function pointInPolygon(pt, poly) {
   return inside;
 }
 
+function pointInLightPrimitive(point, light) {
+  const origin = lightWorldPosition(light);
+  if (!origin) return false;
+  const dx = point.x - origin.x;
+  const dy = point.y - origin.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance > lightRadius(light)) return false;
+  if (light.type !== 'spot' || distance < 10) return true;
+  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+  const difference = Math.abs(normalizedDegrees(angle - lightPreviewDirection(light)));
+  return difference <= Math.max(1, Math.min(179, Number(light.angle) || 45)) / 2;
+}
+
 function handlePointerDown(evt) {
   if (!state.room) return;
   const pos = getCanvasPosition(evt);
+
+  if (state.mode === 'lights') {
+    const light = selectedLight();
+    const handles = lightHandles(light);
+    if (light && handles) {
+      const handleTargets = light.type === 'spot'
+        ? [
+            ['angle-a', handles.angleA],
+            ['angle-b', handles.angleB],
+            ['direction', handles.direction],
+            ['range', handles.range],
+            ['position', handles.origin],
+          ]
+        : [['range', handles.range], ['position', handles.origin]];
+      for (const [kind, handle] of handleTargets) {
+        if (!handle || !pointNear(handle, pos, 14)) continue;
+        state.dragTarget = { type: `light-${kind}`, id: light.id };
+        setStatus(`Drag to edit light ${kind.replace('-', ' ')}.`);
+        return;
+      }
+    }
+
+    // Origins are small, intentional handles, so prefer them over a large
+    // overlapping light volume when selecting another light.
+    const lights = lightsList().slice().reverse();
+    for (const candidate of lights) {
+      const origin = lightWorldPosition(candidate);
+      if (!origin || !pointNear(origin, pos, 14)) continue;
+      state.selectedEntity = candidate.id;
+      state.dragTarget = { type: 'light-position', id: candidate.id };
+      updateUI();
+      return;
+    }
+    for (const candidate of lights) {
+      if (!pointInLightPrimitive(pos, candidate)) continue;
+      state.selectedEntity = candidate.id;
+      state.selectedVertex = null;
+      updateUI();
+      return;
+    }
+    return;
+  }
 
   if (state.mode === 'avatars') {
     const selected = selectedAvatarPreview();
@@ -1773,6 +2337,33 @@ function handlePointerDown(evt) {
 function handlePointerMove(evt) {
   if (!state.room || !state.dragTarget) return;
   const pos = getCanvasPosition(evt);
+  if (state.dragTarget.type.startsWith('light-')) {
+    const light = lightsList().find((candidate) => candidate.id === state.dragTarget.id);
+    const origin = lightWorldPosition(light);
+    if (!light || !origin) return;
+    if (state.dragTarget.type === 'light-position') {
+      if (!setLightWorldPosition(light, pos)) {
+        setStatus(`Cannot resolve attachment '${light.attach}' for dragging.`, true);
+        return;
+      }
+    } else if (state.dragTarget.type === 'light-range') {
+      setLightRadius(light, Math.max(1, Math.hypot(pos.x - origin.x, pos.y - origin.y)));
+    } else if (state.dragTarget.type === 'light-direction') {
+      const absoluteDirection = Math.atan2(pos.y - origin.y, pos.x - origin.x) * 180 / Math.PI;
+      light.direction = normalizedDegrees(absoluteDirection - lightFacingDirection(light));
+    } else if (state.dragTarget.type === 'light-angle-a' ||
+               state.dragTarget.type === 'light-angle-b') {
+      const pointerDegrees = Math.atan2(pos.y - origin.y, pos.x - origin.x) * 180 / Math.PI;
+      const halfAngle = Math.abs(normalizedDegrees(pointerDegrees - lightPreviewDirection(light)));
+      light.angle = Math.round(Math.max(1, Math.min(179, halfAngle * 2)) * 1000) / 1000;
+      if (Number(light.softness) >= light.angle / 2) {
+        light.softness = Math.max(0, Math.round((light.angle / 2 - 0.1) * 1000) / 1000);
+      }
+    }
+    updateLightPanel();
+    draw();
+    return;
+  }
   if (state.dragTarget.type === 'point') {
     setPoint({ x: Math.round(pos.x), y: Math.round(pos.y) });
     draw();
@@ -1886,6 +2477,14 @@ function flushPointerMove() {
 }
 
 function handlePointerUp() {
+  if (state.dragTarget?.type?.startsWith('light-')) {
+    const action = state.dragTarget.type.slice('light-'.length).replace('-', ' ');
+    state.dragTarget = null;
+    state.dragOffset = null;
+    updateLightPanel();
+    setStatus(`Light ${action} updated.`);
+    return;
+  }
   if (state.dragTarget &&
       (state.dragTarget.type === 'avatar' ||
        state.dragTarget.type === 'avatar-resize')) {
@@ -1940,6 +2539,10 @@ function changeMode(evt) {
   state.selectedEntity = null;
   state.selectedPoint = null;
   state.selectedVertex = null;
+  state.addVertexMode = false;
+  state.deleteVertexMode = false;
+  addVertexButton.textContent = 'Add vertex';
+  deleteVertexButton.textContent = 'Delete vertex';
   updateUI();
 }
 
@@ -1955,6 +2558,9 @@ function addEntity() {
   const mode = state.mode;
   if (mode === 'avatars') {
     addAvatarPreview('NPC');
+    return;
+  } else if (mode === 'lights') {
+    addLight('omni');
     return;
   } else if (mode === 'points') {
     const id = prompt('New point ID:');
@@ -2043,6 +2649,10 @@ function removeEntity() {
   } else if (mode === 'objects') {
     delete (state.room.objects || {})[state.selectedEntity];
     state.selectedEntity = null;
+  } else if (mode === 'lights') {
+    const lighting = lightingMap();
+    lighting.lights = lightsList().filter((light) => light.id !== state.selectedEntity);
+    state.selectedEntity = null;
   } else if (mode === 'avatars') {
     removeSelectedAvatarPreview();
     return;
@@ -2125,6 +2735,11 @@ async function saveRoom() {
       objects: state.room.objects || {},
     },
   };
+  // Do not introduce an empty `lighting:` block when editing an unlit room.
+  // Once present, send the full mapping so advanced fields survive visual edits.
+  if (Object.prototype.hasOwnProperty.call(state.room, 'lighting')) {
+    patch.lighting = state.room.lighting || {};
+  }
   try {
     const res = await fetch('/api/save', {
       method: 'POST',
@@ -2195,6 +2810,13 @@ document.getElementById('avatar-add-npc').addEventListener('click', () => addAva
 document.getElementById('avatar-apply').addEventListener('click', applyAvatarFields);
 document.getElementById('avatar-copy').addEventListener('click', copyAvatarValues);
 document.getElementById('avatar-remove').addEventListener('click', removeSelectedAvatarPreview);
+document.getElementById('light-add-omni').addEventListener('click', () => addLight('omni'));
+document.getElementById('light-add-spot').addEventListener('click', () => addLight('spot'));
+document.getElementById('light-apply').addEventListener('click', applyLightFields);
+lightPositionModeInput.addEventListener('change', changeLightPositionMode);
+lightTypeInput.addEventListener('change', () => {
+  lightSpotControls.style.display = lightTypeInput.value === 'spot' ? '' : 'none';
+});
 snapshotRegionButton.addEventListener('click', snapshotRegion);
 modeSelect.addEventListener('change', changeMode);
 entitySelect.addEventListener('change', changeEntity);

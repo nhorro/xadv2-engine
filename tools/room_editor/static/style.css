@@ -238,6 +238,46 @@ select {
   color: #e2e8f0;
 }
 
+#lights-panel input[type="text"],
+#lights-panel input[type="number"],
+#lights-panel select {
+  min-width: 0;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+#lights-panel .compact-row input[type="number"],
+#lights-panel .compact-row input[type="text"] {
+  width: 5.25rem;
+}
+
+#lights-panel input[type="color"] {
+  width: 3.5rem;
+  height: 2.1rem;
+  padding: 0.15rem;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+}
+
+#lights-panel .compact-row label {
+  width: auto;
+  min-width: 2.5rem;
+}
+
+#lights-panel .light-id-row {
+  display: grid;
+  grid-template-columns: auto minmax(6.5rem, 1fr) auto 7rem;
+}
+
+#lights-panel .light-id-row #light-id,
+#lights-panel .light-id-row #light-type {
+  width: 100%;
+}
+
 #avatar-values {
   margin-top: 0.75rem;
   user-select: text;

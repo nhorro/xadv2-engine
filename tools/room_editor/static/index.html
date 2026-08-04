@@ -10,7 +10,7 @@
   <header>
     <div>
       <h1>Room Editor</h1>
-      <p>Edit room geometry, layers, objects, and avatar placement in the browser.</p>
+      <p>Edit room geometry, layers, objects, dynamic lights, and avatar placement in the browser.</p>
     </div>
     <div class="toolbar">
       <button id="reload-button">Reload</button>
@@ -28,6 +28,75 @@
         <div style="display:flex;gap:.5rem;align-items:center">
           <select id="room-file" style="flex:1"></select>
           <button id="open-room">Open</button>
+        </div>
+      </section>
+
+      <section class="panel" id="lights-panel" style="display:none">
+        <h2>Dynamic lights</h2>
+        <div class="button-row">
+          <button id="light-add-omni">Add omni</button>
+          <button id="light-add-spot">Add spotlight</button>
+        </div>
+        <p class="hint">
+          Drag the centre to move, the diamond to change range, and spotlight
+          arrow/edge handles to edit direction and cone angle.
+        </p>
+        <label for="light-id">Selected light</label>
+        <div id="light-info">
+          <div class="compact-row light-id-row">
+            <label>id</label>
+            <input id="light-id" type="text" />
+            <label>type</label>
+            <select id="light-type">
+              <option value="omni">omni</option>
+              <option value="spot">spot</option>
+            </select>
+          </div>
+          <div class="compact-row">
+            <label>position</label>
+            <select id="light-position-mode">
+              <option value="static">static</option>
+              <option value="attached">attached</option>
+            </select>
+          </div>
+          <div id="light-static-position" class="compact-row">
+            <label>x</label><input id="light-x" type="number" step="1" />
+            <label>y</label><input id="light-y" type="number" step="1" />
+          </div>
+          <div id="light-attached-position">
+            <label for="light-attach">attach (`player`, `avatar:id`, `object:id`)</label>
+            <input id="light-attach" type="text" style="width:100%" />
+            <div class="compact-row">
+              <label>off x</label><input id="light-offset-x" type="number" step="1" />
+              <label>off y</label><input id="light-offset-y" type="number" step="1" />
+            </div>
+          </div>
+          <div class="compact-row">
+            <label>range</label><input id="light-radius" type="number" step="1" min="1" />
+            <label>height</label><input id="light-height" type="number" step="1" min="1" placeholder="auto" />
+          </div>
+          <div id="light-spot-controls">
+            <div class="compact-row">
+              <label>dir°</label><input id="light-direction" type="number" step="1" />
+              <label>angle°</label><input id="light-angle" type="number" step="1" min="1" max="179" />
+            </div>
+            <div class="compact-row">
+              <label>soft°</label><input id="light-softness" type="number" step="1" min="0" />
+            </div>
+          </div>
+          <div class="compact-row">
+            <label>colour</label><input id="light-color" type="color" value="#ffffff" />
+            <label>power</label><input id="light-intensity" type="number" step="0.05" min="0" max="4" />
+          </div>
+          <div class="compact-row">
+            <label><input id="light-enabled" type="checkbox" checked /> enabled</label>
+            <button id="light-apply">Apply</button>
+          </div>
+          <div id="light-position-hint" class="hint"></div>
+          <div class="hint">
+            Modulation and other advanced YAML fields are preserved when these
+            visual properties are edited.
+          </div>
         </div>
       </section>
 

@@ -112,6 +112,18 @@ def apply_room_patch(room: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, A
             raise ValueError("background patch must be a mapping.")
         deep_merge_dict(background, patch["background"])
 
+    if "lighting" in patch:
+        lighting = room.setdefault("lighting", {})
+        if not isinstance(lighting, dict):
+            lighting = {}
+            room["lighting"] = lighting
+        if not isinstance(patch["lighting"], dict):
+            raise ValueError("lighting patch must be a mapping.")
+        # The browser sends the complete live lighting mapping. Deep merge keeps
+        # CLI patches useful too: `{lighting: {lights: [...]}}` replaces only the
+        # light list without dropping ambient, shadows, normals, or occluders.
+        deep_merge_dict(lighting, patch["lighting"])
+
     geometry = patch.get("geometry")
     if geometry is not None:
         if not isinstance(geometry, dict):
@@ -246,10 +258,18 @@ def list_assets(
 
 
 def resolve_asset_within(data_path: Path, room_dir: Path, logical: str) -> Path:
-    """Resolve a room-relative asset while preventing escape from game data."""
+    """Resolve a room- or data-root-relative asset without escaping game data.
+
+    Engine asset paths beginning with ``/`` are rooted at the game's data
+    directory, not at the host filesystem root.
+    """
 
     data_root = data_path.resolve()
-    target = (room_dir / logical).resolve()
+    target = (
+        data_root / logical.lstrip("/")
+        if logical.startswith("/")
+        else room_dir / logical
+    ).resolve()
     try:
         target.relative_to(data_root)
     except ValueError as exc:
