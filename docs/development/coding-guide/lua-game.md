@@ -79,7 +79,7 @@ function room.on_load()
 end
 
 function room.on_unload()
-  stop_music()
+  stop_music(2.5)
 end
 
 room.on_zone_enter = function(zone)

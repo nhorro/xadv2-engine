@@ -156,7 +156,8 @@ std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
                                         const std::string& logical,
                                         sf::Vector2u hotspot,
                                         Diagnostics& log,
-                                        bool inverted = false) {
+                                        bool inverted = false,
+                                        std::optional<sf::Color> solid_tint = std::nullopt) {
     if (logical.empty()) {
         return nullptr;
     }
@@ -167,14 +168,21 @@ std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
             log.warn("cursor: could not decode image '" + logical + "'");
             return nullptr;
         }
-        if (inverted) {
+        if (solid_tint || inverted) {
             const sf::Vector2u size = image.getSize();
             for (unsigned y = 0; y < size.y; ++y) {
                 for (unsigned x = 0; x < size.x; ++x) {
                     sf::Color pixel = image.getPixel(x, y);
-                    pixel.r = static_cast<sf::Uint8>(255U - pixel.r);
-                    pixel.g = static_cast<sf::Uint8>(255U - pixel.g);
-                    pixel.b = static_cast<sf::Uint8>(255U - pixel.b);
+                    if (solid_tint) {
+                        pixel.r = solid_tint->r;
+                        pixel.g = solid_tint->g;
+                        pixel.b = solid_tint->b;
+                    }
+                    if (inverted) {
+                        pixel.r = static_cast<sf::Uint8>(255U - pixel.r);
+                        pixel.g = static_cast<sf::Uint8>(255U - pixel.g);
+                        pixel.b = static_cast<sf::Uint8>(255U - pixel.b);
+                    }
                     image.setPixel(x, y, pixel);
                 }
             }
@@ -189,6 +197,41 @@ std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
         log.warn(std::string("cursor: failed to load '") + logical + "': " + e.what());
         return nullptr;
     }
+}
+
+sf::Color blend_cursor_color(sf::Color dark, sf::Color light, float amount) {
+    const auto blend = [amount](sf::Uint8 a, sf::Uint8 b) {
+        return static_cast<sf::Uint8>(
+            std::lround(static_cast<float>(a) + (static_cast<float>(b) - a) * amount));
+    };
+    return {blend(dark.r, light.r), blend(dark.g, light.g), blend(dark.b, light.b)};
+}
+
+std::vector<std::unique_ptr<sf::Cursor>> load_cursor_blink_frames(const ResourceSource& source,
+                                                                  const std::string& logical,
+                                                                  sf::Vector2u hotspot,
+                                                                  Diagnostics& log,
+                                                                  const CursorBlinkConfig& blink,
+                                                                  bool inverted) {
+    std::vector<std::unique_ptr<sf::Cursor>> frames;
+    if (!blink.enabled() || blink.steps < 2) {
+        return frames;
+    }
+    frames.reserve(blink.steps);
+    for (unsigned i = 0; i < blink.steps; ++i) {
+        const float amount = static_cast<float>(i) / static_cast<float>(blink.steps - 1);
+        auto frame = load_cursor(source,
+                                 logical,
+                                 hotspot,
+                                 log,
+                                 inverted,
+                                 blend_cursor_color(blink.dark, blink.light, amount));
+        if (!frame) {
+            return {};
+        }
+        frames.push_back(std::move(frame));
+    }
+    return frames;
 }
 
 } // namespace
@@ -413,10 +456,35 @@ int run(const std::string& manifest_path,
         cursor_interact
             ? load_cursor(source, manifest.cursor.interact, manifest.cursor.hotspot, log, true)
             : nullptr;
-    if (apply_cursor && cursor_default) {
-        window.setMouseCursor(*cursor_default);
+    const std::vector<std::unique_ptr<sf::Cursor>> cursor_blink_frames =
+        cursor_default ? load_cursor_blink_frames(source,
+                                                  manifest.cursor.image,
+                                                  manifest.cursor.hotspot,
+                                                  log,
+                                                  manifest.cursor.blink,
+                                                  false)
+                       : std::vector<std::unique_ptr<sf::Cursor>>{};
+    const std::vector<std::unique_ptr<sf::Cursor>> cursor_blink_frames_inverted =
+        !cursor_blink_frames.empty() ? load_cursor_blink_frames(source,
+                                                                manifest.cursor.image,
+                                                                manifest.cursor.hotspot,
+                                                                log,
+                                                                manifest.cursor.blink,
+                                                                true)
+                                     : std::vector<std::unique_ptr<sf::Cursor>>{};
+    const bool cursor_blinks = !cursor_blink_frames.empty();
+
+    const sf::Cursor* initial_cursor =
+        cursor_blinks ? cursor_blink_frames.front().get() : cursor_default.get();
+    if (apply_cursor && initial_cursor) {
+        window.setMouseCursor(*initial_cursor);
     }
-    const sf::Cursor* applied_cursor = cursor_default.get();
+    const sf::Cursor* applied_cursor = initial_cursor;
+    CursorKind active_cursor_kind = CursorKind::DEFAULT;
+    bool active_cursor_inverted = false;
+    bool active_cursor_hidden = false;
+    bool applied_cursor_visible = true;
+    float cursor_blink_elapsed = 0.0f;
 
     // Enable fade-to-black between full-screen scene swaps, and fade the first
     // scene in from black at startup. (Set after the entry scene is already in
@@ -465,9 +533,14 @@ int run(const std::string& manifest_path,
             apply_window_mode(window, *mode);
             display.set_window_size(window.getSize());
             display.set_fullscreen(mode->fullscreen);
+            // A recreated OS window starts with its cursor visible and has not
+            // received our custom cursor yet.
+            applied_cursor = nullptr;
+            applied_cursor_visible = true;
         }
 
         const float frame_seconds = clock.restart().asSeconds();
+        cursor_blink_elapsed += frame_seconds;
         accumulator += frame_seconds;
         int steps = 0;
         while (accumulator >= kFixedDt && steps < kMaxStepsPerFrame) {
@@ -491,8 +564,9 @@ int run(const std::string& manifest_path,
             break;
         }
 
-        // Apply the cursor a scene requested (only when an interact variant exists
-        // to swap to), then reset so INTERACT must be re-asserted.
+        // Consume the appearance a scene requested, then reset so INTERACT must
+        // be re-asserted. The selected kind persists between fixed updates while
+        // the resting cursor's hardware variants continue pulsing per frame.
         //
         // Gated on a simulation step having run: scenes request the cursor from
         // update(), which is driven by the fixed-timestep loop above, while this
@@ -502,20 +576,50 @@ int run(const std::string& manifest_path,
         // leaving INTERACT visible only on the rare stepping frame. Consuming the
         // request at the cadence it is produced keeps it stable (issue #73).
         if (steps > 0) {
-            const bool interact = cursor_state.requested == CursorKind::INTERACT;
-            const sf::Cursor* requested_cursor =
-                interact && cursor_interact ? cursor_interact.get() : cursor_default.get();
-            if (cursor_state.inverted) {
-                requested_cursor = interact && cursor_interact_inverted
-                                       ? cursor_interact_inverted.get()
-                                   : cursor_default_inverted ? cursor_default_inverted.get()
-                                                             : requested_cursor;
-            }
-            if (apply_cursor && requested_cursor && requested_cursor != applied_cursor) {
-                window.setMouseCursor(*requested_cursor);
-                applied_cursor = requested_cursor;
-            }
+            active_cursor_kind = cursor_state.requested;
+            active_cursor_inverted = cursor_state.inverted;
+            active_cursor_hidden = cursor_state.hidden;
             cursor_state.reset();
+        }
+
+        const bool interact = active_cursor_kind == CursorKind::INTERACT && cursor_interact;
+        const float blink_progress =
+            cursor_blink_progress(cursor_blink_elapsed, manifest.cursor.blink.interval);
+        const std::size_t blink_frame =
+            cursor_blinks
+                ? static_cast<std::size_t>(std::lround(
+                      blink_progress * static_cast<float>(cursor_blink_frames.size() - 1)))
+                : 0;
+        const sf::Cursor* requested_cursor = nullptr;
+        if (interact) {
+            requested_cursor = active_cursor_inverted && cursor_interact_inverted
+                                   ? cursor_interact_inverted.get()
+                                   : cursor_interact.get();
+        } else if (cursor_blinks) {
+            if (active_cursor_inverted && !cursor_blink_frames_inverted.empty()) {
+                requested_cursor = cursor_blink_frames_inverted[blink_frame].get();
+            } else if (active_cursor_inverted && cursor_default_inverted) {
+                requested_cursor = cursor_default_inverted.get();
+            } else {
+                requested_cursor = cursor_blink_frames[blink_frame].get();
+            }
+        } else {
+            requested_cursor = active_cursor_inverted && cursor_default_inverted
+                                   ? cursor_default_inverted.get()
+                                   : cursor_default.get();
+        }
+        // Some OS backends make a hardware cursor visible again when its image is
+        // replaced. Freeze animated/tinted cursor swaps while hidden; on return,
+        // apply the current frame before restoring visibility.
+        if (apply_cursor && !active_cursor_hidden && requested_cursor &&
+            requested_cursor != applied_cursor) {
+            window.setMouseCursor(*requested_cursor);
+            applied_cursor = requested_cursor;
+        }
+        const bool requested_cursor_visible = !active_cursor_hidden;
+        if (apply_cursor && requested_cursor_visible != applied_cursor_visible) {
+            window.setMouseCursorVisible(requested_cursor_visible);
+            applied_cursor_visible = requested_cursor_visible;
         }
 
         window.clear(sf::Color::Black); // letterbox bars

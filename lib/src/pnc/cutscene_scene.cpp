@@ -211,6 +211,7 @@ void CutsceneScene::handle_event(const sf::Event& event) {
 }
 
 void CutsceneScene::update(float dt) {
+    ctx_.cursor.want_hidden();
     if (!loaded_ || finished_) {
         return;
     }
@@ -292,7 +293,7 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
     const auto vh = static_cast<float>(vres.y);
 
     sf::RectangleShape bg(sf::Vector2f(vw, vh));
-    bg.setFillColor(sf::Color::Black);
+    bg.setFillColor(data_.background_color);
     target.draw(bg);
 
     if (!loaded_ || data_.slides.empty()) {

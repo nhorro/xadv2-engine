@@ -26,6 +26,10 @@ struct MusicCrossfadeGains {
 /// envelope is headless-testable without starting an audio device.
 [[nodiscard]] MusicCrossfadeGains music_crossfade_gains(float progress);
 
+/// Equal-power gain for a sound-effect fade-out. Progress is clamped to 0..1;
+/// invalid values start at full gain.
+[[nodiscard]] float sound_fade_gain(float progress);
+
 } // namespace detail
 
 /// Two-deck streamed background music. Volume is 0..1 (mapped to SFML's 0..100).
@@ -34,14 +38,17 @@ class MusicPlayer {
 public:
     MusicPlayer(ResourceCache& resources, Diagnostics& log);
 
-    void play(const std::string& logical, bool loop = true);
+    /// `gain01` is a cue-local multiplier over the user's configured music
+    /// volume; it lets quiet score beds coexist with full-level title music.
+    void play(const std::string& logical, bool loop = true, float gain01 = 1.0f);
     /// Start `logical` on the idle deck and equal-power fade from the active deck.
     /// `preserve_offset` aligns variations of the same composition by carrying the
     /// outgoing playback position modulo the incoming track's duration.
     [[nodiscard]] bool crossfade(const std::string& logical,
                                  float fade_seconds = 2.5f,
                                  bool preserve_offset = false,
-                                 bool loop = true);
+                                 bool loop = true,
+                                 float gain01 = 1.0f);
     /// Fade the active track to silence, then stop its stream. Unlike
     /// `set_volume`, this does not alter the user's configured music volume.
     void fade_out(float fade_seconds = 2.5f);
@@ -67,6 +74,7 @@ private:
     ResourceCache& resources_;
     Diagnostics& log_;
     std::array<sf::Music, 2> decks_;
+    std::array<float, 2> deck_gains_{1.0f, 1.0f};
     int active_ = 0;
     int incoming_ = -1;
     float volume_ = 1.0f;
@@ -86,15 +94,31 @@ public:
     /// field. Panning only affects MONO buffers — a stereo clip plays as-authored.
     /// A simple stereo balance for now; a position-aware/spatial path is design-for.
     void play(const std::string& logical, float volume01 = 1.0f, float pan = 0.0f);
-    void stop_all();
+    /// Stop every active instance of `logical`. A positive duration fades each
+    /// matching voice first; zero preserves the immediate-stop behavior.
+    void stop(const std::string& logical, float fade_seconds = 0.0f);
+    void stop_all(float fade_seconds = 0.0f);
+    void update(float delta_seconds);
     void set_volume(float volume01);
 
 private:
+    struct Voice {
+        sf::Sound sound;
+        std::string logical;
+        float gain = 1.0f;
+        float fade_start = 1.0f;
+        float fade_elapsed = 0.0f;
+        float fade_duration = 0.0f;
+        bool fading = false;
+    };
+
+    void stop_voice(Voice& voice, float fade_seconds);
+    void apply_voice_volume(Voice& voice);
+
     static constexpr std::size_t kMaxVoices = 16;
     ResourceCache& resources_;
     Diagnostics& log_;
-    std::vector<sf::Sound> voices_;
-    std::vector<float> voice_gains_;
+    std::vector<Voice> voices_;
     float volume_ = 1.0f;
 };
 
@@ -196,6 +220,7 @@ struct AudioServices {
     void apply_settings(const Settings& settings);
     void update(float delta_seconds) {
         music.update(delta_seconds);
+        sfx.update(delta_seconds);
         ambience.update(delta_seconds);
     }
 };

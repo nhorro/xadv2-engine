@@ -54,6 +54,7 @@ constexpr float kAvatarScale = 1.1f;
 // point: closer than this we don't bother walking / waiting.
 constexpr float kApproachReached = 8.0f;
 constexpr float kRoomFadeDefault = 0.3f; // change_room fade-out/in seconds
+constexpr float kPanelFadeDefault = 0.25f;
 
 // A hotspot bound to one of these kinds tracks a *moving* target, so a
 // `requires_approach` walk-then-act can follow its live position (#158). Region
@@ -230,6 +231,17 @@ RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams
     if (const auto v = params.get("fade_duration")) {
         try {
             fade_duration_ = std::stof(*v);
+        } catch (const std::exception&) {
+            // keep the default on a malformed value
+        }
+    }
+    panel_fade_duration_ = kPanelFadeDefault;
+    if (const auto v = params.get("panel_fade_duration")) {
+        try {
+            const float duration = std::stof(*v);
+            if (std::isfinite(duration)) {
+                panel_fade_duration_ = std::max(duration, 0.0f);
+            }
         } catch (const std::exception&) {
             // keep the default on a malformed value
         }
@@ -612,15 +624,13 @@ end
     L.set_function("_avatar_set_visible", [this](const std::string& id, bool visible) {
         api_avatar_set_visible(id, visible);
     });
-    L.set_function("_avatar_set_shadow_opacity",
-                   [this](const std::string& id,
-                          double opacity,
-                          sol::optional<double> transition_seconds) {
-                       api_avatar_set_shadow_opacity(
-                           id,
-                           static_cast<float>(opacity),
-                           static_cast<float>(transition_seconds.value_or(0.0)));
-                   });
+    L.set_function(
+        "_avatar_set_shadow_opacity",
+        [this](const std::string& id, double opacity, sol::optional<double> transition_seconds) {
+            api_avatar_set_shadow_opacity(id,
+                                          static_cast<float>(opacity),
+                                          static_cast<float>(transition_seconds.value_or(0.0)));
+        });
     L.set_function("_avatar_play_until_end", [this](const std::string& id, const std::string& seq) {
         return api_avatar_play_until_end(id, seq);
     });
@@ -766,9 +776,7 @@ end
     });
     L.set_function(
         "_light_set_intensity",
-        [this](const std::string& id,
-               double intensity,
-               sol::optional<double> transition_seconds) {
+        [this](const std::string& id, double intensity, sol::optional<double> transition_seconds) {
             api_light_set_intensity(id,
                                     static_cast<float>(intensity),
                                     static_cast<float>(transition_seconds.value_or(0.0)));
@@ -796,10 +804,9 @@ end
 )LUA",
                               "=light_handle");
 
-    L.set_function("_light_occluder_set_enabled",
-                   [this](const std::string& id, bool enabled) {
-                       api_light_occluder_set_enabled(id, enabled);
-                   });
+    L.set_function("_light_occluder_set_enabled", [this](const std::string& id, bool enabled) {
+        api_light_occluder_set_enabled(id, enabled);
+    });
     L.set_function("_light_occluder_enabled", [this](const std::string& id) -> sol::object {
         sol::state& s = ctx_.scripting.lua();
         const auto enabled = api_light_occluder_enabled(id);
@@ -840,32 +847,33 @@ end
     // unload_room) — update() restores COMMAND from C++. The restoration MUST
     // be C++-side because scope cancellation does not run Lua cleanup (per
     // design 05 §Coroutine rules), so a Lua `finally` is not an option.
-    L.set_function("_cutscene_arm",
-                   [this](pac::core::TaskId tid, sol::optional<sol::function> on_skip) {
-        if (view_state_ == ViewState::COMMAND) {
-            view_state_ = ViewState::BLOCKED;
-        }
-        awaiting_handler_task_ = tid;
-        cutscene_skip_ = {};
-        if (on_skip) {
-            // `_cutscene_arm` normally runs inside the wrapper's short-lived
-            // coroutine. Anchor the finalizer against the main Lua state before
-            // that coroutine drains; otherwise the later std::function cleanup
-            // dereferences a collected lua_State (SEGV in luaL_unref/lua_rawgeti).
-            sol::main_protected_function finalizer(
-                ctx_.scripting.lua().lua_state(), *on_skip);
-            cutscene_skip_ = [this, finalizer = std::move(finalizer)]() mutable {
-                const pac::core::ScopeId previous = ctx_.scripting.current_scope();
-                ctx_.scripting.set_current_scope(room_scope_);
-                const sol::protected_function_result result = finalizer();
-                ctx_.scripting.set_current_scope(previous);
-                if (!result.valid()) {
-                    const sol::error error = result;
-                    ctx_.log.error(std::string("cutscene skip finalizer: ") + error.what());
-                }
-            };
-        }
-    });
+    L.set_function(
+        "_cutscene_arm",
+        [this](pac::core::TaskId tid, sol::optional<sol::function> on_skip) {
+            if (view_state_ == ViewState::COMMAND) {
+                view_state_ = ViewState::BLOCKED;
+            }
+            awaiting_handler_task_ = tid;
+            cutscene_active_ = true;
+            cutscene_skip_ = {};
+            if (on_skip) {
+                // `_cutscene_arm` normally runs inside the wrapper's short-lived
+                // coroutine. Anchor the finalizer against the main Lua state before
+                // that coroutine drains; otherwise the later std::function cleanup
+                // dereferences a collected lua_State (SEGV in luaL_unref/lua_rawgeti).
+                sol::main_protected_function finalizer(ctx_.scripting.lua().lua_state(), *on_skip);
+                cutscene_skip_ = [this, finalizer = std::move(finalizer)]() mutable {
+                    const pac::core::ScopeId previous = ctx_.scripting.current_scope();
+                    ctx_.scripting.set_current_scope(room_scope_);
+                    const sol::protected_function_result result = finalizer();
+                    ctx_.scripting.set_current_scope(previous);
+                    if (!result.valid()) {
+                        const sol::error error = result;
+                        ctx_.log.error(std::string("cutscene skip finalizer: ") + error.what());
+                    }
+                };
+            }
+        });
     // M9 #186 on_room_resume(fn): defer a room beat until this room is the live,
     // ticking scene again. The intended caller is a close-up's on_exit — it runs
     // while the room is frozen beneath the overlay and so cannot play blocking
@@ -884,8 +892,8 @@ end
             ctx_.log.warn("on_room_resume: overwriting a pending beat for room '" +
                           current_room_id_ + "'");
         }
-        lua_->pending_resume[current_room_id_] = sol::main_protected_function(
-            ctx_.scripting.lua().lua_state(), fn);
+        lua_->pending_resume[current_room_id_] =
+            sol::main_protected_function(ctx_.scripting.lua().lua_state(), fn);
     });
     L.set_function("set_room_view_state", [this](std::string name) {
         if (name == "command") {
@@ -1281,6 +1289,7 @@ void RoomScene::unload_room() {
     // see a stale task id and call finish_execution on the freshly-reset
     // builder).
     awaiting_handler_task_.reset();
+    cutscene_active_ = false;
     cutscene_skip_ = {};
     // A deferred on_room_resume beat (M9 #186) is scoped to the room it was
     // registered against; a room change drops it (it does not survive into the
@@ -1383,6 +1392,7 @@ void RoomScene::skip_active_cutscene() {
     std::function<void()> finalizer = std::move(cutscene_skip_);
     cutscene_skip_ = {};
     awaiting_handler_task_.reset();
+    cutscene_active_ = false;
 
     // Cancel first: the coroutine must not resume after the finalizer places the
     // room in its canonical post-cutscene state. The finalizer is synchronous by
@@ -2179,6 +2189,7 @@ void RoomScene::update(float dt) {
     // us (room change while running).
     if (awaiting_handler_task_ && !ctx_.scripting.is_task_alive(*awaiting_handler_task_)) {
         awaiting_handler_task_.reset();
+        cutscene_active_ = false;
         cutscene_skip_ = {};
         if (view_state_ == ViewState::BLOCKED) {
             view_state_ = ViewState::COMMAND;
@@ -2228,6 +2239,20 @@ void RoomScene::update(float dt) {
             }
             view_state_ = ViewState::COMMAND;
         }
+    }
+
+    const bool should_hide_panel = view_state_ == ViewState::BLOCKED;
+    if (should_hide_panel != panel_hidden_) {
+        panel_hidden_ = should_hide_panel;
+        if (panel_hidden_) {
+            panel_fade_.fade_out(panel_fade_duration_);
+        } else {
+            panel_fade_.fade_in(panel_fade_duration_);
+        }
+    }
+    panel_fade_.update(dt);
+    if (cutscene_active_) {
+        ctx_.cursor.want_hidden();
     }
 }
 
@@ -2436,21 +2461,20 @@ void RoomScene::draw(sf::RenderTarget& target) const {
         }
 
         std::optional<ProjectedShadow> resolved_projected_shadow;
-        if (room_->data().projected_shadow &&
-            !room_->data().projected_shadow->source.empty()) {
+        if (room_->data().projected_shadow && !room_->data().projected_shadow->source.empty()) {
             const ProjectedShadow& authored = *room_->data().projected_shadow;
-            const auto source = std::find_if(
-                resolved_lights.begin(),
-                resolved_lights.end(),
-                [&authored](const ResolvedRoomLight& light) {
-                    return light.light && light.light->id == authored.source;
-                });
+            const auto source =
+                std::find_if(resolved_lights.begin(),
+                             resolved_lights.end(),
+                             [&authored](const ResolvedRoomLight& light) {
+                                 return light.light && light.light->id == authored.source;
+                             });
             if (source != resolved_lights.end() && source->enabled && source->intensity > 0.0f) {
                 resolved_projected_shadow = authored;
                 resolved_projected_shadow->light = source->position;
-                const float effective = source->intensity *
-                                        evaluate_light_modulation(source->light->modulation,
-                                                                  shader_time_);
+                const float effective =
+                    source->intensity *
+                    evaluate_light_modulation(source->light->modulation, shader_time_);
                 resolved_projected_shadow->opacity *= std::clamp(effective, 0.0f, 1.0f);
             }
         }
@@ -2572,12 +2596,11 @@ void RoomScene::draw(sf::RenderTarget& target) const {
     }
 
     target.setView(ctx_.display.view());
-    // The SCUMM panel is hidden in BLOCKED (cutscene-like) state — design 04 §Room
-    // view states: a blocked room shows a black/hidden panel. The window clears to
-    // black, so not drawing it leaves a clean black bar under the scenery.
+    // The SCUMM panel fades beneath a black mask when entering BLOCKED
+    // (cutscene-like) state, then fades back in when command mode returns.
     if (tuning_overlay_active()) {
         tuning_overlay_->draw(target);
-    } else if (panel_ && view_state_ != ViewState::BLOCKED) {
+    } else if (panel_) {
         if (view_state_ == ViewState::DIALOG) {
             // Options show only while awaiting a choice; while a line is being
             // spoken the option list is empty, so we draw nothing and leave a
@@ -2622,12 +2645,20 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                          hover_vp_,
                          evidence,
                          [this](const std::string& item_id) {
-                             const auto value =
-                                 ctx_.state.get("inventory.notification." + item_id);
+                             const auto value = ctx_.state.get("inventory.notification." + item_id);
                              return value && std::holds_alternative<bool>(*value) &&
                                     std::get<bool>(*value);
                          });
         }
+    }
+    const sf::Uint8 panel_fade_a = panel_fade_.alpha255();
+    if (!tuning_overlay_active() && panel_fade_a > 0) {
+        const sf::Vector2u vres = ctx_.display.virtual_resolution();
+        sf::RectangleShape panel_mask(
+            {static_cast<float>(vres.x), static_cast<float>(vres.y) - scenery_height()});
+        panel_mask.setPosition(0.0f, scenery_height());
+        panel_mask.setFillColor(sf::Color(0, 0, 0, panel_fade_a));
+        target.draw(panel_mask);
     }
     if (view_state_ == ViewState::MENU) {
         draw_menu(target);
@@ -2932,8 +2963,7 @@ void RoomScene::api_avatar_set_shadow_opacity(const std::string& id,
     if (Avatar* avatar = resolve_avatar(id)) {
         avatar->set_shadow_opacity(opacity, transition_seconds);
     } else {
-        ctx_.log.error("avatar('" + id +
-                       "'):set_shadow_opacity — no such avatar in the room");
+        ctx_.log.error("avatar('" + id + "'):set_shadow_opacity — no such avatar in the room");
     }
 }
 
@@ -3015,8 +3045,8 @@ void RoomScene::api_light_set_intensity(const std::string& id,
         return;
     }
     if (!std::isfinite(intensity) || !std::isfinite(transition_seconds)) {
-        ctx_.log.error(
-            "light('" + id + "'):set_intensity — intensity and transition must be finite");
+        ctx_.log.error("light('" + id +
+                       "'):set_intensity — intensity and transition must be finite");
         return;
     }
     room_->set_light_intensity(id, intensity, transition_seconds);
@@ -3672,6 +3702,7 @@ bool RoomScene::restore(const pac::core::GameState& state) {
         run_task_ = 0;
     }
     view_state_ = ViewState::COMMAND;
+    cutscene_active_ = false;
     // A handler task awaited from the previous session is dead post-restore (its
     // room scope is gone); drop the id so update() doesn't try to drain it. Any
     // deferred on_room_resume beat (M9 #186) is transient too — restored saves

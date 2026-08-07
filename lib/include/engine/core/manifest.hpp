@@ -5,6 +5,7 @@
 #include "engine/core/scene_params.hpp"
 #include "engine/core/speech_config.hpp"
 
+#include <SFML/Graphics/Color.hpp>
 #include <SFML/System/Vector2.hpp>
 
 #include <string>
@@ -48,14 +49,27 @@ struct LanguageEntry {
     std::string strings_path;
 };
 
+struct CursorBlinkConfig {
+    /// Seconds for one dark-to-light or light-to-dark transition. Zero disables
+    /// the pulse; steps controls how many preloaded hardware-cursor tones it uses.
+    float interval = 0.0f;
+    unsigned steps = 12;
+    sf::Color dark{64, 64, 64};
+    sf::Color light{255, 255, 255};
+
+    [[nodiscard]] bool enabled() const { return interval > 0.0f; }
+};
+
 /// Custom point-and-click cursor (issue #73). `image` is the resting cursor;
 /// `interact` (optional) is shown over an interactive hotspot. `hotspot` is the
-/// pointer's active pixel (the click point) within both images. When `image` is
-/// empty the OS cursor is kept.
+/// pointer's active pixel (the click point) within both images. An optional blink
+/// alternates the resting cursor between two solid RGB tones while preserving
+/// the source image's alpha. When `image` is empty the OS cursor is kept.
 struct CursorConfig {
     std::string image;
     std::string interact;
     sf::Vector2u hotspot{0, 0};
+    CursorBlinkConfig blink;
 };
 
 struct SceneDesc {

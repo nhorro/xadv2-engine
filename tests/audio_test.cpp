@@ -29,3 +29,14 @@ TEST_CASE("music crossfade uses a clamped equal-power envelope") {
     CHECK(invalid.outgoing >= 0.0f);
     CHECK(invalid.incoming >= 0.0f);
 }
+
+TEST_CASE("sound fade gain falls smoothly to silence") {
+    using pac::core::detail::sound_fade_gain;
+
+    CHECK(sound_fade_gain(-1.0f) == doctest::Approx(1.0f));
+    CHECK(sound_fade_gain(0.0f) == doctest::Approx(1.0f));
+    CHECK(sound_fade_gain(0.5f) == doctest::Approx(std::sqrt(0.5f)));
+    CHECK(sound_fade_gain(1.0f) == doctest::Approx(0.0f));
+    CHECK(sound_fade_gain(2.0f) == doctest::Approx(0.0f));
+    CHECK(sound_fade_gain(std::nanf("")) == doctest::Approx(1.0f));
+}

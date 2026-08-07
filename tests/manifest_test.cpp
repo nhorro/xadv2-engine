@@ -194,14 +194,26 @@ TEST_CASE("nested scene parameters flatten into dotted keys") {
 }
 
 TEST_CASE("optional cursor block is parsed") {
-    const Manifest m = parse_manifest(
-        "id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
-        "resources: { src: . }\nstrings: s\nentry: a\nscenes: [{id: a, type: B}]\n"
-        "cursor: { image: ui/c.png, interact: ui/h.png, hotspot: { x: 2, y: 3 } }\n");
+    const Manifest m =
+        parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                       "resources: { src: . }\nstrings: s\nentry: a\nscenes: [{id: a, type: B}]\n"
+                       "cursor:\n"
+                       "  image: ui/c.png\n"
+                       "  interact: ui/h.png\n"
+                       "  hotspot: { x: 2, y: 3 }\n"
+                       "  blink:\n"
+                       "    interval: 0.35\n"
+                       "    steps: 16\n"
+                       "    dark: { r: 48, g: 49, b: 50 }\n"
+                       "    light: { r: 253, g: 254, b: 255 }\n");
     CHECK(m.cursor.image == "ui/c.png");
     CHECK(m.cursor.interact == "ui/h.png");
     CHECK(m.cursor.hotspot.x == 2u);
     CHECK(m.cursor.hotspot.y == 3u);
+    CHECK(m.cursor.blink.interval == doctest::Approx(0.35f));
+    CHECK(m.cursor.blink.steps == 16u);
+    CHECK(m.cursor.blink.dark == sf::Color(48, 49, 50));
+    CHECK(m.cursor.blink.light == sf::Color(253, 254, 255));
 }
 
 TEST_CASE("cursor block is optional — defaults to no custom cursor") {
@@ -210,6 +222,7 @@ TEST_CASE("cursor block is optional — defaults to no custom cursor") {
     CHECK(m.cursor.interact.empty());
     CHECK(m.cursor.hotspot.x == 0u);
     CHECK(m.cursor.hotspot.y == 0u);
+    CHECK_FALSE(m.cursor.blink.enabled());
 }
 
 TEST_CASE("single-language shorthand yields one language entry") {

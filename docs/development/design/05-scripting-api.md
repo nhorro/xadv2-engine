@@ -375,8 +375,8 @@ end)
    when called from a verb handler / `on_first_enter` / a free function
    inside a room script).
 2. Marks the room view as `blocked` for the duration of the body — input is
-   suppressed and the SCUMM panel won't accept new commands until the beat
-   finishes.
+   suppressed, the SCUMM panel fades out, and the cursor is hidden until the
+   beat finishes.
 3. Returns immediately. The wrapper itself never blocks; the body runs
    asynchronously in the spawned task.
 
@@ -1040,11 +1040,12 @@ the top-left used for a static texture), and it plays its `sequence:` on load.
 
 | Function | Parameters | Returns | Meaning |
 |----------|------------|---------|---------|
-| `play_music(path, loop?)` | logical path, optional bool | — | Start streamed music immediately, replacing any current track. |
-| `crossfade_music(path, seconds?, preserve_offset?, loop?)` | logical path, optional number/bool/bool | bool | Equal-power fade from the current track to a new one. Defaults: `2.5`, `false`, `true`. Returns false if the new track cannot be loaded. |
-| `stop_music()` | — | — | Stop current music. |
+| `play_music(path, loop?, gain?)` | logical path, optional bool/number | — | Start streamed music immediately, replacing any current track. `gain` (default `1`) scales this cue without changing the user's Music setting. |
+| `crossfade_music(path, seconds?, preserve_offset?, loop?, gain?)` | logical path, optional number/bool/bool/number | bool | Equal-power fade from the current track to a new one. Defaults: `2.5`, `false`, `true`, `1`. Returns false if the new track cannot be loaded. |
+| `stop_music(fade_seconds?)` | optional seconds (default `0`) | — | Stop current music immediately, or fade it out over a positive duration. |
 | `play_sound(path, volume?, pan?)` | logical path, optional number (0..1), optional number (-1..1) | — | Play a short sound effect. `volume` scales the global SFX volume; `pan` places it L/R (-1 left, 0 center, +1 right). Panning affects mono clips only; a position-aware/spatial path is design-for. |
-| `stop_sounds()` | — | — | Stop all active sound effects. |
+| `stop_sound(path, fade_seconds?)` | logical path, optional seconds (default `0`) | — | Stop every active instance of the sound at `path`. A positive duration fades from its current gain before stopping; omitted or `0` stops immediately. |
+| `stop_sounds(fade_seconds?)` | optional seconds (default `0`) | — | Stop all active sound effects, optionally fading them first. |
 | `set_ambience(path, volume?, seconds?)` | logical path, optional number, optional number | — | Replace the streamed ambience base, crossfading over `seconds` (default `2.5`). If `path` is already playing, it is not restarted; only its volume glides. YAML random layers remain active. |
 | `set_ambience_volume(volume, seconds?)` | number (0..1), optional number | — | Glide the current ambience base to a new room-relative volume (default `1.0` second). |
 | `stop_ambience(seconds?)` | optional number | — | Clear random layers and fade out the ambience base (default `2.5` seconds). |
@@ -1056,6 +1057,13 @@ for room-to-room ambience or score changes:
 
 ```lua
 crossfade_music("music/archive_interior.ogg", 3.0)
+```
+
+Pass a cue-local gain when a track should sit quietly beneath dialogue. This is
+multiplied by, and does not replace, the player's Music setting:
+
+```lua
+crossfade_music("music/quiet_room.ogg", 2.5, false, true, 0.2)
 ```
 
 Set `preserve_offset` only when both files are synchronized variations of the
@@ -1079,12 +1087,12 @@ set_ambience_volume(0.25, 1.5)
 
 | Function | Parameters | Returns | Meaning |
 |----------|------------|---------|---------|
-| `block_input()` | — | — | Switch room view to the `blocked` state: input disabled and the SCUMM panel hidden (a black bar under the scenery). Use for cutscene-like moments. |
-| `unblock_input()` | — | — | Restore the `command` state: input enabled and the panel shown. |
+| `block_input()` | — | — | Switch room view to the `blocked` state: input disabled and the SCUMM panel faded to a black bar under the scenery. Use for cutscene-like moments. |
+| `unblock_input()` | — | — | Restore the `command` state: input enabled and the panel faded back in. |
 | `set_room_view_state(state)` | `"command"` \| `"blocked"` | — | Explicitly set the room-view state — the same two script-settable states as `unblock_input` / `block_input`. The `dialog` and `menu` states are engine-managed (entered via `start_dialog` / the pause menu); passing them, or any other string, logs a warning and is ignored. |
 
 Hiding the SCUMM panel is not a separate operation: the panel is shown in the
-`command` state and hidden in `blocked`, so `block_input()` / `set_room_view_state`
+`command` state and faded out in `blocked`, so `block_input()` / `set_room_view_state`
 are how a script hides or shows it. Scripts should prefer high-level operations such
 as `start_dialog` and command execution, which manage room-view state automatically.
 

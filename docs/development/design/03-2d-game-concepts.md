@@ -735,7 +735,8 @@ Lua API:
 play_sound("sfx/click.wav")            -- centered, full SFX volume
 play_sound("sfx/door_open.ogg", 0.8)   -- quieter
 play_sound("sfx/bird.ogg", 1.0, -0.6)  -- off to the left
-stop_sounds()
+stop_sound("sfx/door_open.ogg", 1.25)  -- fade matching instances, then stop
+stop_sounds()                           -- immediate global stop (default fade 0)
 ```
 
 ### Packed resource note

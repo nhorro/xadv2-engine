@@ -30,7 +30,7 @@
 namespace sf {
 class Font;
 class RenderTexture;
-}
+} // namespace sf
 
 namespace pac::core {
 struct EngineContext;
@@ -115,9 +115,8 @@ public:
     void api_avatar_face(const std::string& id, const std::string& direction);
     void api_avatar_look_at(const std::string& id, geom::Point target);
     void api_avatar_set_visible(const std::string& id, bool visible);
-    void api_avatar_set_shadow_opacity(const std::string& id,
-                                       float opacity,
-                                       float transition_seconds);
+    void
+    api_avatar_set_shadow_opacity(const std::string& id, float opacity, float transition_seconds);
     [[nodiscard]] std::optional<geom::Point> api_avatar_position(const std::string& id) const;
     void api_avatar_play(const std::string& id, const std::string& sequence);
     /// Start a one-shot sequence and return the event the Lua wrapper waits on
@@ -160,9 +159,7 @@ public:
     // are room-scoped and reset to the authored values on the next room load.
     void api_light_set_enabled(const std::string& id, bool enabled);
     [[nodiscard]] std::optional<bool> api_light_enabled(const std::string& id) const;
-    void api_light_set_intensity(const std::string& id,
-                                 float intensity,
-                                 float transition_seconds);
+    void api_light_set_intensity(const std::string& id, float intensity, float transition_seconds);
     [[nodiscard]] std::optional<float> api_light_intensity(const std::string& id) const;
     void api_light_occluder_set_enabled(const std::string& id, bool enabled);
     [[nodiscard]] std::optional<bool> api_light_occluder_enabled(const std::string& id) const;
@@ -403,6 +400,9 @@ private:
     // yielded (M9 #183). While set, the view is BLOCKED and update() polls
     // is_task_alive; when the task drains, finish_execution + restore COMMAND.
     std::optional<pac::core::TaskId> awaiting_handler_task_;
+    // True only for the explicit cutscene(...) wrapper, as opposed to ordinary
+    // temporary BLOCKED states such as approach walking.
+    bool cutscene_active_ = false;
     // Present only for an explicitly skippable cutscene. ESC cancels that one
     // task, invokes this synchronous finalizer, and restores command mode.
     std::function<void()> cutscene_skip_;
@@ -432,6 +432,11 @@ private:
     pac::core::ScreenFade room_fade_;
     bool change_armed_ = false;
     float fade_duration_ = 0.0f;
+    // The panel remains drawn beneath a black mask while this fade animates;
+    // alpha 1 means the panel is fully hidden.
+    pac::core::ScreenFade panel_fade_;
+    bool panel_hidden_ = false;
+    float panel_fade_duration_ = 0.25f;
     // Monotonic seconds since the scene began, fed to shaders' `u_time` uniform.
     float shader_time_ = 0.0f;
     // When set, the next room load overrides the default seat with this pose

@@ -343,7 +343,7 @@ according to the room-view state.
 |-------|-------|-------|----------|
 | `Command` | SCUMM panel visible and enabled | Player can build commands. | Default gameplay. |
 | `Dialog` | Dialog options panel | Player selects dialog options. | NPC conversations. |
-| `Blocked` | Black or hidden panel | Player interaction disabled. | Scripted moments, cutscene-like actions. |
+| `Blocked` | Panel fades to black | Player interaction disabled. | Scripted moments, cutscene-like actions. |
 
 The room-view state is distinct from the command-builder state machine. The
 command builder exists only while the room view is in `Command` state.
@@ -619,8 +619,16 @@ pointer is over a hotspot, and the request resets to `DEFAULT` automatically, so
 the cursor falls back the moment the scene stops asking. A scene over a
 contrasting background may also call `cursor.want_inverted()` each frame; the
 harness preserves alpha and inverts the authored cursor's RGB channels, then
-restores its normal tone when the request stops. An animated/blinking cursor is a
-possible later iteration.
+restores its normal tone when the request stops. An optional `cursor.blink`
+configuration preloads a bounded set of solid-tone variants of the resting image
+and moves smoothly from dark to light and back at the authored interval. The
+source alpha and click hotspot remain unchanged, and the interaction variant
+stays steady so its affordance is unambiguous.
+
+Cutscene scenes and room-script `cutscene(...)` beats hide the OS cursor for
+their lifetime. Visibility is requested through the same per-frame channel, so
+normal gameplay restores the cursor automatically even after a skip or scene
+replacement.
 
 ## Avatars
 

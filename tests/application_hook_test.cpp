@@ -81,6 +81,7 @@ TEST_CASE(
         called = true;
         CHECK(manifest.id == "application_hook_test");
         CHECK(ctx.scripting.run_string("assert(type(get_state) == 'function')"));
+        CHECK(ctx.scripting.run_string("assert(type(stop_sound) == 'function')"));
         throw std::runtime_error("expected setup failure");
     };
 

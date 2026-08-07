@@ -17,6 +17,7 @@ using pac::test::error_code;
 TEST_CASE("parse_cutscene reads modes + audio + slides") {
     const Cutscene c = parse_cutscene(R"YAML(
 advance_mode: manual
+background_color: "#12345678"
 
 defaults:
   text_style: { size: 28, color: "#E0E0E0" }
@@ -29,6 +30,7 @@ slides:
 )YAML");
 
     CHECK(c.mode == CutsceneAdvanceMode::Manual);
+    CHECK(c.background_color == sf::Color(0x12, 0x34, 0x56, 0x78));
     CHECK(c.audio.empty());
     REQUIRE(c.slides.size() == 2);
 
@@ -106,6 +108,7 @@ slides:
 )YAML");
 
     CHECK(c.mode == CutsceneAdvanceMode::Auto); // auto is the default
+    CHECK(c.background_color == sf::Color::Black);
     CHECK(c.default_duration == doctest::Approx(3.0f));
     REQUIRE(c.slides.size() == 1);
     CHECK(c.slides[0].text_align == CutsceneTextAlign::Center);

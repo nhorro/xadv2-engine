@@ -38,7 +38,7 @@ enum class CutsceneTextAlign {
 /// How the image is fitted into the slide's `image_size` box.
 ///   - Contain: preserve aspect; the image is scaled so it fits entirely inside
 ///              the box and centered within it (any remaining area shows the
-///              black background).
+///              cutscene background color).
 ///   - Stretch: scale to exactly fill the box, regardless of aspect.
 enum class CutsceneImageFit {
     Contain,
@@ -100,6 +100,7 @@ struct CutsceneSlide {
 struct Cutscene {
     int version = 1;
     CutsceneAdvanceMode mode = CutsceneAdvanceMode::Auto;
+    sf::Color background_color{0, 0, 0, 255}; // full-screen fill behind every slide
     std::string audio;          // logical path; Timed: narration sync, auto/manual: background
     bool audio_persist = false; // keep `audio` playing past the cutscene (next scene stops it)
     CutsceneFade fade;          // dip-to-black between slides (auto/manual); 0/0 = hard cuts

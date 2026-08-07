@@ -4,6 +4,7 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -43,6 +44,26 @@ void validate_id(const std::string& id, const YAML::Node& node) {
                           node);
         }
     }
+}
+
+sf::Color parse_cursor_color(const YAML::Node& node, const std::string& field, sf::Color fallback) {
+    if (!node) {
+        return fallback;
+    }
+    if (!node.IsMap() || !node["r"] || !node["g"] || !node["b"]) {
+        manifest_fail("manifest.cursor-blink-color-invalid",
+                      "'cursor.blink." + field + "' must contain r, g, and b",
+                      node);
+    }
+    const int r = node["r"].as<int>();
+    const int g = node["g"].as<int>();
+    const int b = node["b"].as<int>();
+    if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
+        manifest_fail("manifest.cursor-blink-color-invalid",
+                      "'cursor.blink." + field + "' channels must be between 0 and 255",
+                      node);
+    }
+    return {static_cast<sf::Uint8>(r), static_cast<sf::Uint8>(g), static_cast<sf::Uint8>(b)};
 }
 
 // Parse the UI-strings language declaration (issue #72). Two accepted forms:
@@ -212,6 +233,28 @@ Manifest parse_manifest(const std::string& yaml_text) {
         if (const YAML::Node hot = cursor["hotspot"]) {
             m.cursor.hotspot = {hot["x"] ? hot["x"].as<unsigned>() : 0u,
                                 hot["y"] ? hot["y"].as<unsigned>() : 0u};
+        }
+        if (const YAML::Node blink = cursor["blink"]) {
+            if (!blink.IsMap() || !blink["interval"]) {
+                manifest_fail("manifest.cursor-blink-invalid",
+                              "'cursor.blink' must be a mapping with an interval",
+                              blink);
+            }
+            m.cursor.blink.interval = blink["interval"].as<float>();
+            if (!std::isfinite(m.cursor.blink.interval) || m.cursor.blink.interval <= 0.0f) {
+                manifest_fail("manifest.cursor-blink-interval-invalid",
+                              "'cursor.blink.interval' must be greater than zero",
+                              blink["interval"]);
+            }
+            m.cursor.blink.steps = blink["steps"] ? blink["steps"].as<unsigned>() : 12u;
+            if (m.cursor.blink.steps < 2 || m.cursor.blink.steps > 32) {
+                manifest_fail("manifest.cursor-blink-steps-invalid",
+                              "'cursor.blink.steps' must be between 2 and 32",
+                              blink["steps"]);
+            }
+            m.cursor.blink.dark = parse_cursor_color(blink["dark"], "dark", m.cursor.blink.dark);
+            m.cursor.blink.light =
+                parse_cursor_color(blink["light"], "light", m.cursor.blink.light);
         }
     }
 

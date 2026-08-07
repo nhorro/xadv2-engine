@@ -33,7 +33,7 @@ Worked example: [02 — Architecture overview](02-architecture-overview.md).
 | `default_language` | opt | language id | first entry | Which `languages` entry is active when no player preference is stored. Must name an entry in `languages`. |
 | `speech` | opt | `{font?, font_size?}` | scene font, `24` | Shared typography for character `talk` / `remark` lines in rooms and close-ups. `font` is a logical resource path; when omitted, the active scene's UI font is used as a compatibility fallback. `font_size` is a positive integer in virtual pixels. |
 | `settings` | opt | map | — | Default player-facing settings (e.g. `audio.music_volume`, `audio.sfx_volume`). User settings override these. |
-| `cursor` | opt | `{image, interact?, hotspot?}` | OS cursor | Custom point-and-click cursor. `image` is the resting cursor; `interact` (opt) shows over an interactive hotspot; `hotspot` (opt `{x, y}`, default `0,0`) is the active click pixel within both images. Omitted ⇒ the OS cursor is used. |
+| `cursor` | opt | `{image, interact?, hotspot?, blink?}` | OS cursor | Custom point-and-click cursor. `image` is the resting cursor; `interact` (opt) shows over an interactive hotspot; `hotspot` (opt `{x, y}`, default `0,0`) is the active click pixel within both images. `blink` (opt `{interval, steps?, dark?, light?}`) smoothly pulses solid RGB tones on the resting image while preserving alpha; `interval` is seconds per transition, `steps` is `2..32` (default `12`), `dark` defaults to `{64,64,64}`, and `light` to `{255,255,255}`. Omitted ⇒ the OS cursor is used. |
 | `development` | opt | map | — | Dev-only flags: `edit_mode` (master gate for the F1–F9 overlays, actions, and live render tuner), `show_walkboxes`, `show_hotspots`, `show_anchors`, `show_state` (seed the overlay layers), `allow_room_reload`, `profiling` (resource-profiling mode, #112), `profiling_interval` (seconds between samples, default `2.0`). Not persisted as player settings. |
 | `entry` | req | scene id | — | Initial scene. |
 | `scenes` | req | `[scene]` | — | Scene list and outcome wiring. |
@@ -102,6 +102,8 @@ default_language: es   # optional; defaults to the first entry
   from this character's cast entry), `font` (opt path — default panel and other
   room UI text; spoken-line typography comes from top-level `speech`),
   `scumm_panel` (opt path — YAML panel layout/skin config),
+  `panel_fade_duration` (opt seconds, default `0.25` — fade time when the panel
+  hides for or returns from a blocked/cutscene state),
   `pause_menu.overlays.<id>` (opt map — custom pause actions with `scene`,
   `label_key`, and an `order` from 30 through 89). Custom actions push their
   scene as a transparent or opaque overlay. Built-ins remain ordered at resume
@@ -751,7 +753,7 @@ author it as a subtle unifying effect rather than a physically exact shadow.
 <a id="cutscene--cutscenesidyaml"></a>
 
 Data file for the `Cutscene` scene type (issue #116) — a list of slides over a
-solid-black background, with auto / manual / timed advancement.
+solid-color background, with auto / manual / timed advancement.
 
 Top level:
 
@@ -759,6 +761,7 @@ Top level:
 |-------|-----|------|---------|---------|
 | `version` | opt | int | `1` | Format version. |
 | `advance_mode` | opt | enum | `auto` | `auto`, `manual`, or `timed` — see below. |
+| `background_color` | opt | hex color | `"#000000"` | Full-screen fill behind every slide image, text band, and text. Accepts `"#RRGGBB"` or `"#RRGGBBAA"`. |
 | `audio` | opt | path | — | Background music, played at scene start. In `timed` mode it also drives slide transitions (slides read its playback offset so they stay in sync when the engine stutters); in `auto` / `manual` it loops as background. |
 | `audio_persist` | opt | bool | `false` | Keep `audio` playing past the cutscene so the next scene owns it (e.g. a room script calls `stop_music()` on entry). Otherwise the track stops when the cutscene ends. |
 | `fade` | opt | float \| map | `0` | Dip-to-black between slides (and fade-in at the start / fade-out at the end). A number sets both halves; a map is `{in, out, color}` — seconds, plus the fade `color` (default black). `0`/`0` = hard cuts. Applies to `auto` / `manual`; `timed` keeps hard cuts to stay locked to its audio. |

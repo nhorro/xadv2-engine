@@ -307,6 +307,9 @@ Cutscene parse_cutscene(const std::string& yaml_text) {
     if (root["advance_mode"]) {
         out.mode = parse_mode(root["advance_mode"]);
     }
+    if (root["background_color"]) {
+        out.background_color = parse_color(root["background_color"]);
+    }
     if (root["audio"]) {
         out.audio = root["audio"].as<std::string>();
     }

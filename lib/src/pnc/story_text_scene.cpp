@@ -1,5 +1,6 @@
 #include "engine/pnc/story_text_scene.hpp"
 
+#include "engine/core/cursor.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
@@ -67,6 +68,7 @@ void StoryTextScene::handle_event(const sf::Event& event) {
 }
 
 void StoryTextScene::update(float /*dt*/) {
+    ctx_.cursor.want_hidden();
     // The application loop advances the scheduler; when this scene's scope has no
     // tasks left, the script has finished.
     if (!finished_ && ctx_.scripting.active_task_count(scope_) == 0) {

@@ -23,6 +23,10 @@ detail::MusicCrossfadeGains detail::music_crossfade_gains(float progress) {
             std::clamp(std::sin(t * kHalfPi), 0.0f, 1.0f)};
 }
 
+float detail::sound_fade_gain(float progress) {
+    return music_crossfade_gains(progress).outgoing;
+}
+
 MusicPlayer::MusicPlayer(ResourceCache& resources, Diagnostics& log)
     : resources_(resources), log_(log) {}
 
@@ -52,7 +56,7 @@ bool MusicPlayer::open(int deck, const std::string& logical, bool loop) {
 
 void MusicPlayer::cancel_fade() {
     if (stopping_) {
-        decks_[active_].setVolume(volume_ * 100.0f);
+        decks_[active_].setVolume(volume_ * deck_gains_[active_] * 100.0f);
         stopping_ = false;
     }
     if (!fading_)
@@ -70,33 +74,36 @@ void MusicPlayer::cancel_fade() {
         decks_[incoming_].stop();
     }
 
-    decks_[active_].setVolume(volume_ * 100.0f);
     incoming_ = -1;
     fading_ = false;
+    apply_volumes();
 }
 
-void MusicPlayer::play(const std::string& logical, bool loop) {
+void MusicPlayer::play(const std::string& logical, bool loop, float gain01) {
     cancel_fade();
     const int next = 1 - active_;
     decks_[next].stop();
     if (!open(next, logical, loop))
         return;
 
+    deck_gains_[next] = std::clamp(gain01, 0.0f, 1.0f);
     decks_[active_].stop();
     active_ = next;
-    decks_[active_].setVolume(volume_ * 100.0f);
+    apply_volumes();
     decks_[active_].play();
 }
 
 bool MusicPlayer::crossfade(const std::string& logical,
                             float fade_seconds,
                             bool preserve_offset,
-                            bool loop) {
+                            bool loop,
+                            float gain01) {
     cancel_fade();
     const int next = 1 - active_;
     decks_[next].stop();
     if (!open(next, logical, loop))
         return false;
+    deck_gains_[next] = std::clamp(gain01, 0.0f, 1.0f);
 
     if (preserve_offset && decks_[active_].getStatus() == sf::SoundSource::Playing) {
         const float duration = decks_[next].getDuration().asSeconds();
@@ -152,28 +159,26 @@ void MusicPlayer::update(float delta_seconds) {
         return;
 
     decks_[active_].stop();
-    decks_[active_].setVolume(volume_ * 100.0f);
     active_ = incoming_;
     incoming_ = -1;
     fading_ = false;
-    decks_[active_].setVolume(volume_ * 100.0f);
+    apply_volumes();
 }
 
 void MusicPlayer::apply_volumes() {
     if (stopping_) {
-        const float gain =
-            detail::music_crossfade_gains(elapsed_ / fade_duration_).outgoing;
-        decks_[active_].setVolume(volume_ * gain * 100.0f);
+        const float gain = detail::music_crossfade_gains(elapsed_ / fade_duration_).outgoing;
+        decks_[active_].setVolume(volume_ * deck_gains_[active_] * gain * 100.0f);
         return;
     }
     if (!fading_ || incoming_ < 0) {
-        decks_[active_].setVolume(volume_ * 100.0f);
+        decks_[active_].setVolume(volume_ * deck_gains_[active_] * 100.0f);
         return;
     }
     const detail::MusicCrossfadeGains gains =
         detail::music_crossfade_gains(elapsed_ / fade_duration_);
-    decks_[active_].setVolume(volume_ * gains.outgoing * 100.0f);
-    decks_[incoming_].setVolume(volume_ * gains.incoming * 100.0f);
+    decks_[active_].setVolume(volume_ * deck_gains_[active_] * gains.outgoing * 100.0f);
+    decks_[incoming_].setVolume(volume_ * deck_gains_[incoming_] * gains.incoming * 100.0f);
 }
 
 void MusicPlayer::stop() {
@@ -216,7 +221,7 @@ void SoundPlayer::play(const std::string& logical, float volume01, float pan) {
 
     std::size_t voice_index = voices_.size();
     for (std::size_t i = 0; i < voices_.size(); ++i) {
-        if (voices_[i].getStatus() == sf::Sound::Stopped) {
+        if (voices_[i].sound.getStatus() == sf::Sound::Stopped) {
             voice_index = i;
             break;
         }
@@ -226,36 +231,95 @@ void SoundPlayer::play(const std::string& logical, float volume01, float pan) {
             return; // all voices busy; drop this one
         }
         voices_.emplace_back();
-        voice_gains_.push_back(1.0f);
     }
-    sf::Sound* voice = &voices_[voice_index];
-    voice_gains_[voice_index] = std::clamp(volume01, 0.0f, 1.0f);
-    voice->setBuffer(*buffer);
-    voice->setVolume(volume_ * voice_gains_[voice_index] * 100.0f);
+    Voice& voice = voices_[voice_index];
+    voice.logical = logical;
+    voice.gain = std::clamp(volume01, 0.0f, 1.0f);
+    voice.fade_start = 1.0f;
+    voice.fade_elapsed = 0.0f;
+    voice.fade_duration = 0.0f;
+    voice.fading = false;
+    voice.sound.setBuffer(*buffer);
+    apply_voice_volume(voice);
 
     // Stereo balance: place the (mono) source on a forward arc around the
     // listener so `pan` maps proportionally to L/R, with distance attenuation off
     // so only direction matters. pan=0 sits dead ahead (centered, full volume).
     pan = std::clamp(pan, -1.0f, 1.0f);
     const float theta = pan * 1.5707963f; // ±90° at the extremes
-    voice->setRelativeToListener(true);
-    voice->setMinDistance(1.0f);
-    voice->setAttenuation(0.0f);
-    voice->setPosition(std::sin(theta), 0.0f, -std::cos(theta));
+    voice.sound.setRelativeToListener(true);
+    voice.sound.setMinDistance(1.0f);
+    voice.sound.setAttenuation(0.0f);
+    voice.sound.setPosition(std::sin(theta), 0.0f, -std::cos(theta));
 
-    voice->play();
+    voice.sound.play();
 }
 
-void SoundPlayer::stop_all() {
-    for (sf::Sound& s : voices_) {
-        s.stop();
+void SoundPlayer::stop_voice(Voice& voice, float fade_seconds) {
+    if (voice.sound.getStatus() == sf::Sound::Stopped) {
+        voice.fading = false;
+        return;
     }
+    if (fade_seconds <= 0.0f) {
+        voice.sound.stop();
+        voice.fading = false;
+        return;
+    }
+
+    const float current_fade =
+        voice.fading
+            ? voice.fade_start * detail::sound_fade_gain(voice.fade_elapsed / voice.fade_duration)
+            : 1.0f;
+    voice.fade_start = current_fade;
+    voice.fade_elapsed = 0.0f;
+    voice.fade_duration = fade_seconds;
+    voice.fading = true;
+    apply_voice_volume(voice);
+}
+
+void SoundPlayer::stop(const std::string& logical, float fade_seconds) {
+    fade_seconds = std::isfinite(fade_seconds) ? std::max(fade_seconds, 0.0f) : 0.0f;
+    for (Voice& voice : voices_) {
+        if (voice.logical == logical) {
+            stop_voice(voice, fade_seconds);
+        }
+    }
+}
+
+void SoundPlayer::stop_all(float fade_seconds) {
+    fade_seconds = std::isfinite(fade_seconds) ? std::max(fade_seconds, 0.0f) : 0.0f;
+    for (Voice& voice : voices_) {
+        stop_voice(voice, fade_seconds);
+    }
+}
+
+void SoundPlayer::update(float delta_seconds) {
+    delta_seconds = std::max(delta_seconds, 0.0f);
+    for (Voice& voice : voices_) {
+        if (!voice.fading) {
+            continue;
+        }
+        voice.fade_elapsed += delta_seconds;
+        apply_voice_volume(voice);
+        if (voice.fade_elapsed >= voice.fade_duration) {
+            voice.sound.stop();
+            voice.fading = false;
+        }
+    }
+}
+
+void SoundPlayer::apply_voice_volume(Voice& voice) {
+    const float fade =
+        voice.fading
+            ? voice.fade_start * detail::sound_fade_gain(voice.fade_elapsed / voice.fade_duration)
+            : 1.0f;
+    voice.sound.setVolume(volume_ * voice.gain * fade * 100.0f);
 }
 
 void SoundPlayer::set_volume(float volume01) {
     volume_ = std::clamp(volume01, 0.0f, 1.0f);
-    for (std::size_t i = 0; i < voices_.size(); ++i) {
-        voices_[i].setVolume(volume_ * voice_gains_[i] * 100.0f);
+    for (Voice& voice : voices_) {
+        apply_voice_volume(voice);
     }
 }
 

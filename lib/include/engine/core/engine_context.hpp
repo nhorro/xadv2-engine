@@ -46,8 +46,9 @@ struct EngineContext {
     /// Save/load slots, autosave, latest-slot lookup, and the staged-restore
     /// hand-off between TitleScreen's Continue and RoomScene::enter().
     SaveService& saves;
-    /// Per-frame cursor appearance request channel (issue #73). Scenes call
-    /// `cursor.want(...)`; the harness applies it and resets it each frame.
+    /// Per-frame cursor appearance/visibility request channel (issue #73).
+    /// Scenes call `cursor.want(...)` / `want_hidden()`; the harness applies and
+    /// resets it each frame.
     CursorState& cursor;
     /// Available languages + the live language switch (issue #72). The settings
     /// scene reads `languages()` for the selector and calls `set_language()`,

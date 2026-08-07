@@ -67,26 +67,41 @@ void bind_core_api(EngineContext& ctx) {
     });
 
     // --- audio ---
-    lua.set_function("play_music", [&ctx](const std::string& path, sol::optional<bool> loop) {
-        ctx.audio.music.play(path, loop.value_or(true));
-    });
+    lua.set_function(
+        "play_music",
+        [&ctx](const std::string& path, sol::optional<bool> loop, sol::optional<float> gain) {
+            ctx.audio.music.play(path, loop.value_or(true), gain.value_or(1.0f));
+        });
     lua.set_function("crossfade_music",
                      [&ctx](const std::string& path,
                             sol::optional<float> seconds,
                             sol::optional<bool> preserve_offset,
-                            sol::optional<bool> loop) {
+                            sol::optional<bool> loop,
+                            sol::optional<float> gain) {
                          return ctx.audio.music.crossfade(path,
                                                           seconds.value_or(2.5f),
                                                           preserve_offset.value_or(false),
-                                                          loop.value_or(true));
+                                                          loop.value_or(true),
+                                                          gain.value_or(1.0f));
                      });
-    lua.set_function("stop_music", [&ctx]() { ctx.audio.music.stop(); });
+    lua.set_function("stop_music", [&ctx](sol::optional<float> seconds) {
+        if (seconds.value_or(0.0f) > 0.0f) {
+            ctx.audio.music.fade_out(*seconds);
+        } else {
+            ctx.audio.music.stop();
+        }
+    });
     lua.set_function(
         "play_sound",
         [&ctx](const std::string& path, sol::optional<float> volume, sol::optional<float> pan) {
             ctx.audio.sfx.play(path, volume.value_or(1.0f), pan.value_or(0.0f));
         });
-    lua.set_function("stop_sounds", [&ctx]() { ctx.audio.sfx.stop_all(); });
+    lua.set_function("stop_sound", [&ctx](const std::string& path, sol::optional<float> seconds) {
+        ctx.audio.sfx.stop(path, seconds.value_or(0.0f));
+    });
+    lua.set_function("stop_sounds", [&ctx](sol::optional<float> seconds) {
+        ctx.audio.sfx.stop_all(seconds.value_or(0.0f));
+    });
     lua.set_function(
         "set_ambience",
         [&ctx](const std::string& path, sol::optional<float> volume, sol::optional<float> seconds) {
