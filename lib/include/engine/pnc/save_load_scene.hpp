@@ -2,6 +2,7 @@
 
 #include "engine/core/save_service.hpp"
 #include "engine/core/scene.hpp"
+#include "engine/pnc/ui_sound_cues.hpp"
 
 #include <SFML/Graphics/Rect.hpp>
 #include <SFML/Graphics/Texture.hpp>
@@ -100,6 +101,7 @@ private:
     std::string format_when(const SlotView& view) const;
 
     pac::core::EngineContext& ctx_;
+    UiSoundCues ui_sounds_;
     Mode mode_ = Mode::SAVE;
     const sf::Font* font_ = nullptr; // owned by ResourceCache; null if unavailable
     std::string background_path_;

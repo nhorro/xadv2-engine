@@ -82,7 +82,7 @@ bool contains(const sf::FloatRect& r, float x, float y) {
 } // namespace
 
 SaveLoadScene::SaveLoadScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
-    : ctx_(ctx) {
+    : ctx_(ctx), ui_sounds_(params) {
     const std::string mode = params.get_or("mode", "save");
     mode_ = (mode == "load") ? Mode::LOAD : Mode::SAVE;
     if (mode != "save" && mode != "load") {
@@ -231,6 +231,8 @@ std::string SaveLoadScene::format_when(const SlotView& view) const {
 
 void SaveLoadScene::handle_event(const sf::Event& event) {
     if (event.type == sf::Event::MouseMoved) {
+        const int previous_row = hovered_row_;
+        const bool previous_back = back_hovered_;
         hovered_row_ = -1;
         for (std::size_t i = 0; i < rows_.size(); ++i) {
             if (contains(rows_[i].row,
@@ -243,6 +245,10 @@ void SaveLoadScene::handle_event(const sf::Event& event) {
         back_hovered_ = contains(back_button_,
                                  static_cast<float>(event.mouseMove.x),
                                  static_cast<float>(event.mouseMove.y));
+        if ((hovered_row_ >= 0 && hovered_row_ != previous_row) ||
+            (back_hovered_ && !previous_back)) {
+            ui_sounds_.selection(ctx_);
+        }
         return;
     }
     if (event.type == sf::Event::MouseButtonReleased &&
@@ -262,6 +268,7 @@ void SaveLoadScene::handle_event(const sf::Event& event) {
 
 void SaveLoadScene::on_click(float vx, float vy) {
     if (contains(back_button_, vx, vy)) {
+        ui_sounds_.activate(ctx_);
         cancel();
         return;
     }
@@ -276,9 +283,11 @@ void SaveLoadScene::on_click(float vx, float vy) {
                 if (v.slot == pac::core::SaveService::kAutosaveSlot) {
                     return; // autosave isn't manually savable
                 }
+                ui_sounds_.activate(ctx_);
                 save_into(v);
             } else {
                 if (v.exists) {
+                    ui_sounds_.activate(ctx_);
                     load_from(v);
                 }
             }
@@ -286,6 +295,7 @@ void SaveLoadScene::on_click(float vx, float vy) {
         }
         // Otherwise click selects the row (for input focus in save mode).
         focused_row_ = static_cast<int>(i);
+        ui_sounds_.activate(ctx_);
         return;
     }
 }
@@ -318,6 +328,7 @@ void SaveLoadScene::on_text(sf::Uint32 codepoint) {
 void SaveLoadScene::on_key(sf::Keyboard::Key key) {
     switch (key) {
     case sf::Keyboard::Escape:
+        ui_sounds_.activate(ctx_);
         cancel();
         return;
     case sf::Keyboard::Enter:
@@ -325,6 +336,7 @@ void SaveLoadScene::on_key(sf::Keyboard::Key key) {
             focused_row_ < static_cast<int>(rows_.size())) {
             SlotView& v = rows_[static_cast<std::size_t>(focused_row_)];
             if (v.slot != pac::core::SaveService::kAutosaveSlot) {
+                ui_sounds_.activate(ctx_);
                 save_into(v);
             }
         }
@@ -341,6 +353,7 @@ void SaveLoadScene::on_key(sf::Keyboard::Key key) {
                 if (rows_[static_cast<std::size_t>(next)].slot !=
                     pac::core::SaveService::kAutosaveSlot) {
                     focused_row_ = next;
+                    ui_sounds_.selection(ctx_);
                     break;
                 }
             }

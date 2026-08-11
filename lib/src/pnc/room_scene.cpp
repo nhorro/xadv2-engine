@@ -216,7 +216,7 @@ struct RoomScene::Lua {
 };
 
 RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
-    : ctx_(ctx), command_controller_(*this) {
+    : ctx_(ctx), ui_sounds_(params), command_controller_(*this) {
     cast_path_ = params.get_or("cast", "cast.yaml");
     rooms_dir_ = params.get_or("rooms", "rooms");
     start_room_ = params.get_or("start_room", "");
@@ -228,6 +228,32 @@ RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams
     logic_path_ = params.get_or("logic", "");
     development_logic_path_ = params.get_or("development_logic", "");
     pause_overlays_ = parse_pause_overlays(params, ctx_.log);
+    for (const std::string& id : params.children("footsteps.sounds")) {
+        const std::string sound = params.get_or("footsteps.sounds." + id, "");
+        if (!sound.empty()) {
+            footstep_sounds_.push_back(sound);
+        }
+    }
+    if (const auto v = params.get("footsteps.interval")) {
+        try {
+            const float interval = std::stof(*v);
+            if (std::isfinite(interval)) {
+                footstep_interval_ = std::clamp(interval, 0.15f, 1.5f);
+            }
+        } catch (const std::exception&) {
+            ctx_.log.warn("RoomScene: invalid footsteps.interval '" + *v + "'; using default");
+        }
+    }
+    if (const auto v = params.get("footsteps.volume")) {
+        try {
+            const float volume = std::stof(*v);
+            if (std::isfinite(volume)) {
+                footstep_volume_ = std::clamp(volume, 0.0f, 1.0f);
+            }
+        } catch (const std::exception&) {
+            ctx_.log.warn("RoomScene: invalid footsteps.volume '" + *v + "'; using default");
+        }
+    }
     fade_duration_ = kRoomFadeDefault;
     if (const auto v = params.get("fade_duration")) {
         try {
@@ -1444,6 +1470,21 @@ void RoomScene::handle_event(const sf::Event& event) {
     // virtual space by the application's event rewrite.
     if (event.type == sf::Event::MouseMoved) {
         hover_vp_ = {static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y)};
+        if (view_state_ == ViewState::MENU) {
+            int hovered = -1;
+            const auto buttons = menu_buttons();
+            for (std::size_t i = 0; i < buttons.size(); ++i) {
+                if (buttons[i].enabled && buttons[i].rect.contains(hover_vp_)) {
+                    hovered = static_cast<int>(i);
+                    break;
+                }
+            }
+            if (hovered >= 0 && hovered != menu_hovered_) {
+                ui_sounds_.selection(ctx_);
+            }
+            menu_hovered_ = hovered;
+            return;
+        }
         sync_command_hover();
         return;
     }
@@ -1495,8 +1536,11 @@ void RoomScene::handle_event(const sf::Event& event) {
         // player can't accidentally lose a dialog mid-conversation; in MVP
         // the dialog must run to its end (or be skipped via clicks).
         if (view_state_ == ViewState::COMMAND) {
+            ui_sounds_.activate(ctx_);
+            menu_hovered_ = -1;
             view_state_ = ViewState::MENU;
         } else if (view_state_ == ViewState::MENU) {
+            ui_sounds_.activate(ctx_);
             view_state_ = ViewState::COMMAND;
         } else if (view_state_ == ViewState::BLOCKED && cutscene_skip_) {
             skip_active_cutscene();
@@ -2058,6 +2102,25 @@ void RoomScene::update(float dt) {
     }
     if (player_ && room_) {
         player_->update(dt, room_->data());
+        if (player_->moving() && !footstep_sounds_.empty()) {
+            footstep_remaining_ -= dt;
+            if (footstep_remaining_ <= 0.0f) {
+                const float view_width =
+                    static_cast<float>(ctx_.display.virtual_resolution().x);
+                const float view_left = camera_ ? camera_->top_left().x : 0.0f;
+                const float screen_x = player_->position().x - view_left;
+                const float pan = view_width > 0.0f
+                                      ? std::clamp((screen_x / view_width) * 2.0f - 1.0f,
+                                                   -0.8f,
+                                                   0.8f)
+                                      : 0.0f;
+                ctx_.audio.sfx.play(footstep_sounds_[next_footstep_], footstep_volume_, pan);
+                next_footstep_ = (next_footstep_ + 1) % footstep_sounds_.size();
+                footstep_remaining_ = footstep_interval_;
+            }
+        } else {
+            footstep_remaining_ = 0.0f;
+        }
         room_->update_npcs(dt);
         // Wake any scripted avatar(id):move_to whose avatar has stopped (#139). A
         // null avatar (vanished, e.g. NPC despawn) emits too so the waiter doesn't
@@ -3534,6 +3597,7 @@ void RoomScene::handle_menu_event(const sf::Event& event) {
                           static_cast<float>(event.mouseButton.y)};
     for (const MenuButton& b : menu_buttons()) {
         if (b.enabled && b.rect.contains(vp)) {
+            ui_sounds_.activate(ctx_);
             trigger_menu(b);
             return;
         }

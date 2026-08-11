@@ -129,6 +129,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/gfx/shader_chain.cpp
     src/pnc/blank_scene.cpp
     src/pnc/shader_yaml.cpp
+    src/pnc/ui_sound_cues.cpp
     src/pnc/title_screen.cpp
     src/pnc/settings_scene.cpp
     src/pnc/save_load_scene.cpp

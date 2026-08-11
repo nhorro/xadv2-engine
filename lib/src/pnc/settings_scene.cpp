@@ -42,7 +42,7 @@ pac::core::DisplayMode mode_of(const pac::core::Settings& s) {
 } // namespace
 
 SettingsScene::SettingsScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
-    : ctx_(ctx), working_(ctx.settings) {
+    : ctx_(ctx), ui_sounds_(params), working_(ctx.settings) {
     background_path_ = params.get_or("background", "");
 
     const std::string font_path = params.get_or("font", "");
@@ -188,11 +188,16 @@ int SettingsScene::row_at(float vx, float vy) const {
 
 void SettingsScene::handle_event(const sf::Event& event) {
     if (event.type == sf::Event::MouseMoved) {
+        const int previous = row_;
+        const bool was_hovered = hovered_;
         const int r =
             row_at(static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y));
         hovered_ = (r >= 0);
         if (r >= 0) {
             row_ = r; // hover selects the row, mirroring keyboard navigation
+            if (!was_hovered || row_ != previous) {
+                ui_sounds_.selection(ctx_);
+            }
         }
         return;
     }
@@ -204,6 +209,7 @@ void SettingsScene::handle_event(const sf::Event& event) {
             return;
         }
         row_ = r;
+        ui_sounds_.activate(ctx_);
         if (r == ROW_APPLY || r == ROW_BACK) {
             activate();
         } else {
@@ -219,13 +225,16 @@ void SettingsScene::handle_event(const sf::Event& event) {
     }
     switch (event.key.code) {
     case sf::Keyboard::Escape:
+        ui_sounds_.activate(ctx_);
         cancel();
         break;
     case sf::Keyboard::Up:
         row_ = (row_ + ROW_COUNT - 1) % ROW_COUNT;
+        ui_sounds_.selection(ctx_);
         break;
     case sf::Keyboard::Down:
         row_ = (row_ + 1) % ROW_COUNT;
+        ui_sounds_.selection(ctx_);
         break;
     case sf::Keyboard::Left:
         adjust(-1);
@@ -235,6 +244,7 @@ void SettingsScene::handle_event(const sf::Event& event) {
         break;
     case sf::Keyboard::Return:
     case sf::Keyboard::Space:
+        ui_sounds_.activate(ctx_);
         activate();
         break;
     default:

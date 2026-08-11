@@ -2,6 +2,7 @@
 
 #include "engine/core/speech_config.hpp"
 
+#include <map>
 #include <string>
 
 namespace pac::core {
@@ -64,6 +65,10 @@ struct EngineContext {
     Thumbnail& thumbnail;
     /// Game-wide spoken-line typography. Scene-specific fonts remain UI fonts.
     SpeechConfig speech;
+    /// Session-only strings supplied by the game executable for presentation
+    /// (build identifiers, channel names, etc.). Deliberately excluded from
+    /// GameState, so clearing or restoring a game never loses executable info.
+    std::map<std::string, std::string> runtime_info;
 };
 
 } // namespace pac::core

@@ -377,7 +377,8 @@ int run(const std::string& manifest_path,
                       localization,
                       settings_store,
                       thumbnail,
-                      manifest.speech};
+                      manifest.speech,
+                      {}};
     bind_core_api(ctx);
     if (hooks.configure) {
         try {

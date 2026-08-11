@@ -18,6 +18,7 @@
 #include "engine/pnc/room_runtime.hpp"
 #include "engine/pnc/scumm_panel.hpp"
 #include "engine/pnc/speech_manager.hpp"
+#include "engine/pnc/ui_sound_cues.hpp"
 
 #include <cstddef>
 #include <functional>
@@ -345,6 +346,7 @@ private:
     object_frame_bounds(const std::string& object_id) const;
 
     pac::core::EngineContext& ctx_;
+    UiSoundCues ui_sounds_;
     std::string cast_path_;
     std::string rooms_dir_;
     std::string start_room_;
@@ -359,6 +361,12 @@ private:
     std::string logic_path_;
     std::string development_logic_path_;
     std::vector<PauseOverlayAction> pause_overlays_;
+    std::vector<std::string> footstep_sounds_;
+    float footstep_interval_ = 0.38f;
+    float footstep_volume_ = 0.24f;
+    float footstep_remaining_ = 0.0f;
+    std::size_t next_footstep_ = 0;
+    int menu_hovered_ = -1;
 
     const sf::Font* font_ = nullptr;
     const sf::Font* speech_font_ = nullptr;

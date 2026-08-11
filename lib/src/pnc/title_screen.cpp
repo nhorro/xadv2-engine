@@ -21,6 +21,7 @@
 #include <SFML/Graphics/Texture.hpp>
 #include <SFML/Window/Event.hpp>
 
+#include <algorithm>
 #include <exception>
 
 namespace pac::pnc {
@@ -49,9 +50,11 @@ float parse_fraction(const pac::core::SceneParams& params, const std::string& ke
 } // namespace
 
 TitleScreen::TitleScreen(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
-    : ctx_(ctx) {
+    : ctx_(ctx), ui_sounds_(params) {
     background_path_ = params.get_or("background", "");
     music_path_ = params.get_or("music", "");
+    build_info_key_ = params.get_or("build_info.key", "");
+    build_info_prefix_ = params.get_or("build_info.prefix", "");
     new_game_target_ = params.get_or("menu.options.new_game", "");
     continue_target_ = params.get_or("menu.options.continue", "");
     load_game_target_ = params.get_or("menu.options.load_game", "");
@@ -72,6 +75,14 @@ TitleScreen::TitleScreen(pac::core::EngineContext& ctx, const pac::core::ScenePa
             font_size_ = static_cast<unsigned>(std::stoul(*fs));
         } catch (const std::exception&) {
             ctx_.log.warn("title: invalid font_size '" + *fs + "'; using default");
+        }
+    }
+    if (const auto fs = params.get("build_info.font_size")) {
+        try {
+            build_info_font_size_ = static_cast<unsigned>(std::stoul(*fs));
+            build_info_font_size_ = std::clamp(build_info_font_size_, 8u, 32u);
+        } catch (const std::exception&) {
+            ctx_.log.warn("title: invalid build_info.font_size '" + *fs + "'; using default");
         }
     }
 
@@ -215,16 +226,22 @@ void TitleScreen::trigger(Action action) {
 
 void TitleScreen::handle_event(const sf::Event& event) {
     if (event.type == sf::Event::MouseMoved) {
+        const int previous = hovered_;
         hovered_ =
             entry_at(static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y));
+        if (hovered_ >= 0 && hovered_ != previous) {
+            ui_sounds_.selection(ctx_);
+        }
     } else if (event.type == sf::Event::MouseButtonReleased &&
                event.mouseButton.button == sf::Mouse::Left) {
         const int idx = entry_at(static_cast<float>(event.mouseButton.x),
                                  static_cast<float>(event.mouseButton.y));
         if (idx >= 0) {
+            ui_sounds_.activate(ctx_);
             trigger(entries_[static_cast<std::size_t>(idx)].action);
         }
     } else if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+        ui_sounds_.activate(ctx_);
         trigger(Action::EXIT);
     }
 }
@@ -280,6 +297,23 @@ void TitleScreen::draw(sf::RenderTarget& target) const {
         const sf::FloatRect b = text.getLocalBounds();
         text.setPosition(c.x - b.width / 2.0f - b.left, c.y - b.height / 2.0f - b.top);
         target.draw(text);
+    }
+
+    if (!build_info_key_.empty()) {
+        const auto it = ctx_.runtime_info.find(build_info_key_);
+        if (it != ctx_.runtime_info.end() && !it->second.empty()) {
+            sf::Text build_info(pac::core::utf8(build_info_prefix_ + it->second),
+                                *font_,
+                                build_info_font_size_);
+            build_info.setFillColor(sf::Color(190, 194, 202, 210));
+            build_info.setOutlineColor(sf::Color(0, 0, 0, 180));
+            build_info.setOutlineThickness(1.0f);
+            const sf::FloatRect b = build_info.getLocalBounds();
+            constexpr float kMargin = 12.0f;
+            build_info.setPosition(kMargin - b.left,
+                                   vh - kMargin - b.height - b.top);
+            target.draw(build_info);
+        }
     }
 }
 

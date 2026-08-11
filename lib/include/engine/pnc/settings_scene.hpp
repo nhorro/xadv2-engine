@@ -2,6 +2,7 @@
 
 #include "engine/core/scene.hpp"
 #include "engine/core/settings.hpp"
+#include "engine/pnc/ui_sound_cues.hpp"
 
 #include <SFML/System/Vector2.hpp>
 
@@ -60,6 +61,7 @@ private:
     int row_at(float virtual_x, float virtual_y) const;
 
     pac::core::EngineContext& ctx_;
+    UiSoundCues ui_sounds_;
     const sf::Font* font_ = nullptr; // owned by ResourceCache; null if unavailable
     std::string background_path_;    // full-screen image; dark fill when empty
     unsigned font_size_ = 28;        // menu-row text size; title derives from it

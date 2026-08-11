@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/scene.hpp"
+#include "engine/pnc/ui_sound_cues.hpp"
 
 #include <SFML/System/Vector2.hpp>
 
@@ -30,6 +31,9 @@ namespace pac::pnc {
 ///   font        (opt path)   menu label font
 ///   font_size   (opt int)    menu label size in virtual pixels
 ///   music       (opt path)   background track, played in a loop
+///   build_info.key            (opt) runtime-info string rendered at bottom-left
+///   build_info.prefix         (opt) label prepended to that string
+///   build_info.font_size      (opt int) build-label size (default 14)
 ///   menu.position.{x,y}      menu anchor as a 0..1 screen fraction
 ///   menu.options.{new_game,continue,exit}   outcome scene ids
 ///   menu.continue_fallback   (opt) `new_game` — see below
@@ -71,8 +75,11 @@ private:
     int entry_at(float virtual_x, float virtual_y) const;
 
     pac::core::EngineContext& ctx_;
+    UiSoundCues ui_sounds_;
     std::string background_path_;
     std::string music_path_;
+    std::string build_info_key_;
+    std::string build_info_prefix_;
     std::string new_game_target_;
     std::string continue_target_;
     std::string load_game_target_; // optional (#108); when wired, shows the load picker
@@ -80,6 +87,7 @@ private:
     bool continue_starts_new_game_ = false; // menu.continue_fallback: new_game
     sf::Vector2f menu_anchor_{0.5f, 0.5f};  // screen-fraction position of the menu block
     unsigned font_size_ = 28;
+    unsigned build_info_font_size_ = 14;
     std::vector<Entry> entries_;
     const sf::Font* font_ = nullptr; // owned by ResourceCache; null if unavailable
     int hovered_ = -1;
