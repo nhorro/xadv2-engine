@@ -35,6 +35,22 @@ struct CaseSlot {
     std::string solution;             // optional term id
 };
 
+/// A group of interchangeable slots whose expected terms may appear in any
+/// order. `slots` and `terms` have equal cardinality and contain unique ids.
+struct CaseSolutionGroup {
+    std::string id;
+    std::vector<std::string> slots;
+    std::vector<std::string> terms;
+};
+
+/// Optional interaction cues. Empty paths are deliberate no-ops, allowing a
+/// template to reserve the authoring hooks before final sounds exist.
+struct CaseInteractionSounds {
+    std::string pickup;
+    std::string place;
+    std::string return_to_bank;
+};
+
 struct CaseResolutionData {
     int version = 1;
     std::string id;
@@ -42,6 +58,8 @@ struct CaseResolutionData {
     sf::Color background_color = sf::Color(21, 22, 23);
     float canvas_height = 592.0f;
     std::vector<CaseSlot> slots;
+    std::vector<CaseSolutionGroup> solution_groups;
+    CaseInteractionSounds sounds;
 
     [[nodiscard]] const CaseSlot* slot_at(geom::Point p) const;
 };

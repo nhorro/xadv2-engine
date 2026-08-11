@@ -50,6 +50,7 @@ appearances:
     sprite: a.anim.yml
     shadow:
       size: { x: 70, y: 18 }
+      offset: { x: 2, y: -6 }
       color: { r: 10, g: 20, b: 30, a: 90 }
   no_shadow:
     type: animated_sprite
@@ -62,6 +63,8 @@ appearances:
     const Shadow& sh = *c.appearance("with_shadow")->shadow;
     CHECK(sh.size.x == doctest::Approx(70.0f));
     CHECK(sh.size.y == doctest::Approx(18.0f));
+    CHECK(sh.offset.x == doctest::Approx(2.0f));
+    CHECK(sh.offset.y == doctest::Approx(-6.0f));
     CHECK(static_cast<int>(sh.color.a) == 90);
 
     REQUIRE(c.appearance("no_shadow") != nullptr);
@@ -73,6 +76,13 @@ TEST_CASE("parse_cast rejects a shadow without a size") {
               parse_cast("appearances:\n  a: { type: animated_sprite, sprite: s, shadow: { color: "
                          "{ r: 0, g: 0, b: 0 } } }\n");
           }) == "cast.shadow-size-missing");
+}
+
+TEST_CASE("parse_cast rejects a malformed shadow offset") {
+    CHECK(error_code([] {
+              parse_cast("appearances:\n  a: { type: animated_sprite, sprite: s, shadow: { size: "
+                         "{ x: 10, y: 4 }, offset: { y: -2 } } }\n");
+          }) == "cast.shadow-offset-shape");
 }
 
 TEST_CASE("parse_cast reads an appearance shader stack (issue #106)") {

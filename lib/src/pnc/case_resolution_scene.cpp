@@ -1,5 +1,6 @@
 #include "engine/pnc/case_resolution_scene.hpp"
 
+#include "engine/core/audio.hpp"
 #include "engine/core/cursor.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
@@ -34,6 +35,7 @@ const sf::Color kDisabled(176, 165, 138);
 constexpr std::size_t kPerPage = 12;
 constexpr float kHeader = 28.0f;
 constexpr float kCheckWidth = 142.0f;
+constexpr float kDragThreshold = 5.0f;
 
 bool inside(geom::Point p, float x, float y, float w, float h) {
     return p.x >= x && p.x < x + w && p.y >= y && p.y < y + h;
@@ -192,38 +194,89 @@ std::size_t CaseResolutionScene::page_count() const {
     return std::max<std::size_t>(1, (bank_.terms.size() + kPerPage - 1) / kPerPage);
 }
 
-void CaseResolutionScene::activate(geom::Point p) {
+std::optional<std::size_t> CaseResolutionScene::term_index_at(geom::Point p) const {
     const float vw = static_cast<float>(ctx_.display.virtual_resolution().x);
     const float vh = static_cast<float>(ctx_.display.virtual_resolution().y);
     const float panel_y = data_.canvas_height;
-    if (p.y < panel_y) {
+    const float usable = vw - kCheckWidth;
+    if (p.x < 0.0f || p.x >= usable || p.y < panel_y + kHeader || p.y >= vh)
+        return std::nullopt;
+    const float cell_w = usable / 6.0f;
+    const float cell_h = (vh - panel_y - kHeader) / 2.0f;
+    const std::size_t col = std::min<std::size_t>(5, static_cast<std::size_t>(p.x / cell_w));
+    const std::size_t row =
+        std::min<std::size_t>(1, static_cast<std::size_t>((p.y - panel_y - kHeader) / cell_h));
+    const std::size_t index = page_ * kPerPage + row * 6 + col;
+    return index < bank_.terms.size() ? std::optional<std::size_t>(index) : std::nullopt;
+}
+
+void CaseResolutionScene::play_sound(const std::string& path) {
+    if (!path.empty())
+        ctx_.audio.sfx.play(path);
+}
+
+void CaseResolutionScene::clear_assignment_for(const std::string& term_id) {
+    for (const CaseSlot& slot : data_.slots) {
+        const std::string* assigned = assignments_.term_for(slot.id);
+        if (assigned && *assigned == term_id)
+            assignments_.clear(slot.id);
+        const std::string key = "__case_assignment." + data_.id + "." + slot.id;
+        const auto persisted = ctx_.state.get(key);
+        if (persisted && std::holds_alternative<std::string>(*persisted) &&
+            std::get<std::string>(*persisted) == term_id) {
+            ctx_.state.erase(key);
+        }
+    }
+}
+
+void CaseResolutionScene::pick_up(const std::string& term_id) {
+    clear_assignment_for(term_id);
+    held_term_ = term_id;
+    play_sound(data_.sounds.pickup);
+}
+
+bool CaseResolutionScene::pick_up_at(geom::Point p) {
+    if (!held_term_.empty())
+        return false;
+    if (p.y < data_.canvas_height) {
         if (const CaseSlot* slot = data_.slot_at(p)) {
-            const std::string key = "__case_assignment." + data_.id + "." + slot->id;
-            if (selected_term_.empty()) {
-                assignments_.clear(slot->id);
-                ctx_.state.erase(key);
-            } else if (const CaseTerm* term = bank_.find(selected_term_)) {
-                if (assignments_.assign(*slot, *term)) {
-                    for (const CaseSlot& other : data_.slots) {
-                        if (other.id != slot->id && assignments_.term_for(other.id) == nullptr) {
-                            const auto old =
-                                ctx_.state.get("__case_assignment." + data_.id + "." + other.id);
-                            if (old && std::holds_alternative<std::string>(*old) &&
-                                std::get<std::string>(*old) == term->id) {
-                                ctx_.state.erase("__case_assignment." + data_.id + "." + other.id);
-                            }
-                        }
-                    }
-                    ctx_.state.set(key, term->id);
-                    selected_term_.clear();
-                } else {
-                    feedback_success_ = false;
-                    feedback_left_ = 1.2f;
-                }
+            if (const std::string* term_id = assignments_.term_for(slot->id)) {
+                const std::string id = *term_id;
+                pick_up(id);
+                return true;
             }
         }
-        return;
+        return false;
     }
+    if (const std::optional<std::size_t> index = term_index_at(p)) {
+        pick_up(bank_.terms[*index].id);
+        return true;
+    }
+    return false;
+}
+
+void CaseResolutionScene::drop_at(geom::Point p) {
+    if (held_term_.empty())
+        return;
+    const CaseTerm* term = bank_.find(held_term_);
+    const CaseSlot* slot = p.y < data_.canvas_height ? data_.slot_at(p) : nullptr;
+    if (term && slot && assignments_.assign(*slot, *term)) {
+        ctx_.state.set("__case_assignment." + data_.id + "." + slot->id, term->id);
+        play_sound(data_.sounds.place);
+    } else {
+        if (slot) {
+            feedback_success_ = false;
+            feedback_left_ = 1.2f;
+        }
+        play_sound(data_.sounds.return_to_bank);
+    }
+    held_term_.clear();
+}
+
+void CaseResolutionScene::activate_control(geom::Point p) {
+    const float vw = static_cast<float>(ctx_.display.virtual_resolution().x);
+    const float vh = static_cast<float>(ctx_.display.virtual_resolution().y);
+    const float panel_y = data_.canvas_height;
     if (inside(p, vw - kCheckWidth, panel_y + kHeader, kCheckWidth, vh - panel_y - kHeader)) {
         if (!assignments_.complete(data_))
             return;
@@ -246,18 +299,29 @@ void CaseResolutionScene::activate(geom::Point p) {
         ++page_;
         return;
     }
+}
 
-    const float usable = vw - kCheckWidth;
-    const float cell_w = usable / 6.0f;
-    const float cell_h = (vh - panel_y - kHeader) / 2.0f;
-    if (p.x >= usable || p.y < panel_y + kHeader)
-        return;
-    const std::size_t col = std::min<std::size_t>(5, static_cast<std::size_t>(p.x / cell_w));
-    const std::size_t row =
-        std::min<std::size_t>(1, static_cast<std::size_t>((p.y - panel_y - kHeader) / cell_h));
-    const std::size_t index = page_ * kPerPage + row * 6 + col;
-    if (index < bank_.terms.size())
-        selected_term_ = bank_.terms[index].id;
+bool CaseResolutionScene::pointer_is_actionable(geom::Point p) const {
+    const float vw = static_cast<float>(ctx_.display.virtual_resolution().x);
+    const float vh = static_cast<float>(ctx_.display.virtual_resolution().y);
+    const float panel_y = data_.canvas_height;
+    if (!held_term_.empty()) {
+        const CaseSlot* slot = p.y < panel_y ? data_.slot_at(p) : nullptr;
+        const CaseTerm* term = bank_.find(held_term_);
+        return slot && term && case_slot_accepts(*slot, *term);
+    }
+    if (p.y < panel_y) {
+        const CaseSlot* slot = data_.slot_at(p);
+        return slot && assignments_.term_for(slot->id);
+    }
+    if (term_index_at(p))
+        return true;
+    if (assignments_.complete(data_) &&
+        inside(p, vw - kCheckWidth, panel_y + kHeader, kCheckWidth, vh - panel_y - kHeader))
+        return true;
+    if (page_ > 0 && inside(p, vw - 132.0f, panel_y, 36.0f, kHeader))
+        return true;
+    return page_ + 1 < page_count() && inside(p, vw - 40.0f, panel_y, 36.0f, kHeader);
 }
 
 void CaseResolutionScene::handle_event(const sf::Event& event) {
@@ -267,19 +331,36 @@ void CaseResolutionScene::handle_event(const sf::Event& event) {
     }
     if (event.type == sf::Event::MouseMoved)
         mouse_ = {float(event.mouseMove.x), float(event.mouseMove.y)};
+    if (event.type == sf::Event::MouseButtonPressed &&
+        event.mouseButton.button == sf::Mouse::Left && loaded_) {
+        mouse_ = {float(event.mouseButton.x), float(event.mouseButton.y)};
+        press_point_ = mouse_;
+        left_pressed_ = true;
+        picked_up_on_press_ = pick_up_at(mouse_);
+    }
     if (event.type == sf::Event::MouseButtonReleased) {
+        mouse_ = {float(event.mouseButton.x), float(event.mouseButton.y)};
         if (event.mouseButton.button == sf::Mouse::Right) {
             exit();
             return;
         }
-        if (event.mouseButton.button == sf::Mouse::Left && loaded_)
-            activate({float(event.mouseButton.x), float(event.mouseButton.y)});
+        if (event.mouseButton.button == sf::Mouse::Left && loaded_ && left_pressed_) {
+            const bool dragged = distance(press_point_, mouse_) >= kDragThreshold;
+            if (!picked_up_on_press_ || dragged) {
+                if (!held_term_.empty())
+                    drop_at(mouse_);
+                else
+                    activate_control(mouse_);
+            }
+            left_pressed_ = false;
+            picked_up_on_press_ = false;
+        }
     }
 }
 
 void CaseResolutionScene::update(float dt) {
     feedback_left_ = std::max(0.0f, feedback_left_ - dt);
-    if (loaded_)
+    if (loaded_ && pointer_is_actionable(mouse_))
         ctx_.cursor.want(pac::core::CursorKind::INTERACT);
 }
 
@@ -367,7 +448,7 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
         sf::RectangleShape cell({cw, ch});
         cell.setPosition(x, y);
         cell.setFillColor(case_term_color(bank_.terms[index].tag, 135));
-        const bool selected = selected_term_ == bank_.terms[index].id,
+        const bool selected = held_term_ == bank_.terms[index].id,
                    hover = inside(mouse_, x, y, cw, ch);
         cell.setOutlineColor(selected ? kGold : (hover ? kHover : kBorder));
         cell.setOutlineThickness(-2);
@@ -405,5 +486,23 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
              py + kHeader,
              kCheckWidth,
              vh - py - kHeader);
+
+    if (!held_term_.empty()) {
+        if (const CaseTerm* term = bank_.find(held_term_)) {
+            sf::Text label(pac::core::utf8(term->name), *font_, 17);
+            const sf::FloatRect bounds = label.getLocalBounds();
+            const float width = std::clamp(bounds.width + 28.0f, 112.0f, 280.0f);
+            const float height = 38.0f;
+            const float x = std::clamp(mouse_.x + 18.0f, 4.0f, vw - width - 4.0f);
+            const float y = std::clamp(mouse_.y + 18.0f, 4.0f, vh - height - 4.0f);
+            sf::RectangleShape chip({width, height});
+            chip.setPosition(x, y);
+            chip.setFillColor(case_term_color(term->tag, 235));
+            chip.setOutlineColor(kGold);
+            chip.setOutlineThickness(2.0f);
+            target.draw(chip);
+            centered(target, *font_, term->name, 17, kText, x, y, width, height);
+        }
+    }
 }
 } // namespace pac::pnc

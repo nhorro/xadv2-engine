@@ -885,6 +885,28 @@ hotspots:
     CHECK(room.hotspot_at({320, 350}) == nullptr);         // headless overload skips object bind
 }
 
+TEST_CASE("explicit hotspot areas win globally over overlapping bound visuals") {
+    const char* yaml = R"YAML(
+id: r
+objects:
+  clerk: { image: a/clerk.png, position: { x: 0, y: 0 } }
+hotspots:
+  a_clerk: { name: "empleado", bind: "object:clerk" }
+  z_ledger:
+    name: "registro"
+    area: [ {x: 20, y: 20}, {x: 80, y: 20}, {x: 80, y: 60}, {x: 20, y: 60} ]
+)YAML";
+    RoomRuntime room(parse_room(yaml));
+    const auto bounds = [](const std::string& id) -> std::optional<sf::FloatRect> {
+        if (id == "clerk")
+            return sf::FloatRect(0.0f, 0.0f, 100.0f, 100.0f);
+        return std::nullopt;
+    };
+    const RoomHotspot* hit = room.hotspot_at({50, 40}, bounds);
+    REQUIRE(hit != nullptr);
+    CHECK(hit->id == "z_ledger");
+}
+
 TEST_CASE("call_hotspot reports handled vs. no-handler (default-caption gating)") {
     // A behavior with: a verb that returns a caption, a verb that runs a silent
     // action (returns nil), and verbs/hotspots with no handler at all.

@@ -37,7 +37,12 @@ geom::Polygon polygon(const YAML::Node& node) {
     return result;
 }
 
-std::string resolve(const std::string& raw, const std::string& logical_path, const YAML::Node& at) {
+std::string resolve(const std::string& raw,
+                    const std::string& logical_path,
+                    const YAML::Node& at,
+                    const std::string& field) {
+    if (raw.empty())
+        return {};
     if (logical_path.empty())
         return raw;
     const std::string path =
@@ -45,10 +50,14 @@ std::string resolve(const std::string& raw, const std::string& logical_path, con
             ? raw.substr(1)
             : pac::core::logical_join(pac::core::logical_dir(logical_path), raw);
     if (!pac::core::is_valid_logical_path(path))
-        fail("case.background-path-invalid",
-             "background did not resolve to a valid logical path",
+        fail("case." + field + "-path-invalid",
+             field + " did not resolve to a valid logical path",
              at);
     return path;
+}
+
+bool has_duplicates(const std::vector<std::string>& values) {
+    return std::set<std::string>(values.begin(), values.end()).size() != values.size();
 }
 } // namespace
 
@@ -143,8 +152,10 @@ CaseResolutionData parse_case_resolution(const std::string& yaml_text,
     data.id = root["id"].as<std::string>();
     if (!expected_id.empty() && expected_id != data.id)
         fail("case.id-mismatch", "id does not match filename", root["id"]);
-    data.background =
-        resolve(root["background"].as<std::string>(), logical_path, root["background"]);
+    data.background = resolve(root["background"].as<std::string>(),
+                              logical_path,
+                              root["background"],
+                              "background");
     if (root["canvas_height"])
         data.canvas_height = root["canvas_height"].as<float>();
 
@@ -164,6 +175,72 @@ CaseResolutionData parse_case_resolution(const std::string& yaml_text,
         if (node["solution"])
             slot.solution = node["solution"].as<std::string>();
         data.slots.push_back(std::move(slot));
+    }
+
+    if (const YAML::Node groups = root["solution_groups"]) {
+        if (!groups.IsMap())
+            fail("case.solution-groups-not-map", "'solution_groups' must be a mapping", groups);
+        std::set<std::string> grouped_slots;
+        for (const auto& kv : groups) {
+            CaseSolutionGroup group;
+            group.id = kv.first.as<std::string>();
+            const YAML::Node node = kv.second;
+            if (!node.IsMap())
+                fail("case.solution-group-not-map",
+                     "solution group '" + group.id + "' must be a mapping",
+                     node);
+            group.slots = strings(node["slots"], "solution-group-slots");
+            group.terms = strings(node["terms"], "solution-group-terms");
+            if (group.slots.empty() || group.terms.empty())
+                fail("case.solution-group-empty",
+                     "solution group '" + group.id + "' needs non-empty slots and terms",
+                     node);
+            if (group.slots.size() != group.terms.size())
+                fail("case.solution-group-size-mismatch",
+                     "solution group '" + group.id + "' needs one term per slot",
+                     node);
+            if (has_duplicates(group.slots) || has_duplicates(group.terms))
+                fail("case.solution-group-duplicates",
+                     "solution group '" + group.id + "' cannot repeat slots or terms",
+                     node);
+            for (const std::string& slot_id : group.slots) {
+                const auto slot = std::find_if(
+                    data.slots.begin(),
+                    data.slots.end(),
+                    [&](const CaseSlot& candidate) { return candidate.id == slot_id; });
+                if (slot == data.slots.end())
+                    fail("case.solution-group-slot-unknown",
+                         "solution group '" + group.id + "' names unknown slot '" + slot_id + "'",
+                         node["slots"]);
+                if (!slot->solution.empty())
+                    fail("case.solution-group-slot-conflict",
+                         "grouped slot '" + slot_id + "' must not define 'solution'",
+                         node["slots"]);
+                if (!grouped_slots.insert(slot_id).second)
+                    fail("case.solution-group-slot-reused",
+                         "slot '" + slot_id + "' belongs to more than one solution group",
+                         node["slots"]);
+            }
+            data.solution_groups.push_back(std::move(group));
+        }
+    }
+
+    if (const YAML::Node sounds = root["sounds"]) {
+        if (!sounds.IsMap())
+            fail("case.sounds-not-map", "'sounds' must be a mapping", sounds);
+        const auto sound = [&](const char* name) -> std::string {
+            const YAML::Node value = sounds[name];
+            if (!value)
+                return {};
+            if (!value.IsScalar())
+                fail("case.sound-not-path",
+                     std::string("'sounds.") + name + "' must be a resource path",
+                     value);
+            return resolve(value.as<std::string>(), logical_path, value, "sound");
+        };
+        data.sounds.pickup = sound("pickup");
+        data.sounds.place = sound("place");
+        data.sounds.return_to_bank = sound("return");
     }
     return data;
 }
@@ -201,7 +278,22 @@ bool CaseAssignments::complete(const CaseResolutionData& data) const {
 }
 std::size_t CaseAssignments::invalid_count(const CaseResolutionData& data) const {
     std::size_t invalid = 0;
+    std::set<std::string> grouped_slots;
+    for (const CaseSolutionGroup& group : data.solution_groups) {
+        grouped_slots.insert(group.slots.begin(), group.slots.end());
+        std::set<std::string> actual;
+        for (const std::string& slot_id : group.slots) {
+            if (const std::string* value = term_for(slot_id))
+                actual.insert(*value);
+        }
+        for (const std::string& expected : group.terms) {
+            if (!actual.contains(expected))
+                ++invalid;
+        }
+    }
     for (const CaseSlot& slot : data.slots) {
+        if (grouped_slots.contains(slot.id))
+            continue;
         const std::string* value = term_for(slot.id);
         if (!value || (!slot.solution.empty() && *value != slot.solution))
             ++invalid;

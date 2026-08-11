@@ -67,6 +67,15 @@ Cast parse_cast(const std::string& yaml_text) {
                               shadow);
                 }
                 sh.size = {size["x"].as<float>(), size["y"].as<float>()};
+                if (const YAML::Node offset = shadow["offset"]) {
+                    if (!offset["x"] || !offset["y"]) {
+                        cast_fail("cast.shadow-offset-shape",
+                                  "appearance '" + kv.first.as<std::string>() +
+                                      "': shadow offset needs '{x, y}'",
+                                  offset);
+                    }
+                    sh.offset = {offset["x"].as<float>(), offset["y"].as<float>()};
+                }
                 if (const YAML::Node color = shadow["color"]) {
                     sh.color = sf::Color(color["r"].as<unsigned>(),
                                          color["g"].as<unsigned>(),

@@ -48,7 +48,7 @@ public:
     ScopeId open_scope();
     void set_current_scope(ScopeId scope);
     ScopeId current_scope() const;
-    void cancel_task(TaskId id);   // cancel one coroutine without tearing down its scope
+    void cancel_task(TaskId id);      // cancel one coroutine without tearing down its scope
     void cancel_scope(ScopeId scope); // cancel + remove every task in the scope
 
     // --- scheduler ---
@@ -65,6 +65,12 @@ public:
 
     /// The current speaker-less text page (for a cutscene scene to draw), or "".
     const std::string& current_text() const;
+
+    /// Dismiss the current speaker-less text page and make its owning coroutine
+    /// ready to resume on the next scheduler update. Returns false when no page
+    /// is active. Scene input handlers use this to implement the documented
+    /// click/key advance behavior without cancelling the rest of the script.
+    bool advance_current_text();
 
     /// Sol-aware accessor for the pimpl, used by `scripting_sol.hpp`. The Impl
     /// type is defined only in `scripting.cpp`, so this is meaningful only to

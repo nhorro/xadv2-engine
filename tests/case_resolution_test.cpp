@@ -69,12 +69,84 @@ TEST_CASE("assignments move terms, reject wrong tags, and check solutions") {
     CHECK_FALSE(a.solved(data));
 }
 
+TEST_CASE("solution groups accept their terms in any slot order") {
+    const CaseTerm can{"negatives_can", "lata de negativos", "object"};
+    const CaseTerm notebook{"black_notebook", "libreta negra", "object"};
+    const CaseTerm van{"blue_van", "camioneta azul", "object"};
+    const CaseSlot first{"object_1", {}, {"object"}, ""};
+    const CaseSlot second{"object_2", {}, {"object"}, ""};
+    CaseResolutionData data;
+    data.slots = {first, second};
+    data.solution_groups = {
+        {"evidence", {"object_1", "object_2"}, {"negatives_can", "black_notebook"}}};
+
+    CaseAssignments assignments;
+    CHECK(assignments.assign(first, notebook));
+    CHECK(assignments.assign(second, can));
+    CHECK(assignments.complete(data));
+    CHECK(assignments.invalid_count(data) == 0);
+    CHECK(assignments.solved(data));
+
+    CHECK(assignments.assign(second, van));
+    CHECK(assignments.invalid_count(data) == 1);
+    CHECK_FALSE(assignments.solved(data));
+}
+
+TEST_CASE("case resolution parses unordered groups and optional sound hooks") {
+    const CaseResolutionData data = parse_case_resolution(R"(
+id: evidence
+background: board.png
+sounds:
+  pickup: audio/pick.ogg
+  place: ""
+  return: audio/return.ogg
+solution_groups:
+  objects:
+    slots: [first, second]
+    terms: [can, notebook]
+slots:
+  first:
+    accepts: [object]
+    area: [{x: 0, y: 0}, {x: 10, y: 0}, {x: 10, y: 10}, {x: 0, y: 10}]
+  second:
+    accepts: [object]
+    area: [{x: 20, y: 0}, {x: 30, y: 0}, {x: 30, y: 10}, {x: 20, y: 10}]
+)",
+                                                          {},
+                                                          "cases/evidence/template.yaml");
+    REQUIRE(data.solution_groups.size() == 1);
+    CHECK(data.solution_groups[0].id == "objects");
+    CHECK(data.solution_groups[0].slots == std::vector<std::string>{"first", "second"});
+    CHECK(data.solution_groups[0].terms == std::vector<std::string>{"can", "notebook"});
+    CHECK(data.sounds.pickup == "cases/evidence/audio/pick.ogg");
+    CHECK(data.sounds.place.empty());
+    CHECK(data.sounds.return_to_bank == "cases/evidence/audio/return.ogg");
+}
+
 TEST_CASE("case resolution reports stable authoring errors") {
     CHECK(error_code([] { parse_case_terms("terms: [{id: a}]"); }) == "case.term-fields-missing");
     CHECK(error_code([] { parse_case_resolution("id: x\nbackground: a.png\n"); }) ==
           "case.slots-missing");
     CHECK(error_code([] { parse_case_terms("terms: [{id: a, name: A, tags: [x, y]}]"); }) ==
           "case.term-tags-unsupported");
+    CHECK(error_code([] {
+              parse_case_resolution(R"(
+id: x
+background: a.png
+solution_groups: {pair: {slots: [a], terms: [one, two]}}
+slots:
+  a: {area: [{x: 0, y: 0}, {x: 1, y: 0}, {x: 0, y: 1}]}
+)");
+          }) == "case.solution-group-size-mismatch");
+    CHECK(error_code([] {
+              parse_case_resolution(R"(
+id: x
+background: a.png
+solution_groups: {pair: {slots: [missing], terms: [one]}}
+slots:
+  a: {area: [{x: 0, y: 0}, {x: 1, y: 0}, {x: 0, y: 1}]}
+)");
+          }) == "case.solution-group-slot-unknown");
 }
 
 TEST_CASE("case resolution sidecars receive check and exit status") {

@@ -16,6 +16,7 @@
 #include "engine/core/scripting_sol.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/text_encoding.hpp"
+#include "engine/core/text_layout.hpp"
 #include "engine/core/thumbnail.hpp"
 #include "engine/gfx/animated_sprite.hpp"
 #include "engine/pnc/approach_follow.hpp"
@@ -488,6 +489,11 @@ end
     // survives; the live room is unloaded.
     L.set_function("start_cutscene",
                    [this](const std::string& scene_id) { ctx_.scenes.goto_scene(scene_id); });
+    // Push a declarative cutscene above the live room. Pair it with a Cutscene
+    // manifest entry whose `on_finish` is `POP`; this preserves dialog/room state
+    // for optional replays and lets on_room_resume continue deferred travel.
+    L.set_function("open_cutscene",
+                   [this](const std::string& scene_id) { ctx_.scenes.push_scene(scene_id); });
     // Ambient floating text (non-blocking): onomatopoeia and background NPC
     // chatter, independent of the single speech line. `where` is a point name,
     // "npc:id"/"object:id" (follows the moving thing), or {x=, y=}. `opts` =
@@ -1471,6 +1477,17 @@ void RoomScene::handle_event(const sf::Event& event) {
     }
     if (change_armed_) {
         return; // a change_room is committing (fading out); ignore input
+    }
+    // `show_text` is a speaker-less page rather than room interaction. Let the
+    // same inputs used for story text advance one page while leaving the owning
+    // room cutscene alive so its following choreography still runs.
+    const bool advance_text_key =
+        event.type == sf::Event::KeyPressed &&
+        (event.key.code == sf::Keyboard::Enter || event.key.code == sf::Keyboard::Space);
+    const bool advance_text_click =
+        event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left;
+    if ((advance_text_key || advance_text_click) && ctx_.scripting.advance_current_text()) {
+        return;
     }
     if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
         // ESC toggles the in-game pause/save/load menu from COMMAND, and
@@ -2662,6 +2679,30 @@ void RoomScene::draw(sf::RenderTarget& target) const {
     }
     if (view_state_ == ViewState::MENU) {
         draw_menu(target);
+    }
+
+    // `show_text` is shared by StoryText and coroutine-enabled room scripts. A
+    // room page darkens the live composition instead of silently waiting on the
+    // scheduler timer (the latter looked exactly like a multi-second hang).
+    const std::string& page = ctx_.scripting.current_text();
+    if (font_ && !page.empty()) {
+        const sf::Vector2u vres = ctx_.display.virtual_resolution();
+        sf::RectangleShape veil({static_cast<float>(vres.x), static_cast<float>(vres.y)});
+        veil.setFillColor(sf::Color(0, 0, 0, 220));
+        target.draw(veil);
+
+        pac::core::TextStyle style;
+        style.size = 30;
+        style.color = sf::Color(225, 225, 230);
+        pac::core::draw_text_block(
+            target,
+            *font_,
+            page,
+            style,
+            {static_cast<float>(vres.x) / 2.0f, static_cast<float>(vres.y) / 2.0f},
+            static_cast<float>(vres.x) * 0.8f,
+            pac::core::HAlign::Center,
+            pac::core::VAnchor::Center);
     }
 
     if (ctx_.dev.edit_mode && debug_flags_.hud) {

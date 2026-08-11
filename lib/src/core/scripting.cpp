@@ -318,6 +318,21 @@ struct Scripting::Impl {
         }
     }
 
+    bool advance_current_text() {
+        if (text_owner == 0) {
+            return false;
+        }
+        Task* owner = find(text_owner);
+        current_text.clear();
+        text_owner = 0;
+        if (!owner || owner->wait != Wait::TEXT) {
+            return false;
+        }
+        owner->timer = 0.0f;
+        owner->wait = Wait::READY;
+        return true;
+    }
+
     std::size_t count(ScopeId scope) const {
         std::size_t n = 0;
         for (const Task& t : tasks) {
@@ -440,6 +455,10 @@ void Scripting::emit(ScopeId scope, const std::string& name) {
 
 const std::string& Scripting::current_text() const {
     return impl_->current_text;
+}
+
+bool Scripting::advance_current_text() {
+    return impl_->advance_current_text();
 }
 
 Scripting::Impl* Scripting::sol_impl() {

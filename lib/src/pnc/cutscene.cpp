@@ -2,6 +2,7 @@
 
 #include "core/load_error_yaml.hpp"
 #include "engine/pnc/data_error.hpp"
+#include "shader_yaml.hpp"
 
 #include <yaml-cpp/yaml.h>
 
@@ -59,11 +60,14 @@ CutsceneImageFit parse_image_fit(const YAML::Node& node) {
     if (s == "contain") {
         return CutsceneImageFit::Contain;
     }
+    if (s == "cover") {
+        return CutsceneImageFit::Cover;
+    }
     if (s == "stretch") {
         return CutsceneImageFit::Stretch;
     }
     cutscene_fail("cutscene.image-fit-unknown",
-                  "image_fit must be contain|stretch (got '" + s + "')",
+                  "image_fit must be contain|cover|stretch (got '" + s + "')",
                   node);
 }
 
@@ -185,6 +189,7 @@ CutsceneFade parse_fade(const YAML::Node& node) {
 struct Defaults {
     CutsceneTextStyle text_style;
     sf::Vector2f text_position{0.5f, 0.8f};
+    float text_width = 0.86f;
     CutsceneTextAlign text_align = CutsceneTextAlign::Center;
     sf::Vector2f image_position{0.5f, 0.5f};
     sf::Vector2f image_size{0.6f, 0.6f};
@@ -205,6 +210,14 @@ Defaults parse_defaults(const YAML::Node& root) {
     apply_text_style(node["text_style"], d.text_style);
     if (node["text_position"]) {
         d.text_position = parse_vec2(node["text_position"], "text_position");
+    }
+    if (node["text_width"]) {
+        d.text_width = node["text_width"].as<float>();
+        if (d.text_width <= 0.0f) {
+            cutscene_fail("cutscene.text-width-non-positive",
+                          "'text_width' must be > 0",
+                          node["text_width"]);
+        }
     }
     if (node["text_align"]) {
         d.text_align = parse_text_align(node["text_align"]);
@@ -237,6 +250,7 @@ CutsceneSlide parse_slide(const YAML::Node& node,
 
     CutsceneSlide slide;
     slide.text_position = d.text_position;
+    slide.text_width = d.text_width;
     slide.text_align = d.text_align;
     slide.text_style = d.text_style;
     slide.image_position = d.image_position;
@@ -252,6 +266,14 @@ CutsceneSlide parse_slide(const YAML::Node& node,
     }
     if (node["text_position"]) {
         slide.text_position = parse_vec2(node["text_position"], "text_position");
+    }
+    if (node["text_width"]) {
+        slide.text_width = node["text_width"].as<float>();
+        if (slide.text_width <= 0.0f) {
+            cutscene_fail("cutscene.text-width-non-positive",
+                          "'text_width' must be > 0",
+                          node["text_width"]);
+        }
     }
     if (node["text_align"]) {
         slide.text_align = parse_text_align(node["text_align"]);
@@ -288,6 +310,124 @@ CutsceneSlide parse_slide(const YAML::Node& node,
     return slide;
 }
 
+CutsceneBackdrop parse_backdrop(const YAML::Node& node) {
+    if (!node.IsMap()) {
+        cutscene_fail("cutscene.backdrop-shape", "'backdrop' must be a mapping", node);
+    }
+    if (!node["image"] || !node["image"].IsScalar()) {
+        cutscene_fail("cutscene.backdrop-image-missing",
+                      "'backdrop.image' must be a resource path",
+                      node);
+    }
+
+    CutsceneBackdrop out;
+    out.image = node["image"].as<std::string>();
+    if (node["position"]) {
+        out.position = parse_vec2(node["position"], "backdrop-position");
+    }
+    if (node["size"]) {
+        out.size = parse_vec2(node["size"], "backdrop-size");
+    }
+    if (node["fit"]) {
+        out.fit = parse_image_fit(node["fit"]);
+    }
+    if (node["tint"]) {
+        out.tint = parse_color(node["tint"]);
+    }
+    out.shaders = detail::parse_shaders(node, kSource, "cutscene.backdrop");
+
+    out.motion_from = out.position;
+    out.motion_to = out.position;
+    if (const YAML::Node motion = node["motion"]) {
+        if (!motion.IsMap()) {
+            cutscene_fail("cutscene.backdrop-motion-shape",
+                          "'backdrop.motion' must be a mapping",
+                          motion);
+        }
+        if (motion["from"]) {
+            out.motion_from = parse_vec2(motion["from"], "backdrop-motion-from");
+        }
+        if (motion["to"]) {
+            out.motion_to = parse_vec2(motion["to"], "backdrop-motion-to");
+        }
+        if (motion["scale_from"]) {
+            out.scale_from = motion["scale_from"].as<float>();
+        }
+        if (motion["scale_to"]) {
+            out.scale_to = motion["scale_to"].as<float>();
+        }
+        if (motion["duration"]) {
+            out.motion_duration = motion["duration"].as<float>();
+        }
+        if (out.scale_from <= 0.0f || out.scale_to <= 0.0f || out.motion_duration < 0.0f) {
+            cutscene_fail("cutscene.backdrop-motion-range",
+                          "backdrop motion scales must be > 0 and duration must be >= 0",
+                          motion);
+        }
+    }
+
+    if (const YAML::Node pulse = node["pulse"]) {
+        if (!pulse.IsMap()) {
+            cutscene_fail("cutscene.backdrop-pulse-shape",
+                          "'backdrop.pulse' must be a mapping",
+                          pulse);
+        }
+        if (pulse["period"]) {
+            out.pulse_period = pulse["period"].as<float>();
+        }
+        if (pulse["strength"]) {
+            out.pulse_strength = pulse["strength"].as<float>();
+        }
+        if (out.pulse_period < 0.0f || out.pulse_strength < 0.0f || out.pulse_strength > 1.0f) {
+            cutscene_fail("cutscene.backdrop-pulse-range",
+                          "backdrop pulse period must be >= 0 and strength must be in [0, 1]",
+                          pulse);
+        }
+    }
+
+    if (const YAML::Node reveal = node["reveal"]) {
+        if (!reveal.IsMap()) {
+            cutscene_fail("cutscene.backdrop-reveal-shape",
+                          "'backdrop.reveal' must be a mapping",
+                          reveal);
+        }
+        if (reveal["at"]) {
+            out.reveal_at = reveal["at"].as<float>();
+        }
+        if (reveal["duration"]) {
+            out.reveal_duration = reveal["duration"].as<float>();
+        }
+        if (out.reveal_at < 0.0f || out.reveal_duration < 0.0f) {
+            cutscene_fail("cutscene.backdrop-reveal-range",
+                          "backdrop reveal at/duration must be >= 0",
+                          reveal);
+        }
+    }
+
+    if (const YAML::Node sway = node["sway"]) {
+        if (!sway.IsMap()) {
+            cutscene_fail("cutscene.backdrop-sway-shape",
+                          "'backdrop.sway' must be a mapping",
+                          sway);
+        }
+        if (sway["period"]) {
+            out.sway_period = sway["period"].as<float>();
+        }
+        if (sway["offset"]) {
+            out.sway_offset = parse_vec2(sway["offset"], "backdrop-sway-offset");
+        }
+        if (sway["scale"]) {
+            out.sway_scale = sway["scale"].as<float>();
+        }
+        if (out.sway_period < 0.0f || out.sway_scale < 0.0f) {
+            cutscene_fail("cutscene.backdrop-sway-range",
+                          "backdrop sway period/scale must be >= 0",
+                          sway);
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 Cutscene parse_cutscene(const std::string& yaml_text) {
@@ -313,10 +453,32 @@ Cutscene parse_cutscene(const std::string& yaml_text) {
     if (root["audio"]) {
         out.audio = root["audio"].as<std::string>();
     }
+    if (root["audio_delay"]) {
+        out.audio_delay = root["audio_delay"].as<float>();
+        if (out.audio_delay < 0.0f) {
+            cutscene_fail("cutscene.audio-delay-negative",
+                          "'audio_delay' must be >= 0",
+                          root["audio_delay"]);
+        }
+    }
     if (root["audio_persist"]) {
         out.audio_persist = root["audio_persist"].as<bool>();
     }
     out.fade = parse_fade(root["fade"]);
+    if (root["backdrop"]) {
+        out.backdrop = parse_backdrop(root["backdrop"]);
+    }
+    if (root["timed_crossfade"]) {
+        out.timed_crossfade = root["timed_crossfade"].as<float>();
+        if (out.timed_crossfade < 0.0f) {
+            cutscene_fail("cutscene.timed-crossfade-negative",
+                          "'timed_crossfade' must be >= 0",
+                          root["timed_crossfade"]);
+        }
+    }
+    if (root["show_skip_hint"]) {
+        out.show_skip_hint = root["show_skip_hint"].as<bool>();
+    }
 
     const Defaults d = parse_defaults(root);
     out.default_duration = d.duration;

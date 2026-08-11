@@ -156,6 +156,31 @@ TEST_CASE("show_text exposes the current page and clears it when done") {
     CHECK(s.active_task_count() == 0);
 }
 
+TEST_CASE("show_text pages can be advanced without cancelling their script") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    REQUIRE(s.run_string(R"(
+        spawn(function()
+            show_text('primera', 100.0)
+            show_text('segunda', 100.0)
+        end)
+    )"));
+
+    s.update(0.0f);
+    REQUIRE(s.current_text() == "primera");
+    CHECK(s.advance_current_text());
+    CHECK(s.current_text().empty());
+
+    s.update(0.0f);
+    REQUIRE(s.current_text() == "segunda");
+    CHECK(s.advance_current_text());
+
+    s.update(0.0f);
+    CHECK(s.current_text().empty());
+    CHECK(s.active_task_count() == 0);
+    CHECK_FALSE(s.advance_current_text());
+}
+
 // Scheduler stress for the freed-coroutine-thread fix: a long-lived coroutine
 // (like a room watcher) is resumed every tick under constant GC, after a task
 // spawned BEFORE it finished and the DONE-sweep removed it. Two safeguards keep
@@ -358,7 +383,7 @@ return function()
   fired = captured + 1
 end
 )LUA")
-                  .get<sol::function>();
+                                       .get<sol::function>();
     pending = sol::main_protected_function(L.lua_state(), authored);
     s.set_current_scope(s.global_scope());
 

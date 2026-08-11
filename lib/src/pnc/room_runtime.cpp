@@ -59,17 +59,6 @@ void RoomRuntime::seed_runtime_state() {
     }
 }
 
-namespace {
-// Split a hotspot bind ("object:<id>" / "region:<id>") into {kind, ref}.
-std::pair<std::string, std::string> split_bind(const std::string& bind) {
-    const auto pos = bind.find(':');
-    if (pos == std::string::npos) {
-        return {bind, std::string()};
-    }
-    return {bind.substr(0, pos), bind.substr(pos + 1)};
-}
-} // namespace
-
 const RoomHotspot* RoomRuntime::hotspot_at(geom::Point world) const {
     return hotspot_at(world, {});
 }
@@ -77,38 +66,43 @@ const RoomHotspot* RoomRuntime::hotspot_at(geom::Point world) const {
 const RoomHotspot* RoomRuntime::hotspot_at(
     geom::Point world,
     const std::function<std::optional<sf::FloatRect>(const std::string&)>& object_bounds) const {
+    // Hit-source priority is global, not dependent on alphabetical hotspot ids:
+    // a small authored polygon must remain clickable even when it overlaps the
+    // broad frame bounds of an object or NPC standing beside it.
     for (const auto& [id, hs] : data_.hotspots) {
-        if (!hotspot_enabled(id)) {
-            continue;
-        }
-        // (1) explicit area polygon
-        if (!hs.area.empty() && geom::point_in_polygon(world, hs.area)) {
+        if (hotspot_enabled(id) && !hs.area.empty() && geom::point_in_polygon(world, hs.area)) {
             return &hs;
         }
-        if (hs.bind.empty()) {
-            continue;
-        }
-        const auto [kind, ref] = split_bind(hs.bind);
-        if (kind == "object" && object_bounds) {
-            // (2) object frame bounds (render-side; absent in the headless overload)
+    }
+    if (object_bounds) {
+        for (const auto& [id, hs] : data_.hotspots) {
+            if (!hotspot_enabled(id) || !hs.bind.starts_with("object:")) {
+                continue;
+            }
+            const std::string ref = hs.bind.substr(std::string("object:").size());
             if (const auto rect = object_bounds(ref); rect && rect->contains(world)) {
                 return &hs;
             }
-        } else if (kind == "region") {
-            // (3) the bound region's area polygon — constant, independent of the
-            // current state image (design 04 §Hotspot hit-test rule 3).
-            const auto it = data_.regions.find(ref);
-            if (it != data_.regions.end() && geom::point_in_polygon(world, it->second.area)) {
-                return &hs;
-            }
-        } else if (kind == "npc") {
-            // (4) the bound NPC's *current* world bounds (it moves). Resolved from
-            // the live avatar, so the hotspot follows the NPC and is inactive when
-            // the NPC is absent (not spawned / despawned) (#141).
-            const auto it = npcs_.find(ref);
-            if (it != npcs_.end() && it->second.bounds().contains(world)) {
-                return &hs;
-            }
+        }
+    }
+    for (const auto& [id, hs] : data_.hotspots) {
+        if (!hotspot_enabled(id) || !hs.bind.starts_with("region:")) {
+            continue;
+        }
+        const std::string ref = hs.bind.substr(std::string("region:").size());
+        const auto it = data_.regions.find(ref);
+        if (it != data_.regions.end() && geom::point_in_polygon(world, it->second.area)) {
+            return &hs;
+        }
+    }
+    for (const auto& [id, hs] : data_.hotspots) {
+        if (!hotspot_enabled(id) || !hs.bind.starts_with("npc:")) {
+            continue;
+        }
+        const std::string ref = hs.bind.substr(std::string("npc:").size());
+        const auto it = npcs_.find(ref);
+        if (it != npcs_.end() && it->second.bounds().contains(world)) {
+            return &hs;
         }
     }
     return nullptr;
@@ -296,8 +290,7 @@ void RoomRuntime::set_light_intensity(const std::string& light_id,
                                       float intensity,
                                       float transition_seconds) {
     const auto it = light_rt_.find(light_id);
-    if (it == light_rt_.end() || !std::isfinite(intensity) ||
-        !std::isfinite(transition_seconds)) {
+    if (it == light_rt_.end() || !std::isfinite(intensity) || !std::isfinite(transition_seconds)) {
         return;
     }
     LightRuntime& rt = it->second;

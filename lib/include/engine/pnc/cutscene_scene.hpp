@@ -30,7 +30,7 @@ namespace pac::pnc {
 /// Configured from the manifest scene `parameters`:
 ///   data       (req)      cutscene YAML logical path
 ///   on_finish  (opt)      scene id to `goto_scene` when the cutscene ends
-///                         (default: quit)
+///                         (default: quit); `POP` returns from an overlay
 ///   font       (opt)      fallback font for slides without an explicit one
 ///
 /// The existing `StoryText` (Lua-driven) scene type is left intact for
@@ -47,13 +47,14 @@ public:
     void draw(sf::RenderTarget& target) const override;
 
 private:
-    // Slide transition phase (auto/manual). Timed mode stays in Hold and hard-cuts
-    // on its `at` schedule so it never desyncs from the audio.
+    // Slide transition phase (auto/manual). Timed mode stays in Hold and derives
+    // optional crossfades directly from the audio clock.
     enum class Phase { FadeIn, Hold, FadeOut };
 
     void request_advance();           // Manual / Auto: begin fading the current slide out.
     void begin_fade_in();             // Enter FadeIn for the current slide.
     float fade_overlay_alpha() const; // 0..1 black-overlay opacity for the current phase.
+    void start_audio();               // Start the configured track once its delay has elapsed.
     void finish();                    // Skip + natural end: stop audio and exit per `on_finish`.
     void apply_slide(std::size_t i);  // Reset per-slide state when entering slide `i`.
 
@@ -75,8 +76,9 @@ private:
 
     std::size_t current_ = 0;    // index into data_.slides; 0..size when running
     float slide_elapsed_ = 0.0f; // Auto: seconds the current slide has been held
-    float scene_elapsed_ = 0.0f; // Timed (without audio): seconds since enter()
-    bool audio_playing_ = false; // Timed: true while ctx_.audio.music is our track
+    float scene_elapsed_ = 0.0f; // seconds since enter()
+    float timed_clock_ = 0.0f;   // Timed: audio-relative cue clock (negative during pre-roll)
+    bool audio_playing_ = false; // true once ctx_.audio.music has been given our track
 
     Phase phase_ = Phase::Hold;  // auto/manual fade machine; Timed leaves it in Hold
     float phase_elapsed_ = 0.0f; // seconds spent in the current FadeIn/FadeOut

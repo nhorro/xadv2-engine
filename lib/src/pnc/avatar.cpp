@@ -96,9 +96,8 @@ void Avatar::set_shadow_opacity(float opacity, float transition_seconds) {
         return;
     }
     const float target = std::clamp(opacity, 0.0f, 1.0f);
-    const float duration = std::isfinite(transition_seconds)
-                               ? std::max(transition_seconds, 0.0f)
-                               : 0.0f;
+    const float duration =
+        std::isfinite(transition_seconds) ? std::max(transition_seconds, 0.0f) : 0.0f;
     if (duration <= 0.0f || target == shadow_opacity_) {
         shadow_opacity_ = target;
         shadow_opacity_start_ = target;
@@ -161,8 +160,8 @@ void Avatar::update(float dt, const RoomData& room) {
         shadow_opacity_elapsed_ += std::max(dt, 0.0f);
         const float progress =
             std::clamp(shadow_opacity_elapsed_ / shadow_opacity_duration_, 0.0f, 1.0f);
-        shadow_opacity_ = shadow_opacity_start_ +
-                          (shadow_opacity_target_ - shadow_opacity_start_) * progress;
+        shadow_opacity_ =
+            shadow_opacity_start_ + (shadow_opacity_target_ - shadow_opacity_start_) * progress;
         if (progress >= 1.0f) {
             shadow_opacity_ = shadow_opacity_target_;
             shadow_opacity_duration_ = 0.0f;
@@ -191,7 +190,8 @@ void Avatar::draw_shadow(sf::RenderTarget& target, float opacity_scale) const {
         std::lround(static_cast<float>(color.a) * std::clamp(opacity_scale, 0.0f, 1.0f)));
     blob.setFillColor(color);
     blob.setScale(shadow_->size.x * draw_scale_, shadow_->size.y * draw_scale_);
-    blob.setPosition(feet.x, feet.y);
+    blob.setPosition(feet.x + shadow_->offset.x * draw_scale_,
+                     feet.y + shadow_->offset.y * draw_scale_);
     target.draw(blob);
 }
 
@@ -233,10 +233,10 @@ void Avatar::draw_projected_shadow(sf::RenderTarget& target,
     }};
 
     const std::size_t samples = shadow.softness > 0.01f ? kSoftSamples.size() : 1;
-    const float total_alpha = std::clamp(shadow.opacity * opacity_scale *
-                                             (static_cast<float>(shadow.color.a) / 255.0f),
-                                         0.0f,
-                                         1.0f);
+    const float total_alpha =
+        std::clamp(shadow.opacity * opacity_scale * (static_cast<float>(shadow.color.a) / 255.0f),
+                   0.0f,
+                   1.0f);
     const float sample_alpha =
         1.0f - std::pow(1.0f - total_alpha, 1.0f / static_cast<float>(samples));
     sf::Color tint = shadow.color;
@@ -273,8 +273,7 @@ void Avatar::draw(sf::RenderTarget& target,
     draw_sprite(target, resources, time, chain);
 }
 
-void Avatar::draw_shadows(sf::RenderTarget& target,
-                          const ProjectedShadow* projected_shadow) const {
+void Avatar::draw_shadows(sf::RenderTarget& target, const ProjectedShadow* projected_shadow) const {
     if (!visible_) {
         return;
     }

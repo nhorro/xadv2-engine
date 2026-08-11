@@ -73,6 +73,7 @@ TEST_CASE("timed mode requires `at` on every slide") {
     const Cutscene c = parse_cutscene(R"YAML(
 advance_mode: timed
 audio: assets/audio/intro.mp3
+audio_delay: 3.25
 
 slides:
   - at: 0.0
@@ -84,6 +85,7 @@ slides:
 
     CHECK(c.mode == CutsceneAdvanceMode::Timed);
     CHECK(c.audio == "assets/audio/intro.mp3");
+    CHECK(c.audio_delay == doctest::Approx(3.25f));
     REQUIRE(c.slides.size() == 2);
     CHECK(*c.slides[0].at == doctest::Approx(0.0f));
     CHECK(*c.slides[1].at == doctest::Approx(4.5f));
@@ -99,6 +101,9 @@ slides:
               parse_cutscene("advance_mode: timed\nslides:\n  - at: 1.0\n    text: A\n  - at: "
                              "0.5\n    text: B\n");
           }) == "cutscene.timed-out-of-order");
+
+    CHECK(error_code([] { parse_cutscene("audio_delay: -0.1\nslides:\n  - text: A\n"); }) ==
+          "cutscene.audio-delay-negative");
 }
 
 TEST_CASE("defaults fall back to engine values when omitted") {
@@ -109,6 +114,7 @@ slides:
 
     CHECK(c.mode == CutsceneAdvanceMode::Auto); // auto is the default
     CHECK(c.background_color == sf::Color::Black);
+    CHECK(c.audio_delay == doctest::Approx(0.0f));
     CHECK(c.default_duration == doctest::Approx(3.0f));
     REQUIRE(c.slides.size() == 1);
     CHECK(c.slides[0].text_align == CutsceneTextAlign::Center);
@@ -149,7 +155,7 @@ TEST_CASE("malformed inputs carry stable error codes") {
           "cutscene.text_position-shape");
     CHECK(error_code([] { parse_cutscene("slides:\n  - text_style: { color: 'green' }\n"); }) ==
           "cutscene.color-shape");
-    CHECK(error_code([] { parse_cutscene("slides:\n  - image_fit: cover\n"); }) ==
+    CHECK(error_code([] { parse_cutscene("slides:\n  - image_fit: crop\n"); }) ==
           "cutscene.image-fit-unknown");
     CHECK(error_code([] { parse_cutscene("fade: [1, 2]\nslides: [{text: x}]\n"); }) ==
           "cutscene.fade-shape");
@@ -158,6 +164,64 @@ TEST_CASE("malformed inputs carry stable error codes") {
     CHECK(error_code([] {
               parse_cutscene("slides:\n  - text_style: { outline_thickness: -1 }\n");
           }) == "cutscene.outline-thickness-negative");
+    CHECK(error_code([] { parse_cutscene("defaults: {text_width: 0}\nslides: [{text: x}]\n"); }) ==
+          "cutscene.text-width-non-positive");
+    CHECK(error_code([] { parse_cutscene("backdrop: []\nslides: [{text: x}]\n"); }) ==
+          "cutscene.backdrop-shape");
+    CHECK(error_code([] { parse_cutscene("timed_crossfade: -0.1\nslides: [{text: x}]\n"); }) ==
+          "cutscene.timed-crossfade-negative");
+}
+
+TEST_CASE("musical backdrop, timed crossfade, and narrow text blocks parse") {
+    const Cutscene c = parse_cutscene(R"YAML(
+advance_mode: timed
+timed_crossfade: 0.4
+show_skip_hint: true
+backdrop:
+  image: rooms/plaza.png
+  position: [0.5, 0.5]
+  size: [1.0, 1.0]
+  fit: cover
+  tint: "#DDE2E8"
+  shader:
+    source: shaders/color_grade.frag
+    params: {saturation: 0.25, strength: 0.9}
+  motion:
+    from: [0.5, 0.5]
+    to: [0.44, 0.48]
+    scale_from: 1.0
+    scale_to: 1.05
+    duration: 144
+  pulse: {period: 5.6, strength: 0.025}
+  reveal: {at: 4.2, duration: 2.0}
+  sway: {period: 19, offset: [0.004, 0.0015], scale: 0.0025}
+defaults:
+  text_width: 0.34
+slides:
+  - {at: 0, text: A}
+  - {at: 2, text: B, text_width: 0.28}
+)YAML");
+
+    CHECK(c.timed_crossfade == doctest::Approx(0.4f));
+    CHECK(c.show_skip_hint);
+    REQUIRE(c.backdrop);
+    CHECK(c.backdrop->image == "rooms/plaza.png");
+    CHECK(c.backdrop->fit == CutsceneImageFit::Cover);
+    REQUIRE(c.backdrop->shaders.size() == 1);
+    CHECK(c.backdrop->shaders.front().source == "shaders/color_grade.frag");
+    CHECK(c.backdrop->shaders.front().params.size() == 2);
+    CHECK(c.backdrop->motion_to.x == doctest::Approx(0.44f));
+    CHECK(c.backdrop->scale_to == doctest::Approx(1.05f));
+    CHECK(c.backdrop->motion_duration == doctest::Approx(144.0f));
+    CHECK(c.backdrop->pulse_period == doctest::Approx(5.6f));
+    CHECK(c.backdrop->pulse_strength == doctest::Approx(0.025f));
+    CHECK(c.backdrop->reveal_at == doctest::Approx(4.2f));
+    CHECK(c.backdrop->reveal_duration == doctest::Approx(2.0f));
+    CHECK(c.backdrop->sway_period == doctest::Approx(19.0f));
+    CHECK(c.backdrop->sway_offset.x == doctest::Approx(0.004f));
+    CHECK(c.backdrop->sway_scale == doctest::Approx(0.0025f));
+    CHECK(c.slides[0].text_width == doctest::Approx(0.34f));
+    CHECK(c.slides[1].text_width == doctest::Approx(0.28f));
 }
 
 TEST_CASE("fade, audio_persist, text_band, and text outline parse + compose") {

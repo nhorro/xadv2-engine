@@ -6,6 +6,7 @@
 #include "engine/pnc/case_resolution.hpp"
 #include "engine/pnc/case_resolution_runtime.hpp"
 
+#include <optional>
 #include <string>
 
 namespace sf {
@@ -31,7 +32,14 @@ public:
 
 private:
     void exit();
-    void activate(geom::Point point);
+    void activate_control(geom::Point point);
+    [[nodiscard]] bool pick_up_at(geom::Point point);
+    void pick_up(const std::string& term_id);
+    void drop_at(geom::Point point);
+    void clear_assignment_for(const std::string& term_id);
+    void play_sound(const std::string& path);
+    [[nodiscard]] std::optional<std::size_t> term_index_at(geom::Point point) const;
+    [[nodiscard]] bool pointer_is_actionable(geom::Point point) const;
     [[nodiscard]] std::size_t page_count() const;
 
     pac::core::EngineContext& ctx_;
@@ -42,8 +50,11 @@ private:
     CaseAssignments assignments_;
     bool loaded_ = false;
     std::size_t page_ = 0;
-    std::string selected_term_;
+    std::string held_term_;
     geom::Point mouse_{-1.0f, -1.0f};
+    geom::Point press_point_{-1.0f, -1.0f};
+    bool left_pressed_ = false;
+    bool picked_up_on_press_ = false;
     float feedback_left_ = 0.0f;
     bool feedback_success_ = false;
     std::string exit_status_ = "cancelled";

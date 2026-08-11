@@ -17,6 +17,7 @@ namespace pac::pnc {
 /// with the avatar's perspective scale at render time. See design 05/06 §appearance.
 struct Shadow {
     sf::Vector2f size{0.0f, 0.0f};
+    sf::Vector2f offset{0.0f, 0.0f}; // from the walking pivot, in room px at unit scale
     sf::Color color = sf::Color(0, 0, 0, 70);
 };
 

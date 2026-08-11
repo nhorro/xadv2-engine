@@ -94,6 +94,11 @@ default_language: es   # optional; defaults to the first entry
   from `strings.ui.manual_continue_hint`. Use for declarative, scrollable
   slide shows; pick `StoryText` instead when the cutscene needs scripted
   yields or branching.
+- `CaseResolution` — deduction template. Parameters: `data` (template YAML),
+  `terms` (shared term-bank YAML), `logic` (optional Lua sidecar), `font`,
+  `on_exit`, and `on_solve`. Terms can be clicked into a carried state or
+  dragged directly. The interaction cursor appears only on actionable controls;
+  while carrying a term, only compatible slots request it.
 - `RoomScene` — `cast` (path), `logic` (path), `inventory` (path),
   `inventory_logic` (path), `rooms` (directory path), `start_room` (room id),
   `development_logic` (opt path — removable development sidecar whose
@@ -315,7 +320,7 @@ language is persisted in the player settings file (see below).
 | `verbs` | req | map verb id → string | — | Display label per verb. Keys are the verb ids: `look_at`, `talk_to`, `pick_up`, `use`, `give`, `open`, `close`, `push`, `pull`. Used in the command bar. |
 | `verb_panel` | opt | map verb id → string | falls back to `verbs` | Short SCUMM-panel button labels (e.g. `talk_to: "Hablar"` while `verbs.talk_to` stays `"Hablar con"` for the command bar). |
 | `connectors` | req | map verb id → string | — | Two-operand connector per verb: `use` (e.g. `con`), `give` (e.g. `a`). |
-| `ui` | req | map key → string | — | Built-in UI labels. Title menu (`new_game`, `continue`, `settings`, `settings_button`, `quit_to_os`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `settings`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `on`, `off`); the cutscene manual-continue hint (`manual_continue_hint`); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
+| `ui` | req | map key → string | — | Built-in UI labels. Title menu (`new_game`, `continue`, `settings`, `settings_button`, `quit_to_os`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `settings`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `on`, `off`); cutscene hints (`manual_continue_hint`, and `cutscene_skip_hint` when a timed/auto scene opts in); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
 | `defaults` | req | map key → string | — | Engine last-resort captions, spoken when no game handler produced text for a verb. The loader requires the exact key set below — no missing keys, and (in dev) no unknown keys. |
 
 The two exit labels are intentionally distinct: `quit_to_os` closes the
@@ -393,7 +398,7 @@ Worked example: [05 — Scripting API](05-scripting-api.md).
 | `type` | req | enum | — | `animated_sprite`, `composite`, or `skeletal` (design-for). |
 | `sprite` | req if `animated_sprite` | path | — | An `*.anim.yaml`. |
 | `composite` | req if `composite` | path | — | A `*.composite.yaml`. |
-| `shadow` | opt | `{size: {x, y}, color: {r, g, b, a}}` | none | Ground shadow drawn under the avatar. |
+| `shadow` | opt | `{size: {x, y}, offset?: {x, y}, color: {r, g, b, a}}` | none | Ground shadow drawn under the avatar. `offset` moves its centre from the walking pivot in room pixels at unit perspective scale. |
 | `shader` / `shaders` | opt | shader ref / `[shader ref]` | — | Shader(s) applied to the avatar's animated sprite (issue #106 — every PC / NPC that uses this appearance inherits the stack). `u_resolution` for an avatar shader equals the **current frame size in pixels**. See **Shaders** below. |
 
 **`characters`** — map of character id → character:
@@ -762,9 +767,13 @@ Top level:
 | `version` | opt | int | `1` | Format version. |
 | `advance_mode` | opt | enum | `auto` | `auto`, `manual`, or `timed` — see below. |
 | `background_color` | opt | hex color | `"#000000"` | Full-screen fill behind every slide image, text band, and text. Accepts `"#RRGGBB"` or `"#RRGGBBAA"`. |
-| `audio` | opt | path | — | Background music, played at scene start. In `timed` mode it also drives slide transitions (slides read its playback offset so they stay in sync when the engine stutters); in `auto` / `manual` it loops as background. |
+| `audio` | opt | path | — | Background music. In `timed` mode it also drives slide transitions (slides read its playback offset so they stay in sync when the engine stutters); in `auto` / `manual` it loops as background. |
+| `audio_delay` | opt | float | `0` | Seconds to wait after entering the cutscene before starting `audio`. In `timed` mode the cue clock begins at `-audio_delay` and reaches `0` with the audio start, so negative `at` cues can present a silent title without shifting audio-relative cues. Must be >= 0. |
 | `audio_persist` | opt | bool | `false` | Keep `audio` playing past the cutscene so the next scene owns it (e.g. a room script calls `stop_music()` on entry). Otherwise the track stops when the cutscene ends. |
-| `fade` | opt | float \| map | `0` | Dip-to-black between slides (and fade-in at the start / fade-out at the end). A number sets both halves; a map is `{in, out, color}` — seconds, plus the fade `color` (default black). `0`/`0` = hard cuts. Applies to `auto` / `manual`; `timed` keeps hard cuts to stay locked to its audio. |
+| `backdrop` | opt | map | — | Persistent image below every slide. Supports `image`, normalized `position`/`size`, `fit`, `tint`, audio-clock `motion`, and a subtle luminance `pulse`; see below. |
+| `timed_crossfade` | opt | float | `0` | In `timed` mode, crossfade from the previous slide for this many seconds after each `at` cue. The blend uses the audio clock and cannot drift. |
+| `show_skip_hint` | opt | bool | `false` | Draw the localized `strings.ui.cutscene_skip_hint` label in non-manual modes. |
+| `fade` | opt | float \| map | `0` | Dip-to-black between slides (and fade-in at the start / fade-out at the end). A number sets both halves; a map is `{in, out, color}` — seconds, plus the fade `color` (default black). `0`/`0` = hard cuts. Applies to `auto` / `manual`; timed presentations use `timed_crossfade`. |
 | `defaults` | opt | map | — | Style / layout defaults applied to every slide. Per-slide fields override these. |
 | `slides` | req | `[slide]` | — | Non-empty list of slides. |
 
@@ -774,7 +783,7 @@ Top level:
 |------|----------|-------|
 | `auto` | Each slide stays on screen for `duration` seconds, then advances. Equivalent to the old text-only cutscene. | `Esc` skips. |
 | `manual` | Player advances slides themselves. A localized hint is drawn at the bottom-right (`strings.ui.manual_continue_hint`). | `Enter` / `Space` / left-click advance; `Esc` skips. |
-| `timed` | Slides become active at their `at` timestamp. When `audio` is set, the music playback offset drives the clock; otherwise the scene's wall-clock is used. | `Esc` skips. |
+| `timed` | Slides become active at their `at` timestamp. When `audio` is set, its playback offset drives the clock; an `audio_delay` pre-roll uses negative cue times. Otherwise the scene's wall-clock is used. | `Esc` skips. |
 
 **`defaults`** — any subset of:
 
@@ -786,7 +795,8 @@ Top level:
 | `text_band` | map | Optional `{color, height}` scrim drawn behind the text — a "lower third" for readable narration over a full-bleed image. `height` is a fraction of screen height (`0` = none); the color's alpha sets opacity. |
 | `image_position` | `[x, y]` | Default normalized anchor for slide images. |
 | `image_size` | `[w, h]` | Default normalized box (max extent in screen space). |
-| `image_fit` | enum | `contain` (preserve aspect) or `stretch`. |
+| `image_fit` | enum | `contain` (preserve aspect), `cover` (preserve aspect and fill the box), or `stretch`. |
+| `text_width` | float | Maximum text-block width as a fraction of the screen width. |
 | `duration` | float | Default per-slide duration for `auto` mode. |
 
 **`slide`** — one slide:
@@ -800,10 +810,11 @@ Top level:
 | `text_style` | opt | map | from `defaults` | Per-slide override. Each field (`font`, `size`, `color`, `outline_color`, `outline_thickness`) composes individually with the defaults. |
 | `text_band` | opt | map | from `defaults` | `{color, height}` scrim behind this slide's text (`height` 0 = none); composes with `defaults.text_band`. |
 | `image_position` | opt | `[x, y]` | from `defaults` | Normalized anchor; the image is centered (horizontally and vertically) on this point. |
-| `image_size` | opt | `[w, h]` | from `defaults` | Normalized box. `contain` keeps the image inside it; `stretch` fills it. |
-| `image_fit` | opt | enum | from `defaults` | `contain` or `stretch`. |
+| `image_size` | opt | `[w, h]` | from `defaults` | Normalized box used by the selected `image_fit`. |
+| `image_fit` | opt | enum | from `defaults` | `contain`, `cover`, or `stretch`. |
+| `text_width` | opt | float | from `defaults` | Maximum text-block width as a fraction of the screen width. |
 | `duration` | opt | float | from `defaults.duration` | `auto` mode only — seconds the slide stays before advancing. |
-| `at` | req in `timed` | float | — | Seconds from scene start (or audio offset) when the slide becomes active. Must be monotonically non-decreasing across slides. |
+| `at` | req in `timed` | float | — | Seconds on the cue clock when the slide becomes active. With audio, `0` is its playback start; negative values address an `audio_delay` pre-roll. Without audio, values are seconds from scene start. Must be monotonically non-decreasing. |
 
 **Positions are normalized screen coordinates:**
 
@@ -812,6 +823,45 @@ Top level:
 [0.5, 0.5] = center of the screen
 [1.0, 1.0] = bottom-right
 ```
+
+**Persistent backdrop:**
+
+```yaml
+backdrop:
+  image: cutscenes/plaza.png
+  position: [0.5, 0.5]
+  size: [1.0, 1.0]
+  fit: cover
+  tint: "#DDE2E8"
+  shader:
+    source: shaders/color_grade.frag
+    params: {saturation: 0.25, strength: 0.9}
+  motion:
+    from: [0.5, 0.5]
+    to: [0.44, 0.48]
+    scale_from: 1.0
+    scale_to: 1.05
+    duration: 144
+  pulse:
+    period: 5.6
+    strength: 0.025
+  reveal:
+    at: 4.2
+    duration: 2.0
+  sway:
+    period: 19
+    offset: [0.004, 0.0015]
+    scale: 0.0025
+```
+
+`shader` uses the same `{source, params}` format as room drawables, allowing a
+single inexpensive grade directly on the backdrop. `motion` uses a smooth
+ease-in/out over `duration` seconds. `pulse.strength`
+is a 0–1 luminance modulation; both effects read the narration/music offset in
+`timed` mode. `reveal` fades the backdrop in from `background_color`; `sway`
+adds a small periodic position/scale breath on top of the main motion. They are
+deliberately inexpensive sprite transforms and color modulation rather than
+real-time audio analysis.
 
 **`text_style.color`** and **`outline_color`** accept `"#RRGGBB"` or
 `"#RRGGBBAA"` (case-insensitive, `#` optional). White (`#FFFFFF`) is the default
@@ -851,7 +901,11 @@ slides:
 # A narrated cutscene: audio drives the slide changes via their `at` timestamps.
 advance_mode: timed
 audio: audio/intro_narration.mp3
+audio_delay: 3.0
 slides:
+  - at: -3.0
+  - at: -2.5
+    text: "INTERLUDIO"
   - at: 0.0
     image: cutscenes/lake.png
   - at: 3.2
@@ -864,6 +918,46 @@ slides:
 The existing `StoryText` Lua-driven cutscene is unaffected — pick `Cutscene`
 for declarative slide shows and `StoryText` when you need scripted timing or
 branching.
+
+## Case resolution — `cases/<case>/<template>.yaml`
+
+A deduction canvas places collected terms into tag-constrained polygon slots.
+Every slot must be filled before the player can check the reconstruction.
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `version` | opt | int | `1` | Format version. |
+| `id` | req | string | — | Stable template id, also used to persist assignments. |
+| `background` | req | path | — | Canvas image, resolved relative to this YAML. |
+| `canvas_height` | opt | float | `592` | Bottom of the image canvas; the term bank occupies the remaining screen height. |
+| `sounds` | opt | map | — | Optional `pickup`, `place`, and `return` SFX paths. Empty strings reserve a hook without playing anything. |
+| `solution_groups` | opt | map | — | Named unordered solution groups; see below. |
+| `slots` | req | map | — | Slot id to slot definition. |
+
+Each slot requires an `area` polygon. `accepts` is an optional list of allowed
+term tags. An ordinary ordered slot uses `solution: <term-id>`.
+
+When several equivalent slots may contain a fixed set of terms in any order,
+declare one group and omit `solution` from those slots:
+
+```yaml
+solution_groups:
+  recovered_objects:
+    slots: [object_1, object_2]
+    terms: [negatives_can, black_notebook]
+
+slots:
+  object_1:
+    accepts: [object]
+    area: [{x: 10, y: 10}, {x: 110, y: 10}, {x: 110, y: 50}, {x: 10, y: 50}]
+  object_2:
+    accepts: [object]
+    area: [{x: 120, y: 10}, {x: 220, y: 10}, {x: 220, y: 50}, {x: 120, y: 50}]
+```
+
+`slots` and `terms` must be non-empty, unique, and have the same length. A slot
+may belong to only one group and cannot also declare an individual `solution`.
+All expected terms must occupy the named slots, but their order is irrelevant.
 
 ## Close-up — `closeups/<id>.yaml`
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/gfx/shader_effect.hpp"
+
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/System/Vector2.hpp>
 
@@ -39,9 +41,12 @@ enum class CutsceneTextAlign {
 ///   - Contain: preserve aspect; the image is scaled so it fits entirely inside
 ///              the box and centered within it (any remaining area shows the
 ///              cutscene background color).
+///   - Cover:   preserve aspect; the image is scaled until it fills the box and
+///              centered (excess at the sides or top/bottom is clipped).
 ///   - Stretch: scale to exactly fill the box, regardless of aspect.
 enum class CutsceneImageFit {
     Contain,
+    Cover,
     Stretch,
 };
 
@@ -66,8 +71,8 @@ struct CutsceneTextBand {
 
 /// Dip-to-black fade timing. `in` fades a slide up from `color` as it appears;
 /// `out` fades it down to `color` before the next slide (or the cutscene's end).
-/// 0 on either half is a hard cut. Applies to `auto`/`manual` modes; `timed`
-/// keeps hard cuts so slides stay locked to their audio schedule.
+/// 0 on either half is a hard cut. Applies to `auto`/`manual`; timed scenes use
+/// the separate audio-clock-driven `timed_crossfade` setting.
 struct CutsceneFade {
     float in = 0.0f;  // seconds
     float out = 0.0f; // seconds
@@ -82,6 +87,7 @@ struct CutsceneSlide {
     std::optional<std::string> image; // logical path
 
     sf::Vector2f text_position{0.5f, 0.8f}; // normalized; (0.5, 0.8) = lower-center
+    float text_width = 0.86f;               // normalized maximum line width
     CutsceneTextAlign text_align = CutsceneTextAlign::Center;
     CutsceneTextStyle text_style;
 
@@ -95,6 +101,34 @@ struct CutsceneSlide {
     std::optional<float> at;       // Timed mode; required there
 };
 
+/// A persistent image underneath every slide. Its optional motion and luminance
+/// pulse are evaluated from the same clock as timed slides, keeping a musical
+/// presentation synchronized even when frame delivery stutters.
+struct CutsceneBackdrop {
+    std::string image;
+    sf::Vector2f position{0.5f, 0.5f};
+    sf::Vector2f size{1.0f, 1.0f};
+    CutsceneImageFit fit = CutsceneImageFit::Contain;
+    sf::Color tint{255, 255, 255, 255};
+    std::vector<gfx::ShaderEffect> shaders;
+
+    sf::Vector2f motion_from{0.5f, 0.5f};
+    sf::Vector2f motion_to{0.5f, 0.5f};
+    float scale_from = 1.0f;
+    float scale_to = 1.0f;
+    float motion_duration = 0.0f;
+
+    float reveal_at = 0.0f;
+    float reveal_duration = 0.0f;
+
+    float pulse_period = 0.0f;
+    float pulse_strength = 0.0f;
+
+    float sway_period = 0.0f;
+    sf::Vector2f sway_offset{0.0f, 0.0f};
+    float sway_scale = 0.0f;
+};
+
 /// Parsed `cutscenes/<id>.yaml`. Headless and testable; runtime lives in
 /// `CutsceneScene`.
 struct Cutscene {
@@ -102,8 +136,12 @@ struct Cutscene {
     CutsceneAdvanceMode mode = CutsceneAdvanceMode::Auto;
     sf::Color background_color{0, 0, 0, 255}; // full-screen fill behind every slide
     std::string audio;          // logical path; Timed: narration sync, auto/manual: background
+    float audio_delay = 0.0f;   // seconds of silent scene pre-roll before starting `audio`
     bool audio_persist = false; // keep `audio` playing past the cutscene (next scene stops it)
     CutsceneFade fade;          // dip-to-black between slides (auto/manual); 0/0 = hard cuts
+    std::optional<CutsceneBackdrop> backdrop; // persistent image + subtle musical motion
+    float timed_crossfade = 0.0f;             // seconds; audio-clock-driven slide blend
+    bool show_skip_hint = false;              // draw localized ESC hint in non-manual modes
 
     /// Defaults applied to a slide that doesn't override the field. Already
     /// baked into each `CutsceneSlide` by `parse_cutscene`, so the runtime
