@@ -246,7 +246,7 @@ foregrounds:
     size: [0.3, 0.6]
     tint: "#EEDDCBDD"
     at: -1
-    sway: {period: 4.8, offset: [0.001, 0.002], scale: 0.003}
+    sway: {period: 4.8, offset: [0.001, 0.002], scale: 0.003, steps: 3, rotation: 0.6}
   - image: cutscenes/visitors.png
     from: [-0.2, 0.82]
     to: [1.2, 0.82]
@@ -271,6 +271,8 @@ slides:
     CHECK(singer.sway_period == doctest::Approx(4.8f));
     CHECK(singer.sway_offset.y == doctest::Approx(0.002f));
     CHECK(singer.sway_scale == doctest::Approx(0.003f));
+    CHECK(singer.sway_steps == 3);
+    CHECK(singer.sway_rotation == doctest::Approx(0.6f));
 
     const CutsceneForeground& visitors = c.foregrounds[1];
     CHECK(visitors.to.x == doctest::Approx(1.2f));
@@ -278,6 +280,13 @@ slides:
     CHECK(*visitors.duration == doctest::Approx(20.0f));
     CHECK(visitors.fade_in == doctest::Approx(0.8f));
     CHECK(visitors.fade_out == doctest::Approx(1.2f));
+}
+
+TEST_CASE("foreground stepped sway rejects a single pose") {
+    CHECK(error_code([] {
+              parse_cutscene("foregrounds: [{image: x, sway: {period: 1, steps: 1}}]\n"
+                             "slides: [{text: x}]\n");
+          }) == "cutscene.foreground-sway-range");
 }
 
 TEST_CASE("fade, audio_persist, text_band, and text outline parse + compose") {

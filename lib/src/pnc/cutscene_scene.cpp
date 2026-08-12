@@ -445,10 +445,24 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
             }
             sf::Vector2f position = foreground.from + (foreground.to - foreground.from) * progress;
             float scale = 1.0f;
+            float rotation = 0.0f;
             if (foreground.sway_period > 0.0f) {
-                const float sway = std::sin(kTau * elapsed / foreground.sway_period);
+                float sway = std::sin(kTau * elapsed / foreground.sway_period);
+                if (foreground.sway_steps >= 2) {
+                    const unsigned last_pose = foreground.sway_steps - 1;
+                    const unsigned path_length = last_pose * 2;
+                    const float cycle = std::fmod(std::max(elapsed, 0.0f), foreground.sway_period) /
+                                        foreground.sway_period;
+                    const unsigned path_index =
+                        std::min(static_cast<unsigned>(cycle * static_cast<float>(path_length)),
+                                 path_length - 1);
+                    const unsigned pose =
+                        path_index <= last_pose ? path_index : path_length - path_index;
+                    sway = -1.0f + 2.0f * static_cast<float>(pose) / static_cast<float>(last_pose);
+                }
                 position += foreground.sway_offset * sway;
                 scale += foreground.sway_scale * (0.5f + 0.5f * sway);
+                rotation = foreground.sway_rotation * sway;
             }
 
             float opacity = 1.0f;
@@ -465,6 +479,7 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
             const sf::Vector2f box(foreground.size.x * vw, foreground.size.y * vh);
             anchor_image(sprite, tex.getSize(), box, anchor, foreground.fit);
             sprite.scale(scale, scale);
+            sprite.rotate(rotation);
             sprite.setColor(with_alpha(foreground.tint, opacity));
             target.draw(sprite);
         } catch (const std::exception& e) {

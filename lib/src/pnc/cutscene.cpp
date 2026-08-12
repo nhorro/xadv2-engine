@@ -506,9 +506,17 @@ CutsceneForeground parse_foreground(const YAML::Node& node, std::size_t index) {
         if (sway["scale"]) {
             out.sway_scale = sway["scale"].as<float>();
         }
-        if (out.sway_period <= 0.0f || out.sway_scale < 0.0f) {
+        if (sway["steps"]) {
+            out.sway_steps = sway["steps"].as<unsigned>();
+        }
+        if (sway["rotation"]) {
+            out.sway_rotation = sway["rotation"].as<float>();
+        }
+        if (out.sway_period <= 0.0f || out.sway_scale < 0.0f || out.sway_rotation < 0.0f ||
+            out.sway_steps == 1) {
             cutscene_fail("cutscene.foreground-sway-range",
-                          "foreground sway period must be > 0 and scale must be >= 0",
+                          "foreground sway period must be > 0, scale/rotation must be >= 0, and "
+                          "steps must be 0 or >= 2",
                           sway);
         }
     }

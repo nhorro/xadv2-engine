@@ -148,6 +148,8 @@ struct CutsceneForeground {
     float sway_period = 0.0f;
     sf::Vector2f sway_offset{0.0f, 0.0f};
     float sway_scale = 0.0f;
+    unsigned sway_steps = 0;    // 0 = continuous sine; >= 2 = stepped ping-pong poses
+    float sway_rotation = 0.0f; // peak clockwise/counter-clockwise degrees
 };
 
 /// Parsed `cutscenes/<id>.yaml`. Headless and testable; runtime lives in

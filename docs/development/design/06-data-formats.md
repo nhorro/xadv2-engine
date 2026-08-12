@@ -882,7 +882,7 @@ foregrounds:
     duration: 124
     fade_in: 1.5
     fade_out: 2.0
-    sway: {period: 4.8, offset: [0.001, 0.002], scale: 0.003}
+    sway: {period: 4.8, offset: [0.001, 0.002], scale: 0.003, steps: 3, rotation: 0.6}
 
   - image: cutscenes/visitors.png
     from: [-0.18, 0.82]
@@ -906,7 +906,7 @@ foregrounds:
 | `duration` | no | float | persistent | Active/motion duration in seconds. Omit to keep the layer visible after `at`; when present it must be positive. |
 | `fade_in` | no | float | `0` | Fade-in seconds at the start of the active window. |
 | `fade_out` | no | float | `0` | Fade-out seconds at the end of `duration`; requires `duration`. |
-| `sway` | no | map | disabled | Subtle periodic `{period, offset, scale}` added to the main transform. `period > 0`; offset and scale default to zero. |
+| `sway` | no | map | disabled | Subtle periodic `{period, offset, scale, rotation, steps}` added to the main transform. `period > 0`; `rotation` is a peak angle in degrees. Omit `steps` for a continuous sine or use `steps >= 2` for a stepped ping-pong pose cycle. |
 
 The listed order is painter's order. Foreground layers intentionally support
 only cheap sprite transforms and alpha modulation: character rigs, collision,
