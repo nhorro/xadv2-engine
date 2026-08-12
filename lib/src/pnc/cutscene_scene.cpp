@@ -427,6 +427,51 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
         }
     }
 
+    // Ordered transparent actors/scenery above the backdrop and below every
+    // slide. Their transform reads the cue clock, so long musical crossings do
+    // not drift when a frame stalls.
+    const float cue_clock =
+        data_.mode == CutsceneAdvanceMode::Timed ? timed_clock_ : scene_elapsed_;
+    for (const CutsceneForeground& foreground : data_.foregrounds) {
+        const float elapsed = cue_clock - foreground.at;
+        if (elapsed < 0.0f || (foreground.duration && elapsed > *foreground.duration)) {
+            continue;
+        }
+
+        try {
+            float progress = 0.0f;
+            if (foreground.duration) {
+                progress = smoothstep(elapsed / *foreground.duration);
+            }
+            sf::Vector2f position = foreground.from + (foreground.to - foreground.from) * progress;
+            float scale = 1.0f;
+            if (foreground.sway_period > 0.0f) {
+                const float sway = std::sin(kTau * elapsed / foreground.sway_period);
+                position += foreground.sway_offset * sway;
+                scale += foreground.sway_scale * (0.5f + 0.5f * sway);
+            }
+
+            float opacity = 1.0f;
+            if (foreground.fade_in > 0.0f) {
+                opacity *= smoothstep(elapsed / foreground.fade_in);
+            }
+            if (foreground.duration && foreground.fade_out > 0.0f) {
+                opacity *= smoothstep((*foreground.duration - elapsed) / foreground.fade_out);
+            }
+
+            const sf::Texture& tex = ctx_.resources.texture(foreground.image);
+            sf::Sprite sprite(tex);
+            const sf::Vector2f anchor(position.x * vw, position.y * vh);
+            const sf::Vector2f box(foreground.size.x * vw, foreground.size.y * vh);
+            anchor_image(sprite, tex.getSize(), box, anchor, foreground.fit);
+            sprite.scale(scale, scale);
+            sprite.setColor(with_alpha(foreground.tint, opacity));
+            target.draw(sprite);
+        } catch (const std::exception& e) {
+            ctx_.log.error(std::string("Cutscene: ") + e.what());
+        }
+    }
+
     const auto draw_slide = [&](const CutsceneSlide& slide, float opacity) {
         // Per-slide image: drawn above the persistent backdrop and below text.
         if (slide.image) {

@@ -129,6 +129,27 @@ struct CutsceneBackdrop {
     float sway_scale = 0.0f;
 };
 
+/// A transparent image drawn over the persistent backdrop and under slide
+/// images/text. Its transform and alpha window use the cutscene cue clock, so
+/// foreground movement stays synchronized with timed audio.
+struct CutsceneForeground {
+    std::string image;
+    sf::Vector2f from{0.5f, 0.5f};
+    sf::Vector2f to{0.5f, 0.5f};
+    sf::Vector2f size{0.5f, 0.5f};
+    CutsceneImageFit fit = CutsceneImageFit::Contain;
+    sf::Color tint{255, 255, 255, 255};
+
+    float at = 0.0f;
+    std::optional<float> duration; // omitted = remain visible after `at`
+    float fade_in = 0.0f;
+    float fade_out = 0.0f;
+
+    float sway_period = 0.0f;
+    sf::Vector2f sway_offset{0.0f, 0.0f};
+    float sway_scale = 0.0f;
+};
+
 /// Parsed `cutscenes/<id>.yaml`. Headless and testable; runtime lives in
 /// `CutsceneScene`.
 struct Cutscene {
@@ -139,9 +160,10 @@ struct Cutscene {
     float audio_delay = 0.0f;   // seconds of silent scene pre-roll before starting `audio`
     bool audio_persist = false; // keep `audio` playing past the cutscene (next scene stops it)
     CutsceneFade fade;          // dip-to-black between slides (auto/manual); 0/0 = hard cuts
-    std::optional<CutsceneBackdrop> backdrop; // persistent image + subtle musical motion
-    float timed_crossfade = 0.0f;             // seconds; audio-clock-driven slide blend
-    bool show_skip_hint = false;              // draw localized ESC hint in non-manual modes
+    std::optional<CutsceneBackdrop> backdrop;    // persistent image + subtle musical motion
+    std::vector<CutsceneForeground> foregrounds; // ordered timed layers over the backdrop
+    float timed_crossfade = 0.0f;                // seconds; audio-clock-driven slide blend
+    bool show_skip_hint = false;                 // draw localized ESC hint in non-manual modes
 
     /// Defaults applied to a slide that doesn't override the field. Already
     /// baked into each `CutsceneSlide` by `parse_cutscene`, so the runtime

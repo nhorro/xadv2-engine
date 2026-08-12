@@ -863,6 +863,55 @@ adds a small periodic position/scale breath on top of the main motion. They are
 deliberately inexpensive sprite transforms and color modulation rather than
 real-time audio analysis.
 
+**Timed foreground layers:**
+
+An optional ordered `foregrounds` list draws transparent images above the
+persistent backdrop and below slide images/text. Every layer uses the same cue
+clock as timed slides, so figures can cross a musical scene without accumulating
+frame-time drift:
+
+```yaml
+foregrounds:
+  - image: cutscenes/singer.png
+    from: [0.20, 0.72]
+    to: [0.20, 0.72]
+    size: [0.28, 0.68]
+    fit: contain
+    tint: "#EEE1C8E8"
+    at: 0
+    duration: 124
+    fade_in: 1.5
+    fade_out: 2.0
+    sway: {period: 4.8, offset: [0.001, 0.002], scale: 0.003}
+
+  - image: cutscenes/visitors.png
+    from: [-0.18, 0.82]
+    to: [1.18, 0.82]
+    size: [0.34, 0.58]
+    at: 18
+    duration: 20
+    fade_in: 0.8
+    fade_out: 0.8
+```
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `image` | yes | path | — | Transparent foreground image. |
+| `from` | no | `[x, y]` | `[0.5, 0.5]` | Normalized center anchor when the layer appears. Values may sit outside 0–1 so a moving figure can begin off-screen. |
+| `to` | no | `[x, y]` | `from` | Normalized center anchor at the end of `duration`. Motion uses smooth ease-in/out. |
+| `size` | no | `[w, h]` | `[0.5, 0.5]` | Normalized fit box. Both values must be positive. |
+| `fit` | no | enum | `contain` | `contain`, `cover`, or `stretch`, as for slide images. |
+| `tint` | no | color | `#FFFFFFFF` | Sprite color/opacity modulation. |
+| `at` | no | float | `0` | Cue-clock time when the layer appears; negative pre-roll values are allowed. |
+| `duration` | no | float | persistent | Active/motion duration in seconds. Omit to keep the layer visible after `at`; when present it must be positive. |
+| `fade_in` | no | float | `0` | Fade-in seconds at the start of the active window. |
+| `fade_out` | no | float | `0` | Fade-out seconds at the end of `duration`; requires `duration`. |
+| `sway` | no | map | disabled | Subtle periodic `{period, offset, scale}` added to the main transform. `period > 0`; offset and scale default to zero. |
+
+The listed order is painter's order. Foreground layers intentionally support
+only cheap sprite transforms and alpha modulation: character rigs, collision,
+interaction, and branching still belong in a room-script cutscene.
+
 **`text_style.color`** and **`outline_color`** accept `"#RRGGBB"` or
 `"#RRGGBBAA"` (case-insensitive, `#` optional). White (`#FFFFFF`) is the default
 fill. A non-zero **`outline_thickness`** (virtual px) draws an outline in

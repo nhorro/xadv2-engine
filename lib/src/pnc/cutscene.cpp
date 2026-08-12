@@ -428,6 +428,93 @@ CutsceneBackdrop parse_backdrop(const YAML::Node& node) {
     return out;
 }
 
+CutsceneForeground parse_foreground(const YAML::Node& node, std::size_t index) {
+    if (!node.IsMap()) {
+        cutscene_fail("cutscene.foreground-shape",
+                      "foreground " + std::to_string(index) + " must be a mapping",
+                      node);
+    }
+    if (!node["image"] || !node["image"].IsScalar()) {
+        cutscene_fail("cutscene.foreground-image-missing",
+                      "foreground " + std::to_string(index) + " is missing resource path 'image'",
+                      node);
+    }
+
+    CutsceneForeground out;
+    out.image = node["image"].as<std::string>();
+    if (node["from"]) {
+        out.from = parse_vec2(node["from"], "foreground-from");
+    }
+    out.to = out.from;
+    if (node["to"]) {
+        out.to = parse_vec2(node["to"], "foreground-to");
+    }
+    if (node["size"]) {
+        out.size = parse_vec2(node["size"], "foreground-size");
+    }
+    if (out.size.x <= 0.0f || out.size.y <= 0.0f) {
+        cutscene_fail("cutscene.foreground-size-non-positive",
+                      "foreground size values must be > 0",
+                      node);
+    }
+    if (node["fit"]) {
+        out.fit = parse_image_fit(node["fit"]);
+    }
+    if (node["tint"]) {
+        out.tint = parse_color(node["tint"]);
+    }
+    if (node["at"]) {
+        out.at = node["at"].as<float>();
+    }
+    if (node["duration"]) {
+        out.duration = node["duration"].as<float>();
+        if (*out.duration <= 0.0f) {
+            cutscene_fail("cutscene.foreground-duration-non-positive",
+                          "foreground duration must be > 0",
+                          node["duration"]);
+        }
+    }
+    if (node["fade_in"]) {
+        out.fade_in = node["fade_in"].as<float>();
+    }
+    if (node["fade_out"]) {
+        out.fade_out = node["fade_out"].as<float>();
+    }
+    if (out.fade_in < 0.0f || out.fade_out < 0.0f) {
+        cutscene_fail("cutscene.foreground-fade-negative",
+                      "foreground fade_in/fade_out must be >= 0",
+                      node);
+    }
+    if (out.fade_out > 0.0f && !out.duration) {
+        cutscene_fail("cutscene.foreground-fade-out-without-duration",
+                      "foreground fade_out requires duration",
+                      node["fade_out"]);
+    }
+
+    if (const YAML::Node sway = node["sway"]) {
+        if (!sway.IsMap()) {
+            cutscene_fail("cutscene.foreground-sway-shape",
+                          "foreground sway must be a mapping",
+                          sway);
+        }
+        if (sway["period"]) {
+            out.sway_period = sway["period"].as<float>();
+        }
+        if (sway["offset"]) {
+            out.sway_offset = parse_vec2(sway["offset"], "foreground-sway-offset");
+        }
+        if (sway["scale"]) {
+            out.sway_scale = sway["scale"].as<float>();
+        }
+        if (out.sway_period <= 0.0f || out.sway_scale < 0.0f) {
+            cutscene_fail("cutscene.foreground-sway-range",
+                          "foreground sway period must be > 0 and scale must be >= 0",
+                          sway);
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 Cutscene parse_cutscene(const std::string& yaml_text) {
@@ -467,6 +554,17 @@ Cutscene parse_cutscene(const std::string& yaml_text) {
     out.fade = parse_fade(root["fade"]);
     if (root["backdrop"]) {
         out.backdrop = parse_backdrop(root["backdrop"]);
+    }
+    if (const YAML::Node foregrounds = root["foregrounds"]) {
+        if (!foregrounds.IsSequence()) {
+            cutscene_fail("cutscene.foregrounds-shape",
+                          "'foregrounds' must be a sequence",
+                          foregrounds);
+        }
+        out.foregrounds.reserve(foregrounds.size());
+        for (std::size_t i = 0; i < foregrounds.size(); ++i) {
+            out.foregrounds.push_back(parse_foreground(foregrounds[i], i));
+        }
     }
     if (root["timed_crossfade"]) {
         out.timed_crossfade = root["timed_crossfade"].as<float>();

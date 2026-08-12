@@ -170,6 +170,19 @@ TEST_CASE("malformed inputs carry stable error codes") {
           "cutscene.backdrop-shape");
     CHECK(error_code([] { parse_cutscene("timed_crossfade: -0.1\nslides: [{text: x}]\n"); }) ==
           "cutscene.timed-crossfade-negative");
+    CHECK(error_code([] { parse_cutscene("foregrounds: {}\nslides: [{text: x}]\n"); }) ==
+          "cutscene.foregrounds-shape");
+    CHECK(error_code([] {
+              parse_cutscene("foregrounds: [{from: [0, 0]}]\nslides: [{text: x}]\n");
+          }) == "cutscene.foreground-image-missing");
+    CHECK(error_code([] {
+              parse_cutscene("foregrounds: [{image: x, duration: 0}]\n"
+                             "slides: [{text: x}]\n");
+          }) == "cutscene.foreground-duration-non-positive");
+    CHECK(error_code([] {
+              parse_cutscene("foregrounds: [{image: x, fade_out: 1}]\n"
+                             "slides: [{text: x}]\n");
+          }) == "cutscene.foreground-fade-out-without-duration");
 }
 
 TEST_CASE("musical backdrop, timed crossfade, and narrow text blocks parse") {
@@ -222,6 +235,49 @@ slides:
     CHECK(c.backdrop->sway_scale == doctest::Approx(0.0025f));
     CHECK(c.slides[0].text_width == doctest::Approx(0.34f));
     CHECK(c.slides[1].text_width == doctest::Approx(0.28f));
+}
+
+TEST_CASE("timed foreground layers parse motion, fades, tint, and sway") {
+    const Cutscene c = parse_cutscene(R"YAML(
+advance_mode: timed
+foregrounds:
+  - image: cutscenes/singer.png
+    from: [0.2, 0.7]
+    size: [0.3, 0.6]
+    tint: "#EEDDCBDD"
+    at: -1
+    sway: {period: 4.8, offset: [0.001, 0.002], scale: 0.003}
+  - image: cutscenes/visitors.png
+    from: [-0.2, 0.82]
+    to: [1.2, 0.82]
+    size: [0.4, 0.5]
+    fit: contain
+    at: 18
+    duration: 20
+    fade_in: 0.8
+    fade_out: 1.2
+slides:
+  - {at: 0, text: A}
+)YAML");
+
+    REQUIRE(c.foregrounds.size() == 2);
+    const CutsceneForeground& singer = c.foregrounds[0];
+    CHECK(singer.image == "cutscenes/singer.png");
+    CHECK(singer.from.x == doctest::Approx(0.2f));
+    CHECK(singer.to.x == doctest::Approx(0.2f));
+    CHECK(singer.at == doctest::Approx(-1.0f));
+    CHECK_FALSE(singer.duration);
+    CHECK(singer.tint.a == 0xDD);
+    CHECK(singer.sway_period == doctest::Approx(4.8f));
+    CHECK(singer.sway_offset.y == doctest::Approx(0.002f));
+    CHECK(singer.sway_scale == doctest::Approx(0.003f));
+
+    const CutsceneForeground& visitors = c.foregrounds[1];
+    CHECK(visitors.to.x == doctest::Approx(1.2f));
+    REQUIRE(visitors.duration);
+    CHECK(*visitors.duration == doctest::Approx(20.0f));
+    CHECK(visitors.fade_in == doctest::Approx(0.8f));
+    CHECK(visitors.fade_out == doctest::Approx(1.2f));
 }
 
 TEST_CASE("fade, audio_persist, text_band, and text outline parse + compose") {
