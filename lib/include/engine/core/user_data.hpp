@@ -18,6 +18,14 @@ namespace pac::core {
 /// be a stable, filesystem-friendly id: no slashes, no `..`, no leading `.`.
 std::filesystem::path user_data_dir(const std::string& app_name);
 
+/// Save directory for this launch. A packaged portable build places a
+/// `portable.flag` marker beside the executable; in that case saves live in the
+/// sibling `saves/` directory. Other builds retain the platform user-data path.
+/// `executable_dir` is supplied by the application so the policy stays easy to
+/// test and does not depend on process-global path discovery here.
+std::filesystem::path save_data_dir(const std::string& app_name,
+                                    const std::filesystem::path& executable_dir);
+
 /// Per-user writable directory for *configuration* (player settings). Distinct
 /// from `user_data_dir` on Linux, where config conventionally lives apart from
 /// data. Resolves to:

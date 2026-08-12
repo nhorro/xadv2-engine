@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <system_error>
 
@@ -32,5 +33,22 @@ TEST_CASE("user_config_dir resolves and creates a per-app subdirectory") {
 
     std::error_code ec;
     std::filesystem::remove_all(p, ec);
+    CHECK_FALSE(ec);
+}
+
+TEST_CASE("portable marker keeps saves beside the executable") {
+    const auto epoch = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto portable = std::filesystem::temp_directory_path() /
+                          ("pac_portable_test_" + std::to_string(epoch));
+    std::filesystem::create_directories(portable);
+    {
+        std::ofstream marker(portable / "portable.flag");
+        marker << "portable\n";
+    }
+
+    CHECK(pac::core::save_data_dir("ignored-app-id", portable) == portable / "saves");
+
+    std::error_code ec;
+    std::filesystem::remove_all(portable, ec);
     CHECK_FALSE(ec);
 }

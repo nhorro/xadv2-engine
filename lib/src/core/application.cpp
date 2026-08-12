@@ -357,7 +357,7 @@ int run(const std::string& manifest_path,
                     {settings.window_width, settings.window_height},
                     settings.fullscreen);
     SceneManager scenes;
-    SaveService saves(user_data_dir(manifest.id) / "saves", log);
+    SaveService saves(save_data_dir(manifest.id, executable_dir(opts.argv0)), log);
     CursorState cursor_state;
     Thumbnail thumbnail;
 

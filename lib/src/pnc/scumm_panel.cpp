@@ -508,11 +508,12 @@ void ScummPanel::draw_system_buttons(sf::RenderTarget& target,
 
         draw_button_box(target, config_.skin.system_button, cell.rect, hot, /*selected=*/false);
 
-        // An optional icon takes a square gutter on the left; the label uses the
-        // rest. Without an icon the label owns the whole box.
+        // An optional icon takes a compact gutter on the left; keeping it smaller
+        // than the button height leaves enough room for labels such as "Opciones".
+        // Without an icon the label owns the whole box.
         sf::FloatRect label_rect = cell.rect;
         if (!button.icon.empty()) {
-            const float icon_w = cell.rect.height;
+            const float icon_w = std::min(cell.rect.height, cell.rect.width * 0.32f);
             const float inset = icon_w * 0.2f;
             draw_image_in_rect(target,
                                button.icon,
@@ -1180,22 +1181,22 @@ void ScummPanel::draw_inventory_icons(sf::RenderTarget& target,
         }
     }
 
-    // Vertical paging arrows (same look as the dialog arrows), only when needed.
+    // Keep both paging controls visible even when the inventory fits on one page.
+    // Besides making the layout stable, the disabled glyphs explain the otherwise
+    // empty pagination column before the player has collected enough items.
     const int pages = inventory_page_count(inventory);
-    if (pages > 1) {
-        const bool prev = page > 0;
-        const bool next = page < pages - 1;
-        const sf::Color disabled = config_.skin.inventory_text.disabled_color;
-        const auto arrow_color = [&](sf::FloatRect rect, bool enabled) {
-            if (!enabled) {
-                return disabled;
-            }
-            return rect.contains(cursor) ? config_.skin.inventory_text.hover_color
-                                         : config_.skin.inventory_text.color;
-        };
-        draw_v_arrow(target, layout.prev_arrow, true, arrow_color(layout.prev_arrow, prev));
-        draw_v_arrow(target, layout.next_arrow, false, arrow_color(layout.next_arrow, next));
-    }
+    const bool prev = page > 0;
+    const bool next = page < pages - 1;
+    const sf::Color disabled = config_.skin.inventory_text.disabled_color;
+    const auto arrow_color = [&](sf::FloatRect rect, bool enabled) {
+        if (!enabled) {
+            return disabled;
+        }
+        return rect.contains(cursor) ? config_.skin.inventory_text.hover_color
+                                     : config_.skin.inventory_text.color;
+    };
+    draw_v_arrow(target, layout.prev_arrow, true, arrow_color(layout.prev_arrow, prev));
+    draw_v_arrow(target, layout.next_arrow, false, arrow_color(layout.next_arrow, next));
 }
 
 void ScummPanel::draw_inventory_notification(sf::RenderTarget& target,

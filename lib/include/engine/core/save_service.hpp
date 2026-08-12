@@ -24,9 +24,9 @@ class Diagnostics;
 
 /// MVP save system per design 01 §R8 + 02 §"Make persistent state explicit":
 /// three manual slots (1-3) plus one autosave slot (0), YAML on disk via
-/// yaml-cpp. The directory is supplied at construction (typically
-/// `user_data_dir("xadv2-engine") / "saves"`); it is created lazily on first
-/// write.
+/// yaml-cpp. The directory is supplied at construction (normally selected by
+/// `save_data_dir()` from the user-data or portable location); it is created
+/// lazily on first write.
 ///
 /// MVP scope: no thumbnails, no script-facing `save_game()`, no slot metadata
 /// other than file mtime (used by `latest_slot()` for Continue). The format

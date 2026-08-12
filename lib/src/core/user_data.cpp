@@ -74,6 +74,16 @@ std::filesystem::path user_data_dir(const std::string& app_name) {
     return resolve_and_create(platform_base(), app_name);
 }
 
+std::filesystem::path save_data_dir(const std::string& app_name,
+                                    const std::filesystem::path& executable_dir) {
+    std::error_code ec;
+    if (!executable_dir.empty() &&
+        std::filesystem::is_regular_file(executable_dir / "portable.flag", ec)) {
+        return executable_dir / "saves";
+    }
+    return user_data_dir(app_name) / "saves";
+}
+
 std::filesystem::path user_config_dir(const std::string& app_name) {
     return resolve_and_create(platform_config_base(), app_name);
 }

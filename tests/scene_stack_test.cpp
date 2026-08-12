@@ -15,6 +15,7 @@ namespace {
 struct Counts {
     int entered = 0;
     int left = 0;
+    int prepared_for_exit = 0;
 };
 
 std::map<std::string, Counts> g_counts;
@@ -24,6 +25,7 @@ struct DummyScene : Scene {
     explicit DummyScene(std::string scene_id) : id(std::move(scene_id)) {}
     void enter() override { g_counts[id].entered++; }
     void leave() override { g_counts[id].left++; }
+    void prepare_for_application_exit() override { g_counts[id].prepared_for_exit++; }
     void draw(sf::RenderTarget&) const override {}
 };
 
@@ -65,6 +67,7 @@ TEST_CASE("goto / push / pop lifecycle and stack size") {
     m.apply_pending();
     CHECK(m.size() == 1);
     CHECK(g_counts["a"].left == 1);
+    CHECK(g_counts["a"].prepared_for_exit == 0);
     CHECK(g_counts["c"].entered == 1);
 }
 
@@ -88,6 +91,8 @@ TEST_CASE("quit empties the stack and stops running") {
     CHECK(m.size() == 0);
     CHECK(g_counts["a"].left == 1);
     CHECK(g_counts["b"].left == 1);
+    CHECK(g_counts["a"].prepared_for_exit == 1);
+    CHECK(g_counts["b"].prepared_for_exit == 1);
 }
 
 TEST_CASE("QUIT token routes to quit") {

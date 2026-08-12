@@ -20,6 +20,11 @@ public:
     virtual void update(float dt) { (void) dt; }
     virtual void draw(sf::RenderTarget& target) const = 0;
 
+    /// Last chance to persist coherent state before the application exits. The
+    /// scene manager calls this on every stacked scene, top-to-bottom, before
+    /// `leave()`. Most scenes have nothing to do; gameplay scenes may autosave.
+    virtual void prepare_for_application_exit() {}
+
     /// An opaque scene fully covers the scenes beneath it, so the manager can skip
     /// drawing them. A transparent overlay (e.g. a HUD) returns false.
     bool opaque() const { return opaque_; }

@@ -64,6 +64,7 @@ public:
     void handle_event(const sf::Event& event) override;
     void update(float dt) override;
     void draw(sf::RenderTarget& target) const override;
+    void prepare_for_application_exit() override;
 
     /// Save-thumbnail capture (issue #119) is only meaningful while the room
     /// shows uncluttered gameplay — the COMMAND state. DIALOG / MENU / BLOCKED
@@ -275,6 +276,7 @@ private:
     };
     [[nodiscard]] std::vector<MenuButton> menu_buttons() const;
     void handle_menu_event(const sf::Event& event);
+    bool autosave_if_safe(const char* reason);
     void skip_active_cutscene();
     void draw_menu(sf::RenderTarget& target) const;
     void draw_ambient(sf::RenderTarget& target) const; // float_text labels (world space)

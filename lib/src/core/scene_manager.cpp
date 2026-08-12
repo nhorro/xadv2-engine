@@ -142,6 +142,9 @@ void SceneManager::apply_pending() {
             break;
         }
         case OpKind::QUIT: {
+            for (auto it = stack_.rbegin(); it != stack_.rend(); ++it) {
+                (*it)->prepare_for_application_exit();
+            }
             while (!stack_.empty()) {
                 stack_.back()->leave();
                 stack_.pop_back();

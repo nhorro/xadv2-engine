@@ -1001,6 +1001,10 @@ void RoomScene::leave() {
     unload_room();
 }
 
+void RoomScene::prepare_for_application_exit() {
+    autosave_if_safe("application exit");
+}
+
 void RoomScene::load_room(const std::string& id, const std::string& entry_point) {
     if (tuning_overlay_) {
         tuning_overlay_->close();
@@ -3640,9 +3644,30 @@ void RoomScene::trigger_menu(const MenuButton& button) {
         ctx_.scenes.open_settings();
         break;
     case MenuAction::QUIT_TO_TITLE:
+        autosave_if_safe("return to title");
         ctx_.scenes.goto_scene("title");
         break;
     }
+}
+
+bool RoomScene::autosave_if_safe(const char* reason) {
+    if (!can_save()) {
+        ctx_.log.info(std::string("RoomScene: autosave skipped before ") + reason +
+                      " (transient view state or room transition)");
+        return false;
+    }
+
+    bool saved = false;
+    if (ctx_.thumbnail.valid()) {
+        const sf::Image thumb = ctx_.thumbnail.image();
+        saved = ctx_.saves.save(pac::core::SaveService::kAutosaveSlot, snap(), &thumb);
+    } else {
+        saved = ctx_.saves.save(pac::core::SaveService::kAutosaveSlot, snap());
+    }
+    if (saved) {
+        ctx_.log.info(std::string("RoomScene: autosaved before ") + reason);
+    }
+    return saved;
 }
 
 void RoomScene::draw_menu(sf::RenderTarget& target) const {
@@ -3692,7 +3717,7 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
 }
 
 bool RoomScene::can_save() const {
-    if (change_pending_) {
+    if (change_pending_ || change_armed_) {
         return false;
     }
     // MENU is reachable only from COMMAND (see handle_event routing), so its
