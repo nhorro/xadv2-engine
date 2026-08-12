@@ -1041,9 +1041,13 @@ YAML `goto`/`name` action.
 **Scene parameters** (manifest `parameters:` for a `type: CloseUp` scene): `data`
 (req, path to the close-up YAML), `logic` (opt, path to the Lua sidecar — enables
 scripting), `cast` (opt, cast file for `talk` speech colours), `font` (opt, UI
-text such as hover labels, banners, and the back hint), and `on_exit` (opt scene
-id entered on back-out; omitted ⇒ pop back to the opener). Scripted `talk` uses
-the manifest's top-level `speech` style.
+text such as hover labels, banners, and the back hint), `music` (opt, temporary
+music cue crossfaded in while the close-up is open), `music_transition` (opt,
+crossfade/fade-out duration in seconds, default `2.5`), and `on_exit` (opt scene
+id entered on back-out; omitted ⇒ pop back to the opener). On exit, the previous
+music cue is restored at its captured playback position; if there was none, the
+temporary cue fades to silence. Ambience and sound effects are not affected.
+Scripted `talk` uses the manifest's top-level `speech` style.
 
 ## Spritesheet — `<name>.yaml`
 

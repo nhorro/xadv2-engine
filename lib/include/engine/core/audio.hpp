@@ -32,6 +32,16 @@ struct MusicCrossfadeGains {
 
 } // namespace detail
 
+/// Restorable description of the currently selected music cue. Ambient audio
+/// and sound effects are separate services and are intentionally absent.
+struct MusicState {
+    bool playing = false;
+    std::string logical;
+    bool loop = true;
+    float gain = 1.0f;
+    float offset_seconds = 0.0f;
+};
+
 /// Two-deck streamed background music. Volume is 0..1 (mapped to SFML's 0..100).
 /// Tracks stream from stable ResourceCache memory in loose and packed builds.
 class MusicPlayer {
@@ -56,6 +66,12 @@ public:
     void stop();
     void set_volume(float volume01);
 
+    /// Capture/restore a cue around a temporary musical overlay (for example a
+    /// document close-up). Restoring a silent state fades the temporary cue out;
+    /// restoring a playing state crossfades back at its captured offset.
+    [[nodiscard]] MusicState capture_state() const;
+    [[nodiscard]] bool restore_state(const MusicState& state, float fade_seconds = 2.5f);
+
     /// Current playback offset of the active track in seconds. Returns 0 when
     /// nothing is playing. Used by timed cutscenes (issue #116) to keep slide
     /// transitions in sync with a narrated audio track when the engine
@@ -74,6 +90,8 @@ private:
     ResourceCache& resources_;
     Diagnostics& log_;
     std::array<sf::Music, 2> decks_;
+    std::array<std::string, 2> logical_;
+    std::array<bool, 2> loops_{true, true};
     std::array<float, 2> deck_gains_{1.0f, 1.0f};
     int active_ = 0;
     int incoming_ = -1;

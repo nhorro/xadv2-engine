@@ -23,6 +23,7 @@ scumm_panel:
       background:
         type: image
         image: "panel.png"
+        dialog_image: "panel_dialog.png"
         scale_mode: stretch
     command_bar:
       rect: [8, 8, 1264, 28]
@@ -122,6 +123,7 @@ TEST_CASE("scumm panel config parses layout, skin, and relative asset paths") {
     CHECK(cfg.layout.panel_rect.top == doctest::Approx(612.0f));
     CHECK(cfg.layout.background.type == ScummPanelBackgroundType::IMAGE);
     CHECK(cfg.layout.background.image == "ui/panel.png");
+    CHECK(cfg.layout.background.dialog_image == "ui/panel_dialog.png");
     CHECK(cfg.layout.command_bar_rect.left == doctest::Approx(8.0f));
     CHECK(cfg.layout.inventory_panel.rows == 2);
     CHECK(cfg.layout.inventory_panel.columns == 4);

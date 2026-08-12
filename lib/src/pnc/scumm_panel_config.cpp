@@ -311,6 +311,10 @@ ScummPanelBackground parse_background(const YAML::Node& node,
     if (node["image"]) {
         bg.image = resolve_asset(base_dir, node["image"], "layout.panel.background.image");
     }
+    if (node["dialog_image"]) {
+        bg.dialog_image =
+            resolve_asset(base_dir, node["dialog_image"], "layout.panel.background.dialog_image");
+    }
     if (node["scale_mode"]) {
         bg.scale_mode = scale_mode(node["scale_mode"].as<std::string>(), node["scale_mode"]);
     }

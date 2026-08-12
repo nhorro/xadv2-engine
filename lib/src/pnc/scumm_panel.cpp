@@ -855,6 +855,13 @@ void ScummPanel::draw_backdrop(sf::RenderTarget& target,
             }
         }
     }
+    // Dialog options reuse the panel footprint but not its operative grid. A
+    // configured division-free surface keeps the material while removing stale
+    // verb, inventory, pagination, and system-button boundaries.
+    if (suppress_command_bar && !config_.layout.background.dialog_image.empty()) {
+        image = config_.layout.background.dialog_image;
+        mode = config_.layout.background.scale_mode;
+    }
     if (!image.empty()) {
         draw_background_image(target, image, mode);
     } else if (!suppress_command_bar) {

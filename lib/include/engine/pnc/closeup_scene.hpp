@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/scene.hpp"
+#include "engine/core/audio.hpp"
 #include "engine/core/scripting.hpp" // ScopeId, TaskId
 #include "engine/geom/geometry.hpp"
 #include "engine/pnc/cast.hpp"
@@ -11,6 +12,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -65,6 +67,10 @@ private:
     std::string logic_path_;
     std::string cast_path_;
     std::string on_exit_; // scene id on back-out; empty -> pop the overlay
+    std::string music_path_; // optional temporary score cue while this view is open
+    float music_transition_ = 2.5f;
+    std::optional<pac::core::MusicState> previous_music_;
+    bool music_override_started_ = false;
     const sf::Font* font_ = nullptr;
     const sf::Font* speech_font_ = nullptr;
     CloseUpData data_;

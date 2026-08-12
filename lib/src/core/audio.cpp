@@ -51,6 +51,8 @@ bool MusicPlayer::open(int deck, const std::string& logical, bool loop) {
         return false;
     }
     decks_[deck].setLoop(loop);
+    logical_[deck] = logical;
+    loops_[deck] = loop;
     return true;
 }
 
@@ -200,6 +202,92 @@ float MusicPlayer::playing_offset_seconds() const {
 bool MusicPlayer::is_playing() const {
     const sf::Music& current = incoming_ >= 0 ? decks_[incoming_] : decks_[active_];
     return current.getStatus() == sf::SoundSource::Playing;
+}
+
+MusicState MusicPlayer::capture_state() const {
+    const int current = incoming_ >= 0 ? incoming_ : active_;
+    MusicState state;
+    state.playing = decks_[current].getStatus() == sf::SoundSource::Playing;
+    state.logical = logical_[current];
+    state.loop = loops_[current];
+    state.gain = deck_gains_[current];
+    if (state.playing) {
+        state.offset_seconds = decks_[current].getPlayingOffset().asSeconds();
+    }
+    return state;
+}
+
+bool MusicPlayer::restore_state(const MusicState& state, float fade_seconds) {
+    if (!state.playing || state.logical.empty()) {
+        // If the temporary cue is still fading in from silence, turn that same
+        // envelope around. This preserves its current audible gain instead of
+        // briefly jumping to full volume before the fade-out begins.
+        if (fading_ && incoming_ >= 0 &&
+            decks_[active_].getStatus() != sf::SoundSource::Playing) {
+            decks_[active_].stop();
+            active_ = incoming_;
+            incoming_ = -1;
+            elapsed_ = std::max(fade_duration_ - elapsed_, 0.0f);
+            fading_ = false;
+            stopping_ = true;
+            apply_volumes();
+            return true;
+        }
+        fade_out(fade_seconds);
+        return true;
+    }
+
+    // While the temporary cue is still entering, the old cue remains on the
+    // outgoing deck. Reverse the equal-power envelope in place: both volumes
+    // remain continuous, even when a close-up is opened and closed quickly.
+    if (fading_ && incoming_ >= 0 && logical_[active_] == state.logical &&
+        decks_[active_].getStatus() == sf::SoundSource::Playing) {
+        std::swap(active_, incoming_);
+        elapsed_ = std::max(fade_duration_ - elapsed_, 0.0f);
+        deck_gains_[incoming_] = std::clamp(state.gain, 0.0f, 1.0f);
+        decks_[incoming_].setLoop(state.loop);
+        loops_[incoming_] = state.loop;
+        apply_volumes();
+        return true;
+    }
+
+    cancel_fade();
+    // If the temporary cue was closed before its fade-in took over, cancellation
+    // may already have retained the previous deck. Avoid crossfading a track into
+    // a second copy of itself (which can phase audibly).
+    if (logical_[active_] == state.logical &&
+        decks_[active_].getStatus() == sf::SoundSource::Playing) {
+        deck_gains_[active_] = std::clamp(state.gain, 0.0f, 1.0f);
+        decks_[active_].setLoop(state.loop);
+        loops_[active_] = state.loop;
+        apply_volumes();
+        return true;
+    }
+    const int next = 1 - active_;
+    decks_[next].stop();
+    if (!open(next, state.logical, state.loop)) {
+        // The temporary score must not become permanent just because a prior
+        // cue can no longer be loaded. Leave ambience untouched and fade the
+        // temporary music away as the safest fallback.
+        fade_out(fade_seconds);
+        return false;
+    }
+    deck_gains_[next] = std::clamp(state.gain, 0.0f, 1.0f);
+    const float duration = decks_[next].getDuration().asSeconds();
+    if (duration > 0.0f && state.offset_seconds > 0.0f) {
+        const float offset = state.loop ? std::fmod(state.offset_seconds, duration)
+                                        : std::min(state.offset_seconds, duration);
+        decks_[next].setPlayingOffset(sf::seconds(offset));
+    }
+
+    decks_[next].setVolume(0.0f);
+    decks_[next].play();
+    incoming_ = next;
+    elapsed_ = 0.0f;
+    fade_duration_ = std::isfinite(fade_seconds) ? std::max(fade_seconds, 0.01f) : 2.5f;
+    fading_ = true;
+    apply_volumes();
+    return true;
 }
 
 void MusicPlayer::set_volume(float volume01) {

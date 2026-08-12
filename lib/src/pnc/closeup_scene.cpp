@@ -44,6 +44,13 @@ CloseUpScene::CloseUpScene(pac::core::EngineContext& ctx, const pac::core::Scene
     logic_path_ = params.get_or("logic", "");
     cast_path_ = params.get_or("cast", "");
     on_exit_ = params.get_or("on_exit", "");
+    music_path_ = params.get_or("music", "");
+    try {
+        music_transition_ = std::max(0.01f, std::stof(params.get_or("music_transition", "2.5")));
+    } catch (const std::exception&) {
+        ctx_.log.warn("CloseUp: invalid music_transition; using 2.5 seconds");
+        music_transition_ = 2.5f;
+    }
     const std::string font_path = params.get_or("font", "");
     if (!font_path.empty()) {
         font_ = ctx_.resources.try_font(font_path);
@@ -72,6 +79,14 @@ void CloseUpScene::enter() {
         loaded_ = true;
     } catch (const std::exception& e) {
         ctx_.log.error(std::string("CloseUp: ") + e.what());
+    }
+
+    // Optional score overlay. Music is a distinct service from ambience and SFX,
+    // so the room soundscape continues uninterrupted under the close-up.
+    if (!music_path_.empty()) {
+        previous_music_ = ctx_.audio.music.capture_state();
+        music_override_started_ =
+            ctx_.audio.music.crossfade(music_path_, music_transition_, false, true);
     }
 
     // Optional cast, for per-speaker speech colors in scripted talk.
@@ -164,6 +179,14 @@ void CloseUpScene::leave() {
     }
     // Reap the scope: cancels any in-flight hotspot handler / spawned task.
     ctx_.scripting.cancel_scope(closeup_scope_);
+
+    if (music_override_started_ && previous_music_) {
+        if (!ctx_.audio.music.restore_state(*previous_music_, music_transition_)) {
+            ctx_.log.warn("CloseUp: could not restore the previous music cue");
+        }
+    }
+    music_override_started_ = false;
+    previous_music_.reset();
 }
 
 void CloseUpScene::exit() {

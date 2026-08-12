@@ -39,6 +39,7 @@ struct ScummPanelBackground {
     ScummPanelBackgroundType type = ScummPanelBackgroundType::SOLID;
     sf::Color color{26, 24, 31};
     std::string image;
+    std::string dialog_image; // optional division-free surface for dialog options
     ScummPanelScaleMode scale_mode = ScummPanelScaleMode::STRETCH;
     ScummPanelPadding nine_slice{12.0f, 12.0f, 12.0f, 12.0f};
 };
