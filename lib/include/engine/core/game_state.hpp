@@ -43,6 +43,11 @@ struct GameState {
     /// later extension rather than a format change.
     std::string current_scene_id;
 
+    /// Stable authored chapter id. Empty only for saves written before chapter
+    /// support; those are routed by `current_scene_id` and accepted by the
+    /// matching RoomScene for backward compatibility.
+    std::string chapter_id;
+
     struct RoomView {
         std::string current_room_id;
         struct Player {

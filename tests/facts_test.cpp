@@ -166,3 +166,28 @@ TEST_CASE("an empty registry (no facts.yaml) is plain state sugar with the guard
     CHECK(state.get("whatever.x") == StateValue{true});
     CHECK(warnings.empty()); // nothing declared -> nothing to guard against
 }
+
+TEST_CASE("rebinding facts replaces the active chapter vocabulary") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    StateStore state;
+    bind_state(s, state);
+    std::vector<std::string> warnings;
+
+    const FactsRegistry first =
+        FactsRegistry::parse("namespaces:\n  first: [visited]\n");
+    pac::core::bind_facts(s, first, true, [&](const std::string& m) { warnings.push_back(m); });
+    REQUIRE(s.run_string("facts.first.visited = true"));
+    CHECK(warnings.empty());
+
+    const FactsRegistry second =
+        FactsRegistry::parse("namespaces:\n  second: [arrived]\n");
+    pac::core::bind_facts(s, second, true, [&](const std::string& m) { warnings.push_back(m); });
+    REQUIRE(s.run_string("facts.second.arrived = true"));
+    CHECK(warnings.empty());
+
+    REQUIRE(s.run_string("old_value = facts.first.visited"));
+    REQUIRE(warnings.size() >= 1);
+    CHECK(warnings.front().find("facts.first") != std::string::npos);
+    CHECK(s.lua()["old_value"].get<bool>() == true); // state remains readable until reset
+}

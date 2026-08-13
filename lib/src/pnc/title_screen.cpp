@@ -208,8 +208,10 @@ void TitleScreen::trigger(Action action) {
             // the player should get to make that call themselves.
             break;
         }
+        const std::string target =
+            state->current_scene_id.empty() ? continue_target_ : state->current_scene_id;
         ctx_.saves.stage_restore(std::move(*state));
-        ctx_.scenes.goto_scene(continue_target_);
+        ctx_.scenes.goto_scene(target);
         break;
     }
     case Action::LOAD_GAME:

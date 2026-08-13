@@ -867,8 +867,8 @@ TEST_CASE("dialog topic{} expands with requires / after gating, once-per-claim, 
 
     const fs::path root = fs::temp_directory_path() / "pac_dialog_topic_test";
     fs::remove_all(root);
-    fs::create_directories(root / "dialogs");
-    std::ofstream(root / "dialogs" / "schneider.lua") << R"LUA(
+    fs::create_directories(root / "chapters" / "01" / "dialogs");
+    std::ofstream(root / "chapters" / "01" / "dialogs" / "schneider.lua") << R"LUA(
         -- cross-topic predicate built on the uttered() helper
         local function basics() return uttered("frac") and uttered("cuts") end
         return dialog {
@@ -901,7 +901,8 @@ TEST_CASE("dialog topic{} expands with requires / after gating, once-per-claim, 
     state.set("finding.frac", true);
     state.set("finding.cuts", true);
 
-    auto dopt = DialogRuntime::start(s, resources, log, "schneider", host.host());
+    auto dopt = DialogRuntime::start(
+        s, resources, log, "schneider", host.host(), "chapters/01/dialogs");
     REQUIRE(dopt.has_value());
     DialogRuntime& d = *dopt;
     advance_to_choice(d, host);

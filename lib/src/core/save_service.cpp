@@ -143,6 +143,7 @@ void emit_game_state(YAML::Emitter& out, const GameState& s) {
     out << YAML::Key << "description" << YAML::Value << YAML::DoubleQuoted << s.description;
     out << YAML::Key << "saved_at" << YAML::Value << s.saved_at;
     out << YAML::Key << "current_scene_id" << YAML::Value << s.current_scene_id;
+    out << YAML::Key << "chapter_id" << YAML::Value << s.chapter_id;
 
     out << YAML::Key << "room_view" << YAML::Value;
     out << YAML::BeginMap;
@@ -214,6 +215,7 @@ GameState decode_game_state(const YAML::Node& root) {
     s.saved_at = root["saved_at"] ? root["saved_at"].as<std::int64_t>() : 0;
     s.current_scene_id =
         root["current_scene_id"] ? root["current_scene_id"].as<std::string>() : std::string();
+    s.chapter_id = root["chapter_id"] ? root["chapter_id"].as<std::string>() : std::string();
 
     if (const YAML::Node rv = root["room_view"]) {
         s.room_view.current_room_id =

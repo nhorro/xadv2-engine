@@ -19,7 +19,7 @@
 
 namespace pac::core {
 
-void bind_core_api(EngineContext& ctx) {
+void bind_core_api(EngineContext& ctx, const std::string& facts_path) {
     sol::state& lua = ctx.scripting.lua();
 
     // --- resources ---
@@ -186,14 +186,18 @@ void bind_core_api(EngineContext& ctx) {
                      [&ctx]() { return ctx.state.erase_prefix("__case_term."); });
 
     // --- declared facts (#188): the `facts.<ns>.<name>` proxy over state ---
-    // `facts.yaml` is optional: a missing file leaves an empty registry (guard
+    // The configured facts resource is optional: a missing file leaves an empty registry (guard
     // off); a malformed one is a loud authoring error but still degrades to the
     // guard-off proxy so content can run. Bound last so get_state/set_state exist.
+    bind_facts_resource(ctx, facts_path);
+}
+
+void bind_facts_resource(EngineContext& ctx, const std::string& facts_path) {
     FactsRegistry facts;
     std::string facts_yaml;
     bool have_facts = true;
     try {
-        facts_yaml = ctx.resources.read_text("facts.yaml");
+        facts_yaml = ctx.resources.read_text(facts_path);
     } catch (const std::exception&) {
         have_facts = false; // optional resource
     }
@@ -201,7 +205,7 @@ void bind_core_api(EngineContext& ctx) {
         try {
             facts = FactsRegistry::parse(facts_yaml);
         } catch (const std::exception& e) {
-            ctx.log.error(std::string("facts.yaml: ") + e.what());
+            ctx.log.error(facts_path + ": " + e.what());
         }
     }
     // The typo guard is a development aid (per the "fail loudly in development

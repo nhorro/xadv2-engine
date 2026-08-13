@@ -107,6 +107,9 @@ public:
     void api_camera_look_at(geom::Point target);
     float api_camera_go_to(geom::Point target);
     void api_camera_follow_player();
+    /// End the active chapter and enter the next manifest chapter. All authored
+    /// persistent state and staged save hand-offs are discarded first.
+    void api_finish_chapter();
 
     // Scripted avatar control — the `avatar(id)` Lua handle (#139). `id` is a cast
     // character id; it resolves to the persistent player or a room NPC each call
@@ -349,8 +352,14 @@ private:
 
     pac::core::EngineContext& ctx_;
     UiSoundCues ui_sounds_;
+    std::string scene_id_;
+    std::string chapter_id_;
+    std::string chapter_facts_path_;
+    std::string next_chapter_scene_;
+    bool chapter_transition_pending_ = false;
     std::string cast_path_;
     std::string rooms_dir_;
+    std::string dialogs_dir_;
     std::string start_room_;
     std::string player_char_;
     std::string font_path_;

@@ -78,6 +78,16 @@ struct SceneDesc {
     SceneParams parameters;
 };
 
+/// One independently testable chapter in the campaign's linear sequence.
+/// `scene` is the RoomScene used for new-game entry and save restoration;
+/// `facts_path` is rebound when that scene starts so vocabularies do not grow
+/// across chapter boundaries.
+struct ChapterDesc {
+    std::string id;
+    std::string scene;
+    std::string facts_path;
+};
+
 /// The single source of game-level configuration (`game.yaml`).
 struct Manifest {
     /// Stable, filesystem-friendly id for the game. Used as the directory
@@ -90,6 +100,9 @@ struct Manifest {
     WindowConfig window;
     RenderingConfig rendering;
     std::string resources_src; // resolved to a host root by load_manifest
+    // Optional declared-facts registry. Kept configurable so an independently
+    // runnable chapter can own its fact vocabulary below its content directory.
+    std::string facts_path = "facts.yaml";
     // Logical path to the default language's UI-strings file. Always set: it
     // mirrors `languages[default_language].strings_path` and is the resource the
     // engine loads when no user language preference is stored.
@@ -107,8 +120,12 @@ struct Manifest {
     DevFlags development;
     std::string entry;
     std::vector<SceneDesc> scenes;
+    std::vector<ChapterDesc> chapters;
 
     const SceneDesc* find_scene(const std::string& id) const;
+    const ChapterDesc* find_chapter(const std::string& id) const;
+    const ChapterDesc* chapter_for_scene(const std::string& scene_id) const;
+    const ChapterDesc* next_chapter(const std::string& id) const;
 };
 
 /// Parse + validate a manifest from YAML text. Throws ManifestError on any

@@ -17,6 +17,7 @@ id: sample
 resolution: { width: 1280, height: 720 }
 window: { fullscreen: false, width: 1280, height: 720 }
 resources: { src: "." }
+facts: chapters/01/facts.yaml
 strings: strings/es.yaml
 settings:
   audio: { music_volume: 0.8, sfx_volume: 0.5 }
@@ -46,6 +47,7 @@ TEST_CASE("valid manifest parses with expected fields") {
     CHECK(m.resolution.y == 720u);
     CHECK(m.rendering.smooth_textures);
     CHECK(m.resources_src == ".");
+    CHECK(m.facts_path == "chapters/01/facts.yaml");
     CHECK(m.strings_path == "strings/es.yaml");
     CHECK(m.settings.music_volume == doctest::Approx(0.8f));
     CHECK(m.settings.sfx_volume == doctest::Approx(0.5f));
@@ -61,6 +63,54 @@ TEST_CASE("valid manifest parses with expected fields") {
     CHECK(title->parameters.get_or("new_game", "") == "gameplay");
     CHECK(title->parameters.get_or("exit", "") == "QUIT");
     CHECK(m.find_scene("nope") == nullptr);
+}
+
+TEST_CASE("facts path defaults to the resource root and rejects an empty override") {
+    const Manifest defaults =
+        parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                       "resources: { src: . }\nstrings: s\nentry: a\n"
+                       "scenes: [{id: a, type: B}]\n");
+    CHECK(defaults.facts_path == "facts.yaml");
+
+    CHECK(error_code([] {
+              parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+                             "resources: { src: . }\nfacts: ''\nstrings: s\nentry: a\n"
+                             "scenes: [{id: a, type: B}]\n");
+          }) == "manifest.facts-empty");
+}
+
+TEST_CASE("linear chapters bind stable ids to restorable scenes and facts") {
+    const Manifest m = parse_manifest(
+        "id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+        "resources: { src: . }\nfacts: chapters/one/facts.yaml\nstrings: s\nentry: a\n"
+        "scenes: [{id: a, type: RoomScene}, {id: b, type: RoomScene}]\n"
+        "chapters:\n"
+        "  - {id: one, scene: a}\n"
+        "  - {id: two, scene: b, facts: chapters/two/facts.yaml}\n");
+
+    REQUIRE(m.chapters.size() == 2);
+    CHECK(m.chapters[0].facts_path == "chapters/one/facts.yaml");
+    CHECK(m.chapters[1].facts_path == "chapters/two/facts.yaml");
+    REQUIRE(m.chapter_for_scene("b") != nullptr);
+    CHECK(m.chapter_for_scene("b")->id == "two");
+    REQUIRE(m.next_chapter("one") != nullptr);
+    CHECK(m.next_chapter("one")->id == "two");
+    CHECK(m.next_chapter("two") == nullptr);
+}
+
+TEST_CASE("chapter declarations reject duplicates and unknown scenes") {
+    const std::string prefix =
+        "id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
+        "resources: { src: . }\nstrings: s\nentry: a\n"
+        "scenes: [{id: a, type: RoomScene}]\nchapters:\n";
+
+    CHECK(error_code([&] {
+              parse_manifest(prefix + "  - {id: one, scene: missing}\n");
+          }) == "manifest.chapter-scene-unknown");
+    CHECK(error_code([&] {
+              parse_manifest(prefix +
+                             "  - {id: one, scene: a}\n  - {id: one, scene: a}\n");
+          }) == "manifest.duplicate-chapter-id");
 }
 
 TEST_CASE("texture smoothing defaults on, supports opt-out, and rendering must be a mapping") {

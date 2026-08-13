@@ -379,7 +379,7 @@ int run(const std::string& manifest_path,
                       thumbnail,
                       manifest.speech,
                       {}};
-    bind_core_api(ctx);
+    bind_core_api(ctx, manifest.facts_path);
     if (hooks.configure) {
         try {
             hooks.configure(ctx, manifest);
@@ -392,13 +392,34 @@ int run(const std::string& manifest_path,
         }
     }
 
+    // Session-only chapter identity survives intervening cutscenes/credits. It
+    // lets a declarative on_finish route directly to the next chapter RoomScene
+    // while still resetting state after every outgoing scene has left.
+    std::string active_chapter_id;
     scenes.set_builder([&](const std::string& id) -> std::unique_ptr<Scene> {
         const SceneDesc* desc = manifest.find_scene(id);
         if (!desc) {
             log.error("scene id not found in manifest: '" + id + "'");
             return nullptr;
         }
-        std::unique_ptr<Scene> scene = factory.create(desc->type, ctx, desc->parameters);
+        SceneParams params = desc->parameters;
+        params.set("__scene_id", id);
+        if (const ChapterDesc* chapter = manifest.chapter_for_scene(id)) {
+            const bool restoring = saves.has_pending_restore();
+            if (!active_chapter_id.empty() && active_chapter_id != chapter->id && !restoring) {
+                state.clear();
+                saves.clear_staged();
+                log.info("chapter transition: '" + active_chapter_id + "' -> '" + chapter->id +
+                         "'");
+            }
+            active_chapter_id = chapter->id;
+            params.set("__chapter_id", chapter->id);
+            params.set("__chapter_facts", chapter->facts_path);
+            if (const ChapterDesc* next = manifest.next_chapter(chapter->id)) {
+                params.set("__next_chapter_scene", next->scene);
+            }
+        }
+        std::unique_ptr<Scene> scene = factory.create(desc->type, ctx, params);
         if (!scene) {
             log.error("unknown scene type '" + desc->type + "' for scene '" + id + "'");
         }

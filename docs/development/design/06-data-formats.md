@@ -28,6 +28,8 @@ Worked example: [02 — Architecture overview](02-architecture-overview.md).
 | `window` | req | `{fullscreen, width, height}` | — | Initial display mode. `fullscreen: true` starts the game fullscreen at the **desktop's native video mode**, with the virtual `resolution` letterboxed within it (no mode switch — this keeps input mapping correct). `width`/`height` are the initial **windowed** client size (default to `resolution`). Player settings override these at runtime via the settings scene. |
 | `rendering` | opt | `{smooth_textures?}` | — | Rendering policy. `smooth_textures` defaults to `true`, enabling linear filtering for loaded textures and shader/post-process render targets to reduce temporal shimmer when art moves or scales fractionally. Pixel-art games can set it to `false` for nearest-neighbour sampling. |
 | `resources` | req | `{src}` | — | Resource source root. `src` is a directory (MVP) or archive (design-for). |
+| `facts` | opt | path | `facts.yaml` | Declared-facts registry. A chapter may point this at its own registry; a missing resource leaves the typo guard disabled. |
+| `chapters` | opt | `[{id, scene, facts?}]` | — | Linear campaign order. `id` is stable and saved, `scene` names that chapter's independently restorable `RoomScene`, and `facts` selects its complete fact registry (default: top-level `facts`). Chapter ids and scenes must be unique. The engine derives `finish_chapter()`'s destination from list order. |
 | `strings` | req* | path | — | Single-language shorthand: the UI strings resource (engine-emitted text). Mutually exclusive with `languages`; exactly one is required. See [UI strings](#ui-strings--stringslangyaml). |
 | `languages` | req* | `[{id, name?, strings}]` | — | UI-strings languages (R3). Each entry: `id` (stable ASCII id stored in settings), `name` (opt display label in its own language, defaults to `id`), `strings` (path to that language's file). The MVP ships one entry (Spanish); the list is design-ready for more. |
 | `default_language` | opt | language id | first entry | Which `languages` entry is active when no player preference is stored. Must name an entry in `languages`. |
@@ -54,6 +56,23 @@ languages:
   - { id: en, name: "English", strings: strings/en.yaml }
 default_language: es   # optional; defaults to the first entry
 ```
+
+A chaptered campaign declares its independent gameplay roots in order:
+
+```yaml
+facts: chapters/01/facts.yaml   # startup / backward-compatible default
+chapters:
+  - { id: 01_arrival, scene: chapter_01, facts: chapters/01/facts.yaml }
+  - { id: 02_archive, scene: chapter_02, facts: chapters/02/facts.yaml }
+```
+
+Entering a listed RoomScene rebinds the global `facts` proxy to that entry's
+registry. Moving from one listed RoomScene to another clears chapter state after
+the outgoing scene/cutscene has left; `finish_chapter()` is the room-script
+shortcut that selects the next entry. Saves record both the chapter and scene
+ids; Continue and Load route to the saved scene rather than a fixed `room_view`.
+A save predating `chapter_id` remains valid and is routed by its existing scene
+id.
 
 **`scene`** entry:
 
@@ -101,6 +120,7 @@ default_language: es   # optional; defaults to the first entry
   while carrying a term, only compatible slots request it.
 - `RoomScene` — `cast` (path), `logic` (path), `inventory` (path),
   `inventory_logic` (path), `rooms` (directory path), `start_room` (room id),
+  `dialogs` (directory path, default `dialogs`),
   `development_logic` (opt path — removable development sidecar whose
   `on_start()` runs after the main game hook and may return a start-room id),
   `player` (req, cast character id — the persistent player avatar; appearance comes
@@ -130,8 +150,8 @@ default_language: es   # optional; defaults to the first entry
   custom cursor and hover affordance as the rest of the game.
 - `SaveLoadScene` — `mode` (req, `save` | `load`), `background` (opt path — same
   shape as `SettingsScene`, the same image is fine), `font` (opt path),
-  `font_size` (opt int), `room_scene` (opt scene id — where `load` goes after
-  a successful pick, default `room_view`). One scene type, two manifest entries
+  `font_size` (opt int), `room_scene` (opt legacy fallback scene id when a save
+  lacks `current_scene_id`, default `room_view`). One scene type, two manifest entries
   (one per mode); the engine auto-detects each by `parameters.mode` at startup
   and exposes them via `SceneManager::open_save()` / `open_load()` (issue #108).
   Lists the autosave slot (read-only) plus the manual slots; each row has a
@@ -140,8 +160,8 @@ default_language: es   # optional; defaults to the first entry
   carries its own text-input field for the description; clicking that row's
   **Save** button writes the snapshot the in-game pause menu staged via
   `SaveService::stage_pending_snap`. In `load` mode every populated row offers
-  a **Load** button that stages the restore and triggers a `goto_scene` to
-  `room_scene`.
+  a **Load** button that stages the restore and triggers a `goto_scene` to the
+  save's own `current_scene_id`.
 
 Scenes that render UI text take their `font` as a logical-path parameter. Spoken
 `talk` / `remark` lines instead use the manifest's top-level `speech.font` and
@@ -1290,6 +1310,8 @@ Top-level fields the save/load picker uses (issue #108):
 | `save_version` | int | Format version; older/newer values are refused. |
 | `description` | string | Player-supplied short label shown in the picker. The autosave normally leaves this empty so the row falls back to its timestamp. |
 | `saved_at` | int (Unix seconds) | Wall-clock at save time, stamped by `SaveService::save`. The picker formats this as a local date/time; an older save without the field falls back to the file's mtime. |
+| `current_scene_id` | scene id | Actual restorable RoomScene. Continue/Load route here, so each chapter can use its own scene. |
+| `chapter_id` | chapter id | Owning manifest chapter. Missing/empty means a pre-chapter save and is accepted by the scene selected through `current_scene_id`. |
 
 `SaveService::slot_summary(slot)` reads only these header fields off disk so
 the picker UI never has to decode the full payload to list slots.

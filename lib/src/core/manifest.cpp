@@ -21,6 +21,33 @@ const SceneDesc* Manifest::find_scene(const std::string& id) const {
     return nullptr;
 }
 
+const ChapterDesc* Manifest::find_chapter(const std::string& id) const {
+    for (const auto& chapter : chapters) {
+        if (chapter.id == id) {
+            return &chapter;
+        }
+    }
+    return nullptr;
+}
+
+const ChapterDesc* Manifest::chapter_for_scene(const std::string& scene_id) const {
+    for (const auto& chapter : chapters) {
+        if (chapter.scene == scene_id) {
+            return &chapter;
+        }
+    }
+    return nullptr;
+}
+
+const ChapterDesc* Manifest::next_chapter(const std::string& id) const {
+    for (std::size_t i = 0; i + 1 < chapters.size(); ++i) {
+        if (chapters[i].id == id) {
+            return &chapters[i + 1];
+        }
+    }
+    return nullptr;
+}
+
 namespace {
 
 [[noreturn]] void manifest_fail(const std::string& code,
@@ -213,6 +240,13 @@ Manifest parse_manifest(const std::string& yaml_text) {
     }
     m.resources_src = resources["src"].as<std::string>();
 
+    if (root["facts"]) {
+        m.facts_path = root["facts"].as<std::string>();
+        if (m.facts_path.empty()) {
+            manifest_fail("manifest.facts-empty", "'facts' must not be empty", root["facts"]);
+        }
+    }
+
     parse_languages(root, m);
 
     if (const YAML::Node settings = root["settings"]) {
@@ -324,6 +358,56 @@ Manifest parse_manifest(const std::string& yaml_text) {
     if (!m.find_scene(m.entry)) {
         manifest_fail("manifest.entry-not-in-scenes",
                       "entry scene '" + m.entry + "' is not in 'scenes'");
+    }
+
+    if (const YAML::Node chapters = root["chapters"]) {
+        if (!chapters.IsSequence() || chapters.size() == 0) {
+            manifest_fail("manifest.chapters-invalid",
+                          "'chapters' must be a non-empty sequence",
+                          chapters);
+        }
+        std::set<std::string> chapter_ids;
+        std::set<std::string> chapter_scenes;
+        for (const YAML::Node& cn : chapters) {
+            ChapterDesc chapter;
+            if (!cn.IsMap() || !cn["id"] || cn["id"].as<std::string>().empty()) {
+                manifest_fail("manifest.chapter-id-missing",
+                              "a 'chapters' entry is missing 'id'",
+                              cn);
+            }
+            chapter.id = cn["id"].as<std::string>();
+            validate_id(chapter.id, cn["id"]);
+            if (!chapter_ids.insert(chapter.id).second) {
+                manifest_fail("manifest.duplicate-chapter-id",
+                              "duplicate chapter id '" + chapter.id + "'",
+                              cn);
+            }
+            if (!cn["scene"] || cn["scene"].as<std::string>().empty()) {
+                manifest_fail("manifest.chapter-scene-missing",
+                              "chapter '" + chapter.id + "' is missing 'scene'",
+                              cn);
+            }
+            chapter.scene = cn["scene"].as<std::string>();
+            if (!m.find_scene(chapter.scene)) {
+                manifest_fail("manifest.chapter-scene-unknown",
+                              "chapter '" + chapter.id + "' references unknown scene '" +
+                                  chapter.scene + "'",
+                              cn["scene"]);
+            }
+            if (!chapter_scenes.insert(chapter.scene).second) {
+                manifest_fail("manifest.duplicate-chapter-scene",
+                              "scene '" + chapter.scene + "' belongs to more than one chapter",
+                              cn["scene"]);
+            }
+            chapter.facts_path =
+                cn["facts"] ? cn["facts"].as<std::string>() : m.facts_path;
+            if (chapter.facts_path.empty()) {
+                manifest_fail("manifest.chapter-facts-empty",
+                              "chapter '" + chapter.id + "' has an empty 'facts' path",
+                              cn);
+            }
+            m.chapters.push_back(std::move(chapter));
+        }
     }
     return m;
 }

@@ -69,8 +69,8 @@ struct DialogOption {
 };
 
 /// Runtime for one dialog tree (per design 04 §Dialog system). The header keeps
-/// sol2 out via pimpl: the dialog table is loaded inside `start()` from
-/// `dialogs/<npc_id>.lua`. The runtime is a small state machine driven by
+/// sol2 out via pimpl: the dialog table is loaded inside `start()` from a
+/// configurable dialog directory. The runtime is a small state machine driven by
 /// `update()` from RoomScene; it advances when the speech bubble clears.
 /// Lifetime is room-scoped.
 class DialogRuntime {
@@ -84,14 +84,15 @@ public:
     /// terminal — `on_exit` already ran.
     enum class State { SPEAKING_NPC, AWAITING_CHOICE, SPEAKING_PLAYER, RUNNING_CALLBACK, ENDED };
 
-    /// Load `dialogs/<npc_id>.lua` and start the dialog. Calls `on_enter` then
+    /// Load `<dialogs_dir>/<npc_id>.lua` and start the dialog. Calls `on_enter` then
     /// enters the `start` node before returning. Returns nullopt on a missing
     /// or malformed file (the error is logged).
     static std::optional<DialogRuntime> start(pac::core::Scripting& scripting,
                                               pac::core::ResourceCache& resources,
                                               pac::core::Diagnostics& log,
                                               const std::string& npc_id,
-                                              DialogHost host);
+                                              DialogHost host,
+                                              const std::string& dialogs_dir = "dialogs");
 
     DialogRuntime(const DialogRuntime&) = delete;
     DialogRuntime& operator=(const DialogRuntime&) = delete;

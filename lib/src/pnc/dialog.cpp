@@ -281,8 +281,9 @@ std::optional<DialogRuntime> DialogRuntime::start(pac::core::Scripting& scriptin
                                                   pac::core::ResourceCache& resources,
                                                   pac::core::Diagnostics& log,
                                                   const std::string& npc_id,
-                                                  DialogHost host) {
-    const std::string logical = "dialogs/" + npc_id + ".lua";
+                                                  DialogHost host,
+                                                  const std::string& dialogs_dir) {
+    const std::string logical = dialogs_dir + "/" + npc_id + ".lua";
     std::string code;
     try {
         code = resources.read_text(logical);

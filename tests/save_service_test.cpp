@@ -7,6 +7,8 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -47,6 +49,7 @@ GameState make_rich_state() {
     GameState s;
     s.save_version = 1;
     s.current_scene_id = "room_view";
+    s.chapter_id = "01_last_afternoon";
     s.room_view.current_room_id = "study";
     s.room_view.player = {600.5f, 830.25f, "left", "julia_body"};
     s.inventory = {"notebook", "key"};
@@ -87,6 +90,7 @@ TEST_CASE("save -> load round-trip preserves every field") {
 
     CHECK(out.save_version == 1);
     CHECK(out.current_scene_id == "room_view");
+    CHECK(out.chapter_id == "01_last_afternoon");
     CHECK(out.room_view.current_room_id == "study");
     CHECK(out.room_view.player.x == doctest::Approx(600.5f));
     CHECK(out.room_view.player.y == doctest::Approx(830.25f));
@@ -203,6 +207,34 @@ TEST_CASE("load() rejects an unsupported save_version") {
     s.save_version = 999;
     REQUIRE(svc.save(1, s));
     CHECK_FALSE(svc.load(1).has_value());
+}
+
+TEST_CASE("save written before chapter_id remains loadable as chapter-neutral") {
+    Diagnostics log = quiet();
+    TempDir td;
+    SaveService svc(td.path, log);
+    REQUIRE(svc.save(1, make_rich_state()));
+
+    const auto path = svc.slot_path(1);
+    std::ifstream input(path, std::ios::binary);
+    REQUIRE(input.good());
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    std::string yaml = buffer.str();
+    const std::size_t begin = yaml.find("chapter_id:");
+    REQUIRE(begin != std::string::npos);
+    const std::size_t end = yaml.find('\n', begin);
+    yaml.erase(begin, end == std::string::npos ? yaml.size() - begin : end - begin + 1);
+
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    REQUIRE(output.good());
+    output << yaml;
+    output.close();
+
+    const auto restored = svc.load(1);
+    REQUIRE(restored.has_value());
+    CHECK(restored->chapter_id.empty());
+    CHECK(restored->current_scene_id == "room_view");
 }
 
 TEST_CASE("stage_restore + take_pending_restore hand off a GameState once") {

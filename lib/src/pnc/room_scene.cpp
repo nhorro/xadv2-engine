@@ -6,6 +6,7 @@
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
 #include "engine/core/load_error.hpp"
+#include "engine/core/lua_api.hpp"
 #include "engine/core/render_stats.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
@@ -217,8 +218,13 @@ struct RoomScene::Lua {
 
 RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
     : ctx_(ctx), ui_sounds_(params), command_controller_(*this) {
+    scene_id_ = params.get_or("__scene_id", "room_view");
+    chapter_id_ = params.get_or("__chapter_id", params.get_or("chapter", ""));
+    chapter_facts_path_ = params.get_or("__chapter_facts", params.get_or("facts", ""));
+    next_chapter_scene_ = params.get_or("__next_chapter_scene", "");
     cast_path_ = params.get_or("cast", "cast.yaml");
     rooms_dir_ = params.get_or("rooms", "rooms");
+    dialogs_dir_ = params.get_or("dialogs", "dialogs");
     start_room_ = params.get_or("start_room", "");
     player_char_ = params.get_or("player", "");
     font_path_ = params.get_or("font", "");
@@ -295,6 +301,9 @@ float RoomScene::scenery_height() const {
 }
 
 void RoomScene::enter() {
+    if (!chapter_facts_path_.empty()) {
+        pac::core::bind_facts_resource(ctx_, chapter_facts_path_);
+    }
     // Seed the debug overlay layers from the manifest dev flags (#37). They only
     // render / respond to F1-F4 when ctx_.dev.edit_mode is set (gated in draw()
     // and handle_event()).
@@ -363,6 +372,7 @@ void RoomScene::enter() {
     lua_->scripting = &ctx_.scripting;
 
     sol::state& L = ctx_.scripting.lua();
+    L.set_function("finish_chapter", [this]() { api_finish_chapter(); });
     auto load_table = [&](const std::string& logical) -> std::optional<sol::table> {
         if (logical.empty()) {
             return std::nullopt;
@@ -967,6 +977,7 @@ end
             return;
         }
         ctx_.log.warn("RoomScene: staged restore was rejected; falling back to start_room");
+        ctx_.state.clear();
     }
 
     if (start_room_.empty()) {
@@ -999,6 +1010,12 @@ end
 
 void RoomScene::leave() {
     unload_room();
+    if (chapter_transition_pending_) {
+        // Run after on_unload: a departing room hook may mutate state, and none
+        // of those writes may leak into the destination chapter.
+        ctx_.state.clear();
+        ctx_.saves.clear_staged();
+    }
 }
 
 void RoomScene::prepare_for_application_exit() {
@@ -2962,6 +2979,20 @@ void RoomScene::api_camera_follow_player() {
     }
 }
 
+void RoomScene::api_finish_chapter() {
+    if (next_chapter_scene_.empty()) {
+        ctx_.log.warn("finish_chapter: chapter '" + chapter_id_ +
+                      "' has no following chapter in the manifest");
+        return;
+    }
+
+    // The actual clear happens in leave(), after the outgoing room's on_unload
+    // hook has run. Room-local maps and inventory disappear with this scene;
+    // existing on-disk slots remain loadable as independent checkpoints.
+    chapter_transition_pending_ = true;
+    ctx_.scenes.goto_scene(next_chapter_scene_);
+}
+
 Avatar* RoomScene::resolve_avatar(const std::string& id) {
     if (player_ && id == player_char_) {
         return &*player_;
@@ -3524,8 +3555,12 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
     // line into the outgoing room. `unload_room` reaps the scope.
     host.should_end = [this]() { return change_pending_; };
 
-    auto rt =
-        DialogRuntime::start(ctx_.scripting, ctx_.resources, ctx_.log, dialog_id, std::move(host));
+    auto rt = DialogRuntime::start(ctx_.scripting,
+                                   ctx_.resources,
+                                   ctx_.log,
+                                   dialog_id,
+                                   std::move(host),
+                                   dialogs_dir_);
     if (!rt) {
         ctx_.scripting.cancel_scope(dialog_scope_);
         dialog_scope_ = 0;
@@ -3717,7 +3752,7 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
 }
 
 bool RoomScene::can_save() const {
-    if (change_pending_ || change_armed_) {
+    if (change_pending_ || change_armed_ || chapter_transition_pending_) {
         return false;
     }
     // MENU is reachable only from COMMAND (see handle_event routing), so its
@@ -3730,9 +3765,8 @@ bool RoomScene::can_save() const {
 pac::core::GameState RoomScene::snap() const {
     pac::core::GameState s;
     s.save_version = 1;
-    // MVP only saves while RoomScene is active; hardcode the manifest scene id
-    // for forward compat (see design 02 §"Make persistent state explicit").
-    s.current_scene_id = "room_view";
+    s.current_scene_id = scene_id_;
+    s.chapter_id = chapter_id_;
     s.room_view.current_room_id = current_room_id_;
     if (player_) {
         s.room_view.player.x = player_->position().x;
@@ -3801,9 +3835,14 @@ bool RoomScene::restore(const pac::core::GameState& state) {
     // current_scene_id means either a corrupted file or a forward-compat
     // save written by a future engine version. Fail loud, don't trample
     // current state.
-    if (state.current_scene_id != "room_view") {
+    if (state.current_scene_id != scene_id_) {
         ctx_.log.error("RoomScene::restore: save targets scene '" + state.current_scene_id +
-                       "', expected 'room_view'");
+                       "', expected '" + scene_id_ + "'");
+        return false;
+    }
+    if (!state.chapter_id.empty() && state.chapter_id != chapter_id_) {
+        ctx_.log.error("RoomScene::restore: save belongs to chapter '" + state.chapter_id +
+                       "', expected '" + chapter_id_ + "'");
         return false;
     }
     if (state.room_view.current_room_id.empty()) {

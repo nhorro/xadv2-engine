@@ -34,6 +34,10 @@ The manifest declares the top-level scenes. Its `RoomScene` entry points at the
 game cast, global logic file, inventory files, room directory, start room, and the
 cast character id that is the player.
 
+For a multi-chapter game, top-level `chapters` lists those RoomScenes in linear
+order and assigns each its own facts registry. The current chapter and actual
+RoomScene id are part of every new save.
+
 Example manifest excerpt:
 
 ```yaml
@@ -213,7 +217,7 @@ removable scenario catalogs and debug harnesses; omit the parameter in productio
 #### State and persistence
 
 Persistent state is the engine-owned **`GameState`** — a single struct that is the
-only thing a save serializes: the current scene/room, player pose, inventory, the
+only thing a save serializes: the current chapter/scene/room, player pose, inventory, the
 flat `set_state`/`get_state` map (`global_state`), per-room state, and per-room
 region / hotspot / object / layer / obstacle flags. There is **no per-scene
 `save()`/`restore()`**: `RoomScene` materializes the whole `GameState` snapshot and
@@ -842,6 +846,7 @@ selection to each line's active speaker.
 | Function | Parameters | Returns | Meaning |
 |----------|------------|---------|---------|
 | `change_room(id, entry_point?)` | room id, optional point id | — | Load another room inside `RoomScene`. |
+| `finish_chapter()` | — | — | Advance to the next top-level `chapters` entry. Clears global/fact/notebook/case state and staged save hand-offs; destroying the outgoing RoomScene clears its rooms and inventory. Existing on-disk saves remain loadable. If this is the final declared chapter, logs a warning and stays put. |
 | `current_room()` | — | room id | Return current room id. |
 | `set_room_config(room_id, config_id)` | room id, config id | — | Switch a room's [configuration](#room-configurations) (#185). Live room: reconcile presence now; another room: record it, applied on its next load. |
 | `current_room_config(room_id?)` | optional room id | config id | The room's live config id (defaults to the current room); `""` for a room without `configs:`. |

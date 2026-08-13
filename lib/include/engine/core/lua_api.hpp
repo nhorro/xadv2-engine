@@ -14,9 +14,15 @@ class Scripting;
 /// adds `resource_path`, audio (`play_music`/`crossfade_music`/`stop_music`/`play_sound`/
 /// `stop_sound`/`stop_sounds`), and state (`get_state`/`set_state`). Genre APIs (talk,
 /// change_room, ...) are registered by the point-and-click layer in later milestones.
-/// Also wires the declared-facts proxy (issue #188): if a `facts.yaml` resource is
-/// present it is parsed and bound via `bind_facts` below.
-void bind_core_api(EngineContext& ctx);
+/// Also wires the declared-facts proxy (issue #188): if `facts_path` is present it
+/// is parsed and bound via `bind_facts` below. The default preserves the original
+/// root-level `facts.yaml` convention.
+void bind_core_api(EngineContext& ctx, const std::string& facts_path = "facts.yaml");
+
+/// Reload and rebind only the declared-facts proxy for an active chapter. Core
+/// functions remain installed; existing Lua code sees the newly assigned global
+/// `facts` proxy on its next access.
+void bind_facts_resource(EngineContext& ctx, const std::string& facts_path);
 
 /// Bind the `facts.<ns>.<name>` proxy (issue #188): nested read and assignment
 /// route through the already-bound `get_state`/`set_state`, so a fact persists and

@@ -397,10 +397,12 @@ void SaveLoadScene::load_from(const SlotView& view) {
     if (!state) {
         return; // load() already logged
     }
+    const std::string target =
+        state->current_scene_id.empty() ? room_scene_id_ : state->current_scene_id;
     ctx_.saves.stage_restore(std::move(*state));
     // goto_scene replaces the stack (drops the picker + any room scene
     // underneath), then the room scene rebuilds and consumes the restore.
-    ctx_.scenes.goto_scene(room_scene_id_);
+    ctx_.scenes.goto_scene(target);
 }
 
 void SaveLoadScene::cancel() {
