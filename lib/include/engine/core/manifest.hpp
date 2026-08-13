@@ -13,6 +13,8 @@
 
 namespace pac::core {
 
+class ResourceSource;
+
 /// Manifest loader diagnostic. A `LoadError` with `source = "manifest-loader"`.
 class ManifestError : public LoadError {
 public:
@@ -36,17 +38,21 @@ struct RenderingConfig {
 struct SettingsDefaults {
     float music_volume = 1.0f;
     float sfx_volume = 1.0f;
+    bool speech_enabled = true;
 };
 
 /// One selectable UI-strings language (issue #72). `id` is the stable, ASCII id
 /// stored in settings and matched by the selector; `name` is the display label,
 /// written in its own language (e.g. "Español"); `strings_path` is the logical
-/// path to that language's UI-strings file. The MVP ships one entry (Spanish);
-/// the list is design-ready for more Western languages.
+/// path to that language's UI-strings file. `translations_path` optionally maps
+/// game-content ids for that language.
 struct LanguageEntry {
     std::string id;
     std::string name;
     std::string strings_path;
+    // Optional game-content catalog. The default/source language normally omits
+    // this because its author-facing text remains inline in rooms and Lua.
+    std::string translations_path;
 };
 
 struct CursorBlinkConfig {
@@ -133,8 +139,15 @@ struct Manifest {
 /// found, ...). `resources_src` is kept verbatim.
 Manifest parse_manifest(const std::string& yaml_text);
 
+/// Load and compose a resource-backed manifest. Version-2 manifests may import
+/// chapter descriptors, use declaration-relative paths, and declare scene
+/// defaults/profiles; composition expands them into the same flat Manifest used
+/// by the runtime. Works identically for loose files and packed resources.
+Manifest load_manifest(ResourceSource& resources, const std::string& logical_path);
+
 /// Read a manifest file, parse it, and resolve `resources_src` relative to the
-/// manifest's directory. Throws ManifestError if the file cannot be read.
+/// manifest's directory. Version-2 composition is resolved through the declared
+/// resource root. Throws ManifestError if the file cannot be read.
 Manifest load_manifest(const std::string& file_path);
 
 } // namespace pac::core

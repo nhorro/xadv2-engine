@@ -6,6 +6,7 @@
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
 #include "engine/core/load_error.hpp"
+#include "engine/core/localization.hpp"
 #include "engine/core/lua_api.hpp"
 #include "engine/core/render_stats.hpp"
 #include "engine/core/resource_cache.hpp"
@@ -17,6 +18,7 @@
 #include "engine/core/scripting_sol.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/text_encoding.hpp"
+#include "engine/core/text_id.hpp"
 #include "engine/core/text_layout.hpp"
 #include "engine/core/thumbnail.hpp"
 #include "engine/gfx/animated_sprite.hpp"
@@ -460,10 +462,24 @@ void RoomScene::enter() {
                    [this](std::string speaker,
                           std::string text,
                           bool continue_action,
-                          sol::optional<std::string> face_target) {
+                          sol::optional<std::string> face_target,
+                          sol::optional<std::string> text_id) {
                        const std::optional<std::string> target =
                            face_target ? std::optional<std::string>(*face_target) : std::nullopt;
-                       return api_talk(speaker, text, continue_action, target);
+                       return api_talk(speaker,
+                                       text,
+                                       continue_action,
+                                       target,
+                                       text_id.value_or(std::string()));
+                   });
+    L.set_function("_translate", [this](const std::string& id, const std::string& source) {
+        return ctx_.localization.text(id, source);
+    });
+    L.set_function("_translate_text",
+                   [this](const std::string& source, sol::optional<std::string> explicit_id) {
+                       const std::string id =
+                           pac::core::text_id(explicit_id.value_or(std::string()), source);
+                       return ctx_.localization.text(id, source);
                    });
     // talk(speaker, text): show the line, then (when run inside a coroutine task)
     // yield until it is dismissed so a cutscene's lines play one after another
@@ -483,14 +499,17 @@ void RoomScene::enter() {
     ctx_.scripting.run_string(R"LUA(
 function talk(speaker, text, opts)
   opts = opts or {}
-  local ev = _talk_start(speaker, text, opts.continue_action == true, opts.face)
+  local ev = _talk_start(speaker, text, opts.continue_action == true, opts.face, opts.id)
   local _, ismain = coroutine.running()
   if ev and ev ~= "" and not ismain then wait_event(ev) end
 end
 function say(speaker, text, opts) return talk(speaker, text, opts) end
-function remark(speaker, text)
-  return talk(speaker, text, { continue_action = true })
+function remark(speaker, text, opts)
+  opts = opts or {}
+  opts.continue_action = true
+  return talk(speaker, text, opts)
 end
+function tr(id, source) return _translate(id, source) end
 function move(id, target) return avatar(id):move_to(target) end
 function face(id, dir) return avatar(id):face(dir) end
 function cutscene(body, on_skip)
@@ -563,18 +582,25 @@ end
                 return;
             }
             sf::Color color(245, 245, 250);
-            float duration = std::clamp(0.6f + 0.05f * static_cast<float>(text.size()), 1.0f, 5.0f);
+            std::string explicit_id;
             if (opts) {
                 if (sol::optional<sol::table> c = (*opts)["color"]) {
                     color = sf::Color(static_cast<sf::Uint8>((*c)["r"].get_or(255)),
                                       static_cast<sf::Uint8>((*c)["g"].get_or(255)),
                                       static_cast<sf::Uint8>((*c)["b"].get_or(255)));
                 }
+                explicit_id = (*opts)["id"].get_or(std::string());
+            }
+            const std::string id = pac::core::text_id(explicit_id, text);
+            const std::string localized = ctx_.localization.text(id, text);
+            float duration =
+                std::clamp(0.6f + 0.05f * static_cast<float>(localized.size()), 1.0f, 5.0f);
+            if (opts) {
                 if (sol::optional<double> d = (*opts)["duration"]) {
                     duration = static_cast<float>(*d);
                 }
             }
-            api_float_text(text, anchor, fixed, std::move(ref), color, duration);
+            api_float_text(localized, anchor, fixed, std::move(ref), color, duration);
         });
     // `to = END` is injected per-dialog by DialogRuntime::start as a unique
     // sentinel table — no engine-wide binding needed here.
@@ -1320,6 +1346,8 @@ void RoomScene::unload_room() {
     pending_obj_moves_.clear();
     pending_obj_anim_.clear();
     pending_speech_.clear();
+    speech_.skip();
+    ctx_.audio.voice.stop();
     end_talk_animation();
     ambient_.clear(); // transient float_text labels do not survive a room change
     // An in-progress dialog references the outgoing room's NPC avatars; the
@@ -1364,18 +1392,34 @@ geom::Point RoomScene::speech_anchor(const Avatar& a) const {
     return {a.position().x, b.top};
 }
 
-void RoomScene::say(const std::string& text, sf::Color color, float gap) {
+void RoomScene::say(const std::string& text,
+                    sf::Color color,
+                    float gap,
+                    const std::string& text_id) {
     const geom::Point pos = player_ ? speech_anchor(*player_) : geom::Point{640.0f, 360.0f};
-    say_at(text, color, pos, gap);
+    say_at(text, color, pos, gap, text_id);
 }
 
-void RoomScene::say_at(const std::string& text, sf::Color color, geom::Point world, float gap) {
+void RoomScene::say_at(const std::string& text,
+                       sf::Color color,
+                       geom::Point world,
+                       float gap,
+                       const std::string& text_id) {
     if (text.empty()) {
         return;
     }
+    ctx_.audio.voice.stop();
     // `world` is the head anchor; the balloon floats above it (see place_speech).
     float duration = 0.5f + 0.06f * static_cast<float>(text.size());
     duration = std::clamp(duration, 1.0f, 7.0f);
+    const std::string voice =
+        pac::core::find_voice_resource(ctx_.resources.source(), ctx_.speech, text_id);
+    if (!voice.empty()) {
+        if (const std::optional<float> voice_duration = ctx_.audio.voice.play(voice);
+            voice_duration && *voice_duration > 0.0f) {
+            duration = *voice_duration;
+        }
+    }
     speech_.show(text, world, color, duration, gap);
     spoke_during_command_ = true;
 }
@@ -1452,6 +1496,7 @@ void RoomScene::skip_active_cutscene() {
     // contract (no waits/talk/move_to).
     ctx_.scripting.cancel_task(task);
     speech_.skip();
+    ctx_.audio.voice.stop();
     finalizer();
 
     if (view_state_ == ViewState::BLOCKED) {
@@ -1615,6 +1660,7 @@ void RoomScene::handle_event(const sf::Event& event) {
     }
     if (speech_.active()) {
         speech_.skip();
+        ctx_.audio.voice.stop();
         return;
     }
     if (view_state_ == ViewState::BLOCKED) {
@@ -1717,7 +1763,9 @@ CommandOperandInfo RoomScene::resolve_command_operand(const ObjectRef& object) c
         const auto it = room_->data().hotspots.find(object.id);
         if (it != room_->data().hotspots.end()) {
             info.found = true;
-            info.name = it->second.name;
+            info.name = ctx_.localization.text("room." + current_room_id_ + ".hotspot." +
+                                                   object.id + ".name",
+                                               it->second.name);
             info.affordances = it->second.affordances;
             if (auto v = verb_from_id(it->second.default_verb)) {
                 info.default_verb = *v;
@@ -1726,7 +1774,7 @@ CommandOperandInfo RoomScene::resolve_command_operand(const ObjectRef& object) c
     } else if (object.kind == ObjectKind::INVENTORY_OBJECT) {
         if (const InventoryItem* item = inventory_.item(object.id)) {
             info.found = true;
-            info.name = item->name;
+            info.name = ctx_.localization.text("inventory." + object.id + ".name", item->name);
             info.affordances = item->affordances;
             info.combinable = item->combinable;
             if (auto v = verb_from_id(item->default_verb)) {
@@ -1897,7 +1945,8 @@ void RoomScene::dispatch_and_feedback(const Command& cmd) {
         player_->face(movement_facing);
     }
     if (result.caption) {
-        say(*result.caption, color, gap);
+        const std::string id = pac::core::text_id({}, *result.caption);
+        say(ctx_.localization.text(id, *result.caption), color, gap, id);
         // Command captions are Julia reacting while normal play continues. Let
         // an in-flight walk or scripted gesture keep its animation; when she is
         // already idle, use the talk loop.
@@ -2126,15 +2175,13 @@ void RoomScene::update(float dt) {
         if (player_->moving() && !footstep_sounds_.empty()) {
             footstep_remaining_ -= dt;
             if (footstep_remaining_ <= 0.0f) {
-                const float view_width =
-                    static_cast<float>(ctx_.display.virtual_resolution().x);
+                const float view_width = static_cast<float>(ctx_.display.virtual_resolution().x);
                 const float view_left = camera_ ? camera_->top_left().x : 0.0f;
                 const float screen_x = player_->position().x - view_left;
-                const float pan = view_width > 0.0f
-                                      ? std::clamp((screen_x / view_width) * 2.0f - 1.0f,
-                                                   -0.8f,
-                                                   0.8f)
-                                      : 0.0f;
+                const float pan =
+                    view_width > 0.0f
+                        ? std::clamp((screen_x / view_width) * 2.0f - 1.0f, -0.8f, 0.8f)
+                        : 0.0f;
                 ctx_.audio.sfx.play(footstep_sounds_[next_footstep_], footstep_volume_, pan);
                 next_footstep_ = (next_footstep_ + 1) % footstep_sounds_.size();
                 footstep_remaining_ = footstep_interval_;
@@ -2739,17 +2786,20 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                 evidence.collected = read_count(ev.collected_state);
                 evidence.total = read_count(ev.total_state);
             }
-            panel_->draw(target,
-                         ctx_.strings,
-                         inventory_,
-                         command_controller_.state(),
-                         hover_vp_,
-                         evidence,
-                         [this](const std::string& item_id) {
-                             const auto value = ctx_.state.get("inventory.notification." + item_id);
-                             return value && std::holds_alternative<bool>(*value) &&
-                                    std::get<bool>(*value);
-                         });
+            panel_->draw(
+                target,
+                ctx_.strings,
+                inventory_,
+                command_controller_.state(),
+                hover_vp_,
+                evidence,
+                [this](const std::string& item_id) {
+                    const auto value = ctx_.state.get("inventory.notification." + item_id);
+                    return value && std::holds_alternative<bool>(*value) && std::get<bool>(*value);
+                },
+                [this](const std::string& item_id, const std::string& source_name) {
+                    return ctx_.localization.text("inventory." + item_id + ".name", source_name);
+                });
         }
     }
     const sf::Uint8 panel_fade_a = panel_fade_.alpha255();
@@ -2871,7 +2921,10 @@ std::optional<pac::core::StateValue> RoomScene::api_get_room_state(const std::st
 std::string RoomScene::api_talk(const std::string& speaker_id,
                                 const std::string& text,
                                 bool continue_action,
-                                const std::optional<std::string>& face_target) {
+                                const std::optional<std::string>& face_target,
+                                const std::string& text_id) {
+    const std::string effective_id = pac::core::text_id(text_id, text);
+    const std::string localized = ctx_.localization.text(effective_id, text);
     sf::Color color(230, 230, 230);
     float gap = 48.0f;
     if (const Character* c = cast_.character(speaker_id)) {
@@ -2883,12 +2936,12 @@ std::string RoomScene::api_talk(const std::string& speaker_id,
     // without an in-room avatar fall back to the player position.
     if (room_) {
         if (const Avatar* npc = room_->npc(speaker_id)) {
-            say_at(text, color, speech_anchor(*npc), gap);
+            say_at(localized, color, speech_anchor(*npc), gap, effective_id);
         } else {
-            say(text, color, gap);
+            say(localized, color, gap, effective_id);
         }
     } else {
-        say(text, color, gap);
+        say(localized, color, gap, effective_id);
     }
     // Nothing shown (empty text) -> no event, so the Lua wrapper never waits.
     if (!speech_.active()) {
@@ -3462,6 +3515,9 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
     prepare_dialog_participants(speaker_id);
     dialog_text_anchor_.reset();
     DialogHost host;
+    host.localize = [this](const std::string& id, const std::string& source) {
+        return ctx_.localization.text(id, source);
+    };
     host.set_text_anchor = [this](const std::string& point_name) {
         if (room_) {
             if (const geom::Point* p = room_->data().point(point_name)) {
@@ -3471,7 +3527,7 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
         }
         ctx_.log.warn("dialog text_anchor '" + point_name + "' is not a known room point");
     };
-    host.speak_npc = [this, speaker_id](const std::string& text) {
+    host.speak_npc_line = [this, speaker_id](const std::string& text_id, const std::string& text) {
         sf::Color color(230, 230, 230);
         float gap = 48.0f;
         if (const Character* c = cast_.character(speaker_id)) {
@@ -3488,12 +3544,13 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
                 pos = speech_anchor(*a);
             }
         }
-        say_at(text, color, pos, gap);
+        say_at(text, color, pos, gap, text_id);
         if (speech_.active()) {
             begin_talk_animation(speaker_id, false, player_char_);
         }
     };
-    host.speak_player = [this, speaker_id](const std::string& text) {
+    host.speak_player_line = [this, speaker_id](const std::string& text_id,
+                                                const std::string& text) {
         sf::Color color(230, 230, 230);
         float gap = 48.0f;
         if (const Character* c = cast_.character(player_char_)) {
@@ -3501,7 +3558,7 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
             gap = c->speech_gap;
         }
         const geom::Point pos = player_ ? speech_anchor(*player_) : geom::Point{640.0f, 360.0f};
-        say_at(text, color, pos, gap);
+        say_at(text, color, pos, gap, text_id);
         if (speech_.active()) {
             begin_talk_animation(player_char_, false, speaker_id);
         }
@@ -3680,7 +3737,7 @@ void RoomScene::trigger_menu(const MenuButton& button) {
         break;
     case MenuAction::QUIT_TO_TITLE:
         autosave_if_safe("return to title");
-        ctx_.scenes.goto_scene("title");
+        ctx_.scenes.request_goto_scene("title");
         break;
     }
 }
@@ -3883,6 +3940,7 @@ bool RoomScene::restore(const pac::core::GameState& state) {
     }
     command_controller_.reset();
     speech_.skip();
+    ctx_.audio.voice.stop();
 
     // Schedule the room load; update() will reseat the player at the saved
     // position after load_room finishes.

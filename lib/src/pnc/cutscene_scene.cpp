@@ -5,6 +5,7 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
+#include "engine/core/localization.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
@@ -125,6 +126,14 @@ void CutsceneScene::enter() {
     }
     try {
         data_ = parse_cutscene(ctx_.resources.read_text(data_path_));
+        if (data_.id.empty()) {
+            const std::size_t slash = data_path_.find_last_of("/\\");
+            const std::size_t begin = slash == std::string::npos ? 0 : slash + 1;
+            const std::size_t dot = data_path_.find_last_of('.');
+            data_.id = data_path_.substr(begin,
+                                         dot == std::string::npos || dot < begin ? std::string::npos
+                                                                                 : dot - begin);
+        }
         loaded_ = true;
     } catch (const std::exception& e) {
         ctx_.log.error(std::string("Cutscene: ") + e.what());
@@ -487,7 +496,9 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
         }
     }
 
-    const auto draw_slide = [&](const CutsceneSlide& slide, float opacity) {
+    const auto draw_slide = [&](const CutsceneSlide& slide,
+                                std::size_t slide_index,
+                                float opacity) {
         // Per-slide image: drawn above the persistent backdrop and below text.
         if (slide.image) {
             try {
@@ -513,6 +524,11 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
 
         if (slide.text) {
             if (const sf::Font* font = font_for(slide.text_style)) {
+                const std::string suffix =
+                    slide.id.empty() ? std::to_string(slide_index + 1) : slide.id;
+                const std::string localized =
+                    ctx_.localization.text("cutscene." + data_.id + ".slide." + suffix + ".text",
+                                           *slide.text);
                 const sf::Vector2f anchor(slide.text_position.x * vw, slide.text_position.y * vh);
                 pac::core::TextStyle style;
                 style.size = slide.text_style.size;
@@ -521,7 +537,7 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
                 style.outline_thickness = slide.text_style.outline_thickness;
                 pac::core::draw_text_block(target,
                                            *font,
-                                           *slide.text,
+                                           localized,
                                            style,
                                            anchor,
                                            vw * slide.text_width,
@@ -537,9 +553,9 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
         blend = smoothstep((timed_clock_ - activated_at) / data_.timed_crossfade);
     }
     if (current_ > 0 && blend < 1.0f) {
-        draw_slide(data_.slides[current_ - 1], 1.0f - blend);
+        draw_slide(data_.slides[current_ - 1], current_ - 1, 1.0f - blend);
     }
-    draw_slide(data_.slides[current_], blend);
+    draw_slide(data_.slides[current_], current_, blend);
 
     // Manual mode: a quiet hint at the bottom-right so the player knows what
     // to do. The string lives in the strings file so it picks up the active

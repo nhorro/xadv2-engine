@@ -28,21 +28,25 @@ Lua API, the data formats, and the asset tools.
    common pitfalls).
 2. **Keep the [Lua API reference](lua-api.md)** open while you script.
 3. **Keep the [Data formats reference](data-formats.md)** open while you write YAML.
-4. **Follow the [Scenery authoring guide](scenery.md)** — recipes for building room
+4. **Use [Game and chapter manifests](chapter-manifests.md)** to keep game-wide
+   presentation separate from chapter-owned scenes and content.
+5. **Use [Localization and native-language voice](localization.md)** when adding
+   subtitle languages or recorded dialogue.
+6. **Follow the [Scenery authoring guide](scenery.md)** — recipes for building room
    contents: layers, regions, objects (static & animated), NPCs, hotspots,
    obstacles, walk-behinds, and perspective.
-5. **Take a room from playable to cinematic with the
+7. **Take a room from playable to cinematic with the
    [lighting, shadows, and grading tutorial](room-lighting-tutorial.md)** — it
    explains the rendering pipeline, editor primitives, YAML parameters, live F9
    tuning, and practical recipes.
-6. **Use the [tools](tools/index.md)** to prepare backgrounds, spritesheets, and
+8. **Use the [tools](tools/index.md)** to prepare backgrounds, spritesheets, and
    rooms.
 
 ## Concepts you need
 
 | Concept | What it is | Reference |
 |---------|-----------|-----------|
-| Manifest | The game's top-level config: resolution, scenes, strings, languages. | [Data formats](data-formats.md) |
+| Manifest | Composed game-wide and chapter-local configuration. | [Game and chapter manifests](chapter-manifests.md) |
 | Scene | A manifest-declared top-level state (title, cutscene, room view, settings). | [Lua API](lua-api.md) |
 | Room | A place inside the room view, loaded by id from `rooms/<id>.{yaml,lua}`. | [Data formats](data-formats.md) |
 | Cast & avatars | Characters; the player and NPCs that move and speak. | [Lua API](lua-api.md) |
@@ -55,11 +59,11 @@ Lua API, the data formats, and the asset tools.
 
 - **`id` vs `name`.** Ids are ASCII, stable, script-friendly. `name`s are display
   text and may contain spaces, accents, and localized strings. Keep them separate.
-- **Logical resource paths only.** Reference assets by logical path relative to
-  `resources.src` (e.g. `backgrounds/study.png`). Never hardcode filesystem paths.
+- **Logical resource paths only.** In composed manifests, use `./` relative to the
+  declaring YAML or `/` relative to `resources.src`. Never hardcode host paths.
 - **No hardcoded user-facing engine strings.** Engine UI text is looked up by key
-  in the manifest `strings` resource. Your *content* strings (names, speech,
-  dialog lines) stay inline in your data files.
+  in the manifest `strings` resource. Source-language *content* strings stay
+  inline; additional languages use [translation catalogs](localization.md).
 - **State values are scalars** (bool / number / string) for the MVP — no tables.
 
 !!! note

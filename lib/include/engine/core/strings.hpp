@@ -9,8 +9,8 @@ class ResourceSource;
 class Diagnostics;
 
 /// UI strings resource: every user-facing string the engine itself emits (verb
-/// labels, connectors, built-in menu labels). Game-content strings stay inline in
-/// their own files. One file in the MVP (Spanish); a language map is design-for.
+/// labels, connectors, built-in menu labels). Source game-content strings stay
+/// inline and additional languages are handled by TranslationCatalog.
 class Strings {
 public:
     std::string language;

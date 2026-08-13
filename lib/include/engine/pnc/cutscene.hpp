@@ -83,6 +83,9 @@ struct CutsceneFade {
 /// `defaults` block first, then per-slide overrides. `text` and `image` are
 /// independent — a slide may have one, both, or neither (a blank pause).
 struct CutsceneSlide {
+    /// Optional author-facing id used by localization. When empty the stable
+    /// 1-based authored slide position is used instead.
+    std::string id;
     std::optional<std::string> text;
     std::optional<std::string> image; // logical path
 
@@ -156,6 +159,9 @@ struct CutsceneForeground {
 /// `CutsceneScene`.
 struct Cutscene {
     int version = 1;
+    /// Optional localization namespace. The scene falls back to the YAML file
+    /// stem, so existing cutscenes require no schema migration.
+    std::string id;
     CutsceneAdvanceMode mode = CutsceneAdvanceMode::Auto;
     sf::Color background_color{0, 0, 0, 255}; // full-screen fill behind every slide
     std::string audio;          // logical path; Timed: narration sync, auto/manual: background

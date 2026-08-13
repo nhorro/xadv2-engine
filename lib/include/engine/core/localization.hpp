@@ -2,7 +2,9 @@
 
 #include "engine/core/manifest.hpp" // LanguageEntry
 #include "engine/core/strings.hpp"
+#include "engine/core/translation_catalog.hpp"
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -15,7 +17,8 @@ class Diagnostics;
 /// (issue #72). The active `Strings` object is held by value and mutated in place
 /// when the language changes, so a `const Strings&` handed out at startup (e.g.
 /// through `EngineContext`) stays valid and transparently reflects the new
-/// language. The MVP ships one language (Spanish); this is design-ready for more.
+/// language. Game-content catalogs use the same active language but remain
+/// separate from the complete engine-UI Strings resource.
 class Localization {
 public:
     /// Loads `active_id`'s strings. If that fails, falls back to the manifest
@@ -25,7 +28,8 @@ public:
                  std::vector<LanguageEntry> languages,
                  const std::string& default_id,
                  std::string active_id,
-                 Diagnostics& log);
+                 Diagnostics& log,
+                 bool warn_missing = false);
 
     const Strings& strings() const { return current_; }
     const std::vector<LanguageEntry>& languages() const { return languages_; }
@@ -43,6 +47,11 @@ public:
     /// when the active strings actually changed.
     bool set_language(const std::string& id);
 
+    /// Resolve game-authored text. `source_text` is the inline default-language
+    /// text and is always the fallback. This keeps original-language authoring
+    /// readable while additional languages live in external catalogs.
+    [[nodiscard]] std::string text(const std::string& id, const std::string& source_text) const;
+
 private:
     const LanguageEntry* find(const std::string& id) const;
 
@@ -51,6 +60,10 @@ private:
     std::vector<LanguageEntry> languages_;
     std::string active_id_;
     Strings current_;
+    TranslationCatalog catalog_;
+    std::string default_id_;
+    bool warn_missing_ = false;
+    mutable std::set<std::string> warned_missing_;
 };
 
 } // namespace pac::core

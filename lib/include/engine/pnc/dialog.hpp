@@ -36,6 +36,13 @@ struct DialogRunFn;
 struct DialogHost {
     std::function<void(const std::string& text)> speak_npc;
     std::function<void(const std::string& text)> speak_player;
+    /// Optional localization seam. Runtime-generated contextual ids preserve the
+    /// inline source language while a game catalog supplies other languages.
+    std::function<std::string(const std::string& text_id, const std::string& source)> localize;
+    /// ID-aware speech hooks used by production for matching voice files. Legacy
+    /// one-argument hooks above remain useful to small/headless test hosts.
+    std::function<void(const std::string& text_id, const std::string& text)> speak_npc_line;
+    std::function<void(const std::string& text_id, const std::string& text)> speak_player_line;
     std::function<bool()> is_speaking;
     /// Has the option at (node_id, raw_option_index) been consumed by a prior
     /// `once`? The dialog id is captured by the host (closure) when the host
@@ -65,6 +72,7 @@ struct DialogHost {
 /// `choose`. `text` is the localized label.
 struct DialogOption {
     int index = 0;
+    std::string text_id;
     std::string text;
 };
 

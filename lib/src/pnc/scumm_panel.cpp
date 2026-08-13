@@ -7,8 +7,8 @@
 #include "engine/pnc/inventory.hpp"
 #include "engine/pnc/speech_manager.hpp"
 
-#include <SFML/Graphics/ConvexShape.hpp>
 #include <SFML/Graphics/CircleShape.hpp>
+#include <SFML/Graphics/ConvexShape.hpp>
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
@@ -1007,7 +1007,8 @@ void ScummPanel::draw(sf::RenderTarget& target,
                       const CommandState& command_state,
                       sf::Vector2f cursor,
                       EvidenceProgress evidence,
-                      InventoryNotificationQuery has_notification) const {
+                      InventoryNotificationQuery has_notification,
+                      InventoryNameQuery localized_name) const {
     draw_backdrop(target, &inventory, &command_state, cursor);
 
     if (const sf::Font* command_font = font_or_default(command_font_)) {
@@ -1097,8 +1098,12 @@ void ScummPanel::draw(sf::RenderTarget& target,
     }
 
     if (config_.layout.inventory_style == InventoryStyle::ICONS) {
-        draw_inventory_icons(target, inventory, command_state, cursor,
-                             has_notification);
+        draw_inventory_icons(target,
+                             inventory,
+                             command_state,
+                             cursor,
+                             has_notification,
+                             localized_name);
     } else {
         const sf::Font* inventory_font = font_or_default(inventory_font_);
         const int page = clamped_inventory_page(inventory, command_state.inventory_page_index);
@@ -1112,7 +1117,10 @@ void ScummPanel::draw(sf::RenderTarget& target,
             }
             const InventoryItem* item = inventory.item(cell.item_id);
             if (inventory_font) {
-                sf::Text text(pac::core::utf8(item ? item->name : cell.item_id),
+                const std::string source = item ? item->name : cell.item_id;
+                const std::string name =
+                    localized_name ? localized_name(cell.item_id, source) : source;
+                sf::Text text(pac::core::utf8(name),
                               *inventory_font,
                               scaled_text_size(config_.skin.inventory_text.size));
                 apply_text_style(text,
@@ -1139,7 +1147,8 @@ void ScummPanel::draw_inventory_icons(sf::RenderTarget& target,
                                       const InventoryModel& inventory,
                                       const CommandState& command_state,
                                       sf::Vector2f cursor,
-                                      const InventoryNotificationQuery& has_notification) const {
+                                      const InventoryNotificationQuery& has_notification,
+                                      const InventoryNameQuery& localized_name) const {
     const IconInventoryLayout layout = icon_inventory_layout();
     const std::vector<std::string>& items = inventory.list();
     const sf::Font* inventory_font = font_or_default(inventory_font_);
@@ -1174,7 +1183,8 @@ void ScummPanel::draw_inventory_icons(sf::RenderTarget& target,
         const bool drew = item && draw_item_icon(target, *item, inventory.icon_sheet(), art);
         if (!drew && inventory_font) {
             // Placeholder: the item name's first glyph, centered.
-            const std::string& label = item ? item->name : item_id;
+            const std::string source = item ? item->name : item_id;
+            const std::string label = localized_name ? localized_name(item_id, source) : source;
             const std::string glyph = label.empty() ? std::string("?") : label.substr(0, 1);
             sf::Text text(pac::core::utf8(glyph),
                           *inventory_font,
@@ -1206,12 +1216,9 @@ void ScummPanel::draw_inventory_icons(sf::RenderTarget& target,
     draw_v_arrow(target, layout.next_arrow, false, arrow_color(layout.next_arrow, next));
 }
 
-void ScummPanel::draw_inventory_notification(sf::RenderTarget& target,
-                                             sf::FloatRect rect) const {
-    const float radius = std::clamp(std::min(rect.width, rect.height) * 0.115f,
-                                    7.0f, 11.0f);
-    const sf::Vector2f center{rect.left + rect.width - radius * 0.85f,
-                              rect.top + radius * 0.85f};
+void ScummPanel::draw_inventory_notification(sf::RenderTarget& target, sf::FloatRect rect) const {
+    const float radius = std::clamp(std::min(rect.width, rect.height) * 0.115f, 7.0f, 11.0f);
+    const sf::Vector2f center{rect.left + rect.width - radius * 0.85f, rect.top + radius * 0.85f};
     sf::CircleShape badge(radius);
     badge.setOrigin(radius, radius);
     badge.setPosition(center);
@@ -1224,11 +1231,11 @@ void ScummPanel::draw_inventory_notification(sf::RenderTarget& target,
     if (!font) {
         return;
     }
-    sf::Text mark("!", *font,
+    sf::Text mark("!",
+                  *font,
                   std::max(10u, scaled_text_size(static_cast<unsigned>(radius * 1.55f))));
     mark.setFillColor(sf::Color(35, 27, 17, 255));
-    center_text(mark, {center.x - radius, center.y - radius,
-                       radius * 2.0f, radius * 2.0f});
+    center_text(mark, {center.x - radius, center.y - radius, radius * 2.0f, radius * 2.0f});
     // Cormorant's exclamation sits optically a little high inside its glyph box.
     mark.move(0.0f, radius * 0.03f);
     target.draw(mark);

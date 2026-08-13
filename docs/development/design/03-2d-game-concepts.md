@@ -626,9 +626,11 @@ flags.
 ### Defaults and precedence
 
 The manifest provides defaults. User settings override manifest defaults. On a
-first run with no user settings file, manifest defaults are used; a corrupt file
-also falls back to the defaults. Only keys present in the file are applied, so a
-partial file still loads.
+first run, display and audio use manifest defaults while language follows the
+system locale (primary-language matches such as `es_AR` → `es`), falling back to
+English when available and then the manifest default. A corrupt file falls back
+to defaults. Only keys present in the file are applied, so a partial file still
+loads.
 
 Settings are saved in a per-user **config** location (`settings.yaml`), not in the
 resource root:
@@ -647,14 +649,13 @@ The settings UI is a scene pushed over the current scene, then popped back. This
 makes the same settings available from the title screen or an in-game pause menu.
 
 It offers a windowed-resolution selector, a fullscreen toggle, a language selector
-(from the manifest `languages` map), and music/SFX volumes. Edits are made to a
-**working copy**: display and language changes are *staged* and only take effect on
-an explicit **APPLY** action (BACK / Esc discards them) — the window is never
-recreated mid-edit. Audio volume previews live while editing and is restored on
-BACK. APPLY commits the working copy to the settings service, swaps the active
+(from the manifest `languages` map), music/SFX volumes, and a voice toggle. Edits
+are made to a **working copy**. Language and audio changes preview live, so choosing
+a language immediately redraws this menu in that language; BACK / Esc restores the
+committed values. Display changes remain staged until **APPLY**, so the OS window
+is never recreated mid-edit. APPLY commits the working copy, keeps the previewed
 language, requests any display change, and **persists** everything to the settings
-file. This APPLY/BACK model matches player expectations and avoids recreating the
-window on every keypress.
+file.
 
 A display change does not happen in the scene: it is **requested** through the
 `Display` service (`request_mode`), and the main loop recreates the OS window

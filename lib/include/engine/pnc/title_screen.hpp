@@ -89,6 +89,10 @@ private:
     unsigned font_size_ = 28;
     unsigned build_info_font_size_ = 14;
     std::vector<Entry> entries_;
+    // The title remains alive underneath Settings. Its labels are cached for hit
+    // testing, so update() rebuilds them when that overlay previews/applies a new
+    // language and then pops without re-entering the title scene.
+    std::string entries_language_;
     const sf::Font* font_ = nullptr; // owned by ResourceCache; null if unavailable
     int hovered_ = -1;
 };

@@ -64,6 +64,12 @@ scenes:
       font: fonts/DepartureMono-Regular.otf
       font_size: 20
 
+  - id: confirm_exit
+    type: ConfirmationScene
+    parameters:
+      font: fonts/DepartureMono-Regular.otf
+      font_size: 28
+
   - id: save
     type: SaveLoadScene
     parameters:

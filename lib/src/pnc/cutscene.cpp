@@ -249,6 +249,9 @@ CutsceneSlide parse_slide(const YAML::Node& node,
     }
 
     CutsceneSlide slide;
+    if (node["id"]) {
+        slide.id = node["id"].as<std::string>();
+    }
     slide.text_position = d.text_position;
     slide.text_width = d.text_width;
     slide.text_align = d.text_align;
@@ -538,6 +541,9 @@ Cutscene parse_cutscene(const std::string& yaml_text) {
 
     Cutscene out;
     out.version = root["version"] ? root["version"].as<int>() : 1;
+    if (root["id"]) {
+        out.id = root["id"].as<std::string>();
+    }
 
     if (root["advance_mode"]) {
         out.mode = parse_mode(root["advance_mode"]);

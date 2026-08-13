@@ -22,6 +22,7 @@
 #include "engine/core/settings_store.hpp"
 #include "engine/core/state_store.hpp"
 #include "engine/core/strings.hpp"
+#include "engine/core/system_language.hpp"
 #include "engine/core/thumbnail.hpp"
 #include "engine/core/user_data.hpp"
 
@@ -52,6 +53,7 @@ constexpr float kSceneTransition = 0.35f; // fade-to-black seconds between scene
 // this is a data convention, not a dependency on the genre layer's types.
 constexpr char kSettingsSceneType[] = "SettingsScene";
 constexpr char kSaveLoadSceneType[] = "SaveLoadScene";
+constexpr char kConfirmationSceneType[] = "ConfirmationScene";
 
 // Canonical archive name searched next to the executable / in the working dir
 // (#109). The packed manifest inside is always named `game.yaml`.
@@ -292,7 +294,7 @@ int run(const std::string& manifest_path,
             return 1;
         }
         try {
-            manifest = parse_manifest(source_holder->read_text(kPakManifestLogical));
+            manifest = load_manifest(*source_holder, kPakManifestLogical);
         } catch (const std::exception& e) {
             log.error(std::string("manifest in pak: ") + e.what());
             return 1;
@@ -318,10 +320,14 @@ int run(const std::string& manifest_path,
     Settings settings;
     settings.audio.music_volume = manifest.settings.music_volume;
     settings.audio.sfx_volume = manifest.settings.sfx_volume;
+    settings.audio.speech_enabled = manifest.settings.speech_enabled;
     settings.fullscreen = manifest.window.fullscreen;
     settings.window_width = manifest.window.width;
     settings.window_height = manifest.window.height;
-    settings.language = manifest.default_language;
+    // An empty language is significant until the settings file has been read:
+    // it means the player has never saved a preference, so startup may follow
+    // the operating system locale.
+    settings.language.clear();
     settings.clamp();
 
     // Player settings override manifest defaults (issue #66): a stored file
@@ -329,6 +335,14 @@ int run(const std::string& manifest_path,
     // file is the normal first-run case; a corrupt one is warned and ignored.
     SettingsStore settings_store(user_config_dir(manifest.id) / "settings.yaml", log);
     settings_store.load(settings);
+    if (settings.language.empty()) {
+        const std::string locale = system_locale_name();
+        settings.language =
+            select_initial_language(manifest.languages, manifest.default_language, locale);
+        log.info("localization: no saved language; system locale '" +
+                 (locale.empty() ? std::string("unknown") : locale) + "' selected '" +
+                 settings.language + "'");
+    }
     settings.clamp();
 
     ResourceCache resources(source, log, manifest.rendering.smooth_textures);
@@ -343,7 +357,8 @@ int run(const std::string& manifest_path,
                                  manifest.languages,
                                  manifest.default_language,
                                  settings.language,
-                                 log);
+                                 log,
+                                 manifest.development.warn_missing_translations);
     } catch (const std::exception&) {
         return 1; // load_strings already logged the diagnostic
     }
@@ -427,10 +442,14 @@ int run(const std::string& manifest_path,
     });
 
     bool settings_seen = false;
+    bool confirmation_seen = false;
     for (const SceneDesc& desc : manifest.scenes) {
         if (desc.type == kSettingsSceneType && !settings_seen) {
             scenes.set_settings_scene_id(desc.id);
             settings_seen = true;
+        } else if (desc.type == kConfirmationSceneType && !confirmation_seen) {
+            scenes.set_confirmation_scene_id(desc.id);
+            confirmation_seen = true;
         } else if (desc.type == kSaveLoadSceneType) {
             const std::string mode = desc.parameters.get_or("mode", "");
             if (mode == "save") {
@@ -537,7 +556,7 @@ int run(const std::string& manifest_path,
         sf::Event event;
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed) {
-                scenes.quit();
+                scenes.request_quit();
             } else if (event.type == sf::Event::Resized) {
                 display.set_window_size({event.size.width, event.size.height});
             } else {

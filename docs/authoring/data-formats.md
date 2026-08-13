@@ -19,6 +19,7 @@ resource path relative to `resources.src`.
 | `rooms/<id>.yaml` | Room layout: layers, walkable area, regions, objects, hotspots, zones, avatar starts. | [06 — Data formats](../development/design/06-data-formats.md) |
 | `rooms/<id>.lua` | Room behavior: hooks, verb handlers, scripted actions. | [Lua API](lua-api.md) |
 | `strings/*` | Engine UI strings, looked up by key (R3). | [06 — Data formats](../development/design/06-data-formats.md) |
+| `translations/*` | Additional-language game-content catalogs keyed by stable text id. | [Localization](localization.md) |
 | Spritesheet `*.yaml` | Atlas + animation definitions (often tool-generated). | [Spritesheet packer](tools/spritesheet-packer.md) |
 
 ## Conventions
@@ -34,6 +35,7 @@ resource path relative to `resources.src`.
 
 - [Lua & content authoring guide § The YAML / Lua split](../development/coding-guide/lua-game.md)
 - [Lua API reference](lua-api.md)
+- [Localization and native-language voice](localization.md)
 
 ---
 

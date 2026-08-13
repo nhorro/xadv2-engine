@@ -33,9 +33,9 @@ struct CloseUpData {
 };
 
 /// Parse + validate close-up YAML. Throws a `pac::core::LoadError` (source
-/// `closeup-loader`) on malformed input. When `expected_id` is non-empty it must
-/// match the YAML `id` (the filename-vs-id check); pass it empty to skip (e.g.
-/// headless tests feeding raw text).
+/// `closeup-loader`) on malformed input. When `expected_id` is non-empty it is
+/// used when YAML omits `id`, or checked against an explicit YAML `id`. This lets
+/// a scene declaration own the stable id without repeating it in its data file.
 ///
 /// `background` resolves relative to `logical_path`'s directory (the close-up YAML
 /// file), so a co-located image is just `background: background.png`. A leading
@@ -44,6 +44,7 @@ struct CloseUpData {
 /// verbatim (back-compat for headless tests).
 CloseUpData parse_closeup(const std::string& yaml_text,
                           const std::string& expected_id = {},
-                          const std::string& logical_path = {});
+                          const std::string& logical_path = {},
+                          sf::Color default_background_color = sf::Color::Black);
 
 } // namespace pac::pnc

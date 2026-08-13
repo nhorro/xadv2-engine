@@ -28,6 +28,9 @@ bool parse_settings_into(const std::string& yaml_text, Settings& settings) {
         if (audio["sfx_volume"]) {
             settings.audio.sfx_volume = audio["sfx_volume"].as<float>();
         }
+        if (audio["speech_enabled"]) {
+            settings.audio.speech_enabled = audio["speech_enabled"].as<bool>();
+        }
     }
     if (const YAML::Node display = root["display"]) {
         if (display["fullscreen"]) {
@@ -55,6 +58,7 @@ std::string serialize_settings(const Settings& settings) {
     out << YAML::Key << "audio" << YAML::Value << YAML::BeginMap;
     out << YAML::Key << "music_volume" << YAML::Value << settings.audio.music_volume;
     out << YAML::Key << "sfx_volume" << YAML::Value << settings.audio.sfx_volume;
+    out << YAML::Key << "speech_enabled" << YAML::Value << settings.audio.speech_enabled;
     out << YAML::EndMap;
     out << YAML::Key << "display" << YAML::Value << YAML::BeginMap;
     out << YAML::Key << "fullscreen" << YAML::Value << settings.fullscreen;

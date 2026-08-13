@@ -222,8 +222,7 @@ bool MusicPlayer::restore_state(const MusicState& state, float fade_seconds) {
         // If the temporary cue is still fading in from silence, turn that same
         // envelope around. This preserves its current audible gain instead of
         // briefly jumping to full volume before the fade-out begins.
-        if (fading_ && incoming_ >= 0 &&
-            decks_[active_].getStatus() != sf::SoundSource::Playing) {
+        if (fading_ && incoming_ >= 0 && decks_[active_].getStatus() != sf::SoundSource::Playing) {
             decks_[active_].stop();
             active_ = incoming_;
             incoming_ = -1;
@@ -409,6 +408,53 @@ void SoundPlayer::set_volume(float volume01) {
     for (Voice& voice : voices_) {
         apply_voice_volume(voice);
     }
+}
+
+VoicePlayer::VoicePlayer(ResourceCache& resources, Diagnostics& log)
+    : resources_(resources), log_(log) {}
+
+std::optional<float> VoicePlayer::play(const std::string& logical) {
+    stop();
+    if (!enabled_ || logical.empty()) {
+        return std::nullopt;
+    }
+    try {
+        const sf::SoundBuffer& buffer = resources_.sound_buffer(logical);
+        sound_.setBuffer(buffer);
+        sound_.setRelativeToListener(true);
+        sound_.setPosition(0.0f, 0.0f, -1.0f);
+        sound_.setAttenuation(0.0f);
+        apply_volume();
+        sound_.play();
+        return buffer.getDuration().asSeconds();
+    } catch (const std::exception& e) {
+        log_.warn(std::string("voice: ") + e.what());
+        return std::nullopt;
+    }
+}
+
+void VoicePlayer::stop() {
+    sound_.stop();
+}
+
+void VoicePlayer::set_enabled(bool enabled) {
+    enabled_ = enabled;
+    if (!enabled_) {
+        stop();
+    }
+}
+
+void VoicePlayer::set_volume(float volume01) {
+    volume_ = std::clamp(volume01, 0.0f, 1.0f);
+    apply_volume();
+}
+
+bool VoicePlayer::is_playing() const {
+    return sound_.getStatus() == sf::SoundSource::Playing;
+}
+
+void VoicePlayer::apply_volume() {
+    sound_.setVolume(volume_ * 100.0f);
 }
 
 AmbiencePlayer::AmbiencePlayer(ResourceCache& resources, Diagnostics& log, SoundPlayer& sfx)
@@ -669,7 +715,8 @@ const std::string& AmbiencePlayer::base_sound() const {
 }
 
 AudioServices::AudioServices(ResourceCache& resources, Diagnostics& log, const Settings& settings)
-    : music(resources, log), sfx(resources, log), ambience(resources, log, sfx) {
+    : music(resources, log), sfx(resources, log), ambience(resources, log, sfx),
+      voice(resources, log) {
     apply_settings(settings);
 }
 
@@ -677,6 +724,8 @@ void AudioServices::apply_settings(const Settings& settings) {
     music.set_volume(settings.audio.music_volume);
     sfx.set_volume(settings.audio.sfx_volume);
     ambience.set_volume(settings.audio.sfx_volume);
+    voice.set_volume(settings.audio.sfx_volume);
+    voice.set_enabled(settings.audio.speech_enabled);
 }
 
 } // namespace pac::core

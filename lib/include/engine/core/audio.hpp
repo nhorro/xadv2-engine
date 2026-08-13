@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstddef>
+#include <optional>
 #include <random>
 #include <string>
 #include <vector>
@@ -140,6 +141,30 @@ private:
     float volume_ = 1.0f;
 };
 
+/// A single non-overlapping native-language voice channel. Spoken lines are
+/// separate from effects so dismissing a subtitle stops only its matching voice.
+class VoicePlayer {
+public:
+    VoicePlayer(ResourceCache& resources, Diagnostics& log);
+
+    /// Play a decoded voice resource and return its duration. Returns nullopt
+    /// when speech is disabled or the resource cannot be loaded.
+    [[nodiscard]] std::optional<float> play(const std::string& logical);
+    void stop();
+    void set_enabled(bool enabled);
+    void set_volume(float volume01);
+    [[nodiscard]] bool is_playing() const;
+
+private:
+    void apply_volume();
+
+    ResourceCache& resources_;
+    Diagnostics& log_;
+    sf::Sound sound_;
+    float volume_ = 1.0f;
+    bool enabled_ = true;
+};
+
 /// Inclusive floating-point range used by randomly scheduled ambience layers.
 struct AmbienceRange {
     float min = 0.0f;
@@ -233,6 +258,7 @@ struct AudioServices {
     MusicPlayer music;
     SoundPlayer sfx;
     AmbiencePlayer ambience;
+    VoicePlayer voice;
 
     AudioServices(ResourceCache& resources, Diagnostics& log, const Settings& settings);
     void apply_settings(const Settings& settings);

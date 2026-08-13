@@ -191,7 +191,7 @@ class CloseUpEditorTests(TestCase):
             (base / "closeups").mkdir()
             save_closeup_yaml(
                 base / "closeups" / "skull.yml",
-                {"id": "skull", "background": "closeups/skull.png", "hotspots": {}},
+                {"background": "closeups/skull.png", "hotspots": {}},
             )
             # A non-close-up YAML (no background) must be ignored.
             save_closeup_yaml(base / "cast.yaml", {"characters": {"x": {}}})

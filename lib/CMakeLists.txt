@@ -94,6 +94,8 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/core/load_error.cpp
     src/core/settings.cpp
     src/core/settings_store.cpp
+    src/core/system_language.cpp
+    src/core/speech_config.cpp
     src/core/scene_params.cpp
     src/core/resource_source.cpp
     src/core/resource_cache.cpp
@@ -101,6 +103,8 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/core/pack_resource_source.cpp
     src/core/strings.cpp
     src/core/localization.cpp
+    src/core/translation_catalog.cpp
+    src/core/text_id.cpp
     src/core/text_layout.cpp
     src/core/manifest.cpp
     src/core/display.cpp
@@ -131,6 +135,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/pnc/shader_yaml.cpp
     src/pnc/ui_sound_cues.cpp
     src/pnc/title_screen.cpp
+    src/pnc/confirmation_scene.cpp
     src/pnc/settings_scene.cpp
     src/pnc/save_load_scene.cpp
     src/pnc/story_text_scene.cpp

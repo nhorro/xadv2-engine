@@ -20,16 +20,21 @@ class SceneParams;
 
 namespace pac::pnc {
 
+/// Move one step through a circular choice list. Direction is normalized to
+/// backward/forward, so the last language advances to the first and vice versa.
+/// Kept pure for headless regression coverage of settings selectors.
+[[nodiscard]] int wrap_choice_index(int current, int direction, int count);
+
 /// Settings overlay, pushed over the current scene. Lets the player pick the
 /// display mode (windowed resolution / fullscreen), language, and audio volumes.
 ///
-/// Edits are made to a working copy and only take effect on APPLY: display and
-/// language changes are staged, so the window is never recreated until the player
-/// confirms (BACK discards them). Audio volume previews live while editing and is
-/// restored on BACK. APPLY commits the working copy to the engine settings,
+/// Edits are made to a working copy. Display changes remain staged so the window
+/// is never recreated until the player confirms. Language and audio preview live
+/// while editing so the menu demonstrates the selection immediately; BACK restores
+/// both. APPLY commits the working copy to the engine settings,
 /// requests any display change through `Display` (applied by the main loop —
 /// transparent to the game; only the letterbox changes, R6), swaps the active
-/// language, and persists everything to the per-user settings file.
+/// keeps the previewed language, and persists everything to the per-user settings file.
 class SettingsScene : public pac::core::Scene {
 public:
     SettingsScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params);
@@ -39,12 +44,19 @@ public:
     void draw(sf::RenderTarget& target) const override;
 
 private:
+    struct RowView {
+        std::string label;
+        std::string value;
+        bool selectable_value = false;
+    };
+
     enum Row {
         ROW_RESOLUTION = 0,
         ROW_FULLSCREEN,
         ROW_LANGUAGE,
         ROW_MUSIC,
         ROW_SFX,
+        ROW_SPEECH,
         ROW_APPLY,
         ROW_BACK,
         ROW_COUNT
@@ -59,6 +71,10 @@ private:
     float row_center_y(int i, const sf::Vector2u& vres) const;
     // Row index under a virtual-space point, or -1 if none.
     int row_at(float virtual_x, float virtual_y) const;
+    RowView row_view(int row) const;
+    /// Horizontal center of the rendered value inside `< value >`. Mouse clicks
+    /// left/right of this point mean previous/next, matching the visible arrows.
+    float chooser_value_center_x(int row) const;
 
     pac::core::EngineContext& ctx_;
     UiSoundCues ui_sounds_;

@@ -2,6 +2,8 @@
 #include "engine/core/localization.hpp"
 #include "engine/core/manifest.hpp" // LanguageEntry
 #include "engine/core/resource_source.hpp"
+#include "engine/core/speech_config.hpp"
+#include "engine/core/text_id.hpp"
 
 #include <doctest/doctest.h>
 
@@ -41,7 +43,7 @@ public:
 };
 
 std::vector<LanguageEntry> two_langs() {
-    return {{"es", "Español", "es.yaml"}, {"en", "English", "en.yaml"}};
+    return {{"es", "Español", "es.yaml", ""}, {"en", "English", "en.yaml", ""}};
 }
 
 } // namespace
@@ -83,7 +85,7 @@ TEST_CASE("Localization falls back to the default when the active language is un
     src.files["es.yaml"] = strings_yaml("es", "Opciones");
     Diagnostics log;
 
-    Localization loc(src, {{"es", "Español", "es.yaml"}}, "es", "zz", log);
+    Localization loc(src, {{"es", "Español", "es.yaml", ""}}, "es", "zz", log);
     CHECK(loc.active() == "es");
     CHECK_FALSE(loc.has_choices());
     CHECK(loc.strings().ui_label("settings") == "Opciones");
@@ -104,4 +106,53 @@ TEST_CASE("Localization rethrows when neither active nor default strings load") 
     MapSource src; // empty: nothing resolves
     Diagnostics log;
     CHECK_THROWS(Localization(src, two_langs(), "es", "en", log));
+}
+
+TEST_CASE("content catalogs translate ids and fall back to inline source text") {
+    MapSource src;
+    src.files["es.yaml"] = strings_yaml("es", "Opciones");
+    src.files["en.yaml"] = strings_yaml("en", "Options");
+    src.files["translations/en.yaml"] = "version: 1\nlanguage: en\ntranslations:\n"
+                                        "  dialog.malena.start.npc.1: \"Hello.\"\n";
+    Diagnostics log = Diagnostics(LogLevel::ERROR);
+    std::vector<LanguageEntry> languages = {
+        {"es", "Español", "es.yaml", ""},
+        {"en", "English", "en.yaml", "translations/en.yaml"},
+    };
+
+    Localization loc(src, languages, "es", "en", log, true);
+    CHECK(loc.text("dialog.malena.start.npc.1", "Hola.") == "Hello.");
+    CHECK(loc.text("dialog.malena.start.npc.2", "¿Cómo estás?") == "¿Cómo estás?");
+    CHECK(loc.text("", "Sin identificador") == "Sin identificador");
+
+    REQUIRE(loc.set_language("es"));
+    CHECK(loc.text("dialog.malena.start.npc.1", "Hola.") == "Hola.");
+}
+
+TEST_CASE("translation catalog rejects malformed mappings") {
+    CHECK_THROWS(parse_translation_catalog("translations: []\n"));
+    CHECK_THROWS(parse_translation_catalog("translations: { sample.id: '' }\n"));
+    const TranslationCatalog catalog = parse_translation_catalog(
+        "version: 1\nlanguage: en\ntranslations: { sample.id: Sample }\n");
+    REQUIRE(catalog.find("sample.id") != nullptr);
+    CHECK(*catalog.find("sample.id") == "Sample");
+    CHECK(catalog.find("missing") == nullptr);
+}
+
+TEST_CASE("automatic text ids are readable, accent-normalized, and deterministic") {
+    const std::string id = text_id("", "¿Qué vino a buscar?");
+    CHECK(id.starts_with("text.que_vino_a_buscar."));
+    CHECK(id == text_id("", "¿Qué vino a buscar?"));
+    CHECK(id != text_id("", "¿Qué vino a buscar!"));
+    CHECK(text_id("letter.sender", "cualquier texto") == "letter.sender");
+}
+
+TEST_CASE("voice lookup uses native directory and supported extension order") {
+    MapSource src;
+    src.files["speech/es/dialog.malena.greet.npc.1.wav"] = "audio";
+    SpeechConfig config;
+    config.voice_directory = "speech/es";
+    CHECK(find_voice_resource(src, config, "dialog.malena.greet.npc.1") ==
+          "speech/es/dialog.malena.greet.npc.1.wav");
+    CHECK(find_voice_resource(src, config, "missing").empty());
 }

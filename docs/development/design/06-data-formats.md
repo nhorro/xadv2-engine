@@ -29,16 +29,18 @@ Worked example: [02 — Architecture overview](02-architecture-overview.md).
 | `rendering` | opt | `{smooth_textures?}` | — | Rendering policy. `smooth_textures` defaults to `true`, enabling linear filtering for loaded textures and shader/post-process render targets to reduce temporal shimmer when art moves or scales fractionally. Pixel-art games can set it to `false` for nearest-neighbour sampling. |
 | `resources` | req | `{src}` | — | Resource source root. `src` is a directory (MVP) or archive (design-for). |
 | `facts` | opt | path | `facts.yaml` | Declared-facts registry. A chapter may point this at its own registry; a missing resource leaves the typo guard disabled. |
-| `chapters` | opt | `[{id, scene, facts?}]` | — | Linear campaign order. `id` is stable and saved, `scene` names that chapter's independently restorable `RoomScene`, and `facts` selects its complete fact registry (default: top-level `facts`). Chapter ids and scenes must be unique. The engine derives `finish_chapter()`'s destination from list order. |
+| `chapters` | opt | v1 `[{id, scene, facts?}]`; v2 `[path]` | — | Linear campaign order. Version 2 imports chapter descriptors and composes their room and chapter-owned scenes. Version 1 directly lists restorable RoomScenes. See [Game and chapter manifests](../../authoring/chapter-manifests.md). |
 | `strings` | req* | path | — | Single-language shorthand: the UI strings resource (engine-emitted text). Mutually exclusive with `languages`; exactly one is required. See [UI strings](#ui-strings--stringslangyaml). |
-| `languages` | req* | `[{id, name?, strings}]` | — | UI-strings languages (R3). Each entry: `id` (stable ASCII id stored in settings), `name` (opt display label in its own language, defaults to `id`), `strings` (path to that language's file). The MVP ships one entry (Spanish); the list is design-ready for more. |
+| `languages` | req* | `[{id, name?, strings, translations?}]` | — | Selectable languages. `strings` is the complete engine-UI resource; optional `translations` is the game-content catalog for an additional language. The source language normally omits it. |
 | `default_language` | opt | language id | first entry | Which `languages` entry is active when no player preference is stored. Must name an entry in `languages`. |
-| `speech` | opt | `{font?, font_size?}` | scene font, `24` | Shared typography for character `talk` / `remark` lines in rooms and close-ups. `font` is a logical resource path; when omitted, the active scene's UI font is used as a compatibility fallback. `font_size` is a positive integer in virtual pixels. |
-| `settings` | opt | map | — | Default player-facing settings (e.g. `audio.music_volume`, `audio.sfx_volume`). User settings override these. |
+| `speech` | opt | `{font?, font_size?, voice_directory?}` | scene font, `24`, none | Shared presentation for character lines. `voice_directory` contains original-language recordings named by text id; subtitle language does not alter it. |
+| `settings` | opt | map | — | Default player-facing settings (`audio.music_volume`, `audio.sfx_volume`, `audio.speech_enabled`). User settings override these. |
 | `cursor` | opt | `{image, interact?, hotspot?, blink?}` | OS cursor | Custom point-and-click cursor. `image` is the resting cursor; `interact` (opt) shows over an interactive hotspot; `hotspot` (opt `{x, y}`, default `0,0`) is the active click pixel within both images. `blink` (opt `{interval, steps?, dark?, light?}`) smoothly pulses solid RGB tones on the resting image while preserving alpha; `interval` is seconds per transition, `steps` is `2..32` (default `12`), `dark` defaults to `{64,64,64}`, and `light` to `{255,255,255}`. Omitted ⇒ the OS cursor is used. |
-| `development` | opt | map | — | Dev-only flags: `edit_mode` (master gate for the F1–F9 overlays, actions, and live render tuner), `show_walkboxes`, `show_hotspots`, `show_anchors`, `show_state` (seed the overlay layers), `allow_room_reload`, `profiling` (resource-profiling mode, #112), `profiling_interval` (seconds between samples, default `2.0`). Not persisted as player settings. |
+| `development` | opt | map | — | Dev-only flags: `edit_mode` (master gate for the F1–F9 overlays, actions, and live render tuner), `show_walkboxes`, `show_hotspots`, `show_anchors`, `show_state` (seed the overlay layers), `allow_room_reload`, `warn_missing_translations`, `profiling` (resource-profiling mode, #112), `profiling_interval` (seconds between samples, default `2.0`). Not persisted as player settings. |
 | `entry` | req | scene id | — | Initial scene. |
-| `scenes` | req | `[scene]` | — | Scene list and outcome wiring. |
+| `scene_defaults` | v2 opt | map | — | Recursive parameter defaults under `all` and/or scene-type keys. Game defaults precede chapter defaults. |
+| `scene_profiles` | v2 opt | map | — | Named, single-level reusable scene parameter sets; a profile may provide `type`. |
+| `scenes` | req | `[scene]` | — | Game-wide scene list and outcome wiring. Version-2 chapter-owned scenes live in the imported descriptor. |
 
 `*` — `strings` and `languages` are alternatives: provide exactly one. The
 single-language form
@@ -53,11 +55,25 @@ each language and is what the settings language selector lists:
 ```yaml
 languages:
   - { id: es, name: "Español", strings: strings/es.yaml }
-  - { id: en, name: "English", strings: strings/en.yaml }
+  - { id: en, name: "English", strings: strings/en.yaml, translations: translations/en.yaml }
 default_language: es   # optional; defaults to the first entry
 ```
 
-A chaptered campaign declares its independent gameplay roots in order:
+A version-2 chaptered campaign imports its independently authored descriptors:
+
+```yaml
+version: 2
+chapters:
+  - ./chapters/01_arrival/chapter.yaml
+  - ./chapters/02_archive/chapter.yaml
+```
+
+Values beginning `./` resolve relative to the declaring YAML; values beginning
+`/` resolve from the resource root. Composition works through both loose and
+packed resource backends. The complete author-facing schema and precedence rules
+are in [Game and chapter manifests](../../authoring/chapter-manifests.md).
+
+The legacy version-1 form remains supported:
 
 ```yaml
 facts: chapters/01/facts.yaml   # startup / backward-compatible default
@@ -79,8 +95,10 @@ id.
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `id` | req | string | — | Scene id, referenced by `entry` and outcomes. |
-| `type` | req | enum | — | `TitleScreen`, `StoryText`, `Cutscene`, `RoomScene`, `SettingsScene`, `SaveLoadScene`, `CloseUp`, or a registered custom type. |
-| `parameters` | opt | map | — | Type-specific parameters (see below). |
+| `type` | req* | enum | — | `TitleScreen`, `StoryText`, `Cutscene`, `RoomScene`, `SettingsScene`, `ConfirmationScene`, `SaveLoadScene`, `CloseUp`, or a registered custom type. A v2 profile may provide it. |
+| `profile` | v2 opt | string | — | Named profile from the declaring chapter first, then the game manifest. |
+| `source` | v2 CloseUp opt | path | — | Directory containing `closeup.yml` and optional `logic.lua`, or the data YAML itself. |
+| `parameters` | opt | map | — | Type-specific parameters. In v2 they may instead be written directly on the scene. |
 
 **Scene parameters by type:**
 
@@ -148,6 +166,12 @@ id.
   (arrows / Enter / Esc) **and** mouse (hover selects, left-click a value's left/right
   half decrements/increments, click APPLY/BACK to confirm/cancel), using the same
   custom cursor and hover affordance as the rest of the game.
+- `ConfirmationScene` — transparent modal used for Alt+F4/window-close,
+  title-screen exit, and returning from gameplay to the title. Parameters are
+  `font` (opt path), `font_size` (opt int, default 28), `button_font_size` (opt
+  int, default 24), and the standard menu `sounds.*` cues. The application
+  auto-detects the first scene of this type. Without one, exit/navigation keeps
+  its immediate legacy behavior.
 - `SaveLoadScene` — `mode` (req, `save` | `load`), `background` (opt path — same
   shape as `SettingsScene`, the same image is fine), `font` (opt path),
   `font_size` (opt int), `room_scene` (opt legacy fallback scene id when a save
@@ -327,11 +351,11 @@ image, and image-rendered Settings buttons without `image.normal`.
 
 The strings resource holds every user-facing string the engine itself generates:
 verb labels, command connectors, and built-in menu labels. It does **not** hold
-game content strings — hotspot/item `name`s, speech, and dialog lines stay inline
-in their own files. The MVP ships one file (Spanish). The manifest `languages` map
-and a runtime selector in the settings scene make additional UI-strings languages
-selectable (R3); per-language *game-content* files remain design-for. The active
-language is persisted in the player settings file (see below).
+source game-content strings — hotspot/item `name`s, speech, and dialog lines stay
+inline in their own files. Additional languages map generated or explicit text ids
+through the language entry's `translations` catalog; missing entries fall back to
+the inline source. See the author-facing [localization guide](../../authoring/localization.md).
+The active language is persisted in the player settings file (see below).
 
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
@@ -340,7 +364,7 @@ language is persisted in the player settings file (see below).
 | `verbs` | req | map verb id → string | — | Display label per verb. Keys are the verb ids: `look_at`, `talk_to`, `pick_up`, `use`, `give`, `open`, `close`, `push`, `pull`. Used in the command bar. |
 | `verb_panel` | opt | map verb id → string | falls back to `verbs` | Short SCUMM-panel button labels (e.g. `talk_to: "Hablar"` while `verbs.talk_to` stays `"Hablar con"` for the command bar). |
 | `connectors` | req | map verb id → string | — | Two-operand connector per verb: `use` (e.g. `con`), `give` (e.g. `a`). |
-| `ui` | req | map key → string | — | Built-in UI labels. Title menu (`new_game`, `continue`, `settings`, `settings_button`, `quit_to_os`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `settings`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `on`, `off`); cutscene hints (`manual_continue_hint`, and `cutscene_skip_hint` when a timed/auto scene opts in); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
+| `ui` | req | map key → string | — | Built-in UI labels. Title menu (`new_game`, `continue`, `settings`, `settings_button`, `quit_to_os`); confirmation (`confirm_quit_message`, `confirm_title_message`, `confirm_yes`, `confirm_no`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `settings`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `speech`, `on`, `off`); cutscene hints (`manual_continue_hint`, and `cutscene_skip_hint` when a timed/auto scene opts in); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
 | `defaults` | req | map key → string | — | Engine last-resort captions, spoken when no game handler produced text for a verb. The loader requires the exact key set below — no missing keys, and (in dev) no unknown keys. |
 
 The two exit labels are intentionally distinct: `quit_to_os` closes the
@@ -785,6 +809,7 @@ Top level:
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `version` | opt | int | `1` | Format version. |
+| `id` | opt | string | YAML filename stem | Localization namespace used by `cutscene.<id>.slide.<slide-id-or-index>.text`. |
 | `advance_mode` | opt | enum | `auto` | `auto`, `manual`, or `timed` — see below. |
 | `background_color` | opt | hex color | `"#000000"` | Full-screen fill behind every slide image, text band, and text. Accepts `"#RRGGBB"` or `"#RRGGBBAA"`. |
 | `audio` | opt | path | — | Background music. In `timed` mode it also drives slide transitions (slides read its playback offset so they stay in sync when the engine stutters); in `auto` / `manual` it loops as background. |
@@ -823,6 +848,7 @@ Top level:
 
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
+| `id` | opt | string | 1-based slide position | Stable localization suffix; recommended when slides may be reordered. |
 | `text` | opt | string | — | Single-line text drawn at `text_position`. |
 | `image` | opt | path | — | Image drawn behind the text. |
 | `text_position` | opt | `[x, y]` | from `defaults` | Normalized anchor (0–1). |
@@ -1036,9 +1062,9 @@ level:
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `version` | opt | int | `1` | Format version. |
-| `id` | req | string | — | Stable close-up id. |
+| `id` | opt* | string | scene id | Stable close-up id. Required only when parsing the data without a scene context; an explicit value is checked against the scene id. |
 | `background` | req | path | — | Full-screen background image (scaled to the virtual resolution). Resolved **relative to this YAML file's directory** (a co-located image is just `background.png`); a leading `/` makes it resources-root-relative (`/rooms/b/bg.png`) for sharing an asset from elsewhere. |
-| `background_color` | opt | `{r, g, b, a?}` | black | Fill shown behind a transparent background. |
+| `background_color` | opt | `{r, g, b, a?}` | CloseUp scene default, then black | Fill shown behind a transparent background. |
 | `hotspots` | opt | map | — | Examinable regions (see below). |
 
 **`hotspots`** — map of hotspot id → hotspot:
@@ -1058,7 +1084,8 @@ clicking a hotspot runs its handler. Full surface + rules: [05 §Close-up
 scripts](05-scripting-api.md). A scripted hotspot handler takes precedence over the
 YAML `goto`/`name` action.
 
-**Scene parameters** (manifest `parameters:` for a `type: CloseUp` scene): `data`
+**Scene parameters** (manifest fields, or legacy `parameters:`, for a `type:
+CloseUp` scene): `data`
 (req, path to the close-up YAML), `logic` (opt, path to the Lua sidecar — enables
 scripting), `cast` (opt, cast file for `talk` speech colours), `font` (opt, UI
 text such as hover labels, banners, and the back hint), `music` (opt, temporary
@@ -1068,6 +1095,11 @@ id entered on back-out; omitted ⇒ pop back to the opener). On exit, the previo
 music cue is restored at its captured playback position; if there was none, the
 temporary cue fades to silence. Ambience and sound effects are not affected.
 Scripted `talk` uses the manifest's top-level `speech` style.
+
+In a version-2 descriptor, `source: ./closeups/letter` is shorthand for
+`data: ./closeups/letter/closeup.yml` plus the sibling `logic.lua` when it
+exists. `source` may also name the YAML directly. See the
+[chapter-manifest authoring guide](../../authoring/chapter-manifests.md).
 
 ## Spritesheet — `<name>.yaml`
 
@@ -1275,23 +1307,25 @@ Player-facing preferences, persisted in the per-user **config** location (not th
 resource root): `$XDG_CONFIG_HOME/<id>/settings.yaml` (or `~/.config/<id>/…`) on
 Linux, `%APPDATA%\<id>\settings.yaml` on Windows, `Application Support/<id>` on
 macOS. Written by the settings scene when the player applies a change. On startup
-the file is overlaid on the manifest defaults: manifest defaults < user settings,
-and a missing file (first run) or a corrupt one falls back to the defaults.
+the file is overlaid on the manifest defaults: manifest defaults < user settings.
+A missing language preference uses the system locale, then English when
+available, then the manifest default. Corrupt settings fall back to defaults.
 
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `version` | opt | int | 1 | Data-format version. |
 | `audio.music_volume` | opt | float `0..1` | manifest | Music volume. |
 | `audio.sfx_volume` | opt | float `0..1` | manifest | SFX volume. |
+| `audio.speech_enabled` | opt | bool | manifest | Original-language voice playback; subtitles remain visible when disabled. |
 | `display.fullscreen` | opt | bool | manifest | Fullscreen vs windowed. |
 | `display.width` / `display.height` | opt | int | manifest | Windowed client size. |
-| `language` | opt | language id | manifest default | Active UI-strings language (a `languages` id). An unknown id falls back to the default. |
+| `language` | opt | language id | system locale | Active UI-strings language (a `languages` id). Exact/primary locale matches are used (for example `es_AR` → `es`), then English when available, then the manifest default. An unknown saved id falls back to the manifest default. |
 
 Only keys present in the file are applied, so a partial file still loads. Example:
 
 ```yaml
 version: 1
-audio: { music_volume: 0.8, sfx_volume: 0.8 }
+audio: { music_volume: 0.8, sfx_volume: 0.8, speech_enabled: true }
 display: { fullscreen: false, width: 1280, height: 720 }
 language: es
 ```

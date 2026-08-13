@@ -9,6 +9,7 @@ TEST_CASE("parse_settings_into overlays only the keys present (defaults < user)"
     Settings s; // manifest-default stand-ins
     s.audio.music_volume = 0.8f;
     s.audio.sfx_volume = 0.8f;
+    s.audio.speech_enabled = false;
     s.fullscreen = false;
     s.window_width = 1280;
     s.window_height = 720;
@@ -21,6 +22,7 @@ TEST_CASE("parse_settings_into overlays only the keys present (defaults < user)"
     CHECK(ok);
     CHECK(s.audio.music_volume == doctest::Approx(0.25f));
     CHECK(s.audio.sfx_volume == doctest::Approx(0.8f)); // untouched
+    CHECK_FALSE(s.audio.speech_enabled);                // untouched
     CHECK(s.fullscreen == true);
     CHECK(s.window_width == 1280u); // untouched
     CHECK(s.window_height == 720u); // untouched
@@ -31,6 +33,7 @@ TEST_CASE("serialize_settings round-trips through parse_settings_into") {
     Settings a;
     a.audio.music_volume = 0.3f;
     a.audio.sfx_volume = 0.6f;
+    a.audio.speech_enabled = false;
     a.fullscreen = true;
     a.window_width = 1920;
     a.window_height = 1080;
@@ -40,6 +43,7 @@ TEST_CASE("serialize_settings round-trips through parse_settings_into") {
     REQUIRE(parse_settings_into(serialize_settings(a), b));
     CHECK(b.audio.music_volume == doctest::Approx(0.3f));
     CHECK(b.audio.sfx_volume == doctest::Approx(0.6f));
+    CHECK_FALSE(b.audio.speech_enabled);
     CHECK(b.fullscreen == true);
     CHECK(b.window_width == 1920u);
     CHECK(b.window_height == 1080u);

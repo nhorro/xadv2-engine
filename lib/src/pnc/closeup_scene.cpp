@@ -4,12 +4,14 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
+#include "engine/core/localization.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
 #include "engine/core/scripting.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/text_encoding.hpp"
+#include "engine/core/text_id.hpp"
 #include "engine/core/text_layout.hpp" // core::wrap_text
 
 #include <SFML/Graphics/Font.hpp>
@@ -40,6 +42,7 @@ struct CloseUpScene::Impl {
 
 CloseUpScene::CloseUpScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
     : ctx_(ctx) {
+    scene_id_ = params.get_or("__scene_id", "");
     data_path_ = params.get_or("data", "");
     logic_path_ = params.get_or("logic", "");
     cast_path_ = params.get_or("cast", "");
@@ -51,6 +54,18 @@ CloseUpScene::CloseUpScene(pac::core::EngineContext& ctx, const pac::core::Scene
         ctx_.log.warn("CloseUp: invalid music_transition; using 2.5 seconds");
         music_transition_ = 2.5f;
     }
+    const auto color_channel = [&params](const std::string& channel, sf::Uint8 fallback) {
+        try {
+            const int value = std::stoi(params.get_or("background_color." + channel, ""));
+            return static_cast<sf::Uint8>(std::clamp(value, 0, 255));
+        } catch (const std::exception&) {
+            return fallback;
+        }
+    };
+    default_background_color_ = {color_channel("r", 0),
+                                 color_channel("g", 0),
+                                 color_channel("b", 0),
+                                 color_channel("a", 255)};
     const std::string font_path = params.get_or("font", "");
     if (!font_path.empty()) {
         font_ = ctx_.resources.try_font(font_path);
@@ -75,7 +90,10 @@ void CloseUpScene::enter() {
         return;
     }
     try {
-        data_ = parse_closeup(ctx_.resources.read_text(data_path_), {}, data_path_);
+        data_ = parse_closeup(ctx_.resources.read_text(data_path_),
+                              scene_id_,
+                              data_path_,
+                              default_background_color_);
         loaded_ = true;
     } catch (const std::exception& e) {
         ctx_.log.error(std::string("CloseUp: ") + e.what());
@@ -124,11 +142,14 @@ void CloseUpScene::enter() {
         // (spawn_npc / despawn_npc / set_state / ...) are left bound to the live
         // RoomScene, which is the reach-through used for the animation workaround.
         impl_->prev_talk = L["talk"];
-        L.set_function("_closeup_talk_start", [this](std::string speaker, std::string text) {
-            return api_talk(speaker, text);
-        });
-        ctx_.scripting.run_string("function talk(speaker, text)\n"
-                                  "  local ev = _closeup_talk_start(speaker, text)\n"
+        L.set_function(
+            "_closeup_talk_start",
+            [this](std::string speaker, std::string text, sol::optional<std::string> text_id) {
+                return api_talk(speaker, text, text_id.value_or(std::string()));
+            });
+        ctx_.scripting.run_string("function talk(speaker, text, opts)\n"
+                                  "  opts = opts or {}\n"
+                                  "  local ev = _closeup_talk_start(speaker, text, opts.id)\n"
                                   "  local _, ismain = coroutine.running()\n"
                                   "  if ev and ev ~= '' and not ismain then wait_event(ev) end\n"
                                   "end\n",
@@ -179,6 +200,8 @@ void CloseUpScene::leave() {
     }
     // Reap the scope: cancels any in-flight hotspot handler / spawned task.
     ctx_.scripting.cancel_scope(closeup_scope_);
+    speech_.skip();
+    ctx_.audio.voice.stop();
 
     if (music_override_started_ && previous_music_) {
         if (!ctx_.audio.music.restore_state(*previous_music_, music_transition_)) {
@@ -197,7 +220,9 @@ void CloseUpScene::exit() {
     }
 }
 
-std::string CloseUpScene::api_talk(const std::string& speaker, const std::string& text) {
+std::string CloseUpScene::api_talk(const std::string& speaker,
+                                   const std::string& text,
+                                   const std::string& text_id) {
     sf::Color color = kDefaultSpeechColor;
     if (has_cast_) {
         if (const Character* c = cast_.character(speaker)) {
@@ -207,9 +232,20 @@ std::string CloseUpScene::api_talk(const std::string& speaker, const std::string
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
     const geom::Point anchor{static_cast<float>(vres.x) / 2.0f,
                              static_cast<float>(vres.y) * kTalkAnchorY};
-    float duration = 0.5f + 0.06f * static_cast<float>(text.size());
+    const std::string effective_id = pac::core::text_id(text_id, text);
+    const std::string localized = ctx_.localization.text(effective_id, text);
+    float duration = 0.5f + 0.06f * static_cast<float>(localized.size());
     duration = std::clamp(duration, 1.0f, 7.0f);
-    speech_.show(text, anchor, color, duration, 48.0f);
+    ctx_.audio.voice.stop();
+    const std::string voice =
+        pac::core::find_voice_resource(ctx_.resources.source(), ctx_.speech, effective_id);
+    if (!voice.empty()) {
+        if (const std::optional<float> voice_duration = ctx_.audio.voice.play(voice);
+            voice_duration && *voice_duration > 0.0f) {
+            duration = *voice_duration;
+        }
+    }
+    speech_.show(localized, anchor, color, duration, 48.0f);
     if (!speech_.active()) {
         return std::string(); // empty text -> nothing shown -> never wait
     }
@@ -220,7 +256,8 @@ std::string CloseUpScene::api_talk(const std::string& speaker, const std::string
 
 std::string CloseUpScene::display_name(const CloseUpHotspot& hs) const {
     const auto it = hotspot_names_.find(hs.id);
-    return it != hotspot_names_.end() ? it->second : hs.name;
+    const std::string& source = it != hotspot_names_.end() ? it->second : hs.name;
+    return ctx_.localization.text("closeup." + data_.id + ".hotspot." + hs.id + ".name", source);
 }
 
 void CloseUpScene::activate(const CloseUpHotspot& hs) {
@@ -265,6 +302,7 @@ void CloseUpScene::handle_event(const sf::Event& event) {
             // this is also how a scripted multi-step talk is advanced.
             if (speech_.active()) {
                 speech_.skip();
+                ctx_.audio.voice.stop();
                 return;
             }
             if (loaded_) {

@@ -61,6 +61,33 @@ struct DialogRuntime::Impl {
         }
     }
 
+    std::string line_id(const std::string& kind, const std::string& suffix) const {
+        return "dialog." + npc_id + "." + current_node + "." + kind + "." + suffix;
+    }
+
+    std::string localized(const std::string& id, const std::string& source) const {
+        return host.localize ? host.localize(id, source) : source;
+    }
+
+    void speak_npc(std::size_t index) {
+        const std::string id = line_id("npc", std::to_string(index + 1));
+        const std::string text = localized(id, npc_lines[index]);
+        if (host.speak_npc_line) {
+            host.speak_npc_line(id, text);
+        } else if (host.speak_npc) {
+            host.speak_npc(text);
+        }
+    }
+
+    void speak_player(const std::string& id, const std::string& source) {
+        const std::string text = localized(id, source);
+        if (host.speak_player_line) {
+            host.speak_player_line(id, text);
+        } else if (host.speak_player) {
+            host.speak_player(text);
+        }
+    }
+
     /// True if `to` is the END sentinel (Lua-reference identity match). Used
     /// to distinguish an explicit end-of-dialog from a string node id.
     bool is_end(const sol::object& to) const {
@@ -113,7 +140,7 @@ struct DialogRuntime::Impl {
         }
         if (!npc_lines.empty()) {
             state = State::SPEAKING_NPC;
-            host.speak_npc(npc_lines[0]);
+            speak_npc(0);
             return;
         }
         // No NPC line: jump straight to options / `to` / end.
@@ -172,7 +199,10 @@ struct DialogRuntime::Impl {
             }
             DialogOption view;
             view.index = static_cast<int>(visible.size());
-            view.text = *text;
+            const sol::optional<std::string> authored_id = (*opt)["id"];
+            const std::string suffix = authored_id ? *authored_id : std::to_string(raw);
+            view.text_id = line_id("option", suffix);
+            view.text = localized(view.text_id, *text);
             visible.push_back(std::move(view));
             visible_raw_index.push_back(raw);
         }
@@ -464,7 +494,7 @@ void DialogRuntime::update() {
     if (s.state == State::SPEAKING_NPC) {
         if (s.npc_index + 1 < s.npc_lines.size()) {
             ++s.npc_index;
-            s.host.speak_npc(s.npc_lines[s.npc_index]);
+            s.speak_npc(s.npc_index);
             return;
         }
         sol::optional<sol::table> node = s.tree[s.current_node];
@@ -507,7 +537,9 @@ void DialogRuntime::choose(int index) {
     sol::optional<std::string> text = (*opt)[1];
     s.state = State::SPEAKING_PLAYER;
     if (!silent && text) {
-        s.host.speak_player(*text);
+        const sol::optional<std::string> authored_id = (*opt)["id"];
+        const std::string suffix = authored_id ? *authored_id : std::to_string(s.chosen_raw);
+        s.speak_player(s.line_id("option", suffix), *text);
     }
     // If silent (or no text), the next update sees is_speaking()==false and
     // advances to on_player_line_finished() immediately.

@@ -44,6 +44,8 @@ struct TestHost {
     // count at the moment it was set (to assert it lands before the first line).
     std::string anchor;
     std::size_t anchor_set_before_npc = 0;
+    bool translate = false;
+    std::vector<std::string> localized_ids;
 
     DialogHost host() {
         DialogHost h;
@@ -54,6 +56,10 @@ struct TestHost {
         h.speak_player = [this](const std::string& t) {
             player.push_back(t);
             speaking = true;
+        };
+        h.localize = [this](const std::string& id, const std::string& source) {
+            localized_ids.push_back(id);
+            return translate ? "[en] " + source : source;
         };
         h.set_text_anchor = [this](const std::string& point_name) {
             anchor = point_name;
@@ -176,6 +182,39 @@ TEST_CASE("dialog speaks NPC line, takes a choice, runs `run`, follows `to`, end
     host.speaking = false;
     d.update();
     CHECK(d.ended());
+}
+
+TEST_CASE("dialog generates contextual ids and localizes NPC lines and authored option ids") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    TestHost host;
+    host.translate = true;
+    LoadedTree tree = load_tree(s, log, R"lua(
+        return {
+            start = "greet",
+            greet = {
+                npc = { "Hola.", "Pasá." },
+                options = {
+                    { "Gracias.", id = "thanks", to = END },
+                },
+            },
+        }
+    )lua");
+    DialogRuntime d = build(s, log, host, tree);
+
+    REQUIRE(host.npc.size() == 1);
+    CHECK(host.npc[0] == "[en] Hola.");
+    CHECK(host.localized_ids[0] == "dialog.test.greet.npc.1");
+    host.speaking = false;
+    d.update();
+    CHECK(host.npc.back() == "[en] Pasá.");
+    host.speaking = false;
+    d.update();
+    REQUIRE(d.options().size() == 1);
+    CHECK(d.options()[0].text_id == "dialog.test.greet.option.thanks");
+    CHECK(d.options()[0].text == "[en] Gracias.");
+    d.choose(0);
+    CHECK(host.player.back() == "[en] Gracias.");
 }
 
 TEST_CASE("options() is empty while a line is being spoken (panel hides during speech)") {
@@ -901,8 +940,8 @@ TEST_CASE("dialog topic{} expands with requires / after gating, once-per-claim, 
     state.set("finding.frac", true);
     state.set("finding.cuts", true);
 
-    auto dopt = DialogRuntime::start(
-        s, resources, log, "schneider", host.host(), "chapters/01/dialogs");
+    auto dopt =
+        DialogRuntime::start(s, resources, log, "schneider", host.host(), "chapters/01/dialogs");
     REQUIRE(dopt.has_value());
     DialogRuntime& d = *dopt;
     advance_to_choice(d, host);

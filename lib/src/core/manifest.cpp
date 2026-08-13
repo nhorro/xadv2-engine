@@ -1,9 +1,11 @@
 #include "engine/core/manifest.hpp"
 
 #include "core/load_error_yaml.hpp"
+#include "engine/core/resource_source.hpp"
 
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -127,6 +129,8 @@ void parse_languages(const YAML::Node& root, Manifest& m) {
             }
             e.strings_path = ln["strings"].as<std::string>();
             e.name = ln["name"] ? ln["name"].as<std::string>() : e.id;
+            e.translations_path =
+                ln["translations"] ? ln["translations"].as<std::string>() : std::string();
             m.languages.push_back(std::move(e));
         }
         m.default_language = root["default_language"] ? root["default_language"].as<std::string>()
@@ -154,7 +158,7 @@ void parse_languages(const YAML::Node& root, Manifest& m) {
     }
     m.strings_path = root["strings"].as<std::string>();
     m.default_language = "default";
-    m.languages.push_back({m.default_language, "", m.strings_path});
+    m.languages.push_back({m.default_language, "", m.strings_path, ""});
 }
 
 // Flatten a scene `parameters` mapping into the flat string store, joining nested
@@ -187,6 +191,334 @@ unsigned require_dimension(const YAML::Node& node, const char* what) {
                       node);
     }
     return static_cast<unsigned>(value);
+}
+
+YAML::Node merge_maps(const YAML::Node& base, const YAML::Node& overlay) {
+    YAML::Node out = base && base.IsMap() ? YAML::Clone(base) : YAML::Node(YAML::NodeType::Map);
+    if (!overlay || !overlay.IsMap()) {
+        return out;
+    }
+    for (const auto& kv : overlay) {
+        const std::string key = kv.first.as<std::string>();
+        if (out[key] && out[key].IsMap() && kv.second.IsMap()) {
+            out[key] = merge_maps(out[key], kv.second);
+        } else {
+            out[key] = YAML::Clone(kv.second);
+        }
+    }
+    return out;
+}
+
+std::string resolve_declared_path(const std::string& value,
+                                  const std::string& declaring_file,
+                                  const YAML::Node& at) {
+    if (value.empty() || (value.front() != '/' && !value.starts_with("./"))) {
+        return value;
+    }
+    std::filesystem::path path;
+    if (value.front() == '/') {
+        path = std::filesystem::path(value.substr(1));
+    } else {
+        path = std::filesystem::path(logical_dir(declaring_file)) / value.substr(2);
+    }
+    const std::string logical = path.lexically_normal().generic_string();
+    if (!is_valid_logical_path(logical)) {
+        manifest_fail("manifest.relative-path-invalid",
+                      "path '" + value + "' in '" + declaring_file +
+                          "' escapes the resource root or is not a logical path",
+                      at);
+    }
+    return logical;
+}
+
+void resolve_declared_paths(YAML::Node node, const std::string& declaring_file) {
+    if (!node) {
+        return;
+    }
+    if (node.IsScalar()) {
+        const std::string value = node.as<std::string>();
+        node = resolve_declared_path(value, declaring_file, node);
+        return;
+    }
+    if (node.IsSequence()) {
+        for (std::size_t i = 0; i < node.size(); ++i) {
+            resolve_declared_paths(node[i], declaring_file);
+        }
+        return;
+    }
+    if (node.IsMap()) {
+        for (auto kv : node) {
+            resolve_declared_paths(kv.second, declaring_file);
+        }
+    }
+}
+
+YAML::Node scene_fields(const YAML::Node& declaration) {
+    YAML::Node out(YAML::NodeType::Map);
+    if (const YAML::Node parameters = declaration["parameters"]) {
+        if (!parameters.IsMap()) {
+            manifest_fail("manifest.scene-parameters-invalid",
+                          "scene 'parameters' must be a mapping",
+                          parameters);
+        }
+        out = merge_maps(out, parameters);
+    }
+    static const std::set<std::string> reserved = {"id", "type", "profile", "source", "parameters"};
+    for (const auto& kv : declaration) {
+        const std::string key = kv.first.as<std::string>();
+        if (!reserved.contains(key)) {
+            out[key] = YAML::Clone(kv.second);
+        }
+    }
+    return out;
+}
+
+YAML::Node defaults_for(const YAML::Node& defaults, const std::string& type) {
+    YAML::Node out(YAML::NodeType::Map);
+    if (!defaults || defaults.IsNull()) {
+        return out;
+    }
+    if (!defaults.IsMap()) {
+        manifest_fail("manifest.scene-defaults-invalid",
+                      "'scene_defaults' must be a mapping",
+                      defaults);
+    }
+    out = merge_maps(out, defaults["all"]);
+    out = merge_maps(out, defaults[type]);
+    return out;
+}
+
+YAML::Node expand_scene(const YAML::Node& declaration,
+                        const YAML::Node& game_defaults,
+                        const YAML::Node& local_defaults,
+                        const YAML::Node& game_profiles,
+                        const YAML::Node& local_profiles,
+                        const ResourceSource& resources) {
+    if (!declaration || !declaration.IsMap()) {
+        manifest_fail("manifest.scene-invalid",
+                      "a scene declaration must be a mapping",
+                      declaration);
+    }
+    if (!declaration["id"] || declaration["id"].as<std::string>().empty()) {
+        manifest_fail("manifest.scene-id-missing", "a scene is missing 'id'", declaration);
+    }
+
+    YAML::Node profile;
+    if (declaration["profile"]) {
+        const std::string name = declaration["profile"].as<std::string>();
+        profile =
+            local_profiles && local_profiles[name] ? local_profiles[name] : game_profiles[name];
+        if (!profile) {
+            manifest_fail("manifest.scene-profile-unknown",
+                          "scene '" + declaration["id"].as<std::string>() +
+                              "' uses unknown profile '" + name + "'",
+                          declaration["profile"]);
+        }
+        if (!profile.IsMap()) {
+            manifest_fail("manifest.scene-profile-invalid",
+                          "scene profile '" + name + "' must be a mapping",
+                          profile);
+        }
+    }
+
+    const std::string type =
+        declaration["type"]
+            ? declaration["type"].as<std::string>()
+            : (profile && profile["type"] ? profile["type"].as<std::string>() : std::string());
+    if (type.empty()) {
+        manifest_fail("manifest.scene-type-missing",
+                      "scene '" + declaration["id"].as<std::string>() + "' is missing 'type'",
+                      declaration);
+    }
+
+    YAML::Node parameters = defaults_for(game_defaults, type);
+    parameters = merge_maps(parameters, defaults_for(local_defaults, type));
+    if (profile) {
+        parameters = merge_maps(parameters, scene_fields(profile));
+    }
+    parameters = merge_maps(parameters, scene_fields(declaration));
+
+    if (declaration["source"]) {
+        const std::string source = declaration["source"].as<std::string>();
+        if (type != "CloseUp") {
+            manifest_fail("manifest.scene-source-unsupported",
+                          "the concise 'source' convention is only defined for CloseUp scenes",
+                          declaration["source"]);
+        }
+        const bool yaml_file = source.ends_with(".yaml") || source.ends_with(".yml");
+        const std::string data = yaml_file ? source : source + "/closeup.yml";
+        if (!resources.exists(data)) {
+            manifest_fail("manifest.closeup-source-missing",
+                          "CloseUp source does not contain '" + data + "'",
+                          declaration["source"]);
+        }
+        parameters["data"] = data;
+        if (!parameters["logic"]) {
+            const std::string logic = logical_dir(data) + "/logic.lua";
+            if (resources.exists(logic)) {
+                parameters["logic"] = logic;
+            }
+        }
+    }
+
+    YAML::Node out(YAML::NodeType::Map);
+    out["id"] = declaration["id"].as<std::string>();
+    out["type"] = type;
+    if (parameters.size() > 0) {
+        out["parameters"] = parameters;
+    }
+    return out;
+}
+
+YAML::Node load_yaml_resource(const ResourceSource& resources, const std::string& logical_path) {
+    if (!is_valid_logical_path(logical_path)) {
+        manifest_fail("manifest.import-path-invalid",
+                      "manifest import is not a logical resource path: '" + logical_path + "'");
+    }
+    YAML::Node document;
+    try {
+        document = YAML::Load(resources.read_text(logical_path));
+    } catch (const YAML::Exception& e) {
+        manifest_fail("manifest.invalid-yaml",
+                      "invalid YAML in '" + logical_path + "': " + e.what());
+    } catch (const std::exception& e) {
+        manifest_fail("manifest.import-unreadable",
+                      "cannot read manifest resource '" + logical_path + "': " + e.what());
+    }
+    if (!document || !document.IsMap()) {
+        manifest_fail("manifest.root-not-map", "'" + logical_path + "' must contain a mapping");
+    }
+    resolve_declared_paths(document, logical_path);
+    return document;
+}
+
+std::string compose_manifest(const ResourceSource& resources, const std::string& logical_path) {
+    YAML::Node root = load_yaml_resource(resources, logical_path);
+    const int version = root["version"] ? root["version"].as<int>() : 1;
+    if (version < 2) {
+        return resources.read_text(logical_path);
+    }
+
+    YAML::Node combined = YAML::Clone(root);
+    YAML::Node scenes(YAML::NodeType::Sequence);
+    const YAML::Node game_defaults = root["scene_defaults"];
+    const YAML::Node game_profiles = root["scene_profiles"];
+    if (const YAML::Node common = root["scenes"]) {
+        if (!common.IsSequence()) {
+            manifest_fail("manifest.scenes-invalid", "'scenes' must be a sequence", common);
+        }
+        for (const YAML::Node& scene : common) {
+            scenes.push_back(expand_scene(scene,
+                                          game_defaults,
+                                          YAML::Node(),
+                                          game_profiles,
+                                          YAML::Node(),
+                                          resources));
+        }
+    }
+
+    YAML::Node chapters(YAML::NodeType::Sequence);
+    const YAML::Node imports = root["chapters"];
+    if (imports) {
+        if (!imports.IsSequence() || imports.size() == 0) {
+            manifest_fail("manifest.chapters-invalid",
+                          "'chapters' must be a non-empty sequence",
+                          imports);
+        }
+        for (const YAML::Node& import : imports) {
+            std::string chapter_path;
+            if (import.IsScalar()) {
+                chapter_path = import.as<std::string>();
+            } else if (import.IsMap() && import["source"]) {
+                chapter_path = import["source"].as<std::string>();
+            } else {
+                manifest_fail("manifest.chapter-import-invalid",
+                              "a version-2 chapter entry must be a path or contain 'source'",
+                              import);
+            }
+            YAML::Node chapter = load_yaml_resource(resources, chapter_path);
+            if (!chapter["id"] || chapter["id"].as<std::string>().empty()) {
+                manifest_fail("manifest.chapter-id-missing",
+                              "chapter '" + chapter_path + "' is missing 'id'",
+                              chapter);
+            }
+            if (!chapter["facts"] || chapter["facts"].as<std::string>().empty()) {
+                manifest_fail("manifest.chapter-facts-empty",
+                              "chapter '" + chapter["id"].as<std::string>() +
+                                  "' must declare 'facts'",
+                              chapter);
+            }
+            const YAML::Node room = chapter["room"];
+            if (!room || !room.IsMap() || !room["id"]) {
+                manifest_fail("manifest.chapter-room-missing",
+                              "chapter '" + chapter["id"].as<std::string>() +
+                                  "' must declare 'room.id'",
+                              chapter);
+            }
+
+            YAML::Node room_scene(YAML::NodeType::Map);
+            room_scene["id"] = room["id"].as<std::string>();
+            room_scene["type"] = "RoomScene";
+            for (const char* field :
+                 {"cast", "rooms", "dialogs", "inventory", "inventory_logic", "logic"}) {
+                if (chapter[field]) {
+                    room_scene[field] = YAML::Clone(chapter[field]);
+                }
+            }
+            for (const auto& kv : room) {
+                const std::string key = kv.first.as<std::string>();
+                if (key == "id") {
+                    continue;
+                }
+                room_scene[key == "start" ? "start_room" : key] = YAML::Clone(kv.second);
+            }
+
+            const YAML::Node local_defaults = chapter["scene_defaults"];
+            const YAML::Node local_profiles = chapter["scene_profiles"];
+            scenes.push_back(expand_scene(room_scene,
+                                          game_defaults,
+                                          local_defaults,
+                                          game_profiles,
+                                          local_profiles,
+                                          resources));
+            if (const YAML::Node local_scenes = chapter["scenes"]) {
+                if (!local_scenes.IsSequence()) {
+                    manifest_fail("manifest.scenes-invalid",
+                                  "chapter 'scenes' must be a sequence",
+                                  local_scenes);
+                }
+                for (const YAML::Node& scene : local_scenes) {
+                    scenes.push_back(expand_scene(scene,
+                                                  game_defaults,
+                                                  local_defaults,
+                                                  game_profiles,
+                                                  local_profiles,
+                                                  resources));
+                }
+            }
+
+            YAML::Node chapter_desc(YAML::NodeType::Map);
+            chapter_desc["id"] = chapter["id"].as<std::string>();
+            chapter_desc["scene"] = room["id"].as<std::string>();
+            chapter_desc["facts"] = chapter["facts"].as<std::string>();
+            chapters.push_back(chapter_desc);
+            if (!combined["facts"]) {
+                combined["facts"] = chapter["facts"].as<std::string>();
+            }
+        }
+    }
+
+    combined["scenes"] = scenes;
+    if (chapters.size() > 0) {
+        combined["chapters"] = chapters;
+    } else {
+        combined.remove("chapters");
+    }
+    combined.remove("scene_defaults");
+    combined.remove("scene_profiles");
+    YAML::Emitter emitter;
+    emitter << combined;
+    return emitter.c_str();
 }
 
 } // namespace
@@ -257,6 +589,9 @@ Manifest parse_manifest(const std::string& yaml_text) {
             if (audio["sfx_volume"]) {
                 m.settings.sfx_volume = audio["sfx_volume"].as<float>();
             }
+            if (audio["speech_enabled"]) {
+                m.settings.speech_enabled = audio["speech_enabled"].as<bool>();
+            }
         }
     }
 
@@ -300,6 +635,13 @@ Manifest parse_manifest(const std::string& yaml_text) {
         if (speech["font_size"]) {
             m.speech.font_size = require_dimension(speech["font_size"], "speech.font_size");
         }
+        m.speech.voice_directory =
+            speech["voice_directory"] ? speech["voice_directory"].as<std::string>() : std::string();
+        if (!m.speech.voice_directory.empty() && !is_valid_logical_path(m.speech.voice_directory)) {
+            manifest_fail("manifest.speech-voice-directory-invalid",
+                          "'speech.voice_directory' must be a logical resource path",
+                          speech["voice_directory"]);
+        }
     }
 
     if (const YAML::Node dev = root["development"]) {
@@ -312,6 +654,8 @@ Manifest parse_manifest(const std::string& yaml_text) {
         m.development.show_state = dev["show_state"] ? dev["show_state"].as<bool>() : false;
         m.development.allow_room_reload =
             dev["allow_room_reload"] ? dev["allow_room_reload"].as<bool>() : false;
+        m.development.warn_missing_translations =
+            dev["warn_missing_translations"] ? dev["warn_missing_translations"].as<bool>() : false;
         m.development.profiling = dev["profiling"] ? dev["profiling"].as<bool>() : false;
         if (dev["profiling_interval"]) {
             m.development.profiling_interval = dev["profiling_interval"].as<double>();
@@ -399,8 +743,7 @@ Manifest parse_manifest(const std::string& yaml_text) {
                               "scene '" + chapter.scene + "' belongs to more than one chapter",
                               cn["scene"]);
             }
-            chapter.facts_path =
-                cn["facts"] ? cn["facts"].as<std::string>() : m.facts_path;
+            chapter.facts_path = cn["facts"] ? cn["facts"].as<std::string>() : m.facts_path;
             if (chapter.facts_path.empty()) {
                 manifest_fail("manifest.chapter-facts-empty",
                               "chapter '" + chapter.id + "' has an empty 'facts' path",
@@ -424,21 +767,72 @@ Manifest load_manifest(const std::string& file_path) {
     }
     std::ostringstream ss;
     ss << in.rdbuf();
+    YAML::Node root;
+    try {
+        root = YAML::Load(ss.str());
+    } catch (const YAML::Exception& e) {
+        SourceLocation loc;
+        loc.file = file_path;
+        throw ManifestError("manifest-loader",
+                            "manifest.invalid-yaml",
+                            std::string("invalid YAML: ") + e.what(),
+                            loc);
+    }
+    if (!root || !root.IsMap()) {
+        SourceLocation loc;
+        loc.file = file_path;
+        throw ManifestError("manifest-loader",
+                            "manifest.root-not-map",
+                            "root must be a mapping",
+                            loc);
+    }
+    const YAML::Node resources = root["resources"];
+    if (!resources || !resources["src"] || resources["src"].as<std::string>().empty()) {
+        SourceLocation loc;
+        loc.file = file_path;
+        throw ManifestError("manifest-loader",
+                            "manifest.resources-src-missing",
+                            "'resources.src' is required",
+                            loc);
+    }
 
+    std::filesystem::path src(resources["src"].as<std::string>());
+    if (src.is_relative()) {
+        src = std::filesystem::path(file_path).parent_path() / src;
+    }
+    src = src.lexically_normal();
+    std::error_code ec;
+    const std::filesystem::path logical_host =
+        std::filesystem::relative(std::filesystem::path(file_path).lexically_normal(), src, ec);
+    if (ec || !is_valid_logical_path(logical_host.generic_string())) {
+        SourceLocation loc;
+        loc.file = file_path;
+        throw ManifestError("manifest-loader",
+                            "manifest.file-outside-resource-root",
+                            "manifest must live below its declared resource root",
+                            loc);
+    }
+    FilesystemResourceSource source(src.string());
     Manifest m;
     try {
-        m = parse_manifest(ss.str());
+        m = load_manifest(source, logical_host.generic_string());
     } catch (LoadError& e) {
         e.with_file(file_path);
         throw;
     }
-
-    std::filesystem::path src(m.resources_src);
-    if (src.is_relative()) {
-        src = std::filesystem::path(file_path).parent_path() / src;
-    }
-    m.resources_src = src.lexically_normal().string();
+    m.resources_src = src.string();
     return m;
+}
+
+Manifest load_manifest(ResourceSource& resources, const std::string& logical_path) {
+    try {
+        return parse_manifest(compose_manifest(resources, logical_path));
+    } catch (LoadError& e) {
+        if (e.location().file.empty()) {
+            e.with_file(logical_path);
+        }
+        throw;
+    }
 }
 
 } // namespace pac::core

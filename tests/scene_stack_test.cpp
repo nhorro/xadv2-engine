@@ -104,6 +104,59 @@ TEST_CASE("QUIT token routes to quit") {
     CHECK_FALSE(m.running());
 }
 
+TEST_CASE("confirmation can cancel a requested application quit") {
+    SceneManager m = make_manager();
+    m.set_confirmation_scene_id("confirm");
+    m.goto_scene("a");
+    m.apply_pending();
+
+    m.request_quit();
+    m.apply_pending();
+    CHECK(m.running());
+    CHECK(m.size() == 2);
+    CHECK(m.confirmation_action() == SceneManager::ConfirmationAction::QUIT_APPLICATION);
+
+    m.cancel_confirmation();
+    m.apply_pending();
+    CHECK(m.running());
+    CHECK(m.size() == 1);
+    CHECK(m.confirmation_action() == SceneManager::ConfirmationAction::NONE);
+}
+
+TEST_CASE("confirmation accepts quit or full-screen navigation") {
+    SceneManager m = make_manager();
+    m.set_confirmation_scene_id("confirm");
+    m.goto_scene("a");
+    m.apply_pending();
+
+    m.request_goto_scene("title");
+    m.apply_pending();
+    CHECK(m.confirmation_action() == SceneManager::ConfirmationAction::GOTO_SCENE);
+    CHECK(m.confirmation_target() == "title");
+    m.accept_confirmation();
+    m.apply_pending();
+    CHECK(m.running());
+    CHECK(m.current_scene_id() == "title");
+    CHECK(m.size() == 1);
+
+    m.request_goto_scene("QUIT");
+    m.apply_pending();
+    CHECK(m.running());
+    CHECK(m.size() == 2);
+    m.accept_confirmation();
+    m.apply_pending();
+    CHECK_FALSE(m.running());
+}
+
+TEST_CASE("confirmation requests preserve immediate behavior when no overlay is configured") {
+    SceneManager m = make_manager();
+    m.goto_scene("a");
+    m.apply_pending();
+    m.request_quit();
+    m.apply_pending();
+    CHECK_FALSE(m.running());
+}
+
 TEST_CASE("unknown scene id stops the manager") {
     SceneManager m = make_manager();
     m.goto_scene("bad");

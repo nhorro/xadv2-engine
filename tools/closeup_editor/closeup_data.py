@@ -227,8 +227,9 @@ def resolve_within(base_path: Path, name: str) -> Path:
 def list_closeups(base_path: Path) -> List[str]:
     """Supported YAML documents anywhere under ``base_path``.
 
-    A mapping with a string ``background`` and an ``id`` is either a close-up or
-    case template for the purposes of this editor.
+    A mapping with a string ``background`` is a close-up or case template for the
+    purposes of this editor. Version-2 manifests let the owning scene supply the
+    id, so the data file need not repeat it.
     """
     if not base_path.exists() or not base_path.is_dir():
         return []
@@ -240,6 +241,6 @@ def list_closeups(base_path: Path) -> List[str]:
             content = load_closeup_yaml(candidate)
         except Exception:
             continue
-        if isinstance(content, dict) and isinstance(content.get("background"), str) and "id" in content:
+        if isinstance(content, dict) and isinstance(content.get("background"), str):
             results.append(str(candidate.relative_to(base_path)).replace("\\", "/"))
     return results

@@ -68,7 +68,8 @@ const CloseUpHotspot* CloseUpData::hotspot_at(geom::Point p) const {
 
 CloseUpData parse_closeup(const std::string& yaml_text,
                           const std::string& expected_id,
-                          const std::string& logical_path) {
+                          const std::string& logical_path,
+                          sf::Color default_background_color) {
     YAML::Node root;
     try {
         root = YAML::Load(yaml_text);
@@ -81,10 +82,14 @@ CloseUpData parse_closeup(const std::string& yaml_text,
 
     CloseUpData data;
     data.version = root["version"] ? root["version"].as<int>() : 1;
-    if (!root["id"]) {
+    data.background_color = default_background_color;
+    if (root["id"]) {
+        data.id = root["id"].as<std::string>();
+    } else if (!expected_id.empty()) {
+        data.id = expected_id;
+    } else {
         closeup_fail("closeup.id-missing", "'id' is required", root);
     }
-    data.id = root["id"].as<std::string>();
     if (!expected_id.empty() && data.id != expected_id) {
         closeup_fail("closeup.id-mismatch",
                      "'id: " + data.id + "' does not match the close-up filename '" + expected_id +

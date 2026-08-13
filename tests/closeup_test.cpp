@@ -62,6 +62,16 @@ TEST_CASE("parse_closeup resolves background relative to the close-up YAML path"
           }) == "closeup.background-path-invalid");
 }
 
+TEST_CASE("scene id and game close-up color can supply authored defaults") {
+    const CloseUpData closeup = parse_closeup("background: background.png\n",
+                                              "letter",
+                                              "chapters/one/closeups/letter/closeup.yml",
+                                              sf::Color(20, 16, 12));
+    CHECK(closeup.id == "letter");
+    CHECK(closeup.background == "chapters/one/closeups/letter/background.png");
+    CHECK(closeup.background_color == sf::Color(20, 16, 12));
+}
+
 TEST_CASE("parse_closeup enforces id/background and hotspot geometry with stable codes") {
     CHECK(error_code([] { parse_closeup("background: a.png\n"); }) == "closeup.id-missing");
     CHECK(error_code([] { parse_closeup("id: x\n"); }) == "closeup.background-missing");

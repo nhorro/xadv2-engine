@@ -15,6 +15,10 @@ struct DevFlags {
     bool show_anchors = false;   // avatar anchors + z values (F3)
     bool show_state = false;     // command-builder + room/world state HUD (F4)
     bool allow_room_reload = false;
+    // Log each missing content translation id once while a non-default language
+    // is active. Kept separate from edit_mode so CI/playtest builds can audit a
+    // catalog without enabling in-room editing overlays.
+    bool warn_missing_translations = false;
     // Resource-profiling mode (#112): when on, the harness samples frame timing,
     // RAM, and resource-cache footprint, logs periodic lines, and writes a report
     // at exit. Development-only; never a player setting. `profiling_interval` is

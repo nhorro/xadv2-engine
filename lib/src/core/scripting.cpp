@@ -30,7 +30,10 @@ end
 function wait(seconds) return coroutine.yield({ kind = 'timer', seconds = seconds }) end
 sleep = wait -- familiar alias for wait(seconds)
 function wait_event(name) return coroutine.yield({ kind = 'event', name = name }) end
-function show_text(text, dur)
+function show_text(text, dur, opts)
+  if type(dur) == 'table' and opts == nil then opts, dur = dur, nil end
+  opts = opts or {}
+  if _translate_text then text = _translate_text(text, opts.id) end
   return coroutine.yield({ kind = 'text', text = text, seconds = dur or default_dur(text) })
 end
 )LUA";

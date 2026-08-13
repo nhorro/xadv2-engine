@@ -16,9 +16,13 @@ loop instead of freezing the frame.
 A standard game is organized as:
 
 ```text
-game.yaml          manifest: engine config + scene list + entry scene
+game.yaml          game-wide config, shared scenes, chapter order
+chapters/01/chapter.yaml
+                   chapter roots, room declaration, chapter-owned scenes
 strings/
   es.yaml          engine-emitted UI strings (verbs, connectors, menus)
+translations/
+  en.yaml          additional-language content keyed by stable text id
 cast.yaml          appearances + characters
 game.lua           global logic and shared fallbacks
 inventory.yaml     static inventory item definitions
@@ -30,28 +34,21 @@ dialogs/
   stan.lua         dialog tree
 ```
 
-The manifest declares the top-level scenes. Its `RoomScene` entry points at the
-game cast, global logic file, inventory files, room directory, start room, and the
-cast character id that is the player.
+In a version-2 game, `game.yaml` imports chapter descriptors. Each descriptor
+owns its content roots and generates its RoomScene; game/chapter defaults provide
+shared presentation. The engine composes this authoring format into ordinary
+runtime scene descriptors. See [Game and chapter manifests](../../authoring/chapter-manifests.md).
 
-For a multi-chapter game, top-level `chapters` lists those RoomScenes in linear
-order and assigns each its own facts registry. The current chapter and actual
-RoomScene id are part of every new save.
-
-Example manifest excerpt:
+Compact chapter excerpt:
 
 ```yaml
-scenes:
-  - id: room_view
-    type: RoomScene
-    parameters:
-      cast: cast.yaml
-      logic: game.lua
-      inventory: inventory.yaml
-      inventory_logic: inventory.lua
-      rooms: rooms
-      start_room: study
-      player: julia
+facts: ./facts.yaml
+cast: ./cast.yaml
+logic: ./game.lua
+inventory: ./inventory.yaml
+inventory_logic: ./inventory.lua
+rooms: ./rooms
+room: { id: room_view, start: study, player: julia }
 ```
 
 Room ids resolve to files:
@@ -817,10 +814,10 @@ later room cannot resume a task that was waiting in an earlier one.
 |----------|------------|---------|---------|
 | `talk(speaker, text [, opts])` | character id, string, optional table | — | Show speech near the speaker, play its talk animation, and yield until finished/skipped. `opts.continue_action = true` preserves walking/current action; `opts.face` may name an avatar or room point to face first. |
 | `remark(speaker, text)` | character id, string | — | Incidental speech that preserves the speaker's current movement or gesture. Equivalent to `talk(speaker, text, { continue_action = true })`. |
-| `show_text(text, dur?)` | string, optional duration | — | Show a speaker-less centered text page in virtual space and yield until finished/skipped. |
+| `show_text(text, dur? [, opts])` | string, optional duration and table | — | Show a speaker-less centered text page in virtual space and yield until finished/skipped. `opts.id` supplies a stable localization id; otherwise a readable content id is derived. |
 | `clear_text()` | — | — | Remove the current text page immediately. |
 | `start_dialog(id [, speaker])` | dialog id, optional cast character id | — | Enter dialog state and run `dialogs/<id>.lua`. `speaker` (default `id`) is the cast character whose speech colour and over-head bubble render the `npc` lines, letting one NPC own several topic-named dialogs. |
-| `float_text(text, where [, opts])` | string, anchor, optional table | — | Show a **non-blocking** floating label over the scenery, independent of the single `talk` line: onomatopoeia (`"¡CLICK!"`) and background NPC chatter. Several can coexist and it returns immediately (drive a recurring effect from a `spawn`-ed loop with `wait`). `where` is a **point name**, `"npc:id"`/`"object:id"` (the label follows the moving thing), or `{ x=, y= }`. `opts` = `{ duration = seconds, color = { r=, g=, b= } }`. Labels are transient (not saved) and cleared on room change. |
+| `float_text(text, where [, opts])` | string, anchor, optional table | — | Show a **non-blocking** floating label over the scenery, independent of the single `talk` line: onomatopoeia (`"¡CLICK!"`) and background NPC chatter. Several can coexist and it returns immediately (drive a recurring effect from a `spawn`-ed loop with `wait`). `where` is a **point name**, `"npc:id"`/`"object:id"` (the label follows the moving thing), or `{ x=, y= }`. `opts` = `{ duration = seconds, color = { r=, g=, b= }, id = localization_id }`. Without `id`, a readable content id is derived. Labels are transient (not saved) and cleared on room change. |
 
 `text` may later be replaced or supplemented by a stable line id for localization
 and voice-over. When `dur` is omitted, the engine derives the display time from

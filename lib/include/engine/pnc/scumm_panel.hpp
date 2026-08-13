@@ -140,6 +140,10 @@ struct EvidenceProgress {
 /// The owning room keeps the flag in persistent state; the panel only asks
 /// whether the item currently needs the mark.
 using InventoryNotificationQuery = std::function<bool(const std::string&)>;
+/// Runtime localization seam for YAML-authored inventory names. Keeping it at
+/// draw time means a language change does not require reparsing the inventory.
+using InventoryNameQuery =
+    std::function<std::string(const std::string& item_id, const std::string& source_name)>;
 
 /// The bottom SCUMM panel: a command bar, a verb grid, and a text inventory list.
 /// It translates clicks into intents; the room view runs them through the command
@@ -168,7 +172,8 @@ public:
               const CommandState& command_state,
               sf::Vector2f cursor,
               EvidenceProgress evidence = {},
-              InventoryNotificationQuery has_notification = {}) const;
+              InventoryNotificationQuery has_notification = {},
+              InventoryNameQuery localized_name = {}) const;
 
     /// Draw dialog options in place of the verb/inventory layout. Used while
     /// the room view is in ViewState::DIALOG. Options are plain text (no boxes,
@@ -265,11 +270,11 @@ private:
                               const InventoryModel& inventory,
                               const CommandState& command_state,
                               sf::Vector2f cursor,
-                              const InventoryNotificationQuery& has_notification) const;
+                              const InventoryNotificationQuery& has_notification,
+                              const InventoryNameQuery& localized_name) const;
     /// A compact amber circle with an exclamation mark, anchored to a slot/row's
     /// upper-right corner. It remains legible with either icon or text inventory.
-    void draw_inventory_notification(sf::RenderTarget& target,
-                                     sf::FloatRect rect) const;
+    void draw_inventory_notification(sf::RenderTarget& target, sf::FloatRect rect) const;
     void draw_evidence_indicator(sf::RenderTarget& target,
                                  const pac::core::Strings& strings,
                                  EvidenceProgress evidence) const;

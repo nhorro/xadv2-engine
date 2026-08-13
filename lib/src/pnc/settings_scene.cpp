@@ -33,13 +33,25 @@ namespace {
 constexpr float kVolumeStep = 0.05f;
 
 // Menu layout as fractions of the virtual height, shared by draw + hit-testing.
-constexpr float kRowsTopFrac = 0.34f;  // top (y) of the first row's text
-constexpr float kRowStepFrac = 0.085f; // vertical pitch between rows
+constexpr float kRowsTopFrac = 0.28f; // top (y) of the first row's text
+constexpr float kRowStepFrac = 0.08f; // vertical pitch between rows
 
 pac::core::DisplayMode mode_of(const pac::core::Settings& s) {
     return {{s.window_width, s.window_height}, s.fullscreen};
 }
 } // namespace
+
+int wrap_choice_index(int current, int direction, int count) {
+    if (count <= 0) {
+        return 0;
+    }
+    current = std::clamp(current, 0, count - 1);
+    if (direction == 0) {
+        return current;
+    }
+    const int step = direction < 0 ? -1 : 1;
+    return (current + step + count) % count;
+}
 
 SettingsScene::SettingsScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
     : ctx_(ctx), ui_sounds_(params), working_(ctx.settings) {
@@ -101,12 +113,17 @@ void SettingsScene::adjust(int dir) {
         if (langs.empty()) {
             break;
         }
-        const int next = std::clamp(lang_idx_ + dir, 0, static_cast<int>(langs.size()) - 1);
+        const int next = wrap_choice_index(lang_idx_, dir, static_cast<int>(langs.size()));
         if (next == lang_idx_) {
             break;
         }
-        lang_idx_ = next;
-        working_.language = langs[lang_idx_].id;
+        // Language is a live preview, like audio volume: the settings screen
+        // itself immediately demonstrates the selected UI catalog. Apply keeps
+        // it; Back/Escape restores the committed language in cancel().
+        if (ctx_.localization.set_language(langs[static_cast<std::size_t>(next)].id)) {
+            lang_idx_ = next;
+            working_.language = langs[static_cast<std::size_t>(lang_idx_)].id;
+        }
         break;
     }
     case ROW_MUSIC:
@@ -118,6 +135,10 @@ void SettingsScene::adjust(int dir) {
         working_.audio.sfx_volume += static_cast<float>(dir) * kVolumeStep;
         working_.clamp();
         ctx_.audio.apply_settings(working_); // live preview
+        break;
+    case ROW_SPEECH:
+        working_.audio.speech_enabled = dir > 0;
+        ctx_.audio.apply_settings(working_);
         break;
     default:
         break;
@@ -135,6 +156,9 @@ void SettingsScene::activate() {
     case ROW_FULLSCREEN:
         adjust(working_.fullscreen ? -1 : +1); // Enter toggles
         break;
+    case ROW_SPEECH:
+        adjust(working_.audio.speech_enabled ? -1 : +1);
+        break;
     default:
         adjust(+1);
         break;
@@ -143,11 +167,12 @@ void SettingsScene::activate() {
 
 void SettingsScene::apply() {
     const bool display_changed = mode_of(working_) != mode_of(ctx_.settings);
-    const bool language_changed = working_.language != ctx_.settings.language;
 
     ctx_.settings = working_;
     ctx_.audio.apply_settings(ctx_.settings);
-    if (language_changed) {
+    // Normally already active through live preview. Retry here so Apply remains
+    // correct if another caller changed working_ without going through adjust().
+    if (ctx_.localization.active() != ctx_.settings.language) {
         ctx_.localization.set_language(ctx_.settings.language);
     }
     if (display_changed) {
@@ -158,8 +183,11 @@ void SettingsScene::apply() {
 }
 
 void SettingsScene::cancel() {
-    // Undo any live audio preview by re-applying the committed (unchanged) values.
+    // Undo live audio and language previews using the committed settings.
     ctx_.audio.apply_settings(ctx_.settings);
+    if (ctx_.localization.active() != ctx_.settings.language) {
+        ctx_.localization.set_language(ctx_.settings.language);
+    }
     ctx_.scenes.pop_scene();
 }
 
@@ -184,6 +212,71 @@ int SettingsScene::row_at(float vx, float vy) const {
         }
     }
     return -1;
+}
+
+SettingsScene::RowView SettingsScene::row_view(int row) const {
+    const pac::core::Strings& strings = ctx_.strings;
+    switch (row) {
+    case ROW_RESOLUTION: {
+        std::string value = "-";
+        if (!sizes_.empty()) {
+            const sf::Vector2u size = sizes_[static_cast<std::size_t>(size_idx_)];
+            value = std::to_string(size.x) + " x " + std::to_string(size.y);
+        }
+        return {strings.ui_label("resolution"), value, true};
+    }
+    case ROW_FULLSCREEN:
+        return {strings.ui_label("fullscreen"),
+                strings.ui_label(working_.fullscreen ? "on" : "off"),
+                true};
+    case ROW_LANGUAGE: {
+        std::string value = working_.language;
+        const auto& languages = ctx_.localization.languages();
+        if (!languages.empty()) {
+            const pac::core::LanguageEntry& language =
+                languages[static_cast<std::size_t>(lang_idx_)];
+            value = language.name.empty() ? language.id : language.name;
+        }
+        return {strings.ui_label("language"), value, true};
+    }
+    case ROW_MUSIC: {
+        const int percent = static_cast<int>(working_.audio.music_volume * 100.0f + 0.5f);
+        return {strings.ui_label("music"), std::to_string(percent) + "%", true};
+    }
+    case ROW_SFX: {
+        const int percent = static_cast<int>(working_.audio.sfx_volume * 100.0f + 0.5f);
+        return {strings.ui_label("sfx"), std::to_string(percent) + "%", true};
+    }
+    case ROW_SPEECH:
+        return {strings.ui_label("speech"),
+                strings.ui_label(working_.audio.speech_enabled ? "on" : "off"),
+                true};
+    case ROW_APPLY:
+        return {strings.ui_label("apply"), "", false};
+    case ROW_BACK:
+        return {strings.ui_label("back"), "", false};
+    default:
+        return {};
+    }
+}
+
+float SettingsScene::chooser_value_center_x(int row) const {
+    const float center = static_cast<float>(ctx_.display.virtual_resolution().x) / 2.0f;
+    if (!font_) {
+        return center;
+    }
+    const RowView view = row_view(row);
+    if (!view.selectable_value) {
+        return center;
+    }
+    const std::string prefix = "> " + view.label + ":  < ";
+    const std::string through_value = prefix + view.value;
+    const std::string full = through_value + " >";
+    const auto width = [this](const std::string& text) {
+        return sf::Text(pac::core::utf8(text), *font_, font_size_).getLocalBounds().width;
+    };
+    const float left = center - width(full) / 2.0f;
+    return left + (width(prefix) + width(through_value)) / 2.0f;
 }
 
 void SettingsScene::handle_event(const sf::Event& event) {
@@ -213,10 +306,7 @@ void SettingsScene::handle_event(const sf::Event& event) {
         if (r == ROW_APPLY || r == ROW_BACK) {
             activate();
         } else {
-            // The "< value >" chooser: clicking left of center decrements, right
-            // increments — matching the on-screen affordance.
-            const float cx = static_cast<float>(ctx_.display.virtual_resolution().x) / 2.0f;
-            adjust(x < cx ? -1 : +1);
+            adjust(x < chooser_value_center_x(r) ? -1 : +1);
         }
         return;
     }
@@ -304,49 +394,18 @@ void SettingsScene::draw(sf::RenderTarget& target) const {
 
     centered(strings.ui_label("settings"), vh * 0.14f, font_size_ + 12u, sf::Color::White);
 
-    std::string res_value = "-";
-    if (!sizes_.empty()) {
-        const sf::Vector2u s = sizes_[static_cast<std::size_t>(size_idx_)];
-        res_value = std::to_string(s.x) + " x " + std::to_string(s.y);
-    }
-    const std::string fs_value = strings.ui_label(working_.fullscreen ? "on" : "off");
-
-    std::string lang_value = working_.language;
-    const auto& langs = ctx_.localization.languages();
-    if (!langs.empty()) {
-        const pac::core::LanguageEntry& e = langs[static_cast<std::size_t>(lang_idx_)];
-        lang_value = e.name.empty() ? e.id : e.name;
-    }
-
-    const int music_pct = static_cast<int>(working_.audio.music_volume * 100.0f + 0.5f);
-    const int sfx_pct = static_cast<int>(working_.audio.sfx_volume * 100.0f + 0.5f);
-
-    struct RowView {
-        std::string label;
-        std::string value;
-        bool selectable_value; // draws the "< value >" chooser affordance
-    };
-    const RowView rows[ROW_COUNT] = {
-        {strings.ui_label("resolution"), res_value, true},
-        {strings.ui_label("fullscreen"), fs_value, true},
-        {strings.ui_label("language"), lang_value, true},
-        {strings.ui_label("music"), std::to_string(music_pct) + "%", true},
-        {strings.ui_label("sfx"), std::to_string(sfx_pct) + "%", true},
-        {strings.ui_label("apply"), "", false},
-        {strings.ui_label("back"), "", false},
-    };
-
     const float row_y0 = vh * kRowsTopFrac;
     const float row_dy = vh * kRowStepFrac;
     for (int i = 0; i < ROW_COUNT; ++i) {
+        const RowView row = row_view(i);
         const bool selected = (i == row_);
         const sf::Color color = selected ? sf::Color(255, 240, 180) : sf::Color(180, 185, 200);
         const std::string marker = selected ? "> " : "  ";
         std::string text;
-        if (rows[i].selectable_value) {
-            text = marker + rows[i].label + ":  < " + rows[i].value + " >";
+        if (row.selectable_value) {
+            text = marker + row.label + ":  < " + row.value + " >";
         } else {
-            text = marker + rows[i].label;
+            text = marker + row.label;
         }
         centered(text, row_y0 + row_dy * static_cast<float>(i), font_size_, color);
     }

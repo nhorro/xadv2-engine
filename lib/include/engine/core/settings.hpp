@@ -7,6 +7,7 @@ namespace pac::core {
 struct AudioSettings {
     float music_volume = 1.0f; // [0, 1]
     float sfx_volume = 1.0f;   // [0, 1]
+    bool speech_enabled = true;
 };
 
 /// Player-facing settings (in-memory; manifest defaults applied at startup).
@@ -23,7 +24,8 @@ public:
     unsigned window_width = 1280;
     unsigned window_height = 720;
     // Active UI-strings language id (matches a manifest `languages` entry).
-    // Empty means "unset" — the manifest's default language is used at startup.
+    // Empty means "unset" — startup selects from the system locale, falling
+    // back to English when available and then the manifest default.
     std::string language;
 
     /// Clamp values into their valid ranges.

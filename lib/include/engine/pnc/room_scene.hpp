@@ -93,11 +93,11 @@ public:
     // done"). Empty -> nothing to show, so the wrapper never waits. The wrapper only
     // waits when running inside a coroutine task; on the main thread (a plain hook /
     // verb handler) talk stays fire-and-forget.
-    [[nodiscard]] std::string
-    api_talk(const std::string& speaker_id,
-             const std::string& text,
-             bool continue_action = false,
-             const std::optional<std::string>& face_target = std::nullopt);
+    [[nodiscard]] std::string api_talk(const std::string& speaker_id,
+                                       const std::string& text,
+                                       bool continue_action = false,
+                                       const std::optional<std::string>& face_target = std::nullopt,
+                                       const std::string& text_id = {});
     // Start dialog `dialog_id` (file `dialogs/<dialog_id>.lua`), spoken by cast
     // character `speaker_id` (its speech colour + over-head bubble; defaults to
     // dialog_id). The split lets one NPC have several topic-named dialogs.
@@ -235,8 +235,15 @@ private:
     // `gap` is the speaker's side-placement clearance (Character::speech_gap); it
     // defaults to the engine default for callers without a known speaker. `world`
     // is the head anchor the balloon floats above (see speech_anchor).
-    void say(const std::string& text, sf::Color color, float gap = 48.0f);
-    void say_at(const std::string& text, sf::Color color, geom::Point world, float gap = 48.0f);
+    void say(const std::string& text,
+             sf::Color color,
+             float gap = 48.0f,
+             const std::string& text_id = {});
+    void say_at(const std::string& text,
+                sf::Color color,
+                geom::Point world,
+                float gap = 48.0f,
+                const std::string& text_id = {});
 
     // Ambient floating text (`float_text` Lua API): non-blocking, time-limited
     // labels over the scenery, independent of the single SpeechManager line —

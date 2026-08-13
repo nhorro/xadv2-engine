@@ -31,8 +31,13 @@ class SceneManager {
 public:
     using Builder = std::function<std::unique_ptr<Scene>(const std::string& id)>;
 
+    /// User-initiated action currently waiting in the standard confirmation
+    /// overlay. NONE means no modal confirmation is active.
+    enum class ConfirmationAction { NONE, QUIT_APPLICATION, GOTO_SCENE };
+
     void set_builder(Builder builder);
     void set_settings_scene_id(std::string id);
+    void set_confirmation_scene_id(std::string id);
 
     /// Configure the manifest scene ids the save/load picker (issue #108) is
     /// found at. Auto-detected at startup from any `SaveLoadScene` entries
@@ -55,6 +60,18 @@ public:
     void open_settings();                   // engine-handled: push the SettingsScene
     void open_save();                       // engine-handled: push the save picker
     void open_load();                       // engine-handled: push the load picker
+    /// Ask before a user-initiated application exit. Falls back to an immediate
+    /// quit when the manifest has no ConfirmationScene.
+    void request_quit();
+    /// Ask before a user-initiated full-screen navigation (normally returning
+    /// from gameplay to the title). "QUIT" is treated as request_quit().
+    void request_goto_scene(const std::string& id);
+    /// Resolve the active ConfirmationScene. These are no-ops without a pending
+    /// action, which keeps repeated input harmless.
+    void accept_confirmation();
+    void cancel_confirmation();
+    [[nodiscard]] ConfirmationAction confirmation_action() const { return confirmation_action_; }
+    [[nodiscard]] const std::string& confirmation_target() const { return confirmation_target_; }
     void quit();
 
     void apply_pending();
@@ -83,12 +100,16 @@ private:
 
     Builder builder_;
     std::string settings_scene_id_;
+    std::string confirmation_scene_id_;
     std::string save_scene_id_;
     std::string load_scene_id_;
     std::string current_scene_id_;
     std::vector<std::unique_ptr<Scene>> stack_;
     std::vector<Op> pending_;
     bool running_ = true;
+
+    ConfirmationAction confirmation_action_ = ConfirmationAction::NONE;
+    std::string confirmation_target_;
 
     ScreenFade fade_;
     float transition_duration_ = 0.0f;

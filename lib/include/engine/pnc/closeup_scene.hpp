@@ -1,7 +1,7 @@
 #pragma once
 
-#include "engine/core/scene.hpp"
 #include "engine/core/audio.hpp"
+#include "engine/core/scene.hpp"
 #include "engine/core/scripting.hpp" // ScopeId, TaskId
 #include "engine/geom/geometry.hpp"
 #include "engine/pnc/cast.hpp"
@@ -60,15 +60,18 @@ private:
     /// Close-up-local speech: show `text` for `speaker` (its cast speech color when a
     /// cast is loaded) at the close-up talk anchor, and return the event id the talk
     /// wrapper waits on so consecutive lines play in sequence. Empty text -> no event.
-    std::string api_talk(const std::string& speaker, const std::string& text);
+    std::string
+    api_talk(const std::string& speaker, const std::string& text, const std::string& text_id = {});
 
     pac::core::EngineContext& ctx_;
+    std::string scene_id_;
     std::string data_path_;
     std::string logic_path_;
     std::string cast_path_;
-    std::string on_exit_; // scene id on back-out; empty -> pop the overlay
+    std::string on_exit_;    // scene id on back-out; empty -> pop the overlay
     std::string music_path_; // optional temporary score cue while this view is open
     float music_transition_ = 2.5f;
+    sf::Color default_background_color_ = sf::Color::Black;
     std::optional<pac::core::MusicState> previous_music_;
     bool music_override_started_ = false;
     const sf::Font* font_ = nullptr;

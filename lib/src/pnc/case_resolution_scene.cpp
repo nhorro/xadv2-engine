@@ -5,6 +5,7 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
+#include "engine/core/localization.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
@@ -365,6 +366,9 @@ void CaseResolutionScene::update(float dt) {
 }
 
 void CaseResolutionScene::draw(sf::RenderTarget& target) const {
+    const auto term_name = [this](const CaseTerm& term) {
+        return ctx_.localization.text("case.term." + term.id + ".name", term.name);
+    };
     const auto res = ctx_.display.virtual_resolution();
     const float vw = float(res.x), vh = float(res.y), py = data_.canvas_height;
     sf::RectangleShape fill({vw, vh});
@@ -401,7 +405,7 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
             const CaseTerm* term = id ? bank_.find(*id) : nullptr;
             fitted_to_slot(target,
                            *font_,
-                           term ? term->name : "…",
+                           term ? term_name(*term) : "…",
                            19,
                            term ? kText : kDisabled,
                            slot.area);
@@ -416,7 +420,7 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
     target.draw(panel);
     if (!font_)
         return;
-    sf::Text title(pac::core::utf8("TÉRMINOS REUNIDOS"), *font_, 18);
+    sf::Text title(pac::core::utf8(ctx_.strings.ui_label("case_terms_title")), *font_, 18);
     title.setFillColor(kText);
     title.setPosition(12, py + 2);
     target.draw(title);
@@ -455,7 +459,7 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
         target.draw(cell);
         centered(target,
                  *font_,
-                 bank_.terms[index].name,
+                 term_name(bank_.terms[index]),
                  17,
                  selected ? kGold : (hover ? kHover : kText),
                  x,
@@ -479,7 +483,9 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
                                         : (check_hover ? kHover : kText));
     centered(target,
              *font_,
-             feedback_left_ > 0 ? (feedback_success_ ? "RESUELTO" : "REVISAR") : "COMPROBAR",
+             feedback_left_ > 0 ? (feedback_success_ ? ctx_.strings.ui_label("case_resolved")
+                                                     : ctx_.strings.ui_label("case_review"))
+                                : ctx_.strings.ui_label("case_check"),
              17,
              check_text,
              vw - kCheckWidth,
@@ -489,7 +495,8 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
 
     if (!held_term_.empty()) {
         if (const CaseTerm* term = bank_.find(held_term_)) {
-            sf::Text label(pac::core::utf8(term->name), *font_, 17);
+            const std::string localized_name = term_name(*term);
+            sf::Text label(pac::core::utf8(localized_name), *font_, 17);
             const sf::FloatRect bounds = label.getLocalBounds();
             const float width = std::clamp(bounds.width + 28.0f, 112.0f, 280.0f);
             const float height = 38.0f;
@@ -501,7 +508,7 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
             chip.setOutlineColor(kGold);
             chip.setOutlineThickness(2.0f);
             target.draw(chip);
-            centered(target, *font_, term->name, 17, kText, x, y, width, height);
+            centered(target, *font_, localized_name, 17, kText, x, y, width, height);
         }
     }
 }

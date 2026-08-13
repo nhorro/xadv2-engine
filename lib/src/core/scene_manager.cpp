@@ -18,6 +18,10 @@ void SceneManager::set_settings_scene_id(std::string id) {
     settings_scene_id_ = std::move(id);
 }
 
+void SceneManager::set_confirmation_scene_id(std::string id) {
+    confirmation_scene_id_ = std::move(id);
+}
+
 void SceneManager::set_save_scene_id(std::string id) {
     save_scene_id_ = std::move(id);
 }
@@ -65,6 +69,58 @@ void SceneManager::open_load() {
         return;
     }
     push_scene(load_scene_id_);
+}
+
+void SceneManager::request_quit() {
+    if (confirmation_scene_id_.empty()) {
+        quit();
+        return;
+    }
+    if (confirmation_action_ != ConfirmationAction::NONE) {
+        return;
+    }
+    confirmation_action_ = ConfirmationAction::QUIT_APPLICATION;
+    confirmation_target_.clear();
+    push_scene(confirmation_scene_id_);
+}
+
+void SceneManager::request_goto_scene(const std::string& id) {
+    if (id == "QUIT") {
+        request_quit();
+        return;
+    }
+    if (confirmation_scene_id_.empty()) {
+        goto_scene(id);
+        return;
+    }
+    if (confirmation_action_ != ConfirmationAction::NONE) {
+        return;
+    }
+    confirmation_action_ = ConfirmationAction::GOTO_SCENE;
+    confirmation_target_ = id;
+    push_scene(confirmation_scene_id_);
+}
+
+void SceneManager::accept_confirmation() {
+    const ConfirmationAction action = confirmation_action_;
+    const std::string target = confirmation_target_;
+    confirmation_action_ = ConfirmationAction::NONE;
+    confirmation_target_.clear();
+
+    if (action == ConfirmationAction::QUIT_APPLICATION) {
+        quit();
+    } else if (action == ConfirmationAction::GOTO_SCENE) {
+        goto_scene(target);
+    }
+}
+
+void SceneManager::cancel_confirmation() {
+    if (confirmation_action_ == ConfirmationAction::NONE) {
+        return;
+    }
+    confirmation_action_ = ConfirmationAction::NONE;
+    confirmation_target_.clear();
+    pop_scene();
 }
 
 void SceneManager::quit() {

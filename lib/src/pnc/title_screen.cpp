@@ -5,6 +5,7 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
+#include "engine/core/localization.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/save_service.hpp"
 #include "engine/core/scene_manager.hpp"
@@ -121,6 +122,7 @@ void TitleScreen::leave() {
 }
 
 void TitleScreen::rebuild_entries() {
+    entries_language_ = ctx_.localization.active();
     entries_.clear();
     entries_.push_back({ctx_.strings.ui_label("new_game"), Action::NEW_GAME, 0.0f});
     // Continue resumes the most recent save across the autosave and the manual
@@ -221,7 +223,7 @@ void TitleScreen::trigger(Action action) {
         ctx_.scenes.open_settings();
         break;
     case Action::EXIT:
-        ctx_.scenes.goto_scene(exit_target_);
+        ctx_.scenes.request_goto_scene(exit_target_);
         break;
     }
 }
@@ -250,6 +252,10 @@ void TitleScreen::handle_event(const sf::Event& event) {
 
 void TitleScreen::update(float dt) {
     (void) dt;
+    if (entries_language_ != ctx_.localization.active()) {
+        rebuild_entries();
+        hovered_ = -1; // cached widths and row labels changed under the pointer
+    }
     // Use the same hover affordance as the rest of the game: the custom game
     // cursor switches to its INTERACT variant over a clickable menu entry.
     if (hovered_ >= 0) {
@@ -312,8 +318,7 @@ void TitleScreen::draw(sf::RenderTarget& target) const {
             build_info.setOutlineThickness(1.0f);
             const sf::FloatRect b = build_info.getLocalBounds();
             constexpr float kMargin = 12.0f;
-            build_info.setPosition(kMargin - b.left,
-                                   vh - kMargin - b.height - b.top);
+            build_info.setPosition(kMargin - b.left, vh - kMargin - b.height - b.top);
             target.draw(build_info);
         }
     }
