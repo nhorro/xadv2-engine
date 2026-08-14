@@ -2,6 +2,10 @@
 
 #include <iostream>
 
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
+
 namespace pac::core {
 
 namespace {
@@ -28,9 +32,26 @@ void Diagnostics::log(LogLevel level, std::string_view msg) const {
     if (static_cast<int>(level) < static_cast<int>(min_level_)) {
         return;
     }
+#if defined(__ANDROID__)
+    int priority = ANDROID_LOG_INFO;
+    if (level == LogLevel::DEBUG) {
+        priority = ANDROID_LOG_DEBUG;
+    } else if (level == LogLevel::WARN) {
+        priority = ANDROID_LOG_WARN;
+    } else if (level == LogLevel::ERROR) {
+        priority = ANDROID_LOG_ERROR;
+    }
+    __android_log_print(priority,
+                        "xadv2-engine",
+                        "%s %.*s",
+                        level_tag(level),
+                        static_cast<int>(msg.size()),
+                        msg.data());
+#else
     std::ostream& out =
         (level == LogLevel::ERROR || level == LogLevel::WARN) ? std::cerr : std::cout;
     out << level_tag(level) << ' ' << msg << '\n';
+#endif
 }
 
 void Diagnostics::debug(std::string_view msg) const {

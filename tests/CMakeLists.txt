@@ -32,6 +32,7 @@ add_executable(pac_core_tests
     screen_fade_test.cpp
     resource_path_test.cpp
     pack_resource_source_test.cpp
+    pointer_input_test.cpp
     display_test.cpp
     audio_test.cpp
     cursor_test.cpp

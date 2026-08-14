@@ -28,6 +28,16 @@ bool Thumbnail::ensure_rt() {
 }
 
 void Thumbnail::capture(const sf::RenderWindow& window, const Viewport& vp) {
+#if defined(__ANDROID__)
+    // SFML 2.6's OpenGL ES 1 backend reads textures through optional
+    // framebuffer extension entry points. They are unavailable on some Android
+    // devices/emulators, where copyToImage() dereferences a null function
+    // pointer. Save thumbnails are auxiliary, so leave them empty until the
+    // Android renderer has a supported framebuffer-readback implementation.
+    (void) window;
+    (void) vp;
+    return;
+#else
     const sf::Vector2u wsize = window.getSize();
     if (wsize.x == 0 || wsize.y == 0 || vp.size.x <= 0.0f || vp.size.y <= 0.0f) {
         return;
@@ -64,6 +74,7 @@ void Thumbnail::capture(const sf::RenderWindow& window, const Viewport& vp) {
     rt_->display();
 
     image_ = rt_->getTexture().copyToImage();
+#endif
 }
 
 void Thumbnail::invalidate() {

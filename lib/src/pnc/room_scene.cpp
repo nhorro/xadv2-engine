@@ -35,6 +35,7 @@
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/RenderTexture.hpp>
+#include <SFML/Graphics/Shader.hpp>
 #include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Text.hpp>
 #include <SFML/Graphics/Texture.hpp>
@@ -2628,7 +2629,13 @@ void RoomScene::draw(sf::RenderTarget& target) const {
         }
         const ProjectedShadow* projected_shadow_override =
             resolved_projected_shadow ? &*resolved_projected_shadow : nullptr;
-        const bool scenery_effects_active = post_active || lighting;
+        // GLES-only SFML builds can create a RenderTexture even though shaders
+        // are unavailable.  Routing the room through that texture in this case
+        // produces a black frame on Android, while every individual shader
+        // already has an unshaded fallback.  Keep the whole scenery pipeline on
+        // its direct path unless it can actually apply an effect.
+        const bool scenery_effects_active =
+            sf::Shader::isAvailable() && (post_active || lighting);
         bool scenery_composited = false;
 
         if (scenery_effects_active) {

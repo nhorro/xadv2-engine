@@ -101,6 +101,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/core/resource_cache.cpp
     src/core/pack_format.cpp
     src/core/pack_resource_source.cpp
+    src/core/pointer_input.cpp
     src/core/strings.cpp
     src/core/localization.cpp
     src/core/translation_catalog.cpp

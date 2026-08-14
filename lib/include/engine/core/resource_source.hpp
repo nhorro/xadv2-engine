@@ -70,7 +70,8 @@ public:
     /// extension like ".lua"). Returned paths are full logical paths sorted
     /// lexicographically — used by dev tooling (room enumeration, etc.) so the
     /// packed backend can offer the same surface.
-    std::vector<std::string> list(const std::string& prefix, const std::string& suffix) const;
+    std::vector<std::string> list(const std::string& prefix,
+                                  const std::string& suffix) const override;
 
 private:
     std::string root_;

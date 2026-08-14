@@ -11,6 +11,7 @@ namespace pac::core {
 
 struct EngineContext;
 struct Manifest;
+class ResourceSource;
 class SceneFactory;
 
 struct RunOptions {
@@ -61,5 +62,16 @@ int run(const std::string& manifest_path,
         const SceneFactory& factory,
         const RunOptions& opts = {},
         const ApplicationHooks& hooks = {});
+
+/// Resource-backed core harness. Platform launchers use this when game data is
+/// not exposed as ordinary host files (for example, Android APK assets). The
+/// supplied source owns both the manifest and every resource it references and
+/// must remain alive until this function returns. Gameplay and scene code use
+/// the same EngineContext and do not need to know which backend supplied them.
+int run_from_resources(ResourceSource& resources,
+                       const std::string& manifest_logical_path,
+                       const SceneFactory& factory,
+                       const RunOptions& opts = {},
+                       const ApplicationHooks& hooks = {});
 
 } // namespace pac::core

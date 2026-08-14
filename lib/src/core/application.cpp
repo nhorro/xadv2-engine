@@ -9,6 +9,7 @@
 #include "engine/core/lua_api.hpp"
 #include "engine/core/manifest.hpp"
 #include "engine/core/pack_resource_source.hpp"
+#include "engine/core/pointer_input.hpp"
 #include "engine/core/profiler.hpp"
 #include "engine/core/render_stats.hpp"
 #include "engine/core/resource_cache.hpp"
@@ -271,51 +272,64 @@ parse_run_options(int argc, char** argv, RunOptions& opts, const std::string& de
     return manifest;
 }
 
-int run(const std::string& manifest_path,
-        const SceneFactory& factory,
-        const RunOptions& opts,
-        const ApplicationHooks& hooks) {
+static int run_impl(const std::string& manifest_path,
+                    ResourceSource* supplied_source,
+                    const SceneFactory& factory,
+                    const RunOptions& opts,
+                    const ApplicationHooks& hooks) {
     Diagnostics log;
 
-    // Resource backend (#109): prefer a `resources.pak` archive next to the
-    // executable / in CWD; fall back to the loose-files manifest. In pak mode
-    // the manifest lives inside the archive at `game.yaml`; the CLI manifest
-    // argument is ignored. In filesystem mode the argument names the manifest
-    // file on disk (today's behavior).
-    const std::filesystem::path pak = discover_pak(opts.argv0, opts.pak_path);
-
+    // A platform may supply a source directly. Otherwise preserve the desktop
+    // backend selection (#109): prefer resources.pak, then loose files.
     std::unique_ptr<ResourceSource> source_holder;
     Manifest manifest;
-    if (!pak.empty()) {
+    ResourceSource* source_ptr = supplied_source;
+    if (source_ptr) {
         try {
-            source_holder = std::make_unique<PackResourceSource>(pak);
+            manifest = load_manifest(*source_ptr, manifest_path);
         } catch (const std::exception& e) {
-            log.error(e.what());
+            log.error(std::string("manifest resource '") + manifest_path + "': " + e.what());
             return 1;
         }
-        try {
-            manifest = load_manifest(*source_holder, kPakManifestLogical);
-        } catch (const std::exception& e) {
-            log.error(std::string("manifest in pak: ") + e.what());
-            return 1;
-        }
-        // Inside a pak, every entry is keyed by a logical path; the manifest's
-        // `resources.src` no longer points at a host directory. Normalize to
-        // an empty value so downstream string handling stays consistent.
+        // A supplied source is already rooted at the packaged game data. The
+        // manifest's host-oriented resources.src value must not be applied a
+        // second time by downstream code.
         manifest.resources_src.clear();
-        log.info("loaded manifest from pak '" + pak.string() + "'");
+        log.info("loaded manifest resource '" + manifest_path + "'");
     } else {
-        try {
-            manifest = load_manifest(manifest_path);
-        } catch (const std::exception& e) {
-            log.error(e.what());
-            return 1;
+        const std::filesystem::path pak = discover_pak(opts.argv0, opts.pak_path);
+        if (!pak.empty()) {
+            try {
+                source_holder = std::make_unique<PackResourceSource>(pak);
+            } catch (const std::exception& e) {
+                log.error(e.what());
+                return 1;
+            }
+            try {
+                manifest = load_manifest(*source_holder, kPakManifestLogical);
+            } catch (const std::exception& e) {
+                log.error(std::string("manifest in pak: ") + e.what());
+                return 1;
+            }
+            // Inside a pak, every entry is keyed by a logical path; the manifest's
+            // `resources.src` no longer points at a host directory. Normalize to
+            // an empty value so downstream string handling stays consistent.
+            manifest.resources_src.clear();
+            log.info("loaded manifest from pak '" + pak.string() + "'");
+        } else {
+            try {
+                manifest = load_manifest(manifest_path);
+            } catch (const std::exception& e) {
+                log.error(e.what());
+                return 1;
+            }
+            source_holder = std::make_unique<FilesystemResourceSource>(manifest.resources_src);
+            log.info("loaded manifest '" + manifest_path +
+                     "' (resource root: " + manifest.resources_src + ")");
         }
-        source_holder = std::make_unique<FilesystemResourceSource>(manifest.resources_src);
-        log.info("loaded manifest '" + manifest_path +
-                 "' (resource root: " + manifest.resources_src + ")");
+        source_ptr = source_holder.get();
     }
-    ResourceSource& source = *source_holder;
+    ResourceSource& source = *source_ptr;
 
     Settings settings;
     settings.audio.music_volume = manifest.settings.music_volume;
@@ -469,6 +483,7 @@ int run(const std::string& manifest_path,
         log.error("failed to enter entry scene '" + manifest.entry + "'");
         return 1;
     }
+    log.info("entered entry scene '" + manifest.entry + "'");
 
     sf::RenderWindow window;
     apply_window_mode(window,
@@ -550,6 +565,8 @@ int run(const std::string& manifest_path,
     sf::Clock work_clock; // CPU+draw cost of a frame, excluding the vsync wait
     float accumulator = 0.0f;
     int frames = 0;
+    bool first_frame_rendered = false;
+    PointerInput pointer_input;
 
     while (window.isOpen() && scenes.running()) {
         work_clock.restart();
@@ -560,7 +577,9 @@ int run(const std::string& manifest_path,
             } else if (event.type == sf::Event::Resized) {
                 display.set_window_size({event.size.width, event.size.height});
             } else {
-                scenes.handle_event(to_virtual_event(event, display));
+                for (const sf::Event& pointer_event : pointer_input.translate(event)) {
+                    scenes.handle_event(to_virtual_event(pointer_event, display));
+                }
             }
         }
         scenes.apply_pending();
@@ -705,6 +724,10 @@ int run(const std::string& manifest_path,
             reset_shader_passes();
         }
         window.display();
+        if (!first_frame_rendered) {
+            first_frame_rendered = true;
+            log.info("rendered first frame");
+        }
 
         if (opts.max_frames > 0 && ++frames >= opts.max_frames) {
             log.info("smoke run reached max_frames=" + std::to_string(opts.max_frames) +
@@ -725,6 +748,21 @@ int run(const std::string& manifest_path,
         profiler->finish();
     }
     return 0;
+}
+
+int run(const std::string& manifest_path,
+        const SceneFactory& factory,
+        const RunOptions& opts,
+        const ApplicationHooks& hooks) {
+    return run_impl(manifest_path, nullptr, factory, opts, hooks);
+}
+
+int run_from_resources(ResourceSource& resources,
+                       const std::string& manifest_logical_path,
+                       const SceneFactory& factory,
+                       const RunOptions& opts,
+                       const ApplicationHooks& hooks) {
+    return run_impl(manifest_logical_path, &resources, factory, opts, hooks);
 }
 
 } // namespace pac::core

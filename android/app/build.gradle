@@ -1,0 +1,81 @@
+plugins {
+    id "com.android.application"
+}
+
+def generatedAssetsDir = layout.buildDirectory.dir("generated/xadv2Assets")
+def xadv2Example = providers.gradleProperty("xadv2Example").orElse("01_hello_room")
+def xadv2DataDir = providers.gradleProperty("xadv2DataDir").orElse(
+    xadv2Example.map { rootProject.file("../examples/${it}/data").absolutePath })
+def xadv2GameBootstrap = providers.gradleProperty("xadv2GameBootstrap").orElse("")
+def xadv2GameSources = providers.gradleProperty("xadv2GameSources").orElse("")
+def xadv2GameIncludeDirs = providers.gradleProperty("xadv2GameIncludeDirs").orElse("")
+def prepareXadv2Assets = tasks.register("prepareXadv2Assets", Sync) {
+    // Package the selected example's complete data tree unchanged. Selection is
+    // a build concern; the native launcher always starts the same logical
+    // `game.yaml` through the normal ResourceSource-backed engine path.
+    inputs.property("xadv2Example", xadv2Example)
+    inputs.property("xadv2DataDir", xadv2DataDir)
+    from xadv2DataDir.map { file(it) }
+    into generatedAssetsDir
+}
+
+android {
+    namespace "com.nhorro.xadv2.empty"
+    compileSdk 36
+    ndkVersion "27.0.12077973"
+
+    defaultConfig {
+        applicationId "com.nhorro.xadv2.empty"
+        minSdk 23
+        targetSdk 36
+        versionCode 1
+        versionName "0.1.0"
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_shared",
+                    "-DPAC_ANDROID_GAME_BOOTSTRAP=${xadv2GameBootstrap.get()}",
+                    "-DPAC_ANDROID_GAME_SOURCES=${xadv2GameSources.get()}",
+                    "-DPAC_ANDROID_GAME_INCLUDE_DIRS=${xadv2GameIncludeDirs.get()}"
+                abiFilters "arm64-v8a", "x86_64"
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            manifestPlaceholders = [sfmlActivityLib: "sfml-activity-d"]
+        }
+        release {
+            manifestPlaceholders = [sfmlActivityLib: "sfml-activity"]
+            minifyEnabled false
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file("src/main/cpp/CMakeLists.txt")
+            version "3.31.6"
+        }
+    }
+
+    sourceSets {
+        main {
+            // Preserve the example's logical resource paths in the APK. Sync
+            // also removes assets left behind by an earlier milestone.
+            assets.srcDir generatedAssetsDir
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // SFML 2's bootstrap activity resolves libraries through
+            // ApplicationInfo.nativeLibraryDir and expects real files there.
+            useLegacyPackaging = true
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn prepareXadv2Assets
+}

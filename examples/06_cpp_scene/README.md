@@ -19,7 +19,9 @@ it for you.
 |---|---|
 | `src/field_notes.hpp` | The whole contract, in three pieces: a `pac::core::Scene` subclass, a type registered with the `SceneFactory`, and Lua bindings installed via `ApplicationHooks::configure`. |
 | `src/field_notes.cpp` | The scene draws itself with SFML; `configure()` parses the game's own YAML and adds `discover_note` / `has_note` / `open_notes` to the Lua state via sol2. |
-| `main.cpp` | Builds the `SceneFactory` by hand: the engine's built-ins **plus one of ours**. |
+| `src/game.cpp` | Builds the `SceneFactory` by hand—engine built-ins **plus one of ours**—and exposes the same composition for filesystem and resource-backed platforms. |
+| `main.cpp` | Parses the desktop command line and invokes that shared game composition. |
+| `android/bootstrap.cpp` | Adapts Android's packaged-resource source to the same composition without adding Android branches to the scene or Lua code. |
 | `data/game.yaml` | `type: FieldNotes` — once registered, a custom scene is indistinguishable from a built-in one. The `pause_menu.overlays` block puts it on the Esc menu. |
 | `data/rooms/office.lua` | Calls `discover_note("desk")`. From Lua, a game function looks exactly like an engine one. |
 

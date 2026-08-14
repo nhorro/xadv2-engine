@@ -65,6 +65,11 @@ This stamps the vcpkg baseline, vcpkg-installs SFML 2.6 / yaml-cpp / Lua 5.4
 / CMake preset flow that CI uses (`cmake --preset windows-msvc`), see the Windows
 section of [CLAUDE.md](CLAUDE.md).
 
+### Android (experimental)
+
+The incremental Android port can build an APK, run it in the local emulator, or
+upload it to a USB/wireless-debugging phone. See [ANDROID.md](ANDROID.md).
+
 ### Packaging check
 
 ~~~bash

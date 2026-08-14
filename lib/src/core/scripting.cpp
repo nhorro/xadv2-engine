@@ -95,9 +95,11 @@ struct Scripting::Impl {
             "ScriptHandle",
             sol::no_constructor,
             "id",
-            sol::readonly(&ScriptHandle::id),
+            sol::readonly_property(
+                [](const ScriptHandle& handle) -> const std::string& { return handle.id; }),
             "kind",
-            sol::readonly(&ScriptHandle::kind),
+            sol::readonly_property(
+                [](const ScriptHandle& handle) -> const std::string& { return handle.kind; }),
             sol::meta_function::to_string,
             [](const ScriptHandle& h) { return h.kind + "(" + h.id + ")"; });
     }

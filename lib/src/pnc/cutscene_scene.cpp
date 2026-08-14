@@ -203,17 +203,18 @@ void CutsceneScene::begin_fade_in() {
 }
 
 float CutsceneScene::fade_overlay_alpha() const {
+    const CutsceneFade& fade = data_.slides[current_].fade;
     switch (phase_) {
     case Phase::FadeIn:
-        if (data_.fade.in <= 0.0f) {
+        if (fade.in <= 0.0f) {
             return 0.0f;
         }
-        return 1.0f - std::clamp(phase_elapsed_ / data_.fade.in, 0.0f, 1.0f);
+        return 1.0f - std::clamp(phase_elapsed_ / fade.in, 0.0f, 1.0f);
     case Phase::FadeOut:
-        if (data_.fade.out <= 0.0f) {
+        if (fade.out <= 0.0f) {
             return 0.0f;
         }
-        return std::clamp(phase_elapsed_ / data_.fade.out, 0.0f, 1.0f);
+        return std::clamp(phase_elapsed_ / fade.out, 0.0f, 1.0f);
     case Phase::Hold:
         break;
     }
@@ -316,7 +317,7 @@ void CutsceneScene::update(float dt) {
     // Auto / Manual: drive the FadeIn -> Hold -> FadeOut machine.
     switch (phase_) {
     case Phase::FadeIn:
-        if (phase_elapsed_ >= data_.fade.in) {
+        if (phase_elapsed_ >= data_.slides[current_].fade.in) {
             phase_ = Phase::Hold;
             phase_elapsed_ = 0.0f;
             slide_elapsed_ = 0.0f; // count the hold only once the slide is fully visible
@@ -332,7 +333,7 @@ void CutsceneScene::update(float dt) {
         // Manual: idle until handle_event() calls request_advance().
         break;
     case Phase::FadeOut:
-        if (phase_elapsed_ >= data_.fade.out) {
+        if (phase_elapsed_ >= data_.slides[current_].fade.out) {
             if (current_ + 1 >= data_.slides.size()) {
                 finish();
             } else {
@@ -578,7 +579,7 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
     const float fa = fade_overlay_alpha();
     if (fa > 0.0f) {
         sf::RectangleShape overlay(sf::Vector2f(vw, vh));
-        sf::Color c = data_.fade.color;
+        sf::Color c = data_.slides[current_].fade.color;
         c.a = static_cast<sf::Uint8>(std::clamp(fa, 0.0f, 1.0f) * 255.0f);
         overlay.setFillColor(c);
         target.draw(overlay);

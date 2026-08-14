@@ -8,6 +8,7 @@
 # A game with no custom C++ links none of these but pac_engine.
 add_executable(pac_example_06_cpp_scene
     main.cpp
+    src/game.cpp
     src/field_notes.cpp
 )
 target_include_directories(pac_example_06_cpp_scene PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

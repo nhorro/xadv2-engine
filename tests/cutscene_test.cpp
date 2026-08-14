@@ -163,6 +163,8 @@ TEST_CASE("malformed inputs carry stable error codes") {
           "cutscene.image-fit-unknown");
     CHECK(error_code([] { parse_cutscene("fade: [1, 2]\nslides: [{text: x}]\n"); }) ==
           "cutscene.fade-shape");
+    CHECK(error_code([] { parse_cutscene("fade: -0.1\nslides: [{text: x}]\n"); }) ==
+          "cutscene.fade-negative");
     CHECK(error_code([] { parse_cutscene("slides:\n  - text_band: [1]\n"); }) ==
           "cutscene.text-band-shape");
     CHECK(error_code([] {
@@ -315,6 +317,8 @@ slides:
     CHECK(c.audio_persist == true);
     CHECK(c.fade.in == doctest::Approx(0.4f));
     CHECK(c.fade.out == doctest::Approx(0.6f));
+    CHECK(c.slides[0].fade.in == doctest::Approx(0.4f));
+    CHECK(c.slides[1].fade.out == doctest::Approx(0.6f));
 
     // text_band: defaults flow into slide 0; slide 1 overrides height, keeps color.
     CHECK(c.slides[0].text_band.height == doctest::Approx(0.25f));
@@ -328,6 +332,33 @@ slides:
     CHECK(c.slides[0].text_style.outline_color.r == 0x00);
     CHECK(c.slides[0].text_style.outline_color.b == 0x22);
     CHECK(c.slides[1].text_style.outline_thickness == doctest::Approx(3.0f));
+}
+
+TEST_CASE("slide presentation fields can disable inherited values with null") {
+    const Cutscene c = parse_cutscene(R"YAML(
+advance_mode: manual
+fade: { in: 0.2, out: 0.3, color: "#112233" }
+defaults:
+  text_band: { color: "#01020380", height: 0.25 }
+  fade: { in: 0.4, out: 0.5 }
+slides:
+  - text: title
+    text_band: null
+    fade: { in: 1.2, out: 0.6 }
+  - text: body
+  - text: hard-cut
+    fade: null
+)YAML");
+
+    CHECK(c.slides[0].text_band.height == doctest::Approx(0.0f));
+    CHECK(c.slides[0].fade.in == doctest::Approx(1.2f));
+    CHECK(c.slides[0].fade.out == doctest::Approx(0.6f));
+    CHECK(c.slides[0].fade.color == sf::Color(0x11, 0x22, 0x33));
+    CHECK(c.slides[1].text_band.height == doctest::Approx(0.25f));
+    CHECK(c.slides[1].fade.in == doctest::Approx(0.4f));
+    CHECK(c.slides[1].fade.out == doctest::Approx(0.5f));
+    CHECK(c.slides[2].fade.in == doctest::Approx(0.0f));
+    CHECK(c.slides[2].fade.out == doctest::Approx(0.0f));
 }
 
 TEST_CASE("scalar fade sets both halves; the new fields default to off") {
