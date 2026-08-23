@@ -26,7 +26,7 @@ if not exist "%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" (
 )
 
 rem vcpkg.json deliberately ships without a builtin-baseline (no fixed SHA pinned),
-rem so the sfml 2.6.1 / lua 5.4.7 overrides cannot resolve until one is stamped in.
+rem so the Lua 5.4.7 override cannot resolve until one is stamped in.
 rem Add the local vcpkg baseline once (mirrors CI's x-update-baseline step); skip if
 rem the manifest already carries one so re-runs stay idempotent.
 findstr /C:"builtin-baseline" "%REPO_DIR%\vcpkg.json" >nul
@@ -62,12 +62,12 @@ if exist "%BUILD_DIR%\CMakeCache.txt" (
 )
 
 if defined USE_TOOLCHAIN (
-  cmake -U SFML_DIR -U Lua_DIR -U LUA_* -U yaml-cpp_DIR ^
+  cmake -U Lua_DIR -U LUA_* -U yaml-cpp_DIR ^
     -S "%REPO_DIR%" -B "%BUILD_DIR%" ^
     -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" ^
     -DVCPKG_TARGET_TRIPLET=%TRIPLET%
 ) else (
-  cmake -U SFML_DIR -U Lua_DIR -U LUA_* -U yaml-cpp_DIR ^
+  cmake -U Lua_DIR -U LUA_* -U yaml-cpp_DIR ^
     -S "%REPO_DIR%" -B "%BUILD_DIR%" ^
     -DVCPKG_TARGET_TRIPLET=%TRIPLET%
 )

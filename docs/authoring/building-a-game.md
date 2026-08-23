@@ -162,9 +162,10 @@ needs no code change — `--pak` overrides the location.
 
 ## 5. Windows
 
-The scaffold ships a `vcpkg.json`. Its two `overrides` are the engine's, and they
-matter: the engine uses the **SFML 2.x** API (not SFML 3), and sol2 rejects **Lua
-5.5**, which is vcpkg's current default.
+The scaffold ships a `vcpkg.json` with the engine's Lua override because sol2
+rejects **Lua 5.5**, which is vcpkg's current default. The engine itself fetches
+the same pinned modified SFML source used by Linux and Android; a game must not
+add a separate vcpkg/system SFML dependency.
 
 ```powershell
 $env:VCPKG_ROOT = "C:\path\to\vcpkg"

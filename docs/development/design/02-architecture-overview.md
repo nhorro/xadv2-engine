@@ -593,7 +593,7 @@ a controlled place.
 
 | Dependency | Kind | Linux | Windows |
 |------------|------|-------|---------|
-| SFML 2.6 | compiled | apt `libsfml-dev` (`find_package(SFML 2.6)`) | vcpkg `sfml` |
+| Modified SFML 2.x | compiled | pinned engine `FetchContent`; apt supplies X11/OpenGL/audio dev libraries | the same pinned engine `FetchContent`; fork-bundled MSVC libraries |
 | Lua 5.4 | compiled | apt `liblua5.4-dev` | vcpkg `lua` |
 | yaml-cpp | compiled | apt `libyaml-cpp-dev` (`find_package(yaml-cpp)`) | vcpkg `yaml-cpp` |
 | sol2 | header-only | CMake `FetchContent` (pinned) | CMake `FetchContent` (pinned) |
@@ -602,9 +602,13 @@ a controlled place.
 
 Acquisition rules:
 
-- Compiled libraries come from the system package manager — apt on Linux,
-  vcpkg on Windows. CMake picks them up through `find_package`, so a single
-  CMake invocation works on both platforms once the packages are present.
+- The engine owns one pinned modified-SFML source revision on every platform.
+  Desktop uses its native OpenGL backend and Android its GLES2 backend; games
+  always see the same SFML/engine API. Linux supplies native window/audio codec
+  development libraries through apt, while the fork supplies its matching MSVC
+  binaries on Windows.
+- yaml-cpp and Lua come from the system package manager — apt on Linux and
+  vcpkg on Windows — and CMake discovers them through the engine dependency seam.
 - Header-only libraries (sol2, doctest) are pulled with CMake `FetchContent`
   at a pinned version on both platforms, so there is no per-platform
   divergence and no dependency on an apt package or vcpkg port.

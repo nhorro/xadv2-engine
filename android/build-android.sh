@@ -7,8 +7,7 @@ sdk_dir=${ANDROID_SDK_ROOT:-$workspace_dir/android-sdk}
 example_name=${PAC_ANDROID_EXAMPLE:-01_hello_room}
 data_dir=${PAC_ANDROID_DATA_DIR:-}
 game_bootstrap=${PAC_ANDROID_GAME_BOOTSTRAP:-}
-game_sources=${PAC_ANDROID_GAME_SOURCES:-}
-game_include_dirs=${PAC_ANDROID_GAME_INCLUDE_DIRS:-}
+game_cmake_dir=${PAC_ANDROID_GAME_CMAKE_DIR:-}
 game_res_dir=${PAC_ANDROID_GAME_RES_DIR:-}
 app_label=${PAC_ANDROID_APP_LABEL:-}
 application_id=${PAC_ANDROID_APPLICATION_ID:-}
@@ -34,27 +33,15 @@ if [[ -n "$data_dir" ]]; then
     package_label="external data: $data_dir"
 
     # Optional convention for an external game with native scene modules. The
-    # game owns the bootstrap and a reviewable source inventory; callers keep
+    # game owns the bootstrap and its canonical CMake target; callers keep
     # using the same PAC_ANDROID_DATA_DIR command as a data-only game.
     game_dir=$(cd -- "$data_dir/.." && pwd)
     external_bootstrap="$game_dir/android/bootstrap.cpp"
-    external_sources="$game_dir/android/sources.list"
     if [[ -z "$game_bootstrap" && -f "$external_bootstrap" ]]; then
         game_bootstrap="$external_bootstrap"
     fi
-    if [[ -z "$game_sources" && -f "$external_sources" ]]; then
-        while IFS= read -r relative_source || [[ -n "$relative_source" ]]; do
-            [[ -z "$relative_source" || "$relative_source" == \#* ]] && continue
-            source_path="$game_dir/$relative_source"
-            if [[ ! -f "$source_path" ]]; then
-                echo "Android game source does not exist: $source_path" >&2
-                exit 1
-            fi
-            game_sources+="${game_sources:+;}$source_path"
-        done < "$external_sources"
-    fi
-    if [[ -z "$game_include_dirs" && -d "$game_dir/src" ]]; then
-        game_include_dirs="$game_dir/src"
+    if [[ -z "$game_cmake_dir" && -f "$game_dir/CMakeLists.txt" && -f "$external_bootstrap" ]]; then
+        game_cmake_dir="$game_dir"
     fi
     if [[ -z "$game_res_dir" && -d "$game_dir/android/res" ]]; then
         game_res_dir="$game_dir/android/res"
@@ -84,8 +71,7 @@ else
     if [[ "$example_name" == 06_cpp_scene ]]; then
         example_dir=$(cd -- "$example_dir" && pwd)
         game_bootstrap=${game_bootstrap:-$example_dir/android/bootstrap.cpp}
-        game_sources=${game_sources:-$example_dir/src/game.cpp;$example_dir/src/field_notes.cpp}
-        game_include_dirs=${game_include_dirs:-$example_dir/src}
+        game_cmake_dir=${game_cmake_dir:-$example_dir}
     fi
 fi
 
@@ -119,6 +105,10 @@ if [[ -n "$game_bootstrap" && ! -f "$game_bootstrap" ]]; then
     echo "PAC_ANDROID_GAME_BOOTSTRAP does not exist: $game_bootstrap" >&2
     exit 1
 fi
+if [[ -n "$game_cmake_dir" && ! -f "$game_cmake_dir/CMakeLists.txt" ]]; then
+    echo "PAC_ANDROID_GAME_CMAKE_DIR has no CMakeLists.txt: $game_cmake_dir" >&2
+    exit 1
+fi
 
 export ANDROID_HOME="$sdk_dir"
 export ANDROID_SDK_ROOT="$sdk_dir"
@@ -130,9 +120,8 @@ echo "Packaging $package_label"
 "$android_dir/gradlew" --project-dir "$android_dir" \
     -Pxadv2Example="$example_name" \
     -Pxadv2DataDir="$data_dir" \
+    -Pxadv2GameCmakeDir="$game_cmake_dir" \
     -Pxadv2GameBootstrap="$game_bootstrap" \
-    -Pxadv2GameSources="$game_sources" \
-    -Pxadv2GameIncludeDirs="$game_include_dirs" \
     -Pxadv2GameResDir="$game_res_dir" \
     -Pxadv2AppLabel="$app_label" \
     -Pxadv2ApplicationId="$application_id" \

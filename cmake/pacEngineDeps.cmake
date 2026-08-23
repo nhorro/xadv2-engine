@@ -10,8 +10,13 @@
 # re-creates it first — which is exactly what including this file does.
 include_guard(GLOBAL)
 
-find_package(SFML 2.6 COMPONENTS graphics window audio system REQUIRED)
-find_package(yaml-cpp REQUIRED)
+if(NOT TARGET sfml-graphics)
+    include("${CMAKE_CURRENT_LIST_DIR}/pacModifiedSfml.cmake")
+endif()
+
+if(NOT TARGET yaml-cpp::yaml-cpp AND NOT TARGET yaml-cpp)
+    find_package(yaml-cpp REQUIRED)
+endif()
 
 # yaml-cpp 0.8 exports the namespaced target; older packages use the bare name.
 if(TARGET yaml-cpp::yaml-cpp)

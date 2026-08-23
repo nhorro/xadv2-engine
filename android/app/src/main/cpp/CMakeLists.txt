@@ -1,83 +1,17 @@
 cmake_minimum_required(VERSION 3.24)
-project(xadv2_android_empty_scene LANGUAGES C CXX)
+project(xadv2_android_activity LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Keep this experiment hermetic. Desktop builds still use the system SFML 2.6
-# package. Android pins the GLES2-capable SFML fork used by OpenNetBattle; the
-# exact commit is intentional because upstream SFML's Android renderer remains
-# tied to OpenGL ES 1 and compiles sf::Shader as an unavailable stub.
 include(FetchContent)
-set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
-set(SFML_BUILD_DOC OFF CACHE BOOL "" FORCE)
-set(SFML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(SFML_BUILD_TEST_SUITE OFF CACHE BOOL "" FORCE)
 
-# The GLES2 fork predates Android arm64-v8a and x86_64 support in SFML's bundled
-# FreeType binaries. Fetch the official 2.6.2 source first and point CMake's
-# FreeType lookup at its complete ABI set before configuring the fork. The same
-# pinned source also supplies the MP3 reader imported below.
-FetchContent_Declare(
-    SFML_MP3_SOURCE
-    GIT_REPOSITORY https://github.com/SFML/SFML.git
-    GIT_TAG 5383d2b3948f805af55c9f8a4587ac72ec5981d1
-    GIT_SHALLOW ON
-    SOURCE_SUBDIR _source_only)
-FetchContent_MakeAvailable(SFML_MP3_SOURCE)
-FetchContent_GetProperties(SFML_MP3_SOURCE SOURCE_DIR sfml_mp3_source_dir)
-set(FREETYPE_INCLUDE_DIR_ft2build
-    "${sfml_mp3_source_dir}/extlibs/headers/freetype2" CACHE PATH "" FORCE)
-set(FREETYPE_INCLUDE_DIR_freetype2
-    "${sfml_mp3_source_dir}/extlibs/headers/freetype2" CACHE PATH "" FORCE)
-set(FREETYPE_LIBRARY
-    "${sfml_mp3_source_dir}/extlibs/libs-android/${ANDROID_ABI}/libfreetype.a"
-    CACHE FILEPATH "" FORCE)
-set(OPENAL_INCLUDE_DIR
-    "${sfml_mp3_source_dir}/extlibs/headers/AL" CACHE PATH "" FORCE)
-set(OPENAL_LIBRARY
-    "${sfml_mp3_source_dir}/extlibs/libs-android/${ANDROID_ABI}/libopenal.so"
-    CACHE FILEPATH "" FORCE)
-set(FLAC_INCLUDE_DIR
-    "${sfml_mp3_source_dir}/extlibs/headers" CACHE PATH "" FORCE)
-set(FLAC_LIBRARY
-    "${sfml_mp3_source_dir}/extlibs/libs-android/${ANDROID_ABI}/libFLAC.a"
-    CACHE FILEPATH "" FORCE)
-set(OGG_INCLUDE_DIR
-    "${sfml_mp3_source_dir}/extlibs/headers" CACHE PATH "" FORCE)
-set(OGG_LIBRARY
-    "${sfml_mp3_source_dir}/extlibs/libs-android/${ANDROID_ABI}/libogg.a"
-    CACHE FILEPATH "" FORCE)
-set(VORBIS_INCLUDE_DIR
-    "${sfml_mp3_source_dir}/extlibs/headers" CACHE PATH "" FORCE)
-foreach(vorbis_component IN ITEMS VORBIS VORBISENC VORBISFILE)
-    string(TOLOWER "${vorbis_component}" vorbis_library_name)
-    set(${vorbis_component}_LIBRARY
-        "${sfml_mp3_source_dir}/extlibs/libs-android/${ANDROID_ABI}/lib${vorbis_library_name}.a"
-        CACHE FILEPATH "" FORCE)
-endforeach()
+get_filename_component(PAC_ENGINE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../.." ABSOLUTE)
 
-FetchContent_Declare(
-    SFML_GLES2
-    GIT_REPOSITORY https://github.com/TheMaverickProgrammer/SFML_ANDROID_ES_2.git
-    GIT_TAG 1ed82956eb8dfbfce09773274c95de92865ab5e1
-    GIT_SHALLOW ON)
-FetchContent_MakeAvailable(SFML_GLES2)
-FetchContent_GetProperties(SFML_GLES2 SOURCE_DIR sfml_android_source_dir)
-include("${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/patch-sfml-gles2.cmake")
-
-# Import only the official MP3 reader and its header-only minimp3 dependency;
-# do not configure a second SFML.
-target_sources(sfml-audio PRIVATE
-    "${sfml_mp3_source_dir}/src/SFML/Audio/SoundFileReaderMp3.cpp"
-    "${sfml_mp3_source_dir}/src/SFML/Audio/SoundFileReaderMp3.hpp")
-target_include_directories(sfml-audio PRIVATE
-    "${sfml_mp3_source_dir}/src"
-    "${sfml_mp3_source_dir}/extlibs/headers/minimp3")
-
-# Cross-compile the same YAML implementation used by the desktop engine. Keep it
-# static so the APK needs no additional runtime bootstrap library.
+# Cross-compile yaml-cpp before adding the engine so pacEngineDeps reuses this
+# target. Keeping it static avoids an extra native bootstrap library in the APK.
 set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
 set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
@@ -89,9 +23,8 @@ FetchContent_Declare(
     GIT_SHALLOW ON)
 FetchContent_MakeAvailable(yaml-cpp)
 
-# The engine targets Lua 5.4. Pin the current 5.4 maintenance release and build
-# the embeddable C library directly because upstream intentionally ships a
-# Makefile rather than a CMake project.
+# Lua intentionally has no upstream CMake build. This is the Android adapter
+# for the same Lua 5.4 API consumed through the engine's pac::lua seam.
 FetchContent_Declare(
     lua_source
     URL https://www.lua.org/ftp/lua-5.4.8.tar.gz
@@ -132,20 +65,42 @@ add_library(lua-android STATIC
     "${LUA_SOURCE_DIR}/lvm.c"
     "${LUA_SOURCE_DIR}/lzio.c")
 target_include_directories(lua-android PUBLIC "${LUA_SOURCE_DIR}")
+set(PAC_LUA_INCLUDE_DIRS "${LUA_SOURCE_DIR}")
+set(PAC_LUA_LIBRARIES lua-android)
 
-get_filename_component(PAC_ENGINE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../.." ABSOLUTE)
+# Android builds the ordinary engine target. Its dependency module selects the
+# same pinned modified SFML source as desktop, with the GLES2 backend confined
+# to SFML and the engine's private rendering compatibility layer.
+set(PAC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(PAC_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(PAC_BUILD_EXPERIMENTS OFF CACHE BOOL "" FORCE)
+set(PAC_INSTALL OFF CACHE BOOL "" FORCE)
+set(PAC_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+add_subdirectory("${PAC_ENGINE_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/xadv2-engine")
 
-# A data-only game uses the standard built-in composition. Games that add C++
-# scenes provide a tiny resource-backed bootstrap plus their ordinary game
-# sources. These are build inputs, not engine or Android API branches.
+# A data-only game uses the standard composition. A game with native scenes
+# supplies its root CMake directory, which must expose pac::android_game. Thus
+# desktop and Android compile one reviewable game source target.
+set(PAC_ANDROID_GAME_CMAKE_DIR "" CACHE PATH
+    "Root CMake directory for a game with a native composition")
 set(PAC_ANDROID_GAME_BOOTSTRAP "" CACHE FILEPATH
     "Source implementing pac::android::run_game for the selected game")
-set(PAC_ANDROID_GAME_SOURCES "" CACHE STRING
-    "Semicolon-separated game C++ sources linked into the Android activity")
-set(PAC_ANDROID_GAME_INCLUDE_DIRS "" CACHE STRING
-    "Semicolon-separated include directories for game C++ sources")
-set(PAC_ANDROID_VERSION_NAME "" CACHE STRING
-    "Selected external game's display version")
+if(PAC_ANDROID_GAME_CMAKE_DIR)
+    if(NOT EXISTS "${PAC_ANDROID_GAME_CMAKE_DIR}/CMakeLists.txt")
+        message(FATAL_ERROR
+            "PAC_ANDROID_GAME_CMAKE_DIR has no CMakeLists.txt: ${PAC_ANDROID_GAME_CMAKE_DIR}")
+    endif()
+    set(FDC_BUILD_EXECUTABLE OFF CACHE BOOL "" FORCE)
+    set(FDC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(FDC_ENABLE_DISTRIBUTION_TARGETS OFF CACHE BOOL "" FORCE)
+    add_subdirectory("${PAC_ANDROID_GAME_CMAKE_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}/android-game")
+    if(NOT TARGET pac::android_game)
+        message(FATAL_ERROR
+            "The selected game must expose a pac::android_game CMake target")
+    endif()
+endif()
+
 if(NOT PAC_ANDROID_GAME_BOOTSTRAP)
     set(PAC_ANDROID_GAME_BOOTSTRAP
         "${CMAKE_CURRENT_LIST_DIR}/standard_game_bootstrap.cpp")
@@ -155,43 +110,22 @@ if(NOT EXISTS "${PAC_ANDROID_GAME_BOOTSTRAP}")
         "PAC_ANDROID_GAME_BOOTSTRAP does not exist: ${PAC_ANDROID_GAME_BOOTSTRAP}")
 endif()
 
-# Cross-compile the complete real engine. CONFIGURE_DEPENDS keeps this Android
-# experiment from maintaining a second hand-written copy of lib/CMakeLists.txt's
-# source inventory while the portability work is still evolving.
-file(GLOB_RECURSE PAC_ENGINE_SOURCES CONFIGURE_DEPENDS
-    "${PAC_ENGINE_ROOT}/lib/src/*.cpp")
 add_library(pac-android-empty-scene SHARED
     main.cpp
-    "${PAC_ANDROID_GAME_BOOTSTRAP}"
-    ${PAC_ANDROID_GAME_SOURCES}
-    ${PAC_ENGINE_SOURCES})
-
-target_include_directories(pac-android-empty-scene PRIVATE
-    "${CMAKE_CURRENT_LIST_DIR}"
-    "${PAC_ENGINE_ROOT}/lib/include"
-    "${PAC_ENGINE_ROOT}/lib/src"
-    "${PAC_ENGINE_ROOT}/third_party/sol2"
-    ${PAC_ANDROID_GAME_INCLUDE_DIRS})
-if(PAC_ANDROID_VERSION_NAME)
-    target_compile_definitions(pac-android-empty-scene PRIVATE
-        FDC_VERSION="${PAC_ANDROID_VERSION_NAME}")
-endif()
-
-# sfml-main owns ANativeActivity_onCreate. Nothing references that symbol at
-# normal link time, so its object file must be retained as a whole archive.
+    "${PAC_ANDROID_GAME_BOOTSTRAP}")
+target_include_directories(pac-android-empty-scene PRIVATE "${CMAKE_CURRENT_LIST_DIR}")
 target_link_libraries(pac-android-empty-scene PRIVATE
-    sfml-audio
-    sfml-graphics
-    lua-android
-    yaml-cpp::yaml-cpp
+    pac::engine
     "$<LINK_LIBRARY:WHOLE_ARCHIVE,sfml-main>"
     android
     EGL
     GLESv2
     log)
+if(PAC_ANDROID_GAME_CMAKE_DIR)
+    target_link_libraries(pac-android-empty-scene PRIVATE pac::android_game)
+endif()
 
-# SFML 2's bootstrap activity loads every SFML module explicitly. Build all of
-# them even though this first scene only calls Graphics, Window, and System.
+# SFML 2's bootstrap activity loads every module explicitly.
 add_dependencies(pac-android-empty-scene
     sfml-activity
     sfml-audio

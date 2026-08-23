@@ -1,8 +1,8 @@
 # Build and run the C++ SFML engine + sample games on Linux (issue #125).
 #
-# Mirrors the CI / dev environment: Ubuntu 24.04 with system SFML 2.6, Lua 5.4,
-# and yaml-cpp from apt. The header-only deps (sol2, doctest) are vendored
-# in-tree, so the image needs no extra network fetch beyond apt.
+# Mirrors the CI / dev environment: Ubuntu 24.04 with the native dependencies
+# needed to compile the engine's pinned modified SFML, plus Lua 5.4 and yaml-cpp
+# from apt. The header-only deps (sol2, doctest) are vendored in-tree.
 #
 # The project is compiled at image-build time and the headless doctest/CTest
 # suite is run as a gate. The default command launches the sample game, which
@@ -18,7 +18,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         cmake \
         pkg-config \
-        libsfml-dev \
+        libx11-dev \
+        libxrandr-dev \
+        libxcursor-dev \
+        libudev-dev \
+        libgl1-mesa-dev \
+        libfreetype-dev \
+        libopenal-dev \
+        libflac-dev \
+        libvorbis-dev \
         liblua5.4-dev \
         libyaml-cpp-dev \
         ca-certificates \

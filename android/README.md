@@ -158,18 +158,14 @@ Fuera de Cuadro exposes `./run-android.sh` and `./upload-android.sh` in its own
 checkout, so its normal development workflow does not require setting
 `PAC_ANDROID_DATA_DIR` or invoking engine scripts directly.
 
-For a game with native scene modules, the build automatically uses
-`android/bootstrap.cpp`, reads additional sources from `android/sources.list`,
-and adds the game's `src` directory as an include root. Fuera de Cuadro uses this
-convention for its production map/notebook composition, while the command above
-remains identical to a data-only game. The bootstrap implements
-`pac::android::run_game`; each non-comment line in `sources.list` is a source path
-relative to the game root.
-
-The convention can be overridden with `PAC_ANDROID_GAME_BOOTSTRAP`,
-`PAC_ANDROID_GAME_SOURCES`, and `PAC_ANDROID_GAME_INCLUDE_DIRS`. Example 06 is
-the smaller checked compatibility case for this seam and sets those values
-automatically.
+For a game with native scene modules, the build adds that game's normal CMake
+project. The game exposes its canonical composition library as
+`pac::android_game`; desktop launchers and the Android launcher both link that
+same target. An optional `android/bootstrap.cpp` implements
+`pac::android::run_game` and contains only launcher/resource-path adaptation.
+Fuera de Cuadro and Example 06 are checked instances of this seam. Override
+automatic discovery with `PAC_ANDROID_GAME_CMAKE_DIR` and
+`PAC_ANDROID_GAME_BOOTSTRAP` when a repository uses a different layout.
 
 `PAC_ANDROID_EXAMPLE` must name a directory directly under `examples/` containing
 `data/game.yaml`. The selected data tree replaces the previous generated assets,

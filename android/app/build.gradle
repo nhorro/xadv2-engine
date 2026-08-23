@@ -6,9 +6,8 @@ def generatedAssetsDir = layout.buildDirectory.dir("generated/xadv2Assets")
 def xadv2Example = providers.gradleProperty("xadv2Example").orElse("01_hello_room")
 def xadv2DataDir = providers.gradleProperty("xadv2DataDir").orElse(
     xadv2Example.map { rootProject.file("../examples/${it}/data").absolutePath })
+def xadv2GameCmakeDir = providers.gradleProperty("xadv2GameCmakeDir").orElse("")
 def xadv2GameBootstrap = providers.gradleProperty("xadv2GameBootstrap").orElse("")
-def xadv2GameSources = providers.gradleProperty("xadv2GameSources").orElse("")
-def xadv2GameIncludeDirs = providers.gradleProperty("xadv2GameIncludeDirs").orElse("")
 def xadv2GameResDir = providers.gradleProperty("xadv2GameResDir").orElse("")
 def hasGameResources = !xadv2GameResDir.get().isEmpty()
 def xadv2AppLabel = providers.gradleProperty("xadv2AppLabel").orElse("xadv2 room scene")
@@ -44,10 +43,8 @@ android {
         externalNativeBuild {
             cmake {
                 arguments "-DANDROID_STL=c++_shared",
-                    "-DPAC_ANDROID_GAME_BOOTSTRAP=${xadv2GameBootstrap.get()}",
-                    "-DPAC_ANDROID_GAME_SOURCES=${xadv2GameSources.get()}",
-                    "-DPAC_ANDROID_GAME_INCLUDE_DIRS=${xadv2GameIncludeDirs.get()}",
-                    "-DPAC_ANDROID_VERSION_NAME=${xadv2VersionName.get()}"
+                    "-DPAC_ANDROID_GAME_CMAKE_DIR=${xadv2GameCmakeDir.get()}",
+                    "-DPAC_ANDROID_GAME_BOOTSTRAP=${xadv2GameBootstrap.get()}"
                 abiFilters "arm64-v8a", "x86_64"
             }
         }

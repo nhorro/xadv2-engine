@@ -47,10 +47,11 @@ To package an external game's data directory instead:
 PAC_ANDROID_DATA_DIR=../fuera-de-cuadro/data ./android/upload.sh
 ```
 
-If the external game's parent directory contains `android/bootstrap.cpp` and
-`android/sources.list`, the build automatically links that game-owned native
-composition. Fuera de Cuadro uses this convention for its map and notebook;
-Example 06 is the smaller custom-C++ compatibility case.
+If the external game's parent directory contains a `CMakeLists.txt` and
+`android/bootstrap.cpp`, the build adds the normal game project and links its
+`pac::android_game` target. Fuera de Cuadro therefore uses exactly the same map
+and notebook composition library on desktop and Android; Example 06 is the
+smaller custom-C++ compatibility case.
 
 The script:
 

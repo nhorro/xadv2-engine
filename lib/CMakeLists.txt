@@ -250,5 +250,7 @@ if(PAC_INSTALL)
             ${CMAKE_CURRENT_BINARY_DIR}/pac_engineConfig.cmake
             ${CMAKE_CURRENT_BINARY_DIR}/pac_engineConfigVersion.cmake
             ${PROJECT_SOURCE_DIR}/cmake/pacEngineDeps.cmake
+            ${PROJECT_SOURCE_DIR}/cmake/pacModifiedSfml.cmake
+            ${PROJECT_SOURCE_DIR}/android/cmake/patch-sfml-gles2.cmake
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pac_engine)
 endif()
