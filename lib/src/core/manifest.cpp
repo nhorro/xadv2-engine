@@ -542,6 +542,10 @@ Manifest parse_manifest(const std::string& yaml_text) {
     }
     m.id = root["id"].as<std::string>();
     validate_id(m.id, root["id"]);
+    m.title = root["title"] ? root["title"].as<std::string>() : m.id;
+    if (m.title.empty()) {
+        manifest_fail("manifest.title-empty", "'title' must not be empty", root["title"]);
+    }
 
     const YAML::Node res = root["resolution"];
     if (!res) {

@@ -133,8 +133,6 @@ sf::Event to_virtual_event(const sf::Event& in, const Display& display) {
     return ev;
 }
 
-constexpr char kWindowTitle[] = "Extraordinary Adventures";
-
 // (Re)create the OS window for `mode`. Fullscreen uses the desktop's native video
 // mode (no mode switch) and letterboxes the virtual resolution within it; windowed
 // uses the requested client size. Keeping the framebuffer at the desktop size is
@@ -142,11 +140,13 @@ constexpr char kWindowTitle[] = "Extraordinary Adventures";
 // coordinates in the old desktop space and the click/avatar mapping breaks (#71).
 // The virtual resolution is unchanged either way, so gameplay coordinates are
 // stable across the switch (R6).
-void apply_window_mode(sf::RenderWindow& window, const DisplayMode& mode) {
+void apply_window_mode(sf::RenderWindow& window,
+                       const DisplayMode& mode,
+                       const std::string& title) {
     if (mode.fullscreen) {
-        window.create(sf::VideoMode::getDesktopMode(), kWindowTitle, sf::Style::Fullscreen);
+        window.create(sf::VideoMode::getDesktopMode(), title, sf::Style::Fullscreen);
     } else {
-        window.create(sf::VideoMode(mode.size.x, mode.size.y), kWindowTitle, sf::Style::Default);
+        window.create(sf::VideoMode(mode.size.x, mode.size.y), title, sf::Style::Default);
     }
     window.setVerticalSyncEnabled(true);
 }
@@ -472,7 +472,8 @@ int run(const std::string& manifest_path,
 
     sf::RenderWindow window;
     apply_window_mode(window,
-                      {{settings.window_width, settings.window_height}, settings.fullscreen});
+                      {{settings.window_width, settings.window_height}, settings.fullscreen},
+                      manifest.title);
     display.set_window_size(window.getSize());
 
     // Custom point-and-click cursor (#73). When the manifest declares one, swap
@@ -571,7 +572,7 @@ int run(const std::string& manifest_path,
         // A scene (e.g. the settings menu) may have requested a display-mode
         // change; recreate the window before simulating/drawing this frame.
         if (const std::optional<DisplayMode> mode = display.take_pending_mode()) {
-            apply_window_mode(window, *mode);
+            apply_window_mode(window, *mode, manifest.title);
             display.set_window_size(window.getSize());
             display.set_fullscreen(mode->fullscreen);
             // A recreated OS window starts with its cursor visible and has not

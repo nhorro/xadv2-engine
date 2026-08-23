@@ -29,6 +29,7 @@ public:
 const char* kValid = R"YAML(
 version: 1
 id: sample
+title: Sample Adventure
 resolution: { width: 1280, height: 720 }
 window: { fullscreen: false, width: 1280, height: 720 }
 resources: { src: "." }
@@ -59,6 +60,7 @@ scenes:
 TEST_CASE("valid manifest parses with expected fields") {
     Manifest m = parse_manifest(kValid);
     CHECK(m.id == "sample");
+    CHECK(m.title == "Sample Adventure");
     CHECK(m.version == 1);
     CHECK(m.resolution.x == 1280u);
     CHECK(m.resolution.y == 720u);
@@ -91,6 +93,7 @@ TEST_CASE("facts path defaults to the resource root and rejects an empty overrid
                        "resources: { src: . }\nstrings: s\nentry: a\n"
                        "scenes: [{id: a, type: B}]\n");
     CHECK(defaults.facts_path == "facts.yaml");
+    CHECK(defaults.title == "g");
 
     CHECK(error_code([] {
               parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
