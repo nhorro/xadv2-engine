@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /work
 COPY . /work
 
-# Configure + build (Release) and gate the image on the headless test suite.
+# Configure + build (Release) and gate the image on the non-GUI test suite.
 RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
     && cmake --build build -j"$(nproc)" \
     && xvfb-run -a ctest --test-dir build --output-on-failure --label-exclude gui
