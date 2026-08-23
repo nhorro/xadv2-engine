@@ -49,13 +49,52 @@ temporary experimental changes, they live on its `android-porting-experiment`
 branch.
 
 The normal engine code is linked, but compatibility has not yet been exercised
-across every subsystem or example. Shader effects and dynamic lighting remain
-deferred: GLES-only SFML reports shaders unavailable, so rooms take the normal
-unshaded rendering path instead of entering the off-screen effects pipeline.
-Save-game thumbnail capture is currently disabled on Android because SFML 2.6's GLES1
-texture readback depends on optional framebuffer functions; saves themselves
-remain available. The Android build also applies a configure-time SFML font
-atlas workaround for the same GLES1 limitation.
+across every subsystem or GPU. Android pins a GLES2-capable SFML fork at an exact
+commit and applies the small NDK/context corrections in
+`android/cmake/patch-sfml-gles2.cmake`. The engine supplies the GLES2 default
+program required by ordinary SFML sprites, shapes, and text, and configures it
+on the window and every render texture. Room grading, animated omni/spot lights,
+occluders, normal maps, and authored shader chains therefore use the same
+multi-pass pipeline as desktop instead of the old triangle-fan fallback.
+
+The compatibility patch also restores GLES2's core separate-alpha blend path.
+The fork disabled it on Android, which corrupted render-texture alpha and made
+translucent sprite edges and projected shadows turn black when the room texture
+was composited. Fuera de Cuadro's MP3 score is supported by importing SFML
+2.6.2's reader and header-only minimp3 dependency into the pinned fork's audio
+target; the fork itself predates that reader.
+
+The patch also backports SFML 2.6's Android window-lifetime guard. System Back
+continues to arrive at the engine as the portable Escape key, but after an
+application exit the native lifecycle can no longer forward a window-destroy
+event through SFML's already-freed global window pointer.
+
+An authored `path/effect.frag` may provide an Android-specific
+`path/effect.gles.frag`; Android selects the sidecar automatically while desktop
+continues to load the original. The engine also translates the narrow
+`gl_TexCoord[0].xy` / `gl_Color` compatibility syntax used by built-in shaders.
+At startup it logs the GL vendor, renderer, ES/GLSL versions, maximum texture
+size, texture units, and fragment-uniform capacity for device QA.
+
+Save-game thumbnail capture remains disabled on Android until GLES2 framebuffer
+readback has been validated on the supported device set; saves themselves remain
+available. The Android build also retains its SFML 2.5 font-smoothing API
+compatibility guard.
+
+External games may provide resources in `android/res` beside their data
+directory and an installed label in `android/app-label.txt`. The build script
+discovers both conventions automatically. `PAC_ANDROID_GAME_RES_DIR` and
+`PAC_ANDROID_APP_LABEL` override them when needed.
+
+An external game may likewise provide `android/application-id.txt`; its semantic
+version is discovered from `project(... VERSION x.y.z ...)` in the game CMake
+file. The corresponding overrides are `PAC_ANDROID_APPLICATION_ID`,
+`PAC_ANDROID_VERSION_NAME`, and `PAC_ANDROID_VERSION_CODE`. The default version
+code mapping is `major * 1000000 + minor * 1000 + patch`.
+
+Set `PAC_ANDROID_VARIANT=release` to assemble the installable QA release. The
+current release build uses Android's debug signing configuration for direct
+sideload testing, not production store publication.
 
 ## Pinned toolchain
 
@@ -108,11 +147,16 @@ PAC_ANDROID_EXAMPLE=06_cpp_scene ./android/run.sh
 ```
 
 An external game's data directory can use the same scene composition on desktop
-and Android:
+and Android. This low-level engine command is also suitable for game-owned
+wrapper scripts:
 
 ```bash
 PAC_ANDROID_DATA_DIR=../fuera-de-cuadro/data ./android/run.sh
 ```
+
+Fuera de Cuadro exposes `./run-android.sh` and `./upload-android.sh` in its own
+checkout, so its normal development workflow does not require setting
+`PAC_ANDROID_DATA_DIR` or invoking engine scripts directly.
 
 For a game with native scene modules, the build automatically uses
 `android/bootstrap.cpp`, reads additional sources from `android/sources.list`,

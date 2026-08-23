@@ -24,13 +24,18 @@
 #include "engine/core/state_store.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/system_language.hpp"
+#include "engine/core/text_encoding.hpp"
 #include "engine/core/thumbnail.hpp"
 #include "engine/core/user_data.hpp"
+#include "engine/gfx/gles2_compat.hpp"
 
 #include <SFML/Graphics/Image.hpp>
+#include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/Text.hpp>
 #include <SFML/Graphics/Texture.hpp>
 #include <SFML/System/Clock.hpp>
+#include <SFML/System/Sleep.hpp>
 #include <SFML/Window/Cursor.hpp>
 #include <SFML/Window/Event.hpp>
 
@@ -49,6 +54,53 @@ namespace {
 constexpr float kFixedDt = 1.0f / 60.0f;  // 60 Hz simulation
 constexpr int kMaxStepsPerFrame = 5;      // cap to avoid the spiral of death
 constexpr float kSceneTransition = 0.35f; // fade-to-black seconds between scenes
+
+void draw_generic_pause(sf::RenderTarget& target,
+                        sf::Vector2u resolution,
+                        const Strings& strings,
+                        const sf::Font* font) {
+    const float width = static_cast<float>(resolution.x);
+    const float height = static_cast<float>(resolution.y);
+    sf::RectangleShape dim({width, height});
+    dim.setFillColor(sf::Color(0, 0, 0, 180));
+    target.draw(dim);
+    if (!font) {
+        return;
+    }
+
+    sf::Text title(utf8(strings.ui_label("pause")), *font, 36);
+    title.setFillColor(sf::Color(255, 240, 180));
+    const sf::FloatRect title_bounds = title.getLocalBounds();
+    title.setPosition((width - title_bounds.width) / 2.0f - title_bounds.left,
+                      height * 0.34f - title_bounds.top);
+    target.draw(title);
+
+    const sf::Vector2f button_size{360.0f, 56.0f};
+    const sf::Vector2f button_pos{(width - button_size.x) / 2.0f, height * 0.52f};
+    sf::RectangleShape button(button_size);
+    button.setPosition(button_pos);
+    button.setFillColor(sf::Color(34, 38, 54));
+    button.setOutlineColor(sf::Color(90, 100, 130));
+    button.setOutlineThickness(1.5f);
+    target.draw(button);
+
+    sf::Text resume(utf8(strings.ui_label("resume")), *font, 20);
+    resume.setFillColor(sf::Color(220, 224, 235));
+    const sf::FloatRect resume_bounds = resume.getLocalBounds();
+    resume.setPosition(
+        button_pos.x + (button_size.x - resume_bounds.width) / 2.0f - resume_bounds.left,
+        button_pos.y + (button_size.y - resume_bounds.height) / 2.0f - resume_bounds.top);
+    target.draw(resume);
+}
+
+bool resumes_generic_pause(const sf::Event& event) {
+    if (event.type == sf::Event::KeyPressed) {
+        return event.key.code == sf::Keyboard::Space || event.key.code == sf::Keyboard::Escape ||
+               event.key.code == sf::Keyboard::Enter;
+    }
+    return event.type == sf::Event::MouseButtonReleased &&
+           event.mouseButton.button == sf::Mouse::Left;
+}
 
 // Engine-handled scenes are located by their conventional manifest type string;
 // this is a data convention, not a dependency on the genre layer's types.
@@ -134,8 +186,6 @@ sf::Event to_virtual_event(const sf::Event& in, const Display& display) {
     return ev;
 }
 
-constexpr char kWindowTitle[] = "Extraordinary Adventures";
-
 // (Re)create the OS window for `mode`. Fullscreen uses the desktop's native video
 // mode (no mode switch) and letterboxes the virtual resolution within it; windowed
 // uses the requested client size. Keeping the framebuffer at the desktop size is
@@ -143,11 +193,13 @@ constexpr char kWindowTitle[] = "Extraordinary Adventures";
 // coordinates in the old desktop space and the click/avatar mapping breaks (#71).
 // The virtual resolution is unchanged either way, so gameplay coordinates are
 // stable across the switch (R6).
-void apply_window_mode(sf::RenderWindow& window, const DisplayMode& mode) {
+void apply_window_mode(sf::RenderWindow& window,
+                       const DisplayMode& mode,
+                       const std::string& title) {
     if (mode.fullscreen) {
-        window.create(sf::VideoMode::getDesktopMode(), kWindowTitle, sf::Style::Fullscreen);
+        window.create(sf::VideoMode::getDesktopMode(), title, sf::Style::Fullscreen);
     } else {
-        window.create(sf::VideoMode(mode.size.x, mode.size.y), kWindowTitle, sf::Style::Default);
+        window.create(sf::VideoMode(mode.size.x, mode.size.y), title, sf::Style::Default);
     }
     window.setVerticalSyncEnabled(true);
 }
@@ -487,7 +539,11 @@ static int run_impl(const std::string& manifest_path,
 
     sf::RenderWindow window;
     apply_window_mode(window,
-                      {{settings.window_width, settings.window_height}, settings.fullscreen});
+                      {{settings.window_width, settings.window_height}, settings.fullscreen},
+                      manifest.title);
+    if (!pac::gfx::initialize_gles2_renderer(window, log)) {
+        return 1;
+    }
     display.set_window_size(window.getSize());
 
     // Custom point-and-click cursor (#73). When the manifest declares one, swap
@@ -567,22 +623,102 @@ static int run_impl(const std::string& manifest_path,
     int frames = 0;
     bool first_frame_rendered = false;
     PointerInput pointer_input;
+    bool paused = false;
+    bool generic_pause_overlay = false;
+    bool space_down = false;
+    const sf::Font* pause_font =
+        manifest.speech.font.empty() ? nullptr : resources.try_font(manifest.speech.font);
+
+    auto begin_pause = [&]() {
+        if (paused) {
+            return;
+        }
+        generic_pause_overlay = !scenes.pause_menu_active() && !scenes.enter_pause_menu();
+        paused = true;
+        audio.pause();
+        accumulator = 0.0f;
+        log.info("application paused");
+    };
+    auto finish_pause = [&](bool close_scene_menu) {
+        if (!paused) {
+            return;
+        }
+        if (close_scene_menu) {
+            scenes.leave_pause_menu();
+        }
+        paused = false;
+        generic_pause_overlay = false;
+        audio.resume();
+        accumulator = 0.0f;
+        clock.restart();
+        log.info("application resumed");
+    };
 
     while (window.isOpen() && scenes.running()) {
         work_clock.restart();
+        bool rendering_context_needs_activation = false;
         sf::Event event;
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed) {
                 scenes.request_quit();
+            } else if (event.type == sf::Event::LostFocus) {
+                space_down = false;
+                begin_pause();
+            } else if (event.type == sf::Event::GainedFocus) {
+                // Android recreates its EGL surface while delivering this event.
+                // Keep the application paused until the player explicitly resumes.
+                space_down = false;
+                rendering_context_needs_activation = true;
             } else if (event.type == sf::Event::Resized) {
                 display.set_window_size({event.size.width, event.size.height});
             } else {
                 for (const sf::Event& pointer_event : pointer_input.translate(event)) {
-                    scenes.handle_event(to_virtual_event(pointer_event, display));
+                    const sf::Event virtual_event = to_virtual_event(pointer_event, display);
+                    if (virtual_event.type == sf::Event::KeyReleased &&
+                        virtual_event.key.code == sf::Keyboard::Space) {
+                        space_down = false;
+                        continue;
+                    }
+                    if (virtual_event.type == sf::Event::KeyPressed &&
+                        virtual_event.key.code == sf::Keyboard::Space) {
+                        if (!space_down) {
+                            space_down = true;
+                            if (paused) {
+                                finish_pause(true);
+                            } else {
+                                begin_pause();
+                            }
+                        }
+                        continue;
+                    }
+                    if (paused && generic_pause_overlay) {
+                        if (resumes_generic_pause(virtual_event)) {
+                            finish_pause(false);
+                        }
+                        continue;
+                    }
+                    scenes.handle_event(virtual_event);
+                    if (!paused && scenes.pause_menu_active()) {
+                        begin_pause();
+                    } else if (paused && !generic_pause_overlay && !scenes.pause_menu_active()) {
+                        finish_pause(false);
+                    }
                 }
             }
         }
+        // SFML queues GainedFocus before its Android processEvents() call creates
+        // the replacement EGL surface. The final poll above performs that work;
+        // only now can the context be made current again.
+        if (rendering_context_needs_activation) {
+            if (!window.setActive(true)) {
+                log.error("could not reactivate rendering context after focus gain");
+            }
+            display.set_window_size(window.getSize());
+        }
         scenes.apply_pending();
+        if (paused && !generic_pause_overlay && !scenes.pause_menu_active()) {
+            finish_pause(false);
+        }
         if (!scenes.running()) {
             break;
         }
@@ -590,7 +726,8 @@ static int run_impl(const std::string& manifest_path,
         // A scene (e.g. the settings menu) may have requested a display-mode
         // change; recreate the window before simulating/drawing this frame.
         if (const std::optional<DisplayMode> mode = display.take_pending_mode()) {
-            apply_window_mode(window, *mode);
+            apply_window_mode(window, *mode, manifest.title);
+            pac::gfx::configure_gles2_target(window);
             display.set_window_size(window.getSize());
             display.set_fullscreen(mode->fullscreen);
             // A recreated OS window starts with its cursor visible and has not
@@ -600,29 +737,52 @@ static int run_impl(const std::string& manifest_path,
         }
 
         const float frame_seconds = clock.restart().asSeconds();
-        cursor_blink_elapsed += frame_seconds;
-        accumulator += frame_seconds;
         int steps = 0;
-        while (accumulator >= kFixedDt && steps < kMaxStepsPerFrame) {
-            audio.update(kFixedDt);
-            scripting.update(kFixedDt);
-            scenes.update(kFixedDt);
-            if (hooks.update) {
-                hooks.update(kFixedDt);
-            }
+        if (paused) {
+            accumulator = 0.0f;
+            scenes.update_transition(frame_seconds);
             scenes.apply_pending();
-            accumulator -= kFixedDt;
-            ++steps;
-            if (!scenes.running()) {
-                break;
+            if (!generic_pause_overlay && !scenes.pause_menu_active()) {
+                finish_pause(false);
             }
-        }
-        if (accumulator > kFixedDt * kMaxStepsPerFrame) {
-            accumulator = 0.0f; // drop backlog rather than spiral
+        } else {
+            cursor_blink_elapsed += frame_seconds;
+            accumulator += frame_seconds;
+            while (accumulator >= kFixedDt && steps < kMaxStepsPerFrame) {
+                audio.update(kFixedDt);
+                scripting.update(kFixedDt);
+                scenes.update(kFixedDt);
+                if (hooks.update) {
+                    hooks.update(kFixedDt);
+                }
+                scenes.apply_pending();
+                accumulator -= kFixedDt;
+                ++steps;
+                if (!scenes.running()) {
+                    break;
+                }
+            }
+            if (accumulator > kFixedDt * kMaxStepsPerFrame) {
+                accumulator = 0.0f; // drop backlog rather than spiral
+            }
         }
         if (!scenes.running()) {
             break;
         }
+
+// Android destroys the native/EGL surface while the activity is in the
+// background. Continue polling lifecycle events, but never issue GL calls
+// until SFML reports focus (and therefore a recreated surface) again. Desktop
+// windows retain a renderable surface while unfocused, which is also important
+// for offscreen smoke runs that do not have window-manager focus.
+#if defined(SFML_SYSTEM_ANDROID)
+        if (!window.hasFocus()) {
+            accumulator = 0.0f;
+            clock.restart();
+            sf::sleep(sf::milliseconds(20));
+            continue;
+        }
+#endif
 
         // Consume the appearance a scene requested, then reset so INTERACT must
         // be re-asserted. The selected kind persists between fixed updates while
@@ -688,6 +848,13 @@ static int run_impl(const std::string& manifest_path,
         if (hooks.draw) {
             hooks.draw(window);
         }
+        if (paused && generic_pause_overlay) {
+            window.setView(display.view());
+            draw_generic_pause(window,
+                               display.virtual_resolution(),
+                               localization.strings(),
+                               pause_font);
+        }
 
         // Thumbnail refresh (issue #119): every ~0.5s while the active scene
         // is in a thumbnail-friendly state (RoomScene COMMAND), capture the
@@ -696,7 +863,7 @@ static int run_impl(const std::string& manifest_path,
         // keeps the per-frame GPU readback off the hot path.
         constexpr int kThumbnailEveryFrames = 30;
         const Scene* top = scenes.top();
-        if (top && top->wants_thumbnail() && (frames % kThumbnailEveryFrames) == 0) {
+        if (!paused && top && top->wants_thumbnail() && (frames % kThumbnailEveryFrames) == 0) {
             thumbnail.capture(window, display.viewport());
         }
 

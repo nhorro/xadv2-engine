@@ -2,19 +2,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-feature
-        android:glEsVersion="0x00010001"
+        android:glEsVersion="0x00020000"
         android:required="true" />
 
     <application
         android:allowBackup="false"
         android:hasCode="false"
-        android:label="xadv2 room scene"
+        android:icon="${appIcon}"
+        android:label="${appLabel}"
         android:supportsRtl="true">
         <activity
             android:name="android.app.NativeActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:exported="true"
-            android:label="xadv2 room scene"
+            android:label="${appLabel}"
             android:screenOrientation="landscape">
             <!-- SFML 2 uses a tiny bootstrap library so it can load the C++
                  runtime, OpenAL, SFML modules, and finally our game library. -->

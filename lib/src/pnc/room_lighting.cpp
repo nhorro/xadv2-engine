@@ -3,15 +3,22 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
+#include "engine/gfx/gles2_compat.hpp"
 
+#include <SFML/Config.hpp>
 #include <SFML/Graphics/Glsl.hpp>
+#include <SFML/Graphics/RectangleShape.hpp>
+#include <SFML/Graphics/RenderStates.hpp>
+#include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/Shader.hpp>
 #include <SFML/Graphics/Texture.hpp>
+#include <SFML/Graphics/VertexArray.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <string>
+#include <variant>
 
 namespace pac::pnc {
 
@@ -219,6 +226,130 @@ float evaluate_light_modulation(const LightModulation& modulation, float time) {
     return std::max(0.0f, scale);
 }
 
+void draw_compat_lighting(sf::RenderTarget& target,
+                          const RoomLighting& lighting,
+                          const std::vector<ResolvedRoomLight>& resolved,
+                          sf::FloatRect camera_view,
+                          float time) {
+    const auto channel = [](float value) {
+        return static_cast<sf::Uint8>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
+    };
+    sf::RectangleShape ambient({camera_view.width, camera_view.height});
+    ambient.setPosition(camera_view.left, camera_view.top);
+    ambient.setFillColor(sf::Color(channel(lighting.ambient_color[0] *
+                                           lighting.ambient_intensity),
+                                   channel(lighting.ambient_color[1] *
+                                           lighting.ambient_intensity),
+                                   channel(lighting.ambient_color[2] *
+                                           lighting.ambient_intensity)));
+    target.draw(ambient, sf::RenderStates(sf::BlendMultiply));
+
+    const sf::BlendMode add_to_destination(sf::BlendMode::DstColor,
+                                           sf::BlendMode::One,
+                                           sf::BlendMode::Add);
+    constexpr int kSegments = 48;
+    constexpr float kDegrees = 3.14159265358979323846f / 180.0f;
+    for (const ResolvedRoomLight& item : resolved) {
+        if (!item.light || !item.enabled || item.intensity <= 0.0f) {
+            continue;
+        }
+        const RoomLight& light = *item.light;
+        const float intensity = std::clamp(
+            item.intensity * evaluate_light_modulation(light.modulation, time), 0.0f, 1.0f);
+        const sf::Color center(channel(light.color[0] * intensity),
+                               channel(light.color[1] * intensity),
+                               channel(light.color[2] * intensity));
+        sf::VertexArray fan(sf::TriangleFan);
+        fan.append(sf::Vertex({item.position.x, item.position.y}, center));
+        const bool spot = light.type == RoomLight::Type::SPOT;
+        const float start = spot ? item.direction - light.angle * 0.5f : 0.0f;
+        const float sweep = spot ? light.angle : 360.0f;
+        const int segments = spot ? std::max(8, static_cast<int>(std::ceil(kSegments * sweep / 360.0f)))
+                                  : kSegments;
+        for (int i = 0; i <= segments; ++i) {
+            const float angle = (start + sweep * static_cast<float>(i) /
+                                            static_cast<float>(segments)) * kDegrees;
+            fan.append(sf::Vertex({item.position.x + std::cos(angle) * light.radius,
+                                   item.position.y + std::sin(angle) * light.radius},
+                                  sf::Color::Black));
+        }
+        sf::RenderStates states;
+        states.blendMode = add_to_destination;
+        target.draw(fan, states);
+    }
+}
+
+void draw_compat_color_grade(sf::RenderTarget& target,
+                             const RoomPostProcess* post_process,
+                             sf::FloatRect camera_view) {
+    if (!post_process || !post_process->enabled) {
+        return;
+    }
+    const auto scalar = [](const gfx::ShaderEffect& effect,
+                           const std::string& name,
+                           float fallback) {
+        for (const gfx::ShaderParam& param : effect.params) {
+            if (param.name == name) {
+                if (const auto* value = std::get_if<float>(&param.value)) return *value;
+            }
+        }
+        return fallback;
+    };
+    const auto vector3 = [](const gfx::ShaderEffect& effect,
+                            const std::string& name,
+                            std::array<float, 3> fallback) {
+        for (const gfx::ShaderParam& param : effect.params) {
+            if (param.name == name) {
+                if (const auto* value = std::get_if<std::array<float, 3>>(&param.value)) return *value;
+            }
+        }
+        return fallback;
+    };
+    const auto channel = [](float value) {
+        return static_cast<sf::Uint8>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
+    };
+    for (const gfx::ShaderEffect& effect : post_process->shaders) {
+        if (!effect.enabled || !effect.controller.empty() ||
+            !effect.source.ends_with("color_grade.frag")) {
+            continue;
+        }
+        const float strength = std::clamp(scalar(effect, "strength", 1.0f), 0.0f, 1.0f);
+        const auto tint = vector3(effect, "tint", {1.0f, 1.0f, 1.0f});
+        const float contrast = 1.0f + (scalar(effect, "contrast", 1.0f) - 1.0f) * strength;
+        const float brightness = scalar(effect, "brightness", 0.0f) * strength;
+        sf::RectangleShape pass({camera_view.width, camera_view.height});
+        pass.setPosition(camera_view.left, camera_view.top);
+        pass.setFillColor(sf::Color(channel((1.0f + (tint[0] - 1.0f) * strength) *
+                                            std::min(contrast, 1.0f)),
+                                    channel((1.0f + (tint[1] - 1.0f) * strength) *
+                                            std::min(contrast, 1.0f)),
+                                    channel((1.0f + (tint[2] - 1.0f) * strength) *
+                                            std::min(contrast, 1.0f))));
+        target.draw(pass, sf::RenderStates(sf::BlendMultiply));
+        if (contrast > 1.0f) {
+            pass.setFillColor(sf::Color(channel(contrast - 1.0f),
+                                        channel(contrast - 1.0f),
+                                        channel(contrast - 1.0f)));
+            sf::RenderStates states;
+            states.blendMode = sf::BlendMode(sf::BlendMode::DstColor,
+                                             sf::BlendMode::One,
+                                             sf::BlendMode::Add);
+            target.draw(pass, states);
+        }
+        if (brightness != 0.0f) {
+            if (brightness > 0.0f) {
+                pass.setFillColor(sf::Color(255, 255, 255, channel(brightness)));
+                target.draw(pass, sf::RenderStates(sf::BlendAlpha));
+            } else {
+                const float multiplier = std::clamp(1.0f + brightness, 0.0f, 1.0f);
+                pass.setFillColor(sf::Color(channel(multiplier), channel(multiplier),
+                                            channel(multiplier)));
+                target.draw(pass, sf::RenderStates(sf::BlendMultiply));
+            }
+        }
+    }
+}
+
 RoomLightingRenderer::RoomLightingRenderer() = default;
 RoomLightingRenderer::~RoomLightingRenderer() = default;
 
@@ -236,7 +367,14 @@ bool RoomLightingRenderer::ensure_shader(bool advanced, pac::core::Diagnostics& 
     }
     auto shader = std::make_unique<sf::Shader>();
     const char* source = advanced ? kLightingFragment : kLightingFragmentSimple;
-    if (!shader->loadFromMemory(source, sf::Shader::Fragment)) {
+#if defined(SFML_SYSTEM_ANDROID)
+    const std::string es_source = pac::gfx::make_gles2_fragment_shader(source);
+    const bool loaded =
+        shader->loadFromMemory(pac::gfx::gles2_vertex_shader_source(), es_source);
+#else
+    const bool loaded = shader->loadFromMemory(source, sf::Shader::Fragment);
+#endif
+    if (!loaded) {
         log.error("room lighting: built-in lighting shader failed to compile");
         return false;
     }

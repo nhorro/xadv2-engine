@@ -2,6 +2,7 @@
 
 #include "engine/core/render_stats.hpp"
 #include "engine/core/resource_cache.hpp"
+#include "engine/gfx/gles2_compat.hpp"
 
 #include <SFML/Graphics/Glsl.hpp>
 #include <SFML/Graphics/Rect.hpp>
@@ -34,7 +35,11 @@ void ShaderChain::ensure_size(unsigned width, unsigned height) {
     rt_height_ = std::max(rt_height_, height);
     for (auto& rt : rt_) {
         rt = std::make_unique<sf::RenderTexture>();
-        rt->create(rt_width_, rt_height_);
+        if (!rt->create(rt_width_, rt_height_)) {
+            rt.reset();
+            continue;
+        }
+        configure_gles2_target(*rt);
         rt->setSmooth(false);
     }
     // Mirror the new pool size into the profiling counter (#112): two RGBA8 RTs.

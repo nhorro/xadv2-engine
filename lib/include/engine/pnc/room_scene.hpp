@@ -65,6 +65,9 @@ public:
     void update(float dt) override;
     void draw(sf::RenderTarget& target) const override;
     void prepare_for_application_exit() override;
+    bool enter_pause_menu() override;
+    void leave_pause_menu() override;
+    [[nodiscard]] bool pause_menu_active() const override;
 
     /// Save-thumbnail capture (issue #119) is only meaningful while the room
     /// shows uncluttered gameplay — the COMMAND state. DIALOG / MENU / BLOCKED
@@ -472,6 +475,9 @@ private:
     std::string current_zone_;
 
     ViewState view_state_ = ViewState::COMMAND;
+    // State hidden beneath MENU. Keeping it lets lifecycle pause safely suspend
+    // a dialog/cutscene and resume it without discarding transient runtime.
+    std::optional<ViewState> paused_from_;
     // Previous frame's view state: a transition back into COMMAND resumes camera
     // follow after a scripted override (issue #25).
     ViewState prev_view_state_ = ViewState::COMMAND;

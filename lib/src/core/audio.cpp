@@ -56,6 +56,23 @@ bool MusicPlayer::open(int deck, const std::string& logical, bool loop) {
     return true;
 }
 
+bool MusicPlayer::deck_active(int deck) const {
+    return decks_[deck].getStatus() == sf::SoundSource::Playing || resume_decks_[deck];
+}
+
+void MusicPlayer::start_deck(int deck) {
+    decks_[deck].play();
+    if (paused_) {
+        decks_[deck].pause();
+        resume_decks_[deck] = true;
+    }
+}
+
+void MusicPlayer::stop_deck(int deck) {
+    decks_[deck].stop();
+    resume_decks_[deck] = false;
+}
+
 void MusicPlayer::cancel_fade() {
     if (stopping_) {
         decks_[active_].setVolume(volume_ * deck_gains_[active_] * 100.0f);
@@ -70,10 +87,10 @@ void MusicPlayer::cancel_fade() {
     const detail::MusicCrossfadeGains gains =
         detail::music_crossfade_gains(elapsed_ / fade_duration_);
     if (incoming_ >= 0 && gains.incoming > gains.outgoing) {
-        decks_[active_].stop();
+        stop_deck(active_);
         active_ = incoming_;
     } else if (incoming_ >= 0) {
-        decks_[incoming_].stop();
+        stop_deck(incoming_);
     }
 
     incoming_ = -1;
@@ -84,15 +101,15 @@ void MusicPlayer::cancel_fade() {
 void MusicPlayer::play(const std::string& logical, bool loop, float gain01) {
     cancel_fade();
     const int next = 1 - active_;
-    decks_[next].stop();
+    stop_deck(next);
     if (!open(next, logical, loop))
         return;
 
     deck_gains_[next] = std::clamp(gain01, 0.0f, 1.0f);
-    decks_[active_].stop();
+    stop_deck(active_);
     active_ = next;
     apply_volumes();
-    decks_[active_].play();
+    start_deck(active_);
 }
 
 bool MusicPlayer::crossfade(const std::string& logical,
@@ -102,12 +119,12 @@ bool MusicPlayer::crossfade(const std::string& logical,
                             float gain01) {
     cancel_fade();
     const int next = 1 - active_;
-    decks_[next].stop();
+    stop_deck(next);
     if (!open(next, logical, loop))
         return false;
     deck_gains_[next] = std::clamp(gain01, 0.0f, 1.0f);
 
-    if (preserve_offset && decks_[active_].getStatus() == sf::SoundSource::Playing) {
+    if (preserve_offset && deck_active(active_)) {
         const float duration = decks_[next].getDuration().asSeconds();
         if (duration > 0.0f) {
             const float offset =
@@ -117,7 +134,7 @@ bool MusicPlayer::crossfade(const std::string& logical,
     }
 
     decks_[next].setVolume(0.0f);
-    decks_[next].play();
+    start_deck(next);
     incoming_ = next;
     elapsed_ = 0.0f;
     fade_duration_ = std::isfinite(fade_seconds) ? std::max(fade_seconds, 0.01f) : 2.5f;
@@ -130,7 +147,7 @@ void MusicPlayer::fade_out(float fade_seconds) {
     if (stopping_)
         return;
     cancel_fade();
-    if (decks_[active_].getStatus() != sf::SoundSource::Playing) {
+    if (!deck_active(active_)) {
         stop();
         return;
     }
@@ -146,7 +163,7 @@ void MusicPlayer::update(float delta_seconds) {
         const float progress = std::clamp(elapsed_ / fade_duration_, 0.0f, 1.0f);
         apply_volumes();
         if (progress >= 1.0f) {
-            decks_[active_].stop();
+            stop_deck(active_);
             stopping_ = false;
         }
         return;
@@ -160,7 +177,7 @@ void MusicPlayer::update(float delta_seconds) {
     if (progress < 1.0f)
         return;
 
-    decks_[active_].stop();
+    stop_deck(active_);
     active_ = incoming_;
     incoming_ = -1;
     fading_ = false;
@@ -189,25 +206,51 @@ void MusicPlayer::stop() {
     incoming_ = -1;
     fading_ = false;
     stopping_ = false;
+    resume_decks_.fill(false);
+}
+
+void MusicPlayer::pause() {
+    if (paused_) {
+        return;
+    }
+    paused_ = true;
+    for (std::size_t i = 0; i < decks_.size(); ++i) {
+        resume_decks_[i] = decks_[i].getStatus() == sf::SoundSource::Playing;
+        if (resume_decks_[i]) {
+            decks_[i].pause();
+        }
+    }
+}
+
+void MusicPlayer::resume() {
+    if (!paused_) {
+        return;
+    }
+    paused_ = false;
+    for (std::size_t i = 0; i < decks_.size(); ++i) {
+        if (resume_decks_[i] && decks_[i].getStatus() == sf::SoundSource::Paused) {
+            decks_[i].play();
+        }
+        resume_decks_[i] = false;
+    }
 }
 
 float MusicPlayer::playing_offset_seconds() const {
     const sf::Music& current = incoming_ >= 0 ? decks_[incoming_] : decks_[active_];
-    if (current.getStatus() != sf::SoundSource::Playing) {
+    if (!deck_active(incoming_ >= 0 ? incoming_ : active_)) {
         return 0.0f;
     }
     return current.getPlayingOffset().asSeconds();
 }
 
 bool MusicPlayer::is_playing() const {
-    const sf::Music& current = incoming_ >= 0 ? decks_[incoming_] : decks_[active_];
-    return current.getStatus() == sf::SoundSource::Playing;
+    return deck_active(incoming_ >= 0 ? incoming_ : active_);
 }
 
 MusicState MusicPlayer::capture_state() const {
     const int current = incoming_ >= 0 ? incoming_ : active_;
     MusicState state;
-    state.playing = decks_[current].getStatus() == sf::SoundSource::Playing;
+    state.playing = deck_active(current);
     state.logical = logical_[current];
     state.loop = loops_[current];
     state.gain = deck_gains_[current];
@@ -222,8 +265,8 @@ bool MusicPlayer::restore_state(const MusicState& state, float fade_seconds) {
         // If the temporary cue is still fading in from silence, turn that same
         // envelope around. This preserves its current audible gain instead of
         // briefly jumping to full volume before the fade-out begins.
-        if (fading_ && incoming_ >= 0 && decks_[active_].getStatus() != sf::SoundSource::Playing) {
-            decks_[active_].stop();
+        if (fading_ && incoming_ >= 0 && !deck_active(active_)) {
+            stop_deck(active_);
             active_ = incoming_;
             incoming_ = -1;
             elapsed_ = std::max(fade_duration_ - elapsed_, 0.0f);
@@ -239,8 +282,7 @@ bool MusicPlayer::restore_state(const MusicState& state, float fade_seconds) {
     // While the temporary cue is still entering, the old cue remains on the
     // outgoing deck. Reverse the equal-power envelope in place: both volumes
     // remain continuous, even when a close-up is opened and closed quickly.
-    if (fading_ && incoming_ >= 0 && logical_[active_] == state.logical &&
-        decks_[active_].getStatus() == sf::SoundSource::Playing) {
+    if (fading_ && incoming_ >= 0 && logical_[active_] == state.logical && deck_active(active_)) {
         std::swap(active_, incoming_);
         elapsed_ = std::max(fade_duration_ - elapsed_, 0.0f);
         deck_gains_[incoming_] = std::clamp(state.gain, 0.0f, 1.0f);
@@ -254,8 +296,7 @@ bool MusicPlayer::restore_state(const MusicState& state, float fade_seconds) {
     // If the temporary cue was closed before its fade-in took over, cancellation
     // may already have retained the previous deck. Avoid crossfading a track into
     // a second copy of itself (which can phase audibly).
-    if (logical_[active_] == state.logical &&
-        decks_[active_].getStatus() == sf::SoundSource::Playing) {
+    if (logical_[active_] == state.logical && deck_active(active_)) {
         deck_gains_[active_] = std::clamp(state.gain, 0.0f, 1.0f);
         decks_[active_].setLoop(state.loop);
         loops_[active_] = state.loop;
@@ -263,7 +304,7 @@ bool MusicPlayer::restore_state(const MusicState& state, float fade_seconds) {
         return true;
     }
     const int next = 1 - active_;
-    decks_[next].stop();
+    stop_deck(next);
     if (!open(next, state.logical, state.loop)) {
         // The temporary score must not become permanent just because a prior
         // cue can no longer be loaded. Leave ambience untouched and fade the
@@ -280,7 +321,7 @@ bool MusicPlayer::restore_state(const MusicState& state, float fade_seconds) {
     }
 
     decks_[next].setVolume(0.0f);
-    decks_[next].play();
+    start_deck(next);
     incoming_ = next;
     elapsed_ = 0.0f;
     fade_duration_ = std::isfinite(fade_seconds) ? std::max(fade_seconds, 0.01f) : 2.5f;
@@ -298,6 +339,9 @@ SoundPlayer::SoundPlayer(ResourceCache& resources, Diagnostics& log)
     : resources_(resources), log_(log) {}
 
 void SoundPlayer::play(const std::string& logical, float volume01, float pan) {
+    if (paused_) {
+        return;
+    }
     const sf::SoundBuffer* buffer = nullptr;
     try {
         buffer = &resources_.sound_buffer(logical);
@@ -345,11 +389,13 @@ void SoundPlayer::play(const std::string& logical, float volume01, float pan) {
 void SoundPlayer::stop_voice(Voice& voice, float fade_seconds) {
     if (voice.sound.getStatus() == sf::Sound::Stopped) {
         voice.fading = false;
+        voice.resume_on_unpause = false;
         return;
     }
     if (fade_seconds <= 0.0f) {
         voice.sound.stop();
         voice.fading = false;
+        voice.resume_on_unpause = false;
         return;
     }
 
@@ -362,6 +408,32 @@ void SoundPlayer::stop_voice(Voice& voice, float fade_seconds) {
     voice.fade_duration = fade_seconds;
     voice.fading = true;
     apply_voice_volume(voice);
+}
+
+void SoundPlayer::pause() {
+    if (paused_) {
+        return;
+    }
+    paused_ = true;
+    for (Voice& voice : voices_) {
+        voice.resume_on_unpause = voice.sound.getStatus() == sf::SoundSource::Playing;
+        if (voice.resume_on_unpause) {
+            voice.sound.pause();
+        }
+    }
+}
+
+void SoundPlayer::resume() {
+    if (!paused_) {
+        return;
+    }
+    paused_ = false;
+    for (Voice& voice : voices_) {
+        if (voice.resume_on_unpause && voice.sound.getStatus() == sf::SoundSource::Paused) {
+            voice.sound.play();
+        }
+        voice.resume_on_unpause = false;
+    }
 }
 
 void SoundPlayer::stop(const std::string& logical, float fade_seconds) {
@@ -415,7 +487,7 @@ VoicePlayer::VoicePlayer(ResourceCache& resources, Diagnostics& log)
 
 std::optional<float> VoicePlayer::play(const std::string& logical) {
     stop();
-    if (!enabled_ || logical.empty()) {
+    if (paused_ || !enabled_ || logical.empty()) {
         return std::nullopt;
     }
     try {
@@ -435,6 +507,29 @@ std::optional<float> VoicePlayer::play(const std::string& logical) {
 
 void VoicePlayer::stop() {
     sound_.stop();
+    resume_on_unpause_ = false;
+}
+
+void VoicePlayer::pause() {
+    if (paused_) {
+        return;
+    }
+    paused_ = true;
+    resume_on_unpause_ = sound_.getStatus() == sf::SoundSource::Playing;
+    if (resume_on_unpause_) {
+        sound_.pause();
+    }
+}
+
+void VoicePlayer::resume() {
+    if (!paused_) {
+        return;
+    }
+    paused_ = false;
+    if (resume_on_unpause_ && sound_.getStatus() == sf::SoundSource::Paused) {
+        sound_.play();
+    }
+    resume_on_unpause_ = false;
 }
 
 void VoicePlayer::set_enabled(bool enabled) {
@@ -450,7 +545,7 @@ void VoicePlayer::set_volume(float volume01) {
 }
 
 bool VoicePlayer::is_playing() const {
-    return sound_.getStatus() == sf::SoundSource::Playing;
+    return sound_.getStatus() == sf::SoundSource::Playing || resume_on_unpause_;
 }
 
 void VoicePlayer::apply_volume() {
@@ -481,6 +576,23 @@ bool AmbiencePlayer::open(int deck, const std::string& logical) {
     return true;
 }
 
+bool AmbiencePlayer::deck_active(int deck) const {
+    return decks_[deck].getStatus() == sf::SoundSource::Playing || resume_decks_[deck];
+}
+
+void AmbiencePlayer::start_deck(int deck) {
+    decks_[deck].play();
+    if (paused_) {
+        decks_[deck].pause();
+        resume_decks_[deck] = true;
+    }
+}
+
+void AmbiencePlayer::stop_deck(int deck) {
+    decks_[deck].stop();
+    resume_decks_[deck] = false;
+}
+
 void AmbiencePlayer::cancel_transition() {
     if (transition_ == Transition::CROSSFADE && incoming_ >= 0) {
         const float progress = transition_duration_ > 0.0f
@@ -490,12 +602,12 @@ void AmbiencePlayer::cancel_transition() {
         const float outgoing_gain = start_gain_ * gains.outgoing;
         const float incoming_gain = target_gain_ * gains.incoming;
         if (incoming_gain > outgoing_gain) {
-            decks_[active_].stop();
+            stop_deck(active_);
             logical_[active_].clear();
             active_ = incoming_;
             current_gain_ = incoming_gain;
         } else {
-            decks_[incoming_].stop();
+            stop_deck(incoming_);
             logical_[incoming_].clear();
             current_gain_ = outgoing_gain;
         }
@@ -513,8 +625,7 @@ void AmbiencePlayer::set_base(const std::string& logical,
         std::isfinite(transition_seconds) ? std::max(transition_seconds, 0.0f) : 2.5f;
     cancel_transition();
 
-    const bool have_active =
-        !logical_[active_].empty() && decks_[active_].getStatus() == sf::SoundSource::Playing;
+    const bool have_active = !logical_[active_].empty() && deck_active(active_);
     if (logical.empty()) {
         if (!have_active) {
             current_gain_ = 0.0f;
@@ -541,13 +652,13 @@ void AmbiencePlayer::set_base(const std::string& logical,
     }
 
     const int next = 1 - active_;
-    decks_[next].stop();
+    stop_deck(next);
     logical_[next].clear();
     if (!open(next, logical)) {
         return; // keep the old ambience when the replacement is unusable
     }
     decks_[next].setVolume(0.0f);
-    decks_[next].play();
+    start_deck(next);
 
     start_gain_ = have_active ? current_gain_ : 0.0f;
     target_gain_ = volume01;
@@ -635,6 +746,32 @@ void AmbiencePlayer::update(float delta_seconds) {
     }
 }
 
+void AmbiencePlayer::pause() {
+    if (paused_) {
+        return;
+    }
+    paused_ = true;
+    for (std::size_t i = 0; i < decks_.size(); ++i) {
+        resume_decks_[i] = decks_[i].getStatus() == sf::SoundSource::Playing;
+        if (resume_decks_[i]) {
+            decks_[i].pause();
+        }
+    }
+}
+
+void AmbiencePlayer::resume() {
+    if (!paused_) {
+        return;
+    }
+    paused_ = false;
+    for (std::size_t i = 0; i < decks_.size(); ++i) {
+        if (resume_decks_[i] && decks_[i].getStatus() == sf::SoundSource::Paused) {
+            decks_[i].play();
+        }
+        resume_decks_[i] = false;
+    }
+}
+
 void AmbiencePlayer::update_loop(float delta_seconds) {
     if (transition_ == Transition::NONE) {
         apply_loop_volumes();
@@ -648,7 +785,7 @@ void AmbiencePlayer::update_loop(float delta_seconds) {
     if (transition_ == Transition::CROSSFADE) {
         apply_loop_volumes();
         if (progress >= 1.0f && incoming_ >= 0) {
-            decks_[active_].stop();
+            stop_deck(active_);
             logical_[active_].clear();
             active_ = incoming_;
             incoming_ = -1;
@@ -665,7 +802,7 @@ void AmbiencePlayer::update_loop(float delta_seconds) {
         return;
     }
     if (transition_ == Transition::STOP) {
-        decks_[active_].stop();
+        stop_deck(active_);
         logical_[active_].clear();
         current_gain_ = 0.0f;
     }
@@ -726,6 +863,28 @@ void AudioServices::apply_settings(const Settings& settings) {
     ambience.set_volume(settings.audio.sfx_volume);
     voice.set_volume(settings.audio.sfx_volume);
     voice.set_enabled(settings.audio.speech_enabled);
+}
+
+void AudioServices::pause() {
+    if (paused_) {
+        return;
+    }
+    paused_ = true;
+    music.pause();
+    sfx.pause();
+    ambience.pause();
+    voice.pause();
+}
+
+void AudioServices::resume() {
+    if (!paused_) {
+        return;
+    }
+    paused_ = false;
+    music.resume();
+    sfx.resume();
+    ambience.resume();
+    voice.resume();
 }
 
 } // namespace pac::core

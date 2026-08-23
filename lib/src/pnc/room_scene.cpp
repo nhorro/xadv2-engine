@@ -22,6 +22,7 @@
 #include "engine/core/text_layout.hpp"
 #include "engine/core/thumbnail.hpp"
 #include "engine/gfx/animated_sprite.hpp"
+#include "engine/gfx/gles2_compat.hpp"
 #include "engine/pnc/approach_follow.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/dev_actions.hpp"
@@ -1380,6 +1381,7 @@ void RoomScene::unload_room() {
         lua_->pending_resume.clear();
     }
     view_state_ = ViewState::COMMAND;
+    paused_from_.reset();
 }
 
 geom::Point RoomScene::speech_anchor(const Avatar& a) const {
@@ -1598,17 +1600,15 @@ void RoomScene::handle_event(const sf::Event& event) {
         return;
     }
     if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
-        // ESC toggles the in-game pause/save/load menu from COMMAND, and
-        // closes it again from MENU. DIALOG / BLOCKED ignore ESC so the
-        // player can't accidentally lose a dialog mid-conversation; in MVP
-        // the dialog must run to its end (or be skipped via clicks).
+        // ESC retains the room controls: toggle pause from ordinary gameplay,
+        // or skip an explicitly skippable cutscene. Application-level Space and
+        // focus loss can pause safely from every state via enter_pause_menu().
         if (view_state_ == ViewState::COMMAND) {
             ui_sounds_.activate(ctx_);
-            menu_hovered_ = -1;
-            view_state_ = ViewState::MENU;
+            enter_pause_menu();
         } else if (view_state_ == ViewState::MENU) {
             ui_sounds_.activate(ctx_);
-            view_state_ = ViewState::COMMAND;
+            leave_pause_menu();
         } else if (view_state_ == ViewState::BLOCKED && cutscene_skip_) {
             skip_active_cutscene();
         }
@@ -1647,7 +1647,7 @@ void RoomScene::handle_event(const sf::Event& event) {
             ctx_.scenes.open_settings();
             return true;
         case PanelIntent::Kind::OPEN_MENU:
-            view_state_ = ViewState::MENU;
+            enter_pause_menu();
             return true;
         case PanelIntent::Kind::PUSH_SCENE:
             ctx_.scenes.push_scene(intent.scene);
@@ -2634,8 +2634,7 @@ void RoomScene::draw(sf::RenderTarget& target) const {
         // produces a black frame on Android, while every individual shader
         // already has an unshaded fallback.  Keep the whole scenery pipeline on
         // its direct path unless it can actually apply an effect.
-        const bool scenery_effects_active =
-            sf::Shader::isAvailable() && (post_active || lighting);
+        const bool scenery_effects_active = sf::Shader::isAvailable() && (post_active || lighting);
         bool scenery_composited = false;
 
         if (scenery_effects_active) {
@@ -2644,6 +2643,7 @@ void RoomScene::draw(sf::RenderTarget& target) const {
             if (!post_process_target_ || post_process_target_->getSize() != post_size) {
                 auto next = std::make_unique<sf::RenderTexture>();
                 if (next->create(post_size.x, post_size.y)) {
+                    pac::gfx::configure_gles2_target(*next);
                     next->setSmooth(ctx_.resources.smooth_textures());
                     post_process_target_ = std::move(next);
                     const std::size_t next_bytes =
@@ -2733,6 +2733,18 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                            ctx_.log,
                            ShaderEnv{shader_time_},
                            projected_shadow_override);
+            if (!sf::Shader::isAvailable()) {
+                if (lighting) {
+                    draw_compat_lighting(target,
+                                         *lighting,
+                                         resolved_lights,
+                                         camera_->view_rect(),
+                                         shader_time_);
+                }
+                if (post_active) {
+                    draw_compat_color_grade(target, post, camera_->view_rect());
+                }
+            }
         }
 
         // World-space overlays are intentionally outside the post-process so
@@ -3710,7 +3722,7 @@ void RoomScene::handle_menu_event(const sf::Event& event) {
 void RoomScene::trigger_menu(const MenuButton& button) {
     switch (button.action) {
     case MenuAction::RESUME:
-        view_state_ = ViewState::COMMAND;
+        leave_pause_menu();
         break;
     case MenuAction::OPEN_SAVE:
         if (!can_save()) {
@@ -3819,11 +3831,33 @@ bool RoomScene::can_save() const {
     if (change_pending_ || change_armed_ || chapter_transition_pending_) {
         return false;
     }
-    // MENU is reachable only from COMMAND (see handle_event routing), so its
-    // underlying snapshot is the same as the moment ESC was pressed. DIALOG
-    // and BLOCKED carry transient runtime that the save format doesn't
-    // capture; refusing here makes the partial-snapshot bug impossible.
-    return view_state_ == ViewState::COMMAND || view_state_ == ViewState::MENU;
+    // DIALOG and BLOCKED carry transient runtime that the save format doesn't
+    // capture. A lifecycle pause may open MENU over either one, so only enable
+    // saving when the menu actually covers COMMAND.
+    return view_state_ == ViewState::COMMAND ||
+           (view_state_ == ViewState::MENU && paused_from_ == ViewState::COMMAND);
+}
+
+bool RoomScene::enter_pause_menu() {
+    if (view_state_ == ViewState::MENU) {
+        return true;
+    }
+    paused_from_ = view_state_;
+    menu_hovered_ = -1;
+    view_state_ = ViewState::MENU;
+    return true;
+}
+
+void RoomScene::leave_pause_menu() {
+    if (view_state_ != ViewState::MENU) {
+        return;
+    }
+    view_state_ = paused_from_.value_or(ViewState::COMMAND);
+    paused_from_.reset();
+}
+
+bool RoomScene::pause_menu_active() const {
+    return view_state_ == ViewState::MENU && paused_from_.has_value();
 }
 
 pac::core::GameState RoomScene::snap() const {
@@ -3935,6 +3969,7 @@ bool RoomScene::restore(const pac::core::GameState& state) {
         run_task_ = 0;
     }
     view_state_ = ViewState::COMMAND;
+    paused_from_.reset();
     cutscene_active_ = false;
     // A handler task awaited from the previous session is dead post-restore (its
     // room scope is gone); drop the id so update() doesn't try to drain it. Any

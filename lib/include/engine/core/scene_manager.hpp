@@ -85,6 +85,12 @@ public:
     bool transitioning() const { return transition_pending_; }
 
     void handle_event(const sf::Event& event);
+    [[nodiscard]] bool enter_pause_menu();
+    void leave_pause_menu();
+    [[nodiscard]] bool pause_menu_active() const;
+    /// Advance only the manager-owned fade. Used while gameplay simulation is
+    /// paused so confirmed scene changes can still finish cleanly.
+    void update_transition(float dt);
     void update(float dt);
     void draw(sf::RenderTarget& target) const;
 

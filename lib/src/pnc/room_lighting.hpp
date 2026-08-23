@@ -9,6 +9,7 @@
 #include <vector>
 
 namespace sf {
+class RenderTarget;
 class Shader;
 class Texture;
 }
@@ -31,6 +32,21 @@ struct ResolvedRoomLight {
 /// Deterministic modulation multiplier for an authored light intensity. Kept
 /// pure/headless so flicker and faulty-lamp behavior can be regression-tested.
 float evaluate_light_modulation(const LightModulation& modulation, float time);
+
+/// Fixed-function fallback used by SFML's Android GLES1 backend. It preserves
+/// authored ambient colour and animated omni/spot lights without render
+/// textures or GLSL. Occluders and normal maps remain shader-only.
+void draw_compat_lighting(sf::RenderTarget& target,
+                          const RoomLighting& lighting,
+                          const std::vector<ResolvedRoomLight>& resolved,
+                          sf::FloatRect camera_view,
+                          float time);
+
+/// Applies the portable subset of the standard color_grade.frag parameters
+/// (tint, brightness and contrast) with fixed-function blend passes.
+void draw_compat_color_grade(sf::RenderTarget& target,
+                             const RoomPostProcess* post_process,
+                             sf::FloatRect camera_view);
 
 /// Compiles and binds the engine-owned room-lighting shader. The returned pass
 /// is inserted before authored post-processing by gfx::ShaderChain, reusing its

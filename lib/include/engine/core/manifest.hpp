@@ -101,6 +101,9 @@ struct Manifest {
     /// so two games using this engine get separate save folders. Required;
     /// allowed chars are `[a-z0-9_-]`.
     std::string id;
+    /// Human-readable game name used for the application window title. When
+    /// omitted by an older manifest, this falls back to `id`.
+    std::string title;
     int version = 1;
     sf::Vector2u resolution{1280, 720};
     WindowConfig window;

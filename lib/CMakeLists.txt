@@ -132,6 +132,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/gfx/visual_sprite.cpp
     src/gfx/shader_effect.cpp
     src/gfx/shader_chain.cpp
+    src/gfx/gles2_compat.cpp
     src/pnc/blank_scene.cpp
     src/pnc/shader_yaml.cpp
     src/pnc/ui_sound_cues.cpp

@@ -3,6 +3,7 @@
 // covers the headless data: YAML -> gfx::ShaderEffect / ShaderParam off parse_room.
 
 #include "engine/core/resource_cache.hpp"
+#include "engine/gfx/gles2_compat.hpp"
 #include "engine/gfx/shader_effect.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"
@@ -184,6 +185,17 @@ TEST_CASE("shader_source_uses matches whole words only") {
         shader_source_uses("// u_time is unused\n/* u_resolution too */\nvoid main(){}", "u_time"));
     CHECK_FALSE(shader_source_uses("// u_time is unused\n/* u_resolution too */\nvoid main(){}",
                                    "u_resolution"));
+}
+
+TEST_CASE("GLES2 shader translation replaces the SFML compatibility varyings") {
+    const std::string translated = pac::gfx::make_gles2_fragment_shader(
+        "void main() { gl_FragColor = texture2D(texture, gl_TexCoord[0].xy) * gl_Color; }");
+
+    CHECK(translated.find("precision mediump float;") != std::string::npos);
+    CHECK(translated.find("varying mediump vec2 vTexCoord;") != std::string::npos);
+    CHECK(translated.find("texture2D(texture, vTexCoord) * vColor") != std::string::npos);
+    CHECK(translated.find("gl_TexCoord") == std::string::npos);
+    CHECK(translated.find("gl_Color") == std::string::npos);
 }
 
 TEST_CASE("shader parse errors carry stable codes") {

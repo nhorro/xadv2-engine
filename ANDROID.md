@@ -69,9 +69,11 @@ The APK contains the selected example's unchanged data tree and starts it throug
 the same manifest, scenes, and Lua APIs used on desktop. Re-running the script
 rebuilds and replaces the existing app.
 
-Shaders and dynamic lighting currently fall back to the normal unshaded room
-rendering path on Android. This keeps the game and its interaction usable while
-those advanced visual effects remain a later portability milestone.
+Shaders, grading, and dynamic lighting use the GLES2 version of the desktop
+multi-pass pipeline. Authored shaders may provide a `.gles.frag` sidecar for
+syntax or precision differences. The Android SFML compatibility patch also
+keeps render-texture alpha correct for translucent sprites and shadows, and
+adds the MP3 reader required by Fuera de Cuadro's score.
 
 Save-game thumbnail images are temporarily unavailable on Android. SFML 2.6's
 GLES1 framebuffer readback is not portable across the test devices; the engine

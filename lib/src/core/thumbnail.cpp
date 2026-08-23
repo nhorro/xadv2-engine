@@ -1,6 +1,7 @@
 #include "engine/core/thumbnail.hpp"
 
 #include "engine/core/display.hpp"
+#include "engine/gfx/gles2_compat.hpp"
 
 #include <SFML/Graphics/Rect.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
@@ -22,6 +23,7 @@ bool Thumbnail::ensure_rt() {
         rt_.reset();
         return false;
     }
+    pac::gfx::configure_gles2_target(*rt_);
     rt_->setSmooth(true);
     rt_ready_ = true;
     return true;
