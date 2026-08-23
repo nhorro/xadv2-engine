@@ -2,7 +2,7 @@
 
 #include "engine/core/render_stats.hpp"
 #include "engine/core/resource_cache.hpp"
-#include "engine/gfx/gles2_compat.hpp"
+#include "gfx/gles2_compat.hpp"
 
 #include <SFML/Graphics/Glsl.hpp>
 #include <SFML/Graphics/Rect.hpp>

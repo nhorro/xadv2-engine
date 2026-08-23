@@ -3,7 +3,7 @@
 // covers the headless data: YAML -> gfx::ShaderEffect / ShaderParam off parse_room.
 
 #include "engine/core/resource_cache.hpp"
-#include "engine/gfx/gles2_compat.hpp"
+#include "gfx/gles2_compat.hpp"
 #include "engine/gfx/shader_effect.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/room.hpp"

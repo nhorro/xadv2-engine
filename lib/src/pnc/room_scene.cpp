@@ -22,7 +22,7 @@
 #include "engine/core/text_layout.hpp"
 #include "engine/core/thumbnail.hpp"
 #include "engine/gfx/animated_sprite.hpp"
-#include "engine/gfx/gles2_compat.hpp"
+#include "gfx/gles2_compat.hpp"
 #include "engine/pnc/approach_follow.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/dev_actions.hpp"

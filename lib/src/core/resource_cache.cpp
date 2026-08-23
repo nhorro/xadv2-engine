@@ -2,7 +2,7 @@
 
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/resource_source.hpp"
-#include "engine/gfx/gles2_compat.hpp"
+#include "gfx/gles2_compat.hpp"
 
 #include <SFML/Config.hpp>
 

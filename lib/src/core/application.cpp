@@ -27,7 +27,7 @@
 #include "engine/core/text_encoding.hpp"
 #include "engine/core/thumbnail.hpp"
 #include "engine/core/user_data.hpp"
-#include "engine/gfx/gles2_compat.hpp"
+#include "gfx/gles2_compat.hpp"
 
 #include <SFML/Graphics/Image.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>

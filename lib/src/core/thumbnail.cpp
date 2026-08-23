@@ -1,7 +1,7 @@
 #include "engine/core/thumbnail.hpp"
 
 #include "engine/core/display.hpp"
-#include "engine/gfx/gles2_compat.hpp"
+#include "gfx/gles2_compat.hpp"
 
 #include <SFML/Graphics/Rect.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>

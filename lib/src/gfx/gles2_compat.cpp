@@ -1,4 +1,4 @@
-#include "engine/gfx/gles2_compat.hpp"
+#include "gfx/gles2_compat.hpp"
 
 #include "engine/core/diagnostics.hpp"
 
