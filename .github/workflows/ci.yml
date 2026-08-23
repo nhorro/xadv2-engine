@@ -48,7 +48,15 @@ jobs:
             build-essential \
             cmake \
             pkg-config \
-            libsfml-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxcursor-dev \
+            libudev-dev \
+            libgl1-mesa-dev \
+            libfreetype-dev \
+            libopenal-dev \
+            libflac-dev \
+            libvorbis-dev \
             liblua5.4-dev \
             libyaml-cpp-dev \
             xvfb
