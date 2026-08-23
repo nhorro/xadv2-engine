@@ -79,7 +79,7 @@ set(PAC_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 add_subdirectory("${PAC_ENGINE_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/xadv2-engine")
 
 # A data-only game uses the standard composition. A game with native scenes
-# supplies its root CMake directory, which must expose pac::android_game. Thus
+# supplies its root CMake directory, which must expose pac::game. Thus
 # desktop and Android compile one reviewable game source target.
 set(PAC_ANDROID_GAME_CMAKE_DIR "" CACHE PATH
     "Root CMake directory for a game with a native composition")
@@ -95,9 +95,9 @@ if(PAC_ANDROID_GAME_CMAKE_DIR)
     set(FDC_ENABLE_DISTRIBUTION_TARGETS OFF CACHE BOOL "" FORCE)
     add_subdirectory("${PAC_ANDROID_GAME_CMAKE_DIR}"
         "${CMAKE_CURRENT_BINARY_DIR}/android-game")
-    if(NOT TARGET pac::android_game)
+    if(NOT TARGET pac::game)
         message(FATAL_ERROR
-            "The selected game must expose a pac::android_game CMake target")
+            "The selected game must expose a pac::game CMake target")
     endif()
 endif()
 
@@ -122,7 +122,7 @@ target_link_libraries(pac-android-empty-scene PRIVATE
     GLESv2
     log)
 if(PAC_ANDROID_GAME_CMAKE_DIR)
-    target_link_libraries(pac-android-empty-scene PRIVATE pac::android_game)
+    target_link_libraries(pac-android-empty-scene PRIVATE pac::game)
 endif()
 
 # SFML 2's bootstrap activity loads every module explicitly.

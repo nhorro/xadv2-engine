@@ -10,7 +10,7 @@ add_library(pac_example_06_game STATIC
     src/game.cpp
     src/field_notes.cpp
 )
-add_library(pac::android_game ALIAS pac_example_06_game)
+add_library(pac::game ALIAS pac_example_06_game)
 set_target_properties(pac_example_06_game PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(pac_example_06_game PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 

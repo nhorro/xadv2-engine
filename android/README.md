@@ -160,7 +160,7 @@ checkout, so its normal development workflow does not require setting
 
 For a game with native scene modules, the build adds that game's normal CMake
 project. The game exposes its canonical composition library as
-`pac::android_game`; desktop launchers and the Android launcher both link that
+`pac::game`; desktop launchers and the Android launcher both link that
 same target. An optional `android/bootstrap.cpp` implements
 `pac::android::run_game` and contains only launcher/resource-path adaptation.
 Fuera de Cuadro and Example 06 are checked instances of this seam. Override
