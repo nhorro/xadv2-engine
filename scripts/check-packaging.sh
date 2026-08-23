@@ -27,9 +27,10 @@ trap cleanup EXIT
 echo "==> building + installing the engine to $PREFIX"
 cmake -S "$ROOT_DIR" -B "$BUILD" \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX="$PREFIX" \
     -DPAC_BUILD_TESTS=OFF -DPAC_BUILD_EXAMPLES=OFF -DPAC_BUILD_EXPERIMENTS=OFF > /dev/null
 cmake --build "$BUILD" -j"$(nproc)" > /dev/null
-cmake --install "$BUILD" --prefix "$PREFIX" > /dev/null
+cmake --install "$BUILD" > /dev/null
 
 echo "==> installed layout"
 find "$PREFIX" -maxdepth 3 -mindepth 1 \
