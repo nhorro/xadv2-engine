@@ -1,7 +1,7 @@
 Extraordinary Adventures Engine v2
 ==================================
 
-A C++17/SFML engine for third-person, SCUMM-style point-and-click adventure games,
+A C++20/SFML engine for third-person, SCUMM-style point-and-click adventure games,
 scripted in **Lua** and configured in **YAML**. A remake of
 [Extraordinary Adventures](https://github.com/nhorro/ea-engine).
 
@@ -44,6 +44,17 @@ Build instructions
 
 ### Linux
 
+The engine builds its pinned modified SFML source on every platform. On
+Ubuntu/Debian, install its native window/audio dependencies together with the
+engine's YAML and Lua dependencies:
+
+~~~bash
+sudo apt install build-essential cmake libx11-dev libxrandr-dev libxcursor-dev \
+    libudev-dev libgl1-mesa-dev \
+    libfreetype-dev libopenal-dev libflac-dev libvorbis-dev \
+    libyaml-cpp-dev liblua5.4-dev
+~~~
+
 ~~~bash
 ./build-linux.sh
 ~~~
@@ -60,10 +71,17 @@ to it (the script also auto-detects a sibling `..\vcpkg`), then:
 .\build-windows.bat            REM Debug; pass Release for an optimized build
 ~~~
 
-This stamps the vcpkg baseline, vcpkg-installs SFML 2.6 / yaml-cpp / Lua 5.4
-(sol2 and doctest stay header-only), and builds the engine + examples. For the IDE
+This stamps the vcpkg baseline, vcpkg-installs yaml-cpp and Lua 5.4, fetches the
+same pinned modified SFML source used on Linux/Android, and builds the engine +
+examples (sol2 and doctest stay header-only). For the IDE
 / CMake preset flow that CI uses (`cmake --preset windows-msvc`), see the Windows
 section of [CLAUDE.md](CLAUDE.md).
+
+### Android (experimental)
+
+The optional Linux-hosted Android backend can build an APK, run it in the local
+emulator, or upload it to a USB/wireless-debugging phone. See
+[android/README.md](android/README.md).
 
 ### Packaging check
 

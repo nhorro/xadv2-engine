@@ -9,6 +9,7 @@
 #include "engine/core/lua_api.hpp"
 #include "engine/core/manifest.hpp"
 #include "engine/core/pack_resource_source.hpp"
+#include "engine/core/pointer_input.hpp"
 #include "engine/core/profiler.hpp"
 #include "engine/core/render_stats.hpp"
 #include "engine/core/resource_cache.hpp"
@@ -23,13 +24,18 @@
 #include "engine/core/state_store.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/system_language.hpp"
+#include "engine/core/text_encoding.hpp"
 #include "engine/core/thumbnail.hpp"
 #include "engine/core/user_data.hpp"
+#include "gfx/gles2_compat.hpp"
 
 #include <SFML/Graphics/Image.hpp>
+#include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/Text.hpp>
 #include <SFML/Graphics/Texture.hpp>
 #include <SFML/System/Clock.hpp>
+#include <SFML/System/Sleep.hpp>
 #include <SFML/Window/Cursor.hpp>
 #include <SFML/Window/Event.hpp>
 
@@ -48,6 +54,53 @@ namespace {
 constexpr float kFixedDt = 1.0f / 60.0f;  // 60 Hz simulation
 constexpr int kMaxStepsPerFrame = 5;      // cap to avoid the spiral of death
 constexpr float kSceneTransition = 0.35f; // fade-to-black seconds between scenes
+
+void draw_generic_pause(sf::RenderTarget& target,
+                        sf::Vector2u resolution,
+                        const Strings& strings,
+                        const sf::Font* font) {
+    const float width = static_cast<float>(resolution.x);
+    const float height = static_cast<float>(resolution.y);
+    sf::RectangleShape dim({width, height});
+    dim.setFillColor(sf::Color(0, 0, 0, 180));
+    target.draw(dim);
+    if (!font) {
+        return;
+    }
+
+    sf::Text title(utf8(strings.ui_label("pause")), *font, 36);
+    title.setFillColor(sf::Color(255, 240, 180));
+    const sf::FloatRect title_bounds = title.getLocalBounds();
+    title.setPosition((width - title_bounds.width) / 2.0f - title_bounds.left,
+                      height * 0.34f - title_bounds.top);
+    target.draw(title);
+
+    const sf::Vector2f button_size{360.0f, 56.0f};
+    const sf::Vector2f button_pos{(width - button_size.x) / 2.0f, height * 0.52f};
+    sf::RectangleShape button(button_size);
+    button.setPosition(button_pos);
+    button.setFillColor(sf::Color(34, 38, 54));
+    button.setOutlineColor(sf::Color(90, 100, 130));
+    button.setOutlineThickness(1.5f);
+    target.draw(button);
+
+    sf::Text resume(utf8(strings.ui_label("resume")), *font, 20);
+    resume.setFillColor(sf::Color(220, 224, 235));
+    const sf::FloatRect resume_bounds = resume.getLocalBounds();
+    resume.setPosition(
+        button_pos.x + (button_size.x - resume_bounds.width) / 2.0f - resume_bounds.left,
+        button_pos.y + (button_size.y - resume_bounds.height) / 2.0f - resume_bounds.top);
+    target.draw(resume);
+}
+
+bool resumes_generic_pause(const sf::Event& event) {
+    if (event.type == sf::Event::KeyPressed) {
+        return event.key.code == sf::Keyboard::Space || event.key.code == sf::Keyboard::Escape ||
+               event.key.code == sf::Keyboard::Enter;
+    }
+    return event.type == sf::Event::MouseButtonReleased &&
+           event.mouseButton.button == sf::Mouse::Left;
+}
 
 // Engine-handled scenes are located by their conventional manifest type string;
 // this is a data convention, not a dependency on the genre layer's types.
@@ -271,51 +324,64 @@ parse_run_options(int argc, char** argv, RunOptions& opts, const std::string& de
     return manifest;
 }
 
-int run(const std::string& manifest_path,
-        const SceneFactory& factory,
-        const RunOptions& opts,
-        const ApplicationHooks& hooks) {
+static int run_impl(const std::string& manifest_path,
+                    ResourceSource* supplied_source,
+                    const SceneFactory& factory,
+                    const RunOptions& opts,
+                    const ApplicationHooks& hooks) {
     Diagnostics log;
 
-    // Resource backend (#109): prefer a `resources.pak` archive next to the
-    // executable / in CWD; fall back to the loose-files manifest. In pak mode
-    // the manifest lives inside the archive at `game.yaml`; the CLI manifest
-    // argument is ignored. In filesystem mode the argument names the manifest
-    // file on disk (today's behavior).
-    const std::filesystem::path pak = discover_pak(opts.argv0, opts.pak_path);
-
+    // A platform may supply a source directly. Otherwise preserve the desktop
+    // backend selection (#109): prefer resources.pak, then loose files.
     std::unique_ptr<ResourceSource> source_holder;
     Manifest manifest;
-    if (!pak.empty()) {
+    ResourceSource* source_ptr = supplied_source;
+    if (source_ptr) {
         try {
-            source_holder = std::make_unique<PackResourceSource>(pak);
+            manifest = load_manifest(*source_ptr, manifest_path);
         } catch (const std::exception& e) {
-            log.error(e.what());
+            log.error(std::string("manifest resource '") + manifest_path + "': " + e.what());
             return 1;
         }
-        try {
-            manifest = load_manifest(*source_holder, kPakManifestLogical);
-        } catch (const std::exception& e) {
-            log.error(std::string("manifest in pak: ") + e.what());
-            return 1;
-        }
-        // Inside a pak, every entry is keyed by a logical path; the manifest's
-        // `resources.src` no longer points at a host directory. Normalize to
-        // an empty value so downstream string handling stays consistent.
+        // A supplied source is already rooted at the packaged game data. The
+        // manifest's host-oriented resources.src value must not be applied a
+        // second time by downstream code.
         manifest.resources_src.clear();
-        log.info("loaded manifest from pak '" + pak.string() + "'");
+        log.info("loaded manifest resource '" + manifest_path + "'");
     } else {
-        try {
-            manifest = load_manifest(manifest_path);
-        } catch (const std::exception& e) {
-            log.error(e.what());
-            return 1;
+        const std::filesystem::path pak = discover_pak(opts.argv0, opts.pak_path);
+        if (!pak.empty()) {
+            try {
+                source_holder = std::make_unique<PackResourceSource>(pak);
+            } catch (const std::exception& e) {
+                log.error(e.what());
+                return 1;
+            }
+            try {
+                manifest = load_manifest(*source_holder, kPakManifestLogical);
+            } catch (const std::exception& e) {
+                log.error(std::string("manifest in pak: ") + e.what());
+                return 1;
+            }
+            // Inside a pak, every entry is keyed by a logical path; the manifest's
+            // `resources.src` no longer points at a host directory. Normalize to
+            // an empty value so downstream string handling stays consistent.
+            manifest.resources_src.clear();
+            log.info("loaded manifest from pak '" + pak.string() + "'");
+        } else {
+            try {
+                manifest = load_manifest(manifest_path);
+            } catch (const std::exception& e) {
+                log.error(e.what());
+                return 1;
+            }
+            source_holder = std::make_unique<FilesystemResourceSource>(manifest.resources_src);
+            log.info("loaded manifest '" + manifest_path +
+                     "' (resource root: " + manifest.resources_src + ")");
         }
-        source_holder = std::make_unique<FilesystemResourceSource>(manifest.resources_src);
-        log.info("loaded manifest '" + manifest_path +
-                 "' (resource root: " + manifest.resources_src + ")");
+        source_ptr = source_holder.get();
     }
-    ResourceSource& source = *source_holder;
+    ResourceSource& source = *source_ptr;
 
     Settings settings;
     settings.audio.music_volume = manifest.settings.music_volume;
@@ -469,11 +535,15 @@ int run(const std::string& manifest_path,
         log.error("failed to enter entry scene '" + manifest.entry + "'");
         return 1;
     }
+    log.info("entered entry scene '" + manifest.entry + "'");
 
     sf::RenderWindow window;
     apply_window_mode(window,
                       {{settings.window_width, settings.window_height}, settings.fullscreen},
                       manifest.title);
+    if (!pac::gfx::initialize_gles2_renderer(window, log)) {
+        return 1;
+    }
     display.set_window_size(window.getSize());
 
     // Custom point-and-click cursor (#73). When the manifest declares one, swap
@@ -551,20 +621,104 @@ int run(const std::string& manifest_path,
     sf::Clock work_clock; // CPU+draw cost of a frame, excluding the vsync wait
     float accumulator = 0.0f;
     int frames = 0;
+    bool first_frame_rendered = false;
+    PointerInput pointer_input;
+    bool paused = false;
+    bool generic_pause_overlay = false;
+    bool space_down = false;
+    const sf::Font* pause_font =
+        manifest.speech.font.empty() ? nullptr : resources.try_font(manifest.speech.font);
+
+    auto begin_pause = [&]() {
+        if (paused) {
+            return;
+        }
+        generic_pause_overlay = !scenes.pause_menu_active() && !scenes.enter_pause_menu();
+        paused = true;
+        audio.pause();
+        accumulator = 0.0f;
+        log.info("application paused");
+    };
+    auto finish_pause = [&](bool close_scene_menu) {
+        if (!paused) {
+            return;
+        }
+        if (close_scene_menu) {
+            scenes.leave_pause_menu();
+        }
+        paused = false;
+        generic_pause_overlay = false;
+        audio.resume();
+        accumulator = 0.0f;
+        clock.restart();
+        log.info("application resumed");
+    };
 
     while (window.isOpen() && scenes.running()) {
         work_clock.restart();
+        bool rendering_context_needs_activation = false;
         sf::Event event;
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed) {
                 scenes.request_quit();
+            } else if (event.type == sf::Event::LostFocus) {
+                space_down = false;
+                begin_pause();
+            } else if (event.type == sf::Event::GainedFocus) {
+                // Android recreates its EGL surface while delivering this event.
+                // Keep the application paused until the player explicitly resumes.
+                space_down = false;
+                rendering_context_needs_activation = true;
             } else if (event.type == sf::Event::Resized) {
                 display.set_window_size({event.size.width, event.size.height});
             } else {
-                scenes.handle_event(to_virtual_event(event, display));
+                for (const sf::Event& pointer_event : pointer_input.translate(event)) {
+                    const sf::Event virtual_event = to_virtual_event(pointer_event, display);
+                    if (virtual_event.type == sf::Event::KeyReleased &&
+                        virtual_event.key.code == sf::Keyboard::Space) {
+                        space_down = false;
+                        continue;
+                    }
+                    if (virtual_event.type == sf::Event::KeyPressed &&
+                        virtual_event.key.code == sf::Keyboard::Space) {
+                        if (!space_down) {
+                            space_down = true;
+                            if (paused) {
+                                finish_pause(true);
+                            } else {
+                                begin_pause();
+                            }
+                        }
+                        continue;
+                    }
+                    if (paused && generic_pause_overlay) {
+                        if (resumes_generic_pause(virtual_event)) {
+                            finish_pause(false);
+                        }
+                        continue;
+                    }
+                    scenes.handle_event(virtual_event);
+                    if (!paused && scenes.pause_menu_active()) {
+                        begin_pause();
+                    } else if (paused && !generic_pause_overlay && !scenes.pause_menu_active()) {
+                        finish_pause(false);
+                    }
+                }
             }
         }
+        // SFML queues GainedFocus before its Android processEvents() call creates
+        // the replacement EGL surface. The final poll above performs that work;
+        // only now can the context be made current again.
+        if (rendering_context_needs_activation) {
+            if (!window.setActive(true)) {
+                log.error("could not reactivate rendering context after focus gain");
+            }
+            display.set_window_size(window.getSize());
+        }
         scenes.apply_pending();
+        if (paused && !generic_pause_overlay && !scenes.pause_menu_active()) {
+            finish_pause(false);
+        }
         if (!scenes.running()) {
             break;
         }
@@ -573,6 +727,7 @@ int run(const std::string& manifest_path,
         // change; recreate the window before simulating/drawing this frame.
         if (const std::optional<DisplayMode> mode = display.take_pending_mode()) {
             apply_window_mode(window, *mode, manifest.title);
+            pac::gfx::configure_gles2_target(window);
             display.set_window_size(window.getSize());
             display.set_fullscreen(mode->fullscreen);
             // A recreated OS window starts with its cursor visible and has not
@@ -582,29 +737,52 @@ int run(const std::string& manifest_path,
         }
 
         const float frame_seconds = clock.restart().asSeconds();
-        cursor_blink_elapsed += frame_seconds;
-        accumulator += frame_seconds;
         int steps = 0;
-        while (accumulator >= kFixedDt && steps < kMaxStepsPerFrame) {
-            audio.update(kFixedDt);
-            scripting.update(kFixedDt);
-            scenes.update(kFixedDt);
-            if (hooks.update) {
-                hooks.update(kFixedDt);
-            }
+        if (paused) {
+            accumulator = 0.0f;
+            scenes.update_transition(frame_seconds);
             scenes.apply_pending();
-            accumulator -= kFixedDt;
-            ++steps;
-            if (!scenes.running()) {
-                break;
+            if (!generic_pause_overlay && !scenes.pause_menu_active()) {
+                finish_pause(false);
             }
-        }
-        if (accumulator > kFixedDt * kMaxStepsPerFrame) {
-            accumulator = 0.0f; // drop backlog rather than spiral
+        } else {
+            cursor_blink_elapsed += frame_seconds;
+            accumulator += frame_seconds;
+            while (accumulator >= kFixedDt && steps < kMaxStepsPerFrame) {
+                audio.update(kFixedDt);
+                scripting.update(kFixedDt);
+                scenes.update(kFixedDt);
+                if (hooks.update) {
+                    hooks.update(kFixedDt);
+                }
+                scenes.apply_pending();
+                accumulator -= kFixedDt;
+                ++steps;
+                if (!scenes.running()) {
+                    break;
+                }
+            }
+            if (accumulator > kFixedDt * kMaxStepsPerFrame) {
+                accumulator = 0.0f; // drop backlog rather than spiral
+            }
         }
         if (!scenes.running()) {
             break;
         }
+
+// Android destroys the native/EGL surface while the activity is in the
+// background. Continue polling lifecycle events, but never issue GL calls
+// until SFML reports focus (and therefore a recreated surface) again. Desktop
+// windows retain a renderable surface while unfocused, which is also important
+// for offscreen smoke runs that do not have window-manager focus.
+#if defined(SFML_SYSTEM_ANDROID)
+        if (!window.hasFocus()) {
+            accumulator = 0.0f;
+            clock.restart();
+            sf::sleep(sf::milliseconds(20));
+            continue;
+        }
+#endif
 
         // Consume the appearance a scene requested, then reset so INTERACT must
         // be re-asserted. The selected kind persists between fixed updates while
@@ -670,6 +848,13 @@ int run(const std::string& manifest_path,
         if (hooks.draw) {
             hooks.draw(window);
         }
+        if (paused && generic_pause_overlay) {
+            window.setView(display.view());
+            draw_generic_pause(window,
+                               display.virtual_resolution(),
+                               localization.strings(),
+                               pause_font);
+        }
 
         // Thumbnail refresh (issue #119): every ~0.5s while the active scene
         // is in a thumbnail-friendly state (RoomScene COMMAND), capture the
@@ -678,7 +863,7 @@ int run(const std::string& manifest_path,
         // keeps the per-frame GPU readback off the hot path.
         constexpr int kThumbnailEveryFrames = 30;
         const Scene* top = scenes.top();
-        if (top && top->wants_thumbnail() && (frames % kThumbnailEveryFrames) == 0) {
+        if (!paused && top && top->wants_thumbnail() && (frames % kThumbnailEveryFrames) == 0) {
             thumbnail.capture(window, display.viewport());
         }
 
@@ -706,6 +891,10 @@ int run(const std::string& manifest_path,
             reset_shader_passes();
         }
         window.display();
+        if (!first_frame_rendered) {
+            first_frame_rendered = true;
+            log.info("rendered first frame");
+        }
 
         if (opts.max_frames > 0 && ++frames >= opts.max_frames) {
             log.info("smoke run reached max_frames=" + std::to_string(opts.max_frames) +
@@ -726,6 +915,21 @@ int run(const std::string& manifest_path,
         profiler->finish();
     }
     return 0;
+}
+
+int run(const std::string& manifest_path,
+        const SceneFactory& factory,
+        const RunOptions& opts,
+        const ApplicationHooks& hooks) {
+    return run_impl(manifest_path, nullptr, factory, opts, hooks);
+}
+
+int run_from_resources(ResourceSource& resources,
+                       const std::string& manifest_logical_path,
+                       const SceneFactory& factory,
+                       const RunOptions& opts,
+                       const ApplicationHooks& hooks) {
+    return run_impl(manifest_logical_path, &resources, factory, opts, hooks);
 }
 
 } // namespace pac::core

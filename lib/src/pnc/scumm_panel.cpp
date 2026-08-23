@@ -15,6 +15,7 @@
 #include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Text.hpp>
 #include <SFML/Graphics/Texture.hpp>
+#include <SFML/Config.hpp>
 
 #include <algorithm>
 #include <array>
@@ -230,7 +231,14 @@ ScummPanel::ScummPanel(ScummPanelConfig config,
                                   system_button_font_,
                                   font_}) {
             if (f != nullptr) {
+#if SFML_VERSION_MAJOR > 2 || (SFML_VERSION_MAJOR == 2 && SFML_VERSION_MINOR >= 6)
                 const_cast<sf::Font*>(f)->setSmooth(smooth);
+#else
+                // The pinned Android GLES2 fork is API-compatible with SFML
+                // 2.5, before Font::setSmooth was added. Its glyph atlas keeps
+                // the default smooth filtering, which is the game's setting.
+                (void)smooth;
+#endif
             }
         }
     }

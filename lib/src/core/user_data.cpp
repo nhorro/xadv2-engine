@@ -3,6 +3,11 @@
 #include <cstdlib>
 #include <system_error>
 
+#if defined(__ANDROID__)
+#include <SFML/System/NativeActivity.hpp>
+#include <android/native_activity.h>
+#endif
+
 namespace pac::core {
 
 namespace {
@@ -13,7 +18,12 @@ const char* env(const char* name) {
 }
 
 std::filesystem::path platform_base() {
-#if defined(_WIN32)
+#if defined(__ANDROID__)
+    if (const ANativeActivity* activity = sf::getNativeActivity();
+        activity && activity->internalDataPath && *activity->internalDataPath) {
+        return std::filesystem::path(activity->internalDataPath);
+    }
+#elif defined(_WIN32)
     if (const char* appdata = env("APPDATA")) {
         return std::filesystem::path(appdata);
     }
@@ -38,7 +48,12 @@ std::filesystem::path platform_base() {
 // convention: on Linux that is $XDG_CONFIG_HOME / ~/.config, distinct from the
 // data dir; Windows and macOS reuse the same base they use for data.
 std::filesystem::path platform_config_base() {
-#if defined(_WIN32)
+#if defined(__ANDROID__)
+    if (const ANativeActivity* activity = sf::getNativeActivity();
+        activity && activity->internalDataPath && *activity->internalDataPath) {
+        return std::filesystem::path(activity->internalDataPath);
+    }
+#elif defined(_WIN32)
     if (const char* appdata = env("APPDATA")) {
         return std::filesystem::path(appdata);
     }

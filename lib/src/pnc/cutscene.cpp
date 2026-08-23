@@ -149,8 +149,14 @@ void apply_text_band(const YAML::Node& node, CutsceneTextBand& band) {
     if (!node) {
         return;
     }
+    if (node.IsNull()) {
+        band = {};
+        return;
+    }
     if (!node.IsMap()) {
-        cutscene_fail("cutscene.text-band-shape", "'text_band' must be a mapping", node);
+        cutscene_fail("cutscene.text-band-shape",
+                      "'text_band' must be a mapping or null",
+                      node);
     }
     if (node["height"]) {
         band.height = node["height"].as<float>();
@@ -160,29 +166,41 @@ void apply_text_band(const YAML::Node& node, CutsceneTextBand& band) {
     }
 }
 
-// Cutscene-level fade. Accepts a scalar (`fade: 0.5` -> in == out) or a mapping
-// (`fade: { in:, out:, color: }`). Absent fields keep the no-fade default.
-CutsceneFade parse_fade(const YAML::Node& node) {
-    CutsceneFade fade;
+// Merge a fade declaration over an inherited value. A scalar sets both halves,
+// a mapping composes individual fields, and null explicitly disables an
+// inherited fade. This supports root-level legacy declarations as well as the
+// defaults/per-slide composition used by the authored examples.
+void apply_fade(const YAML::Node& node, CutsceneFade& fade) {
     if (!node) {
-        return fade;
+        return;
+    }
+    if (node.IsNull()) {
+        fade = {};
+        return;
     }
     if (node.IsScalar()) {
         fade.in = fade.out = node.as<float>();
-        return fade;
-    }
-    if (!node.IsMap()) {
+    } else if (!node.IsMap()) {
         cutscene_fail("cutscene.fade-shape", "'fade' must be a number or a mapping", node);
+    } else {
+        if (node["in"]) {
+            fade.in = node["in"].as<float>();
+        }
+        if (node["out"]) {
+            fade.out = node["out"].as<float>();
+        }
+        if (node["color"]) {
+            fade.color = parse_color(node["color"]);
+        }
     }
-    if (node["in"]) {
-        fade.in = node["in"].as<float>();
+    if (fade.in < 0.0f || fade.out < 0.0f) {
+        cutscene_fail("cutscene.fade-negative", "fade in/out must be >= 0", node);
     }
-    if (node["out"]) {
-        fade.out = node["out"].as<float>();
-    }
-    if (node["color"]) {
-        fade.color = parse_color(node["color"]);
-    }
+}
+
+CutsceneFade parse_fade(const YAML::Node& node) {
+    CutsceneFade fade;
+    apply_fade(node, fade);
     return fade;
 }
 
@@ -195,11 +213,13 @@ struct Defaults {
     sf::Vector2f image_size{0.6f, 0.6f};
     CutsceneImageFit image_fit = CutsceneImageFit::Contain;
     CutsceneTextBand text_band;
+    CutsceneFade fade;
     float duration = 3.0f;
 };
 
-Defaults parse_defaults(const YAML::Node& root) {
+Defaults parse_defaults(const YAML::Node& root, CutsceneFade inherited_fade) {
     Defaults d;
+    d.fade = inherited_fade;
     const YAML::Node node = root["defaults"];
     if (!node) {
         return d;
@@ -232,6 +252,7 @@ Defaults parse_defaults(const YAML::Node& root) {
         d.image_fit = parse_image_fit(node["image_fit"]);
     }
     apply_text_band(node["text_band"], d.text_band);
+    apply_fade(node["fade"], d.fade);
     if (node["duration"]) {
         d.duration = node["duration"].as<float>();
     }
@@ -260,6 +281,7 @@ CutsceneSlide parse_slide(const YAML::Node& node,
     slide.image_size = d.image_size;
     slide.image_fit = d.image_fit;
     slide.text_band = d.text_band;
+    slide.fade = d.fade;
 
     if (node["text"]) {
         slide.text = node["text"].as<std::string>();
@@ -293,6 +315,7 @@ CutsceneSlide parse_slide(const YAML::Node& node,
         slide.image_fit = parse_image_fit(node["image_fit"]);
     }
     apply_text_band(node["text_band"], slide.text_band);
+    apply_fade(node["fade"], slide.fade);
 
     if (node["duration"]) {
         slide.duration = node["duration"].as<float>();
@@ -592,7 +615,7 @@ Cutscene parse_cutscene(const std::string& yaml_text) {
         out.show_skip_hint = root["show_skip_hint"].as<bool>();
     }
 
-    const Defaults d = parse_defaults(root);
+    const Defaults d = parse_defaults(root, out.fade);
     out.default_duration = d.duration;
 
     const YAML::Node slides = root["slides"];

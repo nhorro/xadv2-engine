@@ -64,6 +64,8 @@ public:
     /// `set_volume`, this does not alter the user's configured music volume.
     void fade_out(float fade_seconds = 2.5f);
     void update(float delta_seconds);
+    void pause();
+    void resume();
     void stop();
     void set_volume(float volume01);
 
@@ -85,6 +87,9 @@ public:
 
 private:
     bool open(int deck, const std::string& logical, bool loop);
+    [[nodiscard]] bool deck_active(int deck) const;
+    void start_deck(int deck);
+    void stop_deck(int deck);
     void cancel_fade();
     void apply_volumes();
 
@@ -101,6 +106,8 @@ private:
     float fade_duration_ = 2.5f;
     bool fading_ = false;
     bool stopping_ = false;
+    bool paused_ = false;
+    std::array<bool, 2> resume_decks_{false, false};
 };
 
 /// Short overlapping sound effects, played from cached sound buffers.
@@ -118,6 +125,8 @@ public:
     void stop(const std::string& logical, float fade_seconds = 0.0f);
     void stop_all(float fade_seconds = 0.0f);
     void update(float delta_seconds);
+    void pause();
+    void resume();
     void set_volume(float volume01);
 
 private:
@@ -129,6 +138,7 @@ private:
         float fade_elapsed = 0.0f;
         float fade_duration = 0.0f;
         bool fading = false;
+        bool resume_on_unpause = false;
     };
 
     void stop_voice(Voice& voice, float fade_seconds);
@@ -139,6 +149,7 @@ private:
     Diagnostics& log_;
     std::vector<Voice> voices_;
     float volume_ = 1.0f;
+    bool paused_ = false;
 };
 
 /// A single non-overlapping native-language voice channel. Spoken lines are
@@ -151,6 +162,8 @@ public:
     /// when speech is disabled or the resource cannot be loaded.
     [[nodiscard]] std::optional<float> play(const std::string& logical);
     void stop();
+    void pause();
+    void resume();
     void set_enabled(bool enabled);
     void set_volume(float volume01);
     [[nodiscard]] bool is_playing() const;
@@ -163,6 +176,8 @@ private:
     sf::Sound sound_;
     float volume_ = 1.0f;
     bool enabled_ = true;
+    bool paused_ = false;
+    bool resume_on_unpause_ = false;
 };
 
 /// Inclusive floating-point range used by randomly scheduled ambience layers.
@@ -210,6 +225,8 @@ public:
     void set_base_volume(float volume01, float transition_seconds = 1.0f);
     void stop(float transition_seconds = 2.5f);
     void update(float delta_seconds);
+    void pause();
+    void resume();
     void set_volume(float volume01);
 
     /// Runtime controls for YAML-declared random layers. Volume is a multiplier
@@ -229,6 +246,9 @@ private:
     };
 
     bool open(int deck, const std::string& logical);
+    [[nodiscard]] bool deck_active(int deck) const;
+    void start_deck(int deck);
+    void stop_deck(int deck);
     void cancel_transition();
     void apply_loop_volumes();
     void update_loop(float delta_seconds);
@@ -251,6 +271,8 @@ private:
     Transition transition_ = Transition::NONE;
     std::vector<RuntimeRandomLayer> random_layers_;
     std::mt19937 random_;
+    bool paused_ = false;
+    std::array<bool, 2> resume_decks_{false, false};
 };
 
 /// Bundle of the global audio services, with volumes driven by Settings.
@@ -262,11 +284,17 @@ struct AudioServices {
 
     AudioServices(ResourceCache& resources, Diagnostics& log, const Settings& settings);
     void apply_settings(const Settings& settings);
+    void pause();
+    void resume();
+    [[nodiscard]] bool paused() const { return paused_; }
     void update(float delta_seconds) {
         music.update(delta_seconds);
         sfx.update(delta_seconds);
         ambience.update(delta_seconds);
     }
+
+private:
+    bool paused_ = false;
 };
 
 } // namespace pac::core

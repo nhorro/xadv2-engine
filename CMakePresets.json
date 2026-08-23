@@ -16,8 +16,8 @@
     },
     {
       "name": "linux-debug",
-      "displayName": "Linux Debug (system deps)",
-      "description": "System SFML / yaml-cpp / Lua via pkg-config. Matches the documented dev flow.",
+      "displayName": "Linux Debug",
+      "description": "Pinned modified SFML source; system yaml-cpp and Lua via pkg-config.",
       "inherits": "base",
       "condition": {
         "type": "equals",
@@ -38,8 +38,8 @@
     },
     {
       "name": "windows-msvc",
-      "displayName": "Windows MSVC x64 (vcpkg)",
-      "description": "MSVC + vcpkg manifest (x64-windows). Requires VCPKG_ROOT to point at a vcpkg checkout.",
+      "displayName": "Windows MSVC x64",
+      "description": "Pinned modified SFML source; vcpkg supplies yaml-cpp and Lua. Requires VCPKG_ROOT.",
       "inherits": "base",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",

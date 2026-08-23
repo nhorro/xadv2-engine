@@ -200,9 +200,10 @@ deliberately *not* exported.
 
 ## Build & test commands
 
-**Linux (dev OS, system deps).** SFML / yaml-cpp / Lua come from the package manager
-(`libsfml-dev liblua5.4-dev libyaml-cpp-dev pkg-config` on apt); Lua is discovered
-via pkg-config.
+**Linux (dev OS, system deps).** The engine fetches its pinned modified SFML;
+the package manager supplies SFML's window/audio dependencies plus yaml-cpp and
+Lua. See `README.md` for the current apt package list; Lua is discovered through
+pkg-config.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug      # add -DPAC_ENABLE_SANITIZERS=ON in dev

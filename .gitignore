@@ -12,5 +12,15 @@ vcpkg_installed/
 __pycache__/
 *.py[cod]
 
+# Android experiment outputs and machine-local SDK path.
+/android/.gradle/
+/android/app/.cxx/
+/android/app/build/
+/android/build/
+/android/local.properties
+/android/sdk/
+/android/avd/
+/android/gradle-home/
+
 # Claude Code local config + memory
 .claude/

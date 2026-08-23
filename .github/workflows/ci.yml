@@ -8,10 +8,10 @@
 #     2x-cost runner runs only on develop/main pushes and manual dispatch (skipped
 #     on PRs). Trigger a manual run to exercise Windows on a PR before merging.
 #
-# Two tiers of tests. The doctest+CTest suite never opens a window and runs bare.
-# The examples DO open one (SFML needs a GL context even for `--frames 5`), so
-# they carry the `gui` label and run under xvfb: `ctest -LE gui` then
-# `xvfb-run ctest -L gui`.
+# Two tiers of tests. The doctest+CTest suite does not open gameplay windows, but
+# graphics tests create SFML textures and therefore still need a GL context. Both
+# tiers run under xvfb; the `gui` label continues to distinguish example smoke
+# runs from the unit suite.
 name: CI
 
 on:
@@ -48,10 +48,19 @@ jobs:
             build-essential \
             cmake \
             pkg-config \
-            libsfml-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxcursor-dev \
+            libudev-dev \
+            libgl1-mesa-dev \
+            libfreetype-dev \
+            libopenal-dev \
+            libflac-dev \
+            libvorbis-dev \
             liblua5.4-dev \
             libyaml-cpp-dev \
-            xvfb
+            xvfb \
+            xauth
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
@@ -59,8 +68,8 @@ jobs:
       - name: Build
         run: cmake --build build -j"$(nproc)"
 
-      - name: Run tests (headless)
-        run: ctest --test-dir build --output-on-failure --label-exclude gui
+      - name: Run tests (virtual display)
+        run: xvfb-run -a ctest --test-dir build --output-on-failure --label-exclude gui
 
       - name: Smoke-run the examples (windowed, under xvfb)
         run: xvfb-run -a ctest --test-dir build --output-on-failure --label-regex gui

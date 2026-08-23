@@ -93,17 +93,42 @@ For a game that is pure YAML + Lua — which is what a game should be:
 
 ```cmake
 find_package(pac_engine 0.9 CONFIG REQUIRED)   # or add_subdirectory(${XADV2_ENGINE_DIR})
+add_library(mygame_game STATIC game.cpp)
+add_library(pac::game ALIAS mygame_game)
+target_link_libraries(mygame_game PUBLIC pac::engine)
 add_executable(mygame main.cpp)
-target_link_libraries(mygame PRIVATE pac::engine)
+target_link_libraries(mygame PRIVATE pac::game)
 ```
 
-and `main.cpp` in full:
+`game.cpp` implements the standard composition factory. A data-only game uses
+the engine's built-in point-and-click scenes:
 
 ```cpp
-#include "engine/pnc/game_app.hpp"
+#include "engine/core/game.hpp"
+#include "engine/pnc/builtin_scenes.hpp"
+
+namespace pac::game {
+std::unique_ptr<pac::core::Game> create() {
+    auto game = std::make_unique<pac::core::Game>();
+    pac::pnc::register_builtin_scenes(game->scenes());
+    return game;
+}
+}
+```
+
+Every platform consumes that factory. The desktop `main.cpp` supplies ordinary
+filesystem/packed resources; the engine-owned Android launcher supplies APK
+resources:
+
+```cpp
+#include "engine/core/game.hpp"
 
 int main(int argc, char** argv) {
-    return pac::pnc::run_game_main(argc, argv, "data/game.yaml");
+    pac::core::RunOptions options;
+    const std::string manifest =
+        pac::core::parse_run_options(argc, argv, options, "data/game.yaml");
+    auto game = pac::game::create();
+    return pac::core::run_game(manifest, *game, options);
 }
 ```
 
@@ -112,8 +137,8 @@ minigame; something whose *interaction model* the engine doesn't have — it als
 links `pac::sol2`, which is what lets it install its own Lua functions:
 
 ```cmake
-add_executable(mygame main.cpp src/journal.cpp)
-target_link_libraries(mygame PRIVATE pac::engine pac::sol2)
+target_sources(mygame_game PRIVATE src/journal.cpp)
+target_link_libraries(mygame_game PRIVATE pac::sol2)
 ```
 
 The engine's [`examples/06_cpp_scene`](https://github.com/nhorro/xadv2-engine/tree/main/examples/06_cpp_scene)
@@ -162,9 +187,10 @@ needs no code change — `--pak` overrides the location.
 
 ## 5. Windows
 
-The scaffold ships a `vcpkg.json`. Its two `overrides` are the engine's, and they
-matter: the engine uses the **SFML 2.x** API (not SFML 3), and sol2 rejects **Lua
-5.5**, which is vcpkg's current default.
+The scaffold ships a `vcpkg.json` with the engine's Lua override because sol2
+rejects **Lua 5.5**, which is vcpkg's current default. The engine itself fetches
+the same pinned modified SFML source used by Linux and Android; a game must not
+add a separate vcpkg/system SFML dependency.
 
 ```powershell
 $env:VCPKG_ROOT = "C:\path\to\vcpkg"

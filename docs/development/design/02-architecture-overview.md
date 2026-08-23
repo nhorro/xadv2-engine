@@ -13,7 +13,7 @@ layer may depend only on the layers below it, never above.
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│  Game            Lua scripts + assets + game manifest         │  no C++
+│  Game            manifest, YAML/Lua/assets, optional C++      │  pac::game
 ├─────────────────────────────────────────────────────────────┤
 │  Point & Click   room view, title, cutscenes, rooms,          │  pac::pnc
 │                  hotspots, avatars, SCUMM panel, dialog       │
@@ -32,7 +32,7 @@ layer may depend only on the layers below it, never above.
 | Core | `pac::core`, `pac::geom` | Window, main loop, input, resources, audio services, settings, diagnostics, geometry, `Scene`, `SceneManager` | SFML only |
 | Generic 2D | `pac::gfx` | Spritesheets, animated sprites, composite sprites | Core |
 | Point & Click | `pac::pnc` | Room view, title, cutscene scene, rooms, hotspots, avatars, SCUMM panel, dialog runtime | Generic 2D, Core |
-| Game | — | Manifest, YAML data, Lua scripts, assets | Lua API only |
+| Game | `pac::game` | Manifest, YAML data, Lua scripts, assets, optional compiled composition | Public engine APIs only |
 
 The dependency direction is enforced by folder structure and namespaces:
 
@@ -179,7 +179,10 @@ Lifecycle boundaries:
 
 Startup and scene transitions are data-driven. A game declares its scenes in a
 YAML manifest. The engine constructs scenes from that manifest using a factory
-keyed by scene type.
+keyed by scene type. A game that includes C++ implements the single standard
+factory `pac::game::create()` and exports its composition as the `pac::game`
+CMake target. That contract is the same on desktop, Android, and future
+platforms.
 
 ### Startup sequence
 
@@ -191,13 +194,19 @@ keyed by scene type.
 6. Create the window and letterboxed virtual view.
 7. Run the fixed-timestep main loop.
 
-The executable populates the factory with built-in and custom scene types before
-calling `pac::core::run`. A compiled game uses
+`pac::game::create()` returns a derived `pac::core::Game`. Its constructor
+populates the owned scene factory with built-in and custom scene types and sets
+any application hooks. A launcher then calls `pac::core::run_game` for normal
+filesystem resources or `pac::core::run_game_from_resources` for a packaged
+resource backend. Launchers do not contain game-specific composition.
+
+A compiled game uses
 `ApplicationHooks::configure(EngineContext&, const Manifest&)` to bind game-owned
 Lua APIs and initialize game-owned services after the core bindings exist but
 before any scene is constructed. The manifest argument lets game-local modules
 load declarative scene parameters during setup. An exception from this hook is a
-startup failure.
+startup failure. Any service captured by a hook is owned by the derived `Game`
+object, which lives for the complete engine run.
 
 ### Scenes vs. rooms
 
@@ -593,7 +602,7 @@ a controlled place.
 
 | Dependency | Kind | Linux | Windows |
 |------------|------|-------|---------|
-| SFML 2.6 | compiled | apt `libsfml-dev` (`find_package(SFML 2.6)`) | vcpkg `sfml` |
+| Modified SFML 2.x | compiled | pinned engine `FetchContent`; apt supplies X11/OpenGL/audio dev libraries | the same pinned engine `FetchContent`; fork-bundled MSVC libraries |
 | Lua 5.4 | compiled | apt `liblua5.4-dev` | vcpkg `lua` |
 | yaml-cpp | compiled | apt `libyaml-cpp-dev` (`find_package(yaml-cpp)`) | vcpkg `yaml-cpp` |
 | sol2 | header-only | CMake `FetchContent` (pinned) | CMake `FetchContent` (pinned) |
@@ -602,9 +611,13 @@ a controlled place.
 
 Acquisition rules:
 
-- Compiled libraries come from the system package manager — apt on Linux,
-  vcpkg on Windows. CMake picks them up through `find_package`, so a single
-  CMake invocation works on both platforms once the packages are present.
+- The engine owns one pinned modified-SFML source revision on every platform.
+  Desktop uses its native OpenGL backend and Android its GLES2 backend; games
+  always see the same SFML/engine API. Linux supplies native window/audio codec
+  development libraries through apt, while the fork supplies its matching MSVC
+  binaries on Windows.
+- yaml-cpp and Lua come from the system package manager — apt on Linux and
+  vcpkg on Windows — and CMake discovers them through the engine dependency seam.
 - Header-only libraries (sol2, doctest) are pulled with CMake `FetchContent`
   at a pinned version on both platforms, so there is no per-platform
   divergence and no dependency on an apt package or vcpkg port.

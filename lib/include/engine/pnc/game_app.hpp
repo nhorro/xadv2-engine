@@ -10,6 +10,13 @@ namespace pac::pnc {
 /// on the given manifest. This is what a game's `main` calls.
 int run_game(const std::string& manifest_path, const pac::core::RunOptions& opts = {});
 
+/// Resource-backed composition root for platforms whose packaged game data is
+/// not an ordinary filesystem tree. Registers exactly the same built-in scenes
+/// as `run_game`; only the resource source differs.
+int run_game_from_resources(pac::core::ResourceSource& resources,
+                            const std::string& manifest_logical_path,
+                            const pac::core::RunOptions& opts = {});
+
 /// The whole of a standard game's `main`: parse the command line (see
 /// `core::parse_run_options`), then `run_game` the resulting manifest. A game
 /// that adds C++ scenes of its own builds its own `SceneFactory` and calls

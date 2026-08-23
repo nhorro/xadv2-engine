@@ -818,7 +818,7 @@ Top level:
 | `backdrop` | opt | map | — | Persistent image below every slide. Supports `image`, normalized `position`/`size`, `fit`, `tint`, audio-clock `motion`, and a subtle luminance `pulse`; see below. |
 | `timed_crossfade` | opt | float | `0` | In `timed` mode, crossfade from the previous slide for this many seconds after each `at` cue. The blend uses the audio clock and cannot drift. |
 | `show_skip_hint` | opt | bool | `false` | Draw the localized `strings.ui.cutscene_skip_hint` label in non-manual modes. |
-| `fade` | opt | float \| map | `0` | Dip-to-black between slides (and fade-in at the start / fade-out at the end). A number sets both halves; a map is `{in, out, color}` — seconds, plus the fade `color` (default black). `0`/`0` = hard cuts. Applies to `auto` / `manual`; timed presentations use `timed_crossfade`. |
+| `fade` | opt | float \| map | `0` | Default dip-to-black between slides (and fade-in at the start / fade-out at the end). A number sets both halves; a map is `{in, out, color}` — seconds, plus the fade `color` (default black). Composes through `defaults.fade` and per-slide `fade`; `null` resets an inherited fade to a hard cut. Applies to `auto` / `manual`; timed presentations use `timed_crossfade`. |
 | `defaults` | opt | map | — | Style / layout defaults applied to every slide. Per-slide fields override these. |
 | `slides` | req | `[slide]` | — | Non-empty list of slides. |
 
@@ -837,7 +837,8 @@ Top level:
 | `text_style` | map | Default `{font, size, color, outline_color, outline_thickness}` (see slide section). |
 | `text_position` | `[x, y]` | Default normalized anchor for slide text. |
 | `text_align` | enum | Default `left` / `center` / `right`. |
-| `text_band` | map | Optional `{color, height}` scrim drawn behind the text — a "lower third" for readable narration over a full-bleed image. `height` is a fraction of screen height (`0` = none); the color's alpha sets opacity. |
+| `text_band` | map | Optional `{color, height}` scrim drawn behind the text — a "lower third" for readable narration over a full-bleed image. `height` is a fraction of screen height (`0` = none); the color's alpha sets opacity. A slide can set `text_band: null` to disable it. |
+| `fade` | float \| map | Default fade for the slides. A number sets both `in` and `out`; a map can override `{in, out, color}` individually. Composes over the top-level `fade`. |
 | `image_position` | `[x, y]` | Default normalized anchor for slide images. |
 | `image_size` | `[w, h]` | Default normalized box (max extent in screen space). |
 | `image_fit` | enum | `contain` (preserve aspect), `cover` (preserve aspect and fill the box), or `stretch`. |
@@ -854,7 +855,8 @@ Top level:
 | `text_position` | opt | `[x, y]` | from `defaults` | Normalized anchor (0–1). |
 | `text_align` | opt | enum | from `defaults` | Horizontal alignment relative to the anchor. Vertical anchoring is always centered on the y. |
 | `text_style` | opt | map | from `defaults` | Per-slide override. Each field (`font`, `size`, `color`, `outline_color`, `outline_thickness`) composes individually with the defaults. |
-| `text_band` | opt | map | from `defaults` | `{color, height}` scrim behind this slide's text (`height` 0 = none); composes with `defaults.text_band`. |
+| `text_band` | opt | map \| null | from `defaults` | `{color, height}` scrim behind this slide's text (`height` 0 = none); composes with `defaults.text_band`, while `null` disables the inherited band. |
+| `fade` | opt | float \| map \| null | from `defaults.fade` / root `fade` | Dip-to-color timing for this slide. A number sets both halves; a map composes `{in, out, color}`; `null` resets to a hard cut. |
 | `image_position` | opt | `[x, y]` | from `defaults` | Normalized anchor; the image is centered (horizontally and vertically) on this point. |
 | `image_size` | opt | `[w, h]` | from `defaults` | Normalized box used by the selected `image_fit`. |
 | `image_fit` | opt | enum | from `defaults` | `contain`, `cover`, or `stretch`. |

@@ -99,6 +99,7 @@ struct CutsceneSlide {
     CutsceneImageFit image_fit = CutsceneImageFit::Contain;
 
     CutsceneTextBand text_band; // optional narration band (height 0 = none)
+    CutsceneFade fade;          // inherited dip-to-black timing for this slide
 
     std::optional<float> duration; // Auto mode; falls back to the cutscene default
     std::optional<float> at;       // Timed mode; required there
@@ -167,7 +168,9 @@ struct Cutscene {
     std::string audio;          // logical path; Timed: narration sync, auto/manual: background
     float audio_delay = 0.0f;   // seconds of silent scene pre-roll before starting `audio`
     bool audio_persist = false; // keep `audio` playing past the cutscene (next scene stops it)
-    CutsceneFade fade;          // dip-to-black between slides (auto/manual); 0/0 = hard cuts
+    // Root fade default retained in the parsed model; parse_cutscene also
+    // resolves it through defaults/per-slide overrides into every slide.
+    CutsceneFade fade;
     std::optional<CutsceneBackdrop> backdrop;    // persistent image + subtle musical motion
     std::vector<CutsceneForeground> foregrounds; // ordered timed layers over the backdrop
     float timed_crossfade = 0.0f;                // seconds; audio-clock-driven slide blend

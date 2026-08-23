@@ -11,6 +11,14 @@ int run_game(const std::string& manifest_path, const pac::core::RunOptions& opts
     return pac::core::run(manifest_path, factory, opts);
 }
 
+int run_game_from_resources(pac::core::ResourceSource& resources,
+                            const std::string& manifest_logical_path,
+                            const pac::core::RunOptions& opts) {
+    pac::core::SceneFactory factory;
+    register_builtin_scenes(factory);
+    return pac::core::run_from_resources(resources, manifest_logical_path, factory, opts);
+}
+
 int run_game_main(int argc, char** argv, const std::string& default_manifest) {
     pac::core::RunOptions opts;
     const std::string manifest = pac::core::parse_run_options(argc, argv, opts, default_manifest);

@@ -222,8 +222,37 @@ void SceneManager::handle_event(const sf::Event& event) {
     }
 }
 
-void SceneManager::update(float dt) {
+bool SceneManager::enter_pause_menu() {
+    if (Scene* t = top()) {
+        return t->enter_pause_menu();
+    }
+    return false;
+}
+
+void SceneManager::leave_pause_menu() {
+    for (auto it = stack_.rbegin(); it != stack_.rend(); ++it) {
+        if ((*it)->pause_menu_active()) {
+            (*it)->leave_pause_menu();
+            return;
+        }
+    }
+}
+
+bool SceneManager::pause_menu_active() const {
+    for (auto it = stack_.rbegin(); it != stack_.rend(); ++it) {
+        if ((*it)->pause_menu_active()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void SceneManager::update_transition(float dt) {
     fade_.update(dt);
+}
+
+void SceneManager::update(float dt) {
+    update_transition(dt);
     if (Scene* t = top()) {
         t->update(dt);
     }

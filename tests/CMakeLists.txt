@@ -32,6 +32,7 @@ add_executable(pac_core_tests
     screen_fade_test.cpp
     resource_path_test.cpp
     pack_resource_source_test.cpp
+    pointer_input_test.cpp
     display_test.cpp
     audio_test.cpp
     cursor_test.cpp
@@ -78,17 +79,43 @@ target_link_libraries(pac_core_tests PRIVATE pac_sol2)
 
 add_test(NAME core_tests COMMAND pac_core_tests)
 
+# The pinned SFML implementation is built shared on every platform. Windows
+# does not search sibling CMake target directories when CTest launches an
+# executable, so stage the runtime DLLs beside the test binary. OpenAL is the
+# only bundled SFML dependency that is itself a DLL; the remaining codec/font
+# dependencies are linked statically by the fork.
+if(WIN32)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(PAC_SFML_WINDOWS_ARCH x64)
+    else()
+        set(PAC_SFML_WINDOWS_ARCH x86)
+    endif()
+    get_target_property(PAC_SFML_AUDIO_SOURCE_DIR sfml-audio SOURCE_DIR)
+    get_filename_component(PAC_SFML_SOURCE_DIR
+        "${PAC_SFML_AUDIO_SOURCE_DIR}/../../.." ABSOLUTE)
+    add_custom_command(TARGET pac_core_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:sfml-system>
+            $<TARGET_FILE:sfml-window>
+            $<TARGET_FILE:sfml-graphics>
+            $<TARGET_FILE:sfml-audio>
+            $<TARGET_FILE:sfml-network>
+            "${PAC_SFML_SOURCE_DIR}/extlibs/bin/${PAC_SFML_WINDOWS_ARCH}/openal32.dll"
+            $<TARGET_FILE_DIR:pac_core_tests>
+        COMMENT "Staging SFML runtime DLLs for pac_core_tests")
+endif()
+
 # Every example is smoke-run: it must load its manifest, build its scenes, and
 # render frames without erroring. An engine change that breaks an example's data
 # therefore breaks the test suite — which is the point of keeping the examples
 # in-tree rather than letting them rot.
 #
-# These are the ONLY tests that open a window (SFML needs a real GL context, even
-# for `--frames 5`), so they carry the `gui` label and the rest of the suite stays
-# purely headless:
+# These are the only tests that open a gameplay window, so they carry the `gui`
+# label. Some graphics unit tests still create textures and therefore need a GL
+# context supplied by a virtual display on headless Unix hosts:
 #
-#   ctest -LE gui                 # headless — the default CI job
-#   xvfb-run -a ctest -L gui      # the example smoke runs
+#   xvfb-run -a ctest -LE gui     # unit suite
+#   xvfb-run -a ctest -L gui      # example smoke runs
 #
 # They run from the repo root, since their default manifest paths are repo-relative.
 if(TARGET pac_example_01_hello_room)

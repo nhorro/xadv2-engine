@@ -101,6 +101,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/core/resource_cache.cpp
     src/core/pack_format.cpp
     src/core/pack_resource_source.cpp
+    src/core/pointer_input.cpp
     src/core/strings.cpp
     src/core/localization.cpp
     src/core/translation_catalog.cpp
@@ -114,6 +115,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/core/screen_fade.cpp
     src/core/state_store.cpp
     src/core/facts.cpp
+    src/core/game.cpp
     src/core/scripting.cpp
     src/core/lua_api.cpp
     src/core/user_data.cpp
@@ -131,6 +133,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/gfx/visual_sprite.cpp
     src/gfx/shader_effect.cpp
     src/gfx/shader_chain.cpp
+    src/gfx/gles2_compat.cpp
     src/pnc/blank_scene.cpp
     src/pnc/shader_yaml.cpp
     src/pnc/ui_sound_cues.cpp
@@ -248,5 +251,7 @@ if(PAC_INSTALL)
             ${CMAKE_CURRENT_BINARY_DIR}/pac_engineConfig.cmake
             ${CMAKE_CURRENT_BINARY_DIR}/pac_engineConfigVersion.cmake
             ${PROJECT_SOURCE_DIR}/cmake/pacEngineDeps.cmake
+            ${PROJECT_SOURCE_DIR}/cmake/pacModifiedSfml.cmake
+            ${PROJECT_SOURCE_DIR}/android/cmake/patch-sfml-gles2.cmake
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pac_engine)
 endif()

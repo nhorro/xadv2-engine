@@ -22,10 +22,20 @@ std::map<std::string, Counts> g_counts;
 
 struct DummyScene : Scene {
     std::string id;
+    bool pause_active = false;
     explicit DummyScene(std::string scene_id) : id(std::move(scene_id)) {}
     void enter() override { g_counts[id].entered++; }
     void leave() override { g_counts[id].left++; }
     void prepare_for_application_exit() override { g_counts[id].prepared_for_exit++; }
+    bool enter_pause_menu() override {
+        if (id != "pausable") {
+            return false;
+        }
+        pause_active = true;
+        return true;
+    }
+    void leave_pause_menu() override { pause_active = false; }
+    bool pause_menu_active() const override { return pause_active; }
     void draw(sf::RenderTarget&) const override {}
 };
 
@@ -220,4 +230,29 @@ TEST_CASE("overlays (push/pop) are never faded") {
     m.apply_pending();
     CHECK_FALSE(m.transitioning());
     CHECK(m.size() == 1);
+}
+
+TEST_CASE("pause menu ownership survives overlays and resumes its owning scene") {
+    SceneManager m = make_manager();
+    m.goto_scene("pausable");
+    m.apply_pending();
+
+    CHECK(m.enter_pause_menu());
+    CHECK(m.pause_menu_active());
+
+    m.push_scene("settings");
+    m.apply_pending();
+    CHECK(m.pause_menu_active());
+    CHECK_FALSE(m.enter_pause_menu()); // only the focused scene may open a menu
+
+    m.leave_pause_menu();
+    CHECK_FALSE(m.pause_menu_active());
+}
+
+TEST_CASE("scenes without a native pause menu request the generic fallback") {
+    SceneManager m = make_manager();
+    m.goto_scene("title");
+    m.apply_pending();
+    CHECK_FALSE(m.enter_pause_menu());
+    CHECK_FALSE(m.pause_menu_active());
 }

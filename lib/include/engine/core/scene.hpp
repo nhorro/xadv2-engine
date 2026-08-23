@@ -20,6 +20,13 @@ public:
     virtual void update(float dt) { (void) dt; }
     virtual void draw(sf::RenderTarget& target) const = 0;
 
+    /// Let a gameplay scene expose its native pause UI while the application
+    /// freezes simulation globally. Scenes without one return false and the
+    /// application supplies a small generic pause overlay instead.
+    virtual bool enter_pause_menu() { return false; }
+    virtual void leave_pause_menu() {}
+    [[nodiscard]] virtual bool pause_menu_active() const { return false; }
+
     /// Last chance to persist coherent state before the application exits. The
     /// scene manager calls this on every stacked scene, top-to-bottom, before
     /// `leave()`. Most scenes have nothing to do; gameplay scenes may autosave.
