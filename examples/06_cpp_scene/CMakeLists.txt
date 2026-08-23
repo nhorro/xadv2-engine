@@ -29,7 +29,8 @@ else()
 endif()
 
 target_link_libraries(pac_example_06_game
-    PRIVATE pac::engine pac::sol2 ${PAC_EXAMPLE_YAMLCPP} pac_project_options)
+    PUBLIC pac::engine
+    PRIVATE pac::sol2 ${PAC_EXAMPLE_YAMLCPP} pac_project_options)
 
 if(PAC_BUILD_EXAMPLES)
     add_executable(pac_example_06_cpp_scene main.cpp)

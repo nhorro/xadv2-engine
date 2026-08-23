@@ -2,8 +2,7 @@
 set -euo pipefail
 
 android_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-workspace_dir=$(cd -- "$android_dir/../.." && pwd)
-sdk_dir=${ANDROID_SDK_ROOT:-$workspace_dir/android-sdk}
+sdk_dir=${ANDROID_SDK_ROOT:-$android_dir/sdk}
 adb="$sdk_dir/platform-tools/adb"
 build_variant=${PAC_ANDROID_VARIANT:-debug}
 apk="$android_dir/app/build/outputs/apk/$build_variant/app-$build_variant.apk"
@@ -14,7 +13,7 @@ if [[ ! -x "$adb" ]]; then
     exit 1
 fi
 if [[ ! -f "$apk" ]]; then
-    "$android_dir/build-android.sh"
+    "$android_dir/build.sh" ${PAC_ANDROID_GAME_DIR:+"$PAC_ANDROID_GAME_DIR"}
 fi
 if [[ ! -x "$aapt" ]]; then
     echo "aapt not found at $aapt" >&2

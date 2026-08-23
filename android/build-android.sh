@@ -2,11 +2,9 @@
 set -euo pipefail
 
 android_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-workspace_dir=$(cd -- "$android_dir/../.." && pwd)
-sdk_dir=${ANDROID_SDK_ROOT:-$workspace_dir/android-sdk}
+sdk_dir=${ANDROID_SDK_ROOT:-$android_dir/sdk}
 example_name=${PAC_ANDROID_EXAMPLE:-01_hello_room}
 data_dir=${PAC_ANDROID_DATA_DIR:-}
-game_bootstrap=${PAC_ANDROID_GAME_BOOTSTRAP:-}
 game_cmake_dir=${PAC_ANDROID_GAME_CMAKE_DIR:-}
 game_res_dir=${PAC_ANDROID_GAME_RES_DIR:-}
 app_label=${PAC_ANDROID_APP_LABEL:-}
@@ -32,15 +30,10 @@ if [[ -n "$data_dir" ]]; then
     fi
     package_label="external data: $data_dir"
 
-    # Optional convention for an external game with native scene modules. The
-    # game owns the bootstrap and its canonical CMake target; callers keep
-    # using the same PAC_ANDROID_DATA_DIR command as a data-only game.
+    # Every compiled game exposes the same pac::game composition target. The
+    # Android launcher consumes it directly; no platform bootstrap is needed.
     game_dir=$(cd -- "$data_dir/.." && pwd)
-    external_bootstrap="$game_dir/android/bootstrap.cpp"
-    if [[ -z "$game_bootstrap" && -f "$external_bootstrap" ]]; then
-        game_bootstrap="$external_bootstrap"
-    fi
-    if [[ -z "$game_cmake_dir" && -f "$game_dir/CMakeLists.txt" && -f "$external_bootstrap" ]]; then
+    if [[ -z "$game_cmake_dir" && -f "$game_dir/CMakeLists.txt" ]]; then
         game_cmake_dir="$game_dir"
     fi
     if [[ -z "$game_res_dir" && -d "$game_dir/android/res" ]]; then
@@ -70,7 +63,6 @@ else
 
     if [[ "$example_name" == 06_cpp_scene ]]; then
         example_dir=$(cd -- "$example_dir" && pwd)
-        game_bootstrap=${game_bootstrap:-$example_dir/android/bootstrap.cpp}
         game_cmake_dir=${game_cmake_dir:-$example_dir}
     fi
 fi
@@ -101,10 +93,6 @@ if [[ "$build_variant" != debug && "$build_variant" != release ]]; then
 fi
 gradle_variant=${build_variant^}
 
-if [[ -n "$game_bootstrap" && ! -f "$game_bootstrap" ]]; then
-    echo "PAC_ANDROID_GAME_BOOTSTRAP does not exist: $game_bootstrap" >&2
-    exit 1
-fi
 if [[ -n "$game_cmake_dir" && ! -f "$game_cmake_dir/CMakeLists.txt" ]]; then
     echo "PAC_ANDROID_GAME_CMAKE_DIR has no CMakeLists.txt: $game_cmake_dir" >&2
     exit 1
@@ -112,6 +100,8 @@ fi
 
 export ANDROID_HOME="$sdk_dir"
 export ANDROID_SDK_ROOT="$sdk_dir"
+export GRADLE_USER_HOME=${GRADLE_USER_HOME:-$android_dir/gradle-home}
+mkdir -p "$GRADLE_USER_HOME"
 
 # local.properties is machine-specific and intentionally ignored by Git.
 printf 'sdk.dir=%s\n' "$sdk_dir" > "$android_dir/local.properties"
@@ -121,7 +111,6 @@ echo "Packaging $package_label"
     -Pxadv2Example="$example_name" \
     -Pxadv2DataDir="$data_dir" \
     -Pxadv2GameCmakeDir="$game_cmake_dir" \
-    -Pxadv2GameBootstrap="$game_bootstrap" \
     -Pxadv2GameResDir="$game_res_dir" \
     -Pxadv2AppLabel="$app_label" \
     -Pxadv2ApplicationId="$application_id" \

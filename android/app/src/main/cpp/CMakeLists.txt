@@ -83,36 +83,26 @@ add_subdirectory("${PAC_ENGINE_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/xadv2-engine"
 # desktop and Android compile one reviewable game source target.
 set(PAC_ANDROID_GAME_CMAKE_DIR "" CACHE PATH
     "Root CMake directory for a game with a native composition")
-set(PAC_ANDROID_GAME_BOOTSTRAP "" CACHE FILEPATH
-    "Source implementing pac::android::run_game for the selected game")
 if(PAC_ANDROID_GAME_CMAKE_DIR)
     if(NOT EXISTS "${PAC_ANDROID_GAME_CMAKE_DIR}/CMakeLists.txt")
         message(FATAL_ERROR
             "PAC_ANDROID_GAME_CMAKE_DIR has no CMakeLists.txt: ${PAC_ANDROID_GAME_CMAKE_DIR}")
     endif()
-    set(FDC_BUILD_EXECUTABLE OFF CACHE BOOL "" FORCE)
-    set(FDC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(FDC_ENABLE_DISTRIBUTION_TARGETS OFF CACHE BOOL "" FORCE)
     add_subdirectory("${PAC_ANDROID_GAME_CMAKE_DIR}"
         "${CMAKE_CURRENT_BINARY_DIR}/android-game")
     if(NOT TARGET pac::game)
         message(FATAL_ERROR
             "The selected game must expose a pac::game CMake target")
     endif()
-endif()
-
-if(NOT PAC_ANDROID_GAME_BOOTSTRAP)
-    set(PAC_ANDROID_GAME_BOOTSTRAP
-        "${CMAKE_CURRENT_LIST_DIR}/standard_game_bootstrap.cpp")
-endif()
-if(NOT EXISTS "${PAC_ANDROID_GAME_BOOTSTRAP}")
-    message(FATAL_ERROR
-        "PAC_ANDROID_GAME_BOOTSTRAP does not exist: ${PAC_ANDROID_GAME_BOOTSTRAP}")
+    set(PAC_ANDROID_DEFAULT_GAME_SOURCE "")
+else()
+    set(PAC_ANDROID_DEFAULT_GAME_SOURCE
+        "${CMAKE_CURRENT_LIST_DIR}/default_game.cpp")
 endif()
 
 add_library(pac-android-empty-scene SHARED
     main.cpp
-    "${PAC_ANDROID_GAME_BOOTSTRAP}")
+    ${PAC_ANDROID_DEFAULT_GAME_SOURCE})
 target_include_directories(pac-android-empty-scene PRIVATE "${CMAKE_CURRENT_LIST_DIR}")
 target_link_libraries(pac-android-empty-scene PRIVATE
     pac::engine

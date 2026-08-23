@@ -2,18 +2,18 @@
 set -euo pipefail
 
 android_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-workspace_dir=$(cd -- "$android_dir/../.." && pwd)
-sdk_dir=${ANDROID_SDK_ROOT:-$workspace_dir/android-sdk}
+sdk_dir=${ANDROID_SDK_ROOT:-$android_dir/sdk}
 adb="$sdk_dir/platform-tools/adb"
 
 if [[ ! -x "$adb" ]]; then
     echo "adb not found at $adb" >&2
-    echo "Set ANDROID_SDK_ROOT or follow ANDROID.md." >&2
+    echo "Set ANDROID_SDK_ROOT or follow android/README.md." >&2
     exit 1
 fi
 
 export ANDROID_HOME="$sdk_dir"
 export ANDROID_SDK_ROOT="$sdk_dir"
+export GRADLE_USER_HOME=${GRADLE_USER_HOME:-$android_dir/gradle-home}
 "$adb" start-server >/dev/null
 
 if [[ -n ${ANDROID_SERIAL:-} ]]; then
@@ -49,7 +49,7 @@ else
         echo >&2
         printf '%s\n' "$device_list" >&2
         echo >&2
-        echo "See ANDROID.md for setup and troubleshooting." >&2
+        echo "See android/README.md for setup and troubleshooting." >&2
         exit 1
     fi
     if (( ${#physical_devices[@]} > 1 )); then
@@ -80,7 +80,7 @@ if [[ ! $device_api =~ ^[0-9]+$ || $device_api -lt 23 ]]; then
 fi
 
 echo "Target: $device_name ($device_serial, $device_abi, API $device_api)"
-"$android_dir/build-android.sh"
+"$android_dir/build.sh" ${PAC_ANDROID_GAME_DIR:+"$PAC_ANDROID_GAME_DIR"}
 "$android_dir/install-and-run.sh"
 
 echo

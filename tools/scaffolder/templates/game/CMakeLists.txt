@@ -30,8 +30,15 @@ endif()
 
 set(XADV2_ENGINE_DIR "" CACHE PATH
     "Path to an xadv2-engine checkout. Empty = use an installed engine (find_package).")
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set({{short_name}}_IS_TOP_LEVEL ON)
+else()
+    set({{short_name}}_IS_TOP_LEVEL OFF)
+endif()
 
-if(XADV2_ENGINE_DIR)
+if(TARGET pac::engine)
+    message(STATUS "{{short_name}}: using the engine target supplied by the parent build")
+elseif(XADV2_ENGINE_DIR)
     message(STATUS "{{short_name}}: building the engine from source at ${XADV2_ENGINE_DIR}")
     # The engine contributes only its library here: its examples, tests and
     # experiments stay off, because it knows it is not the top-level project.
@@ -41,14 +48,21 @@ else()
     message(STATUS "{{short_name}}: using the installed engine ${pac_engine_VERSION}")
 endif()
 
-add_executable({{short_name}} main.cpp)
-target_link_libraries({{short_name}} PRIVATE pac::engine)
+add_library({{short_name}}_game STATIC game.cpp)
+add_library(pac::game ALIAS {{short_name}}_game)
+set_target_properties({{short_name}}_game PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries({{short_name}}_game PUBLIC pac::engine)
+
+if({{short_name}}_IS_TOP_LEVEL)
+    add_executable({{short_name}} main.cpp)
+    target_link_libraries({{short_name}} PRIVATE pac::game)
+endif()
 
 # A game that adds C++ scenes of its own (a journal, a map, a minigame — anything
 # whose *interaction model* the engine doesn't already have) also needs sol2, to
-# install its own Lua functions. Add the sources to the executable above and link:
+# install its own Lua functions. Add the sources to the game library above and link:
 #
-#   target_link_libraries({{short_name}} PRIVATE pac::engine pac::sol2)
+#   target_link_libraries({{short_name}}_game PRIVATE pac::sol2)
 #
 # See the engine's examples/06_cpp_scene for the whole pattern. Until you need it,
 # your game is data: YAML for what exists, Lua for what happens.

@@ -79,8 +79,9 @@ section of [CLAUDE.md](CLAUDE.md).
 
 ### Android (experimental)
 
-The incremental Android port can build an APK, run it in the local emulator, or
-upload it to a USB/wireless-debugging phone. See [ANDROID.md](ANDROID.md).
+The optional Linux-hosted Android backend can build an APK, run it in the local
+emulator, or upload it to a USB/wireless-debugging phone. See
+[android/README.md](android/README.md).
 
 ### Packaging check
 

@@ -1,39 +1,31 @@
-#include "game.hpp"
+#include "engine/core/game.hpp"
 
-#include "engine/core/scene_factory.hpp"
 #include "engine/pnc/builtin_scenes.hpp"
 #include "field_notes.hpp"
 
-namespace example::notes {
 namespace {
 
-struct Composition {
-    pac::core::SceneFactory factory;
-    FieldNotesModule notes{"notes"};
-    pac::core::ApplicationHooks hooks;
-
-    Composition() {
-        pac::pnc::register_builtin_scenes(factory);
-        notes.register_scenes(factory);
-        hooks.configure = [this](pac::core::EngineContext& ctx,
-                                 const pac::core::Manifest& manifest) {
-            notes.configure(ctx, manifest);
+class FieldNotesGame final : public pac::core::Game {
+public:
+    FieldNotesGame() {
+        pac::pnc::register_builtin_scenes(scenes());
+        notes_.register_scenes(scenes());
+        hooks().configure = [this](pac::core::EngineContext& ctx,
+                                   const pac::core::Manifest& manifest) {
+            notes_.configure(ctx, manifest);
         };
     }
+
+private:
+    example::notes::FieldNotesModule notes_{"notes"};
 };
 
 } // namespace
 
-int run_game(const std::string& manifest, const pac::core::RunOptions& options) {
-    Composition game;
-    return pac::core::run(manifest, game.factory, options, game.hooks);
+namespace pac::game {
+
+std::unique_ptr<pac::core::Game> create() {
+    return std::make_unique<FieldNotesGame>();
 }
 
-int run_game_from_resources(pac::core::ResourceSource& resources,
-                            const std::string& manifest,
-                            const pac::core::RunOptions& options) {
-    Composition game;
-    return pac::core::run_from_resources(resources, manifest, game.factory, options, game.hooks);
-}
-
-} // namespace example::notes
+} // namespace pac::game

@@ -18,6 +18,9 @@ __pycache__/
 /android/app/build/
 /android/build/
 /android/local.properties
+/android/sdk/
+/android/avd/
+/android/gradle-home/
 
 # Claude Code local config + memory
 .claude/

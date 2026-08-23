@@ -2,9 +2,8 @@
 set -euo pipefail
 
 android_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-workspace_dir=$(cd -- "$android_dir/../.." && pwd)
-sdk_dir=${ANDROID_SDK_ROOT:-$workspace_dir/android-sdk}
-avd_home=${ANDROID_AVD_HOME:-$workspace_dir/android-avd}
+sdk_dir=${ANDROID_SDK_ROOT:-$android_dir/sdk}
+avd_home=${ANDROID_AVD_HOME:-$android_dir/avd}
 avd_name=${ANDROID_AVD_NAME:-xadv2-api35}
 adb="$sdk_dir/platform-tools/adb"
 emulator="$sdk_dir/emulator/emulator"
@@ -23,9 +22,10 @@ fi
 export ANDROID_HOME="$sdk_dir"
 export ANDROID_SDK_ROOT="$sdk_dir"
 export ANDROID_AVD_HOME="$avd_home"
+export GRADLE_USER_HOME=${GRADLE_USER_HOME:-$android_dir/gradle-home}
 
 # Build first so a compile failure cannot leave a newly-started emulator behind.
-"$android_dir/build-android.sh"
+"$android_dir/build.sh" ${PAC_ANDROID_GAME_DIR:+"$PAC_ANDROID_GAME_DIR"}
 
 emulator_pid=""
 started_emulator=false

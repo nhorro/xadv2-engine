@@ -1,5 +1,4 @@
-#include "android_game_bootstrap.hpp"
-
+#include "engine/core/game.hpp"
 #include "engine/core/resource_source.hpp"
 
 #include <SFML/System/FileInputStream.hpp>
@@ -60,7 +59,8 @@ int main(int argc, char** argv) {
 
     __android_log_print(ANDROID_LOG_INFO, kLogTag, "starting normal game.yaml bootstrap");
     AndroidAssetResourceSource resources;
-    const int result = pac::android::run_game(resources, "game.yaml");
+    std::unique_ptr<pac::core::Game> game = pac::game::create();
+    const int result = pac::core::run_game_from_resources(resources, "game.yaml", *game);
     __android_log_print(ANDROID_LOG_INFO,
                         kLogTag,
                         "normal game.yaml bootstrap stopped (result=%d)",
