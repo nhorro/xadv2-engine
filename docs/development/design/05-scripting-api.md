@@ -67,6 +67,84 @@ start_dialog("skull_trauma_cause",         -> dialogs/skull_trauma_cause.lua,
              "schneider")                      spoken by cast character "schneider"
 ```
 
+## ScriptScene scripts
+
+A `ScriptScene` is the generic 2D escape hatch for behavior that does not fit the
+room/verb/avatar model. Its Lua file returns a private behavior table. The engine
+passes a scene-local context to four optional callbacks:
+
+```lua
+local scene = {}
+local player
+
+function scene.on_enter(ctx)
+  player = ctx:entity("player")
+end
+
+function scene.on_input(ctx, event)
+  if event.type == "pointer_down" and event.button == "left" then
+    player:set_position(event.x, event.y)
+  end
+end
+
+function scene.update(ctx, dt)
+  if ctx:key_down("right") then player:translate(200 * dt, 0) end
+end
+
+function scene.on_leave(ctx)
+end
+
+return scene
+```
+
+Callbacks are synchronous and must not yield. They may call `spawn(function()
+... end)` to start a coroutine; that task belongs to the scene's script scope and
+is cancelled automatically when the scene leaves. The Lua file and its locals
+are transient on each entry. Persistent facts still use `get_state` / `set_state`.
+
+### Normalized input
+
+`on_input(ctx, event)` receives only portable, virtual-coordinate events:
+
+| `event.type` | Fields |
+|--------------|--------|
+| `key_down`, `key_up` | `key`; `alt`, `control`, `shift`, `system` |
+| `pointer_move` | `x`, `y` |
+| `pointer_down`, `pointer_up` | `button` (`left`, `right`, `middle`, `x1`, `x2`); `x`, `y` |
+| `text_input` | UTF-8 `text` |
+
+Key names are lowercase (`a`, `left`, `escape`, `space`, `f1`,
+`left_control`, and so on). `ctx:key_down(name)`, `ctx:pointer_down(button)`, and
+`ctx:pointer_position()` provide polling for fixed-step logic.
+
+### Scene context and entity handles
+
+| Call | Meaning |
+|------|---------|
+| `ctx:entity(id)` | Return an id-based handle. Unknown ids produce a handle whose `:exists()` is false. |
+| `ctx:key_down(key)` / `ctx:pointer_down(button)` | Poll current input state. |
+| `ctx:pointer_position()` | Return `{x, y}` in virtual coordinates. |
+| `ctx:goto_scene(id)` / `ctx:push_scene(id)` / `ctx:pop_scene()` | Queue a scene-stack transition. |
+| `ctx:quit()` | End the application. |
+
+Entity handles re-resolve their id on every operation and become inert after
+their scene leaves; they never expose a C++ pointer to Lua.
+
+| Entity call | Meaning |
+|-------------|---------|
+| `:exists()` | Whether the YAML registry contains this id. |
+| `:position()`, `:set_position(x,y)`, `:translate(x,y)` | Read or change position. |
+| `:scale()`, `:set_scale(x,y?)` | Read or change scale; omitted `y` uses `x`. |
+| `:rotation()`, `:set_rotation(degrees)` | Read or change rotation. |
+| `:z()`, `:set_z(value)` | Read or change draw order. |
+| `:visible()`, `:set_visible(bool)`, `:show()`, `:hide()` | Visibility. |
+| `:play(sequence,restart?)`, `:sequence()`, `:finished()` | Animated-entity playback. |
+| `:bounds()`, `:hit_test(x,y)` | World bounds and point testing. |
+
+Mutation methods return the same handle for chaining. Animation-only queries
+return `nil` for a static sprite. Invalid ids or animation sequences log an
+authoring error and leave the scene running.
+
 ## Cast and appearances
 
 Cast is static data and lives in YAML.
@@ -1093,11 +1171,15 @@ set_ambience_volume(0.25, 1.5)
 | `block_input()` | — | — | Switch room view to the `blocked` state: input disabled and the SCUMM panel faded to a black bar under the scenery. Use for cutscene-like moments. |
 | `unblock_input()` | — | — | Restore the `command` state: input enabled and the panel faded back in. |
 | `set_room_view_state(state)` | `"command"` \| `"blocked"` | — | Explicitly set the room-view state — the same two script-settable states as `unblock_input` / `block_input`. The `dialog` and `menu` states are engine-managed (entered via `start_dialog` / the pause menu); passing them, or any other string, logs a warning and is ignored. |
+| `set_ui_widget_visible(id, visible)` | widget id, boolean | — | Fade a room UI widget in or out without changing room state. Current ids are `"scumm"` and `"dialog"`. |
+| `show_ui_widget(id)` | widget id | — | Convenience form of `set_ui_widget_visible(id, true)`. |
+| `hide_ui_widget(id)` | widget id | — | Convenience form of `set_ui_widget_visible(id, false)`. |
 
-Hiding the SCUMM panel is not a separate operation: the panel is shown in the
-`command` state and faded out in `blocked`, so `block_input()` / `set_room_view_state`
-are how a script hides or shows it. Scripts should prefer high-level operations such
-as `start_dialog` and command execution, which manage room-view state automatically.
+Room-view state and widget visibility are separate. `block_input()` disables room
+input and normally hides the SCUMM widget; `hide_ui_widget("scumm")` changes only
+presentation and leaves command behavior intact. Scripts should prefer high-level
+operations such as `start_dialog` and command execution for normal flow, and use
+widget visibility when a scene deliberately controls its UI presentation.
 
 ### Resources
 

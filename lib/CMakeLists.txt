@@ -121,6 +121,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/core/user_data.cpp
     src/core/save_service.cpp
     src/core/thumbnail.cpp
+    src/core/screenshot.cpp
     src/core/profiler.cpp
     src/core/render_stats.cpp
     src/core/application.cpp
@@ -131,6 +132,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/gfx/animated_sprite.cpp
     src/gfx/composite_sprite.cpp
     src/gfx/visual_sprite.cpp
+    src/gfx/script_scene.cpp
     src/gfx/shader_effect.cpp
     src/gfx/shader_chain.cpp
     src/gfx/gles2_compat.cpp
@@ -159,10 +161,17 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/pnc/command.cpp
     src/pnc/command_builder.cpp
     src/pnc/command_controller.cpp
+    src/pnc/room_command_processor.cpp
+    src/pnc/routed_input.cpp
+    src/pnc/room_input_router.cpp
+    src/pnc/room_ui_state.cpp
     src/pnc/inventory.cpp
     src/pnc/camera.cpp
     src/pnc/scumm_panel_config.cpp
     src/pnc/scumm_panel.cpp
+    src/pnc/scumm_widget.cpp
+    src/pnc/dialog_widget.cpp
+    src/pnc/widget_presentation.cpp
     src/pnc/pause_overlay.cpp
     src/pnc/dialog.cpp
     src/pnc/closeup.cpp

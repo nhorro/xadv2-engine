@@ -1,7 +1,8 @@
 # Scaffolder
 
-Bootstraps a new game or experiment from a template directory so you don't have
-to copy an example by hand and rename half its contents. Issue #134.
+Creates a game, a disposable standalone prototype, or an in-engine experiment
+from a template directory. It can also add common authoring recipes to an
+existing project.
 
 !!! note "Canonical reference"
     Source, template list, and the placeholder format:
@@ -10,27 +11,35 @@ to copy an example by hand and rename half its contents. Issue #134.
 ## Run
 
 ```bash
-python -m tools.scaffolder                         # interactive
-python -m tools.scaffolder --list                  # available templates
-python -m tools.scaffolder \
-    --type game \
-    --short-name mygame \
-    --title "My Game"
+python -m tools.scaffolder new prototype panel_lab --title "Panel Lab"
+python -m tools.scaffolder new game mygame --title "My Game"
+python -m tools.scaffolder add room courtyard --project ../games/panel_lab
+python -m tools.scaffolder add room courtyard --project ../games/panel_lab --dry-run
+python -m tools.scaffolder add script-scene arcade --project ../games/panel_lab
+```
+
+The original interactive and flag-based forms remain available:
+
+```bash
+python -m tools.scaffolder
+python -m tools.scaffolder --list
+python -m tools.scaffolder --type game --short-name mygame --title "My Game"
 ```
 
 Three questions:
 
-1. **Type** — `game` or `experiment` (`other` asks where, and which template).
+1. **Type** — `game`, `prototype`, or `experiment` (`other` asks where, and which template).
 2. **Short name** — `[a-z][a-z0-9_-]*`. Used for the directory, the binary, and
    the manifest `id`.
 3. **Title** — any UTF-8. Drops into the README, the manifest, and the intro
    cutscene's first slide.
 
-## The two templates land in different worlds
+## Project templates
 
 | Template | What it generates | Default destination |
 |---|---|---|
 | `game` | A **standalone project**, with its own `CMakeLists.txt`, README, `.gitignore`, `run.sh` and `vcpkg.json`. Title screen + settings + save/load picker + intro cutscene + a starting room: a real game loop on day one. | `../games/<short_name>` — the workspace's games directory, alongside the engine checkout |
+| `prototype` | A **minimal standalone project** that enters one room immediately, with placeholder art and no title, cutscene, inventory, or save/load flow. Intended for disposable UI, art, shader, and interaction experiments. | `../games/<short_name>` |
 | `experiment` | One `RoomScene` (flat fill, placeholder avatar), no title, no inventory: the smallest playground for exploring a shader or a mechanic. Part of the engine's own build. | `experiments/<short_name>/` |
 
 !!! important "A game is not part of the engine repo"
@@ -52,8 +61,43 @@ cmake --build build -j"$(nproc)"
 ./run.sh
 ```
 
-Both templates ship a placeholder avatar, the Departure Mono font, and a
+All templates ship a placeholder avatar, the Departure Mono font, and a
 fully-populated Spanish strings file.
+
+## Add a room
+
+The room recipe accepts a project root or any directory inside it. The nearest
+ancestor containing `data/game.yaml` is treated as the project:
+
+```bash
+python -m tools.scaffolder add room courtyard --project ../games/panel_lab
+```
+
+It creates `data/rooms/courtyard.yaml` and `data/rooms/courtyard.lua`. All
+collisions are checked before writing and existing files are never replaced.
+Use `--dry-run` to list the paths without changing the project.
+
+`RoomScene` discovers files in its `rooms` directory, so no manifest rewrite is
+needed. Enter the room from Lua with:
+
+```lua
+change_room("courtyard", "player_start")
+```
+
+## Add a scriptable scene
+
+```bash
+python -m tools.scaffolder add script-scene arcade --project ../games/panel_lab
+```
+
+This creates `data/scenes/arcade/scene.yaml` for component-shaped sprite and
+animation entities, plus `scene.lua` for lifecycle, normalized input, and the
+fixed-step update. It also appends the `type: ScriptScene` descriptor to
+`data/game.yaml` while preserving the file's comments and formatting.
+
+The operation refuses existing output files and an existing scene id. With
+`--dry-run`, it prints both generated files and `data/game.yaml (modify)` without
+writing anything. Continue with the [Scriptable scenes guide](../script-scenes.md).
 
 ## Add a new template
 
@@ -62,7 +106,7 @@ on the next run and lists it via `--list`. Text files (`.cpp`, `.yaml`, `.lua`,
 `CMakeLists.txt`, …) get placeholder substitution; binary files are copied
 verbatim, so a real font or sample PNG can sit alongside the template's source.
 
-Placeholders available inside any text file:
+Placeholders are available inside text files and relative template paths:
 
 | Placeholder | Meaning |
 |-------------|---------|

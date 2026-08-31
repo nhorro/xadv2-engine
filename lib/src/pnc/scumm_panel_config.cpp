@@ -122,6 +122,29 @@ int positive_int(const YAML::Node& node, const std::string& field) {
     return value;
 }
 
+float ranged_float(const YAML::Node& node,
+                   const std::string& field,
+                   float fallback,
+                   float minimum,
+                   float maximum) {
+    if (!node) {
+        return fallback;
+    }
+    float value = fallback;
+    try {
+        value = node.as<float>();
+    } catch (const YAML::Exception&) {
+        panel_fail("scumm-panel.number-invalid", field + " must be a number", node);
+    }
+    if (value < minimum || value > maximum) {
+        panel_fail("scumm-panel.number-range",
+                   field + " must be between " + std::to_string(minimum) + " and " +
+                       std::to_string(maximum),
+                   node);
+    }
+    return value;
+}
+
 /// `#RRGGBB`, or `#RRGGBBAA` when a control needs to fade rather than recolor
 /// (e.g. a disabled cell that dims over the panel art).
 sf::Color parse_color(const std::string& text, const YAML::Node& at) {
@@ -308,12 +331,13 @@ ScummPanelBackground parse_background(const YAML::Node& node,
     if (node["color"]) {
         bg.color = parse_color(node["color"].as<std::string>(), node["color"]);
     }
+    bg.opacity = ranged_float(node["opacity"],
+                              "layout.panel.background.opacity",
+                              bg.opacity,
+                              0.0f,
+                              1.0f);
     if (node["image"]) {
         bg.image = resolve_asset(base_dir, node["image"], "layout.panel.background.image");
-    }
-    if (node["dialog_image"]) {
-        bg.dialog_image =
-            resolve_asset(base_dir, node["dialog_image"], "layout.panel.background.dialog_image");
     }
     if (node["scale_mode"]) {
         bg.scale_mode = scale_mode(node["scale_mode"].as<std::string>(), node["scale_mode"]);

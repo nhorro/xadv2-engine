@@ -95,7 +95,7 @@ id.
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `id` | req | string | — | Scene id, referenced by `entry` and outcomes. |
-| `type` | req* | enum | — | `TitleScreen`, `StoryText`, `Cutscene`, `RoomScene`, `SettingsScene`, `ConfirmationScene`, `SaveLoadScene`, `CloseUp`, or a registered custom type. A v2 profile may provide it. |
+| `type` | req* | enum | — | `TitleScreen`, `StoryText`, `Cutscene`, `ScriptScene`, `RoomScene`, `SettingsScene`, `ConfirmationScene`, `SaveLoadScene`, `CloseUp`, or a registered custom type. A v2 profile may provide it. |
 | `profile` | v2 opt | string | — | Named profile from the declaring chapter first, then the game manifest. |
 | `source` | v2 CloseUp opt | path | — | Directory containing `closeup.yml` and optional `logic.lua`, or the data YAML itself. |
 | `parameters` | opt | map | — | Type-specific parameters. In v2 they may instead be written directly on the scene. |
@@ -136,6 +136,9 @@ id.
   `on_exit`, and `on_solve`. Terms can be clicked into a carried state or
   dragged directly. The interaction cursor appears only on actionable controls;
   while carrying a term, only compatible slots request it.
+- `ScriptScene` — generic scripted 2D scene. Parameters: `data` (required scene
+  entity YAML) and `logic` (required Lua sidecar). It has no point-and-click
+  behavior unless the script implements it.
 - `RoomScene` — `cast` (path), `logic` (path), `inventory` (path),
   `inventory_logic` (path), `rooms` (directory path), `start_room` (room id),
   `dialogs` (directory path, default `dialogs`),
@@ -192,6 +195,78 @@ Scenes that render UI text take their `font` as a logical-path parameter. Spoken
 `speech.font_size`, consistently across rooms and close-ups. If `speech.font` is
 omitted, the scene font is used as a compatibility fallback. Cast entries still
 own character-specific speech colour and placement clearance (`speech_gap`).
+
+## Script scene — `scenes/<id>/scene.yaml`
+
+<a id="script-scene--scenesidsceneyaml"></a>
+
+Generic entity data for `type: ScriptScene`. The manifest points to this file and
+its Lua behavior independently:
+
+```yaml
+- id: play
+  type: ScriptScene
+  parameters:
+    data: scenes/play/scene.yaml
+    logic: scenes/play/scene.lua
+```
+
+```yaml
+version: 1
+id: play
+opaque: true
+background:
+  color: { r: 24, g: 28, b: 36, a: 255 }
+  image: /backgrounds/interior.png
+
+entities:
+  marker:
+    sprite:
+      image: marker.png
+      origin: { x: 12, y: 12 }
+      tint: { r: 255, g: 220, b: 80, a: 220 }
+    transform:
+      position: { x: 640, y: 360 }
+      scale: { x: 1.5, y: 1.5 }
+      rotation: 0
+    z: 20
+    visible: true
+
+  actor:
+    animation:
+      source: /characters/actor/actor.anim.yml
+      sequence: idle
+    transform:
+      position: { x: 640, y: 560 }
+    z: 10
+```
+
+| Field | Req | Type | Default | Meaning |
+|-------|-----|------|---------|---------|
+| `version` | opt | int | `1` | Format version. |
+| `id` | opt | id | manifest scene id | When present, must match the manifest scene id. |
+| `opaque` | opt | bool | `true` | When false, scenes lower in the stack remain visible. |
+| `background.color` | opt | RGBA map | black | Full virtual-resolution clear color. Alpha defaults to 255. |
+| `background.image` | opt | path | — | Unscaled image drawn at `(0,0)` above the color. |
+| `entities` | opt | map by id | `{}` | Initial scene-local entity registry. |
+
+Each entity has `transform.position` (default `{0,0}`), `transform.scale`
+(default `{1,1}`), `transform.rotation` in degrees (default 0), numeric `z`
+(default 0), and `visible` (default true). It must declare exactly one visual:
+
+- `sprite`: `image` (required), `origin` (default `{0,0}`), and `tint` (default
+  opaque white);
+- `animation`: `source` (an animation or composite YAML) and the initial
+  `sequence`, both required.
+
+Paths are relative to the script-scene YAML. A leading `/` resolves from the
+manifest resource root. Entities draw by ascending `z`, preserving YAML order
+for ties. Runtime component changes are transient; persistent facts belong in
+the existing state API. The MVP registry is deliberately component-shaped but
+does not yet support runtime spawn/destroy or an ECS.
+
+The Lua callback and entity-handle contract is specified in
+[05 — ScriptScene scripts](05-scripting-api.md#scriptscene-scripts).
 
 ## SCUMM panel config — `ui/scumm_panel*.yml`
 

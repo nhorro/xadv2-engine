@@ -110,6 +110,7 @@ nav:
       - Building a game: authoring/building-a-game.md
       - Lua API reference: authoring/lua-api.md
       - Data formats: authoring/data-formats.md
+      - Scriptable scenes: authoring/script-scenes.md
       - Scenery authoring: authoring/scenery.md
       - Lighting, shadows & grading: authoring/room-lighting-tutorial.md
       - Tools:

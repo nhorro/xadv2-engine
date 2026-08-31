@@ -831,6 +831,10 @@ The reload follows the script-task-ownership rules: cancelling the room scope en
 its coroutines without running Lua cleanup, so authored teardown belongs in
 `on_unload`.
 
+Debug builds also bind `F12` globally, independently of `edit_mode`, to save the
+fully rendered window framebuffer as a timestamped PNG under `screenshots/`. It
+works from every scene and while paused; Release builds omit the binding.
+
 ### Resource profiling (#112)
 
 The engine targets hardware comparable to other modern point-and-click games

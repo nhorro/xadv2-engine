@@ -6,7 +6,7 @@ a native SFML app; these tools only run at authoring time.
 
 | Tool | What it does | Status |
 |------|-------------|--------|
-| [Scaffolder](scaffolder.md) | Bootstrap a new game or experiment from a template. Asks for type, short name, and title. | Useful |
+| [Scaffolder](scaffolder.md) | Create a game, disposable prototype, or in-engine experiment; add room and scriptable-scene recipes. | Useful |
 | [Chroma key lab](chromakeylab.md) | Turn a chroma-key / solid background into real alpha (notebook + interactive tuner). Auto-detects the key, preserves interior chroma via border flood-fill, reports residual halos, crops to content. | Useful |
 | [Spritesheet packer](spritesheet-packer.md) | Detect sprites in a messy generated sheet, pack them into a clean atlas + YAML. | Useful |
 | [Room editor](room-editor.md) | Web editor for room geometry, points, zones, and background layers. | Useful |

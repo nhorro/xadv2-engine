@@ -45,9 +45,9 @@ The engine shall ship template files for the expected SCUMM behavior:
 - global game logic.
 
 **Exception — custom interactions.** Mini-games or special scenes that fall
-outside the classic point-and-click model may require dedicated code. The engine
-shall provide an extension point for these through custom scene types. Whether
-custom scenes are implemented in C++, Lua, or both remains a design-for decision.
+outside the classic point-and-click model use the generic YAML + Lua
+`ScriptScene` when its component set is sufficient. A game may still register a
+dedicated C++ scene type for behavior that needs a new native subsystem.
 
 **R3 — Localization-ready, Spanish first.** *[MVP: Spanish only · design-for:
 multi-language]*

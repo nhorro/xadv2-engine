@@ -5,7 +5,7 @@ against — it is not a place to put a game. This page is the whole workflow:
 scaffold, build, author, ship.
 
 The engine repo keeps only [`examples/`](https://github.com/nhorro/xadv2-engine/tree/main/examples):
-six tiny games, one per feature, that exist to be read.
+seven tiny games, one per feature, that exist to be read.
 
 ## The workspace
 

@@ -1,76 +1,89 @@
-# scaffolder
+# Scaffolder
 
-Bootstraps a new game or experiment from a template directory. Issue #134.
+Creates games, disposable prototypes, and in-engine experiments from template
+directories. It can also add common authoring recipes to an existing project.
 
 ```bash
-python -m tools.scaffolder                                     # interactive
-python -m tools.scaffolder --list                              # available templates
-python -m tools.scaffolder \
-    --type experiment \
-    --short-name shaders_lab \
-    --title "Laboratorio de shaders"
+# New command form
+python -m tools.scaffolder new prototype panel_lab --title "Panel Lab"
+python -m tools.scaffolder new game my_game --title "My Game"
+python -m tools.scaffolder new experiment shaders_lab --title "Shader Lab"
+
+# Add to a project; the project is discovered from any child directory
+python -m tools.scaffolder add room courtyard --project ../games/panel_lab
+python -m tools.scaffolder add room courtyard --project ../games/panel_lab --dry-run
+python -m tools.scaffolder add script-scene arcade --project ../games/panel_lab
+
+# Existing command form remains supported
+python -m tools.scaffolder --type experiment --short-name shaders_lab --title "Shader Lab"
+python -m tools.scaffolder --list
 ```
 
-Three questions:
+Running `python -m tools.scaffolder` without arguments keeps the interactive
+workflow. It asks for:
 
-1. **Type** — `experiment`, `game`, or `other`.
-   * `experiment` lands under `experiments/<short_name>/`.
-   * `game` lands under `games/<short_name>/`.
+1. **Type** — `prototype`, `experiment`, `game`, or `other`.
+   * `prototype` lands under `games/<short_name>/` as a minimal standalone project.
+   * `experiment` lands under `experiments/<short_name>/` as part of the engine build.
+   * `game` lands under `games/<short_name>/` as a complete standalone game shell.
    * `other` asks for an output directory and which template to use.
-2. **Short name** — `[a-z][a-z0-9_-]*` (lowercase ASCII, digits, underscore,
-   dash). Used as the directory name, the CMake target (`pac_<short_name>`),
-   and the manifest `id` (R1: must match `[a-z0-9_-]+`).
-3. **Title** — any UTF-8 string. Used in the README, the manifest, the intro
-   cutscene's title slide, etc.
+2. **Short name** — `[a-z][a-z0-9_-]*`. Used for the directory, binary, and manifest id.
+3. **Title** — any UTF-8 display title.
 
-When the scaffold finishes it prints the line to add to the parent
-`CMakeLists.txt` (`add_subdirectory(<short_name>)`), so the build picks up
-the new target.
+For in-engine experiments, the scaffold prints the `add_subdirectory` line for
+the parent CMake file. Standalone games and prototypes print their configure,
+build, and run commands.
 
-## Templates
-
-Each directory under `templates/` is a self-contained template. The scaffolder
-walks it and copies every file into the target; **text files** (whitelist:
-`.cpp`, `.hpp`, `.yaml`, `.lua`, `.md`, `.sh`, `CMakeLists.txt`, `.gitignore`,
-...) have placeholders substituted, **binary files** are copied verbatim so a
-real font or PNG drops in cleanly.
-
-Placeholder set (used inside any text file):
-
-| Placeholder | Meaning |
-|-------------|---------|
-| `{{short_name}}` | OS-friendly id (the answer to question 2). |
-| `{{title}}` | Display title (the answer to question 3). |
-| `{{base}}` | Parent directory name (`experiments`, `games`, or the first component of an `--output` override). |
-
-An unknown placeholder is a hard error — keeps typos from silently producing
-junk.
-
-### Built-in templates
+## Project templates
 
 | Template | What it generates | Default destination |
-|----------|-------------------|---------------------|
-| `experiment` | One `RoomScene` (navy fill, placeholder blob avatar), no title, no inventory. The smallest possible playground for shader / mechanic exploration. | `experiments/<short_name>/` |
-| `game` | Title screen + settings + save/load picker + manual-mode intro cutscene + a starting room. A real game loop on day one. | `games/<short_name>/` |
+|---|---|---|
+| `prototype` | One direct-entry `RoomScene`, placeholder avatar, no title, inventory, intro, or save/load flow. A disposable standalone playground. | `../games/<short_name>/` |
+| `experiment` | The same small playground, but joined to the engine's own build. | `experiments/<short_name>/` |
+| `game` | Title, settings, save/load pickers, intro cutscene, and starting room. | `../games/<short_name>/` |
 
-Both ship a 32×48 placeholder avatar, the Departure Mono font, and the
-required Spanish strings.
+Each directory under `templates/` is self-contained. Text files (`.cpp`,
+`.yaml`, `.lua`, `CMakeLists.txt`, and similar) receive `{{placeholder}}`
+substitution. Binary files are copied verbatim. Placeholders work in relative
+file names as well as file contents.
 
-### Adding a template
+Built-in project placeholders:
 
-Drop a new directory under `templates/`. The scaffolder picks it up
-automatically and lists it in `--list`. Files use the same placeholder
-syntax; for binary files just commit them.
+| Placeholder | Meaning |
+|---|---|
+| `{{short_name}}` | OS-friendly project id. |
+| `{{title}}` | Display title. |
+| `{{base}}` | Parent directory name. |
 
-A template with no obvious base directory (something other than `experiment`
-or `game`) is selectable via `--type other`; the user is asked for the
-output path in that case.
+Unknown placeholders and unsafe generated paths are hard errors.
 
-## What the scaffolder does **not** do
+## Additive recipes
 
-- It doesn't edit the parent `CMakeLists.txt` automatically. The hint at the
-  end of a successful run tells you what to paste.
-- It doesn't drop the binary or assets into a pak archive — use
-  `tools/pack/pack.py` for that.
-- It doesn't generate art. The placeholder blob is intentionally ugly so
-  it's obvious you should swap it.
+Recipes live under `recipes/` and render into an existing project. The
+scaffolder locates the nearest ancestor containing `data/game.yaml`, checks all
+destination paths before writing, and refuses to overwrite existing files.
+
+The `room` recipe creates:
+
+```text
+data/rooms/<room_id>.yaml   static room data and starter geometry
+data/rooms/<room_id>.lua    lifecycle and hotspot behaviour skeleton
+```
+
+Rooms are discovered by `RoomScene` from its configured `rooms` directory, so
+the recipe does not rewrite the manifest. Link the new room from Lua with
+`change_room("<room_id>", "player_start")`.
+
+The `script-scene` recipe creates a component-shaped scene YAML and a Lua
+lifecycle/input/update sidecar under `data/scenes/<scene_id>/`, then appends a
+`type: ScriptScene` descriptor to `data/game.yaml`. The manifest is edited as
+text so existing comments and formatting are preserved. `--dry-run` includes the
+manifest in its plan without writing it.
+
+## What the scaffolder does not do
+
+- It does not create a git repository or remote.
+- It does not generate art.
+- It does not build a pak archive; use `tools/pack/pack.py`.
+- Additive recipes never overwrite outputs or duplicate a scene id. Edit or
+  remove existing generated content explicitly if you intend to replace it.

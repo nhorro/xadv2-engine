@@ -46,6 +46,29 @@ A scene is constructed with:
   settings, scripting, scene manager, diagnostics, dev flags), specified in
   [the architecture overview](02-architecture-overview.md).
 
+### ScriptScene
+
+`ScriptScene` is the data-and-Lua extension point for 2D interactions that do
+not fit a genre scene. It belongs to the Generic 2D layer: rooms, hotspots,
+walking, verbs, inventory, and dialogs are not available implicitly.
+
+Its YAML declares an initial set of id-addressed entities. Each entity is an
+aggregate of component-shaped data: a transform, one visual (`sprite` or
+`animation`), visibility, and render order. The first implementation uses a
+simple entity registry rather than an ECS, but this shape permits adding
+components and systems later without changing the scene contract.
+
+The Lua sidecar receives a scene context and id-based entity handles. Handles
+resolve their id on every operation and never retain an entity pointer, so the
+runtime may later change its storage model safely. The sidecar may implement
+`on_enter(scene)`, `on_input(scene, event)`, `update(scene, dt)`, and
+`on_leave(scene)`. Input is normalized to virtual-coordinate pointer events and
+portable key names. `update` receives the engine's fixed timestep.
+
+Callbacks are synchronous and must not yield. They may call `spawn(function()
+... end)` for coroutine work. Every spawned task belongs to the scene's script
+scope and is cancelled when the scene leaves.
+
 ## Resources
 
 The resource layer provides one way to access every game asset:

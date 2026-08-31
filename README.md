@@ -11,7 +11,13 @@ repositories and link the engine as a library — see
 
 ~~~bash
 # scaffold a standalone game (lands in ../games/, alongside the engine checkout)
-python -m tools.scaffolder --type game --short-name mygame --title "My Game"
+python -m tools.scaffolder new game mygame --title "My Game"
+
+# or make a disposable, direct-to-room prototype in ../games/
+python -m tools.scaffolder new prototype ui_lab --title "UI Lab"
+
+# add a generic YAML + Lua scene to that prototype
+python -m tools.scaffolder add script-scene arcade --project ../games/ui_lab
 
 cd ../games/mygame
 cmake -S . -B build -DXADV2_ENGINE_DIR=~/workspace/point-and-click-game/xadv2-engine   # engine from source
@@ -25,19 +31,20 @@ Once the engine is stable enough for you, install it and link it instead:
 Examples
 --------
 
-[`examples/`](examples/) holds six small games, each showing exactly **one** thing:
+[`examples/`](examples/) holds seven small games, each showing exactly **one** thing:
 a room and click-to-move, the SCUMM verb grid + inventory, NPCs and dialog trees,
-title screens and cutscenes, close-ups, and a game adding a scene type of its own
-in C++. They are the engine's worked documentation, and CI smoke-runs every one of
-them, so what they show is what the engine actually does.
+title screens and cutscenes, close-ups, a game adding a scene type of its own in
+C++, and a generic YAML + Lua `ScriptScene`. They are the engine's worked
+documentation, and CI smoke-runs every one of them, so what they show is what the
+engine actually does.
 
 ~~~bash
 ./run-game.sh                  # 01_hello_room
 ./run-game.sh 03_dialog_npc    # any example, by directory name
 ~~~
 
-The first five contain no C++ beyond a four-line `main`. That is the claim the
-engine makes about itself, and the examples are there to keep it honest.
+Examples 01–05 and 07 contain no C++ beyond a four-line `main`. That is the claim
+the engine makes about itself, and the examples are there to keep it honest.
 
 Build instructions
 ------------------

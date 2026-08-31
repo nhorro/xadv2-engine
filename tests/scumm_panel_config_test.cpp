@@ -23,7 +23,7 @@ scumm_panel:
       background:
         type: image
         image: "panel.png"
-        dialog_image: "panel_dialog.png"
+        opacity: 0.82
         scale_mode: stretch
     command_bar:
       rect: [8, 8, 1264, 28]
@@ -123,7 +123,7 @@ TEST_CASE("scumm panel config parses layout, skin, and relative asset paths") {
     CHECK(cfg.layout.panel_rect.top == doctest::Approx(612.0f));
     CHECK(cfg.layout.background.type == ScummPanelBackgroundType::IMAGE);
     CHECK(cfg.layout.background.image == "ui/panel.png");
-    CHECK(cfg.layout.background.dialog_image == "ui/panel_dialog.png");
+    CHECK(cfg.layout.background.opacity == doctest::Approx(0.82f));
     CHECK(cfg.layout.command_bar_rect.left == doctest::Approx(8.0f));
     CHECK(cfg.layout.inventory_panel.rows == 2);
     CHECK(cfg.layout.inventory_panel.columns == 4);
@@ -574,30 +574,6 @@ TEST_CASE("scumm panel systemic buttons emit their configured action") {
 
     const PanelIntent menu = panel.click({122.0f, 70.0f}, inventory, {});
     CHECK(menu.kind == PanelIntent::Kind::OPEN_MENU);
-}
-
-TEST_CASE("dialog pagination reclaims the systemic-buttons column") {
-    ScummPanelConfig cfg = default_scumm_panel_config({0.0f, 0.0f, 100.0f, 100.0f});
-    ScummSystemButton options_button;
-    options_button.id = "options";
-    options_button.rect = {60.0f, 0.0f, 20.0f, 24.0f};
-    options_button.action = ScummSystemAction::OPEN_SETTINGS;
-    cfg.system_buttons.push_back(std::move(options_button));
-    ScummSystemButton menu_button;
-    menu_button.id = "menu";
-    menu_button.rect = {60.0f, 24.0f, 20.0f, 24.0f};
-    menu_button.action = ScummSystemAction::OPEN_MENU;
-    cfg.system_buttons.push_back(std::move(menu_button));
-    ScummPanel panel(std::move(cfg), {100, 100}, nullptr, nullptr);
-    const std::vector<std::string> options{"a", "b", "c", "d", "e"};
-    REQUIRE(panel.dialog_page_count(options) > 1);
-
-    // The full dialog area is x 10..90 after padding, so its arrow gutter is at
-    // the far right (roughly x 67..90). Before the fix, options_area() stopped
-    // before the system-button column and this click missed the arrow.
-    const DialogClick next = panel.click_dialog({75.0f, 75.0f}, options, 0);
-    CHECK(next.kind == DialogClick::Kind::PAGE);
-    CHECK(next.page_index == 1);
 }
 
 TEST_CASE("scumm panel push_scene systemic buttons carry the scene id") {

@@ -1,4 +1,4 @@
-#include "engine/pnc/scumm_panel.hpp"
+#include "engine/pnc/dialog_widget.hpp"
 
 #include <doctest/doctest.h>
 
@@ -154,4 +154,62 @@ TEST_CASE("layout_dialog_options: empty list yields no rows") {
     CHECK(l.rows.empty());
     CHECK_FALSE(l.has_prev);
     CHECK_FALSE(l.has_next);
+}
+
+TEST_CASE("dialog widget config exposes GUI placement, material, and transition properties") {
+    const DialogWidgetConfig config = parse_dialog_widget_config(R"yaml(
+dialog_widget:
+  design_size: [1280, 720]
+  placement:
+    position: [0.5, 0.5]
+    anchor: center
+    offset: [12, -8]
+  min_width: 280
+  max_width: 760
+  max_height: 240
+  background: "#101820CC"
+  opacity: 0.9
+  fade_duration: 0.35
+  capture_while_hiding: false
+)yaml");
+
+    CHECK(config.placement.position == sf::Vector2f(0.5f, 0.5f));
+    CHECK(config.placement.anchor == WidgetAnchor::CENTER);
+    CHECK(config.placement.offset == sf::Vector2f(12.0f, -8.0f));
+    CHECK(config.background.a == 204);
+    CHECK(config.opacity == doctest::Approx(0.9f));
+    CHECK(config.transition.fade_duration == doctest::Approx(0.35f));
+    CHECK_FALSE(config.transition.capture_while_hiding);
+}
+
+TEST_CASE("widget presentation fades reversibly and keeps geometry independent") {
+    WidgetPresentation presentation(false, {1.0f, true});
+    presentation.set_bounds({10.0f, 20.0f, 100.0f, 40.0f});
+    presentation.set_translation({4.0f, -2.0f});
+    presentation.set_opacity(0.8f);
+
+    presentation.show();
+    presentation.update(0.5f);
+    CHECK(presentation.visibility() == WidgetVisibility::SHOWING);
+    CHECK(presentation.opacity() == doctest::Approx(0.4f));
+    CHECK(presentation.bounds().left == doctest::Approx(14.0f));
+    CHECK(presentation.bounds().top == doctest::Approx(18.0f));
+
+    presentation.hide();
+    presentation.update(0.25f);
+    CHECK(presentation.visibility() == WidgetVisibility::HIDING);
+    CHECK(presentation.captures_input());
+
+    presentation.show();
+    presentation.update(0.75f);
+    CHECK(presentation.visibility() == WidgetVisibility::VISIBLE);
+    CHECK(presentation.opacity() == doctest::Approx(0.8f));
+}
+
+TEST_CASE("widget placement supports future centered and radial-style components") {
+    WidgetPlacement placement{{0.5f, 0.5f}, WidgetAnchor::CENTER, {10.0f, -5.0f}};
+    const sf::Vector2f origin =
+        place_widget({0.0f, 0.0f, 1280.0f, 720.0f}, {300.0f, 200.0f}, placement);
+    CHECK(origin.x == doctest::Approx(500.0f));
+    CHECK(origin.y == doctest::Approx(255.0f));
 }

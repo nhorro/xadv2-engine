@@ -17,7 +17,7 @@ Lua API, the data formats, and the asset tools.
     **[Building a game](./building-a-game.md)**: scaffold, build (against an engine
     checkout or an installed engine), author, ship.
 
-    The engine repo keeps only `examples/` — six tiny games, one per feature,
+    The engine repo keeps only `examples/` — small games, one per feature,
     written to be read.
 
 ## Where to start
@@ -30,16 +30,18 @@ Lua API, the data formats, and the asset tools.
 3. **Keep the [Data formats reference](data-formats.md)** open while you write YAML.
 4. **Use [Game and chapter manifests](chapter-manifests.md)** to keep game-wide
    presentation separate from chapter-owned scenes and content.
-5. **Use [Localization and native-language voice](localization.md)** when adding
+5. **Use [Scriptable scenes](script-scenes.md)** for a custom interaction model
+   that can stay in YAML + Lua instead of becoming a C++ scene.
+6. **Use [Localization and native-language voice](localization.md)** when adding
    subtitle languages or recorded dialogue.
-6. **Follow the [Scenery authoring guide](scenery.md)** — recipes for building room
+7. **Follow the [Scenery authoring guide](scenery.md)** — recipes for building room
    contents: layers, regions, objects (static & animated), NPCs, hotspots,
    obstacles, walk-behinds, and perspective.
-7. **Take a room from playable to cinematic with the
+8. **Take a room from playable to cinematic with the
    [lighting, shadows, and grading tutorial](room-lighting-tutorial.md)** — it
    explains the rendering pipeline, editor primitives, YAML parameters, live F9
    tuning, and practical recipes.
-8. **Use the [tools](tools/index.md)** to prepare backgrounds, spritesheets, and
+9. **Use the [tools](tools/index.md)** to prepare backgrounds, spritesheets, and
    rooms.
 
 ## Concepts you need
@@ -48,6 +50,7 @@ Lua API, the data formats, and the asset tools.
 |---------|-----------|-----------|
 | Manifest | Composed game-wide and chapter-local configuration. | [Game and chapter manifests](chapter-manifests.md) |
 | Scene | A manifest-declared top-level state (title, cutscene, room view, settings). | [Lua API](lua-api.md) |
+| ScriptScene | A generic YAML entity registry plus Lua input/update logic. | [Scriptable scenes](script-scenes.md) |
 | Room | A place inside the room view, loaded by id from `rooms/<id>.{yaml,lua}`. | [Data formats](data-formats.md) |
 | Cast & avatars | Characters; the player and NPCs that move and speak. | [Lua API](lua-api.md) |
 | Hotspots & verbs | Interactive regions and the actions (verbs) that apply to them. | [Lua API](lua-api.md) |

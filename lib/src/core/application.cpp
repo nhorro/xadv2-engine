@@ -18,6 +18,7 @@
 #include "engine/core/scene.hpp"
 #include "engine/core/scene_factory.hpp"
 #include "engine/core/scene_manager.hpp"
+#include "engine/core/screenshot.hpp"
 #include "engine/core/scripting.hpp"
 #include "engine/core/settings.hpp"
 #include "engine/core/settings_store.hpp"
@@ -33,17 +34,20 @@
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Text.hpp>
-#include <SFML/Graphics/Texture.hpp>
 #include <SFML/System/Clock.hpp>
 #include <SFML/System/Sleep.hpp>
 #include <SFML/Window/Cursor.hpp>
 #include <SFML/Window/Event.hpp>
 
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
+#include <iomanip>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <system_error>
 
@@ -112,6 +116,37 @@ constexpr char kConfirmationSceneType[] = "ConfirmationScene";
 // (#109). The packed manifest inside is always named `game.yaml`.
 constexpr char kPakFileName[] = "resources.pak";
 constexpr char kPakManifestLogical[] = "game.yaml";
+
+#ifndef NDEBUG
+/// Pick a collision-free, human-readable path in the working tree. Development
+/// launchers run from the game root, so captures are easy to find and compare.
+std::filesystem::path next_development_screenshot_path(const std::string& game_id) {
+    const std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm local{};
+#if defined(_WIN32)
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+
+    std::ostringstream stem;
+    stem << game_id << '-' << std::put_time(&local, "%Y%m%d-%H%M%S");
+    const std::filesystem::path directory = "screenshots";
+    for (unsigned sequence = 1;; ++sequence) {
+        std::ostringstream filename;
+        filename << stem.str();
+        if (sequence > 1) {
+            filename << '-' << sequence;
+        }
+        filename << ".png";
+        const std::filesystem::path candidate = directory / filename.str();
+        std::error_code ec;
+        if (!std::filesystem::exists(candidate, ec)) {
+            return candidate;
+        }
+    }
+}
+#endif
 
 // Best-effort host path of the running executable's directory. Linux reads it
 // from /proc; Windows uses GetModuleFileName (not pulled in here to avoid
@@ -626,6 +661,9 @@ static int run_impl(const std::string& manifest_path,
     bool paused = false;
     bool generic_pause_overlay = false;
     bool space_down = false;
+#ifndef NDEBUG
+    bool screenshot_requested = false;
+#endif
     const sf::Font* pause_font =
         manifest.speech.font.empty() ? nullptr : resources.try_font(manifest.speech.font);
 
@@ -691,6 +729,13 @@ static int run_impl(const std::string& manifest_path,
                         }
                         continue;
                     }
+#ifndef NDEBUG
+                    if (virtual_event.type == sf::Event::KeyPressed &&
+                        virtual_event.key.code == sf::Keyboard::F12) {
+                        screenshot_requested = true;
+                        continue;
+                    }
+#endif
                     if (paused && generic_pause_overlay) {
                         if (resumes_generic_pause(virtual_event)) {
                             finish_pause(false);
@@ -869,13 +914,29 @@ static int run_impl(const std::string& manifest_path,
 
         const bool last_frame = (opts.max_frames > 0 && frames + 1 >= opts.max_frames);
         if (last_frame && !opts.screenshot_path.empty()) {
-            sf::Texture shot;
-            shot.create(window.getSize().x, window.getSize().y);
-            shot.update(window); // capture before display swaps buffers
-            if (shot.copyToImage().saveToFile(opts.screenshot_path)) {
+            if (save_screenshot(window, opts.screenshot_path)) {
                 log.info("wrote screenshot " + opts.screenshot_path);
+            } else {
+                log.error("could not write screenshot " + opts.screenshot_path);
             }
         }
+
+#ifndef NDEBUG
+        if (screenshot_requested) {
+            screenshot_requested = false;
+            const std::filesystem::path shot_path = next_development_screenshot_path(manifest.id);
+            std::error_code ec;
+            std::filesystem::create_directories(shot_path.parent_path(), ec);
+            if (ec) {
+                log.error("could not create screenshot directory '" +
+                          shot_path.parent_path().string() + "': " + ec.message());
+            } else if (save_screenshot(window, shot_path)) {
+                log.info("wrote screenshot " + std::filesystem::absolute(shot_path, ec).string());
+            } else {
+                log.error("could not write screenshot " + shot_path.string());
+            }
+        }
+#endif
 
         // Feed the profiler before the vsync wait so `work_seconds` reflects only
         // CPU + draw cost, while `frame_seconds` carries the full frame-to-frame

@@ -1,6 +1,9 @@
 #include "engine/pnc/builtin_scenes.hpp"
 
+#include "engine/core/display.hpp"
+#include "engine/core/engine_context.hpp"
 #include "engine/core/scene_factory.hpp"
+#include "engine/gfx/script_scene.hpp"
 #include "engine/pnc/blank_scene.hpp"
 #include "engine/pnc/case_resolution_scene.hpp"
 #include "engine/pnc/closeup_scene.hpp"
@@ -17,6 +20,7 @@
 namespace pac::pnc {
 
 void register_builtin_scenes(pac::core::SceneFactory& factory) {
+    pac::gfx::register_script_scene(factory);
     factory.register_type("TitleScreen",
                           [](pac::core::EngineContext& ctx, const pac::core::SceneParams& params) {
                               return std::make_unique<TitleScreen>(ctx, params);
@@ -43,7 +47,10 @@ void register_builtin_scenes(pac::core::SceneFactory& factory) {
                           });
     factory.register_type("RoomScene",
                           [](pac::core::EngineContext& ctx, const pac::core::SceneParams& params) {
-                              return std::make_unique<RoomScene>(ctx, params);
+                              return std::make_unique<RoomScene>(
+                                  ctx,
+                                  params,
+                                  RoomViewport::from_runtime(ctx.display.virtual_resolution()));
                           });
     factory.register_type("CloseUp",
                           [](pac::core::EngineContext& ctx, const pac::core::SceneParams& params) {

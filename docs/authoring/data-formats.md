@@ -18,6 +18,8 @@ resource path relative to `resources.src`.
 | `cast/*.yaml` | Characters: ids, names, spritesheets, default poses. | [06 — Data formats](../development/design/06-data-formats.md) |
 | `rooms/<id>.yaml` | Room layout: layers, walkable area, regions, objects, hotspots, zones, avatar starts. | [06 — Data formats](../development/design/06-data-formats.md) |
 | `rooms/<id>.lua` | Room behavior: hooks, verb handlers, scripted actions. | [Lua API](lua-api.md) |
+| `scenes/<id>/scene.yaml` | Generic static/animated entities and initial transforms for a `ScriptScene`. | [Scriptable scenes](script-scenes.md) |
+| `scenes/<id>/scene.lua` | Generic lifecycle, normalized input, and fixed-step logic. | [Scriptable scenes](script-scenes.md) |
 | `strings/*` | Engine UI strings, looked up by key (R3). | [06 — Data formats](../development/design/06-data-formats.md) |
 | `translations/*` | Additional-language game-content catalogs keyed by stable text id. | [Localization](localization.md) |
 | Spritesheet `*.yaml` | Atlas + animation definitions (often tool-generated). | [Spritesheet packer](tools/spritesheet-packer.md) |

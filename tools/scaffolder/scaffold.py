@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scaffolder for new games / experiments (issue #134).
+"""Scaffolder for new games, prototypes, experiments, and authoring recipes.
 
 Renders one of the templates under `tools/scaffolder/templates/` into a target
 directory, substituting placeholders along the way. Templates are plain
@@ -36,6 +36,7 @@ import argparse
 import re
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 # --- Constants -------------------------------------------------------------
@@ -67,6 +68,7 @@ VALID_SHORT_NAME = re.compile(r"^[a-z][a-z0-9_-]*$")
 PLACEHOLDER_RE = re.compile(r"\{\{(\w+)\}\}")
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+RECIPES_DIR = Path(__file__).resolve().parent / "recipes"
 
 
 # --- Rendering -------------------------------------------------------------
@@ -95,29 +97,68 @@ def substitute(text: str, context: dict[str, str]) -> str:
     return PLACEHOLDER_RE.sub(repl, text)
 
 
-def render_template(template_dir: Path, output_dir: Path, context: dict[str, str]) -> list[Path]:
+def rendered_relative_path(path: Path, context: dict[str, str]) -> Path:
+    """Substitute placeholders in a template path and keep it relative."""
+    rendered = Path(substitute(path.as_posix(), context))
+    if rendered.is_absolute() or ".." in rendered.parts:
+        raise SystemExit(f"scaffolder: template produced unsafe path: {rendered}")
+    return rendered
+
+
+def render_template(
+    template_dir: Path,
+    output_dir: Path,
+    context: dict[str, str],
+    *,
+    refuse_existing: bool = False,
+    dry_run: bool = False,
+) -> list[Path]:
     """Walk `template_dir` and materialize it under `output_dir`. Returns the
-    list of paths created (for the post-run summary)."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    created: list[Path] = []
-    for src in sorted(template_dir.rglob("*")):
+    list of paths created (or planned for a dry run).
+
+    Every file is rendered in memory before anything is written. Additive
+    recipes use `refuse_existing`, which checks all collisions up front and
+    rolls back newly-created files if an unexpected write fails.
+    """
+    rendered_files: list[tuple[Path, Path, bytes, int]] = []
+    destinations: set[Path] = set()
+    for src in sorted(path for path in template_dir.rglob("*") if path.is_file()):
         rel = src.relative_to(template_dir)
-        dst = output_dir / rel
-        if src.is_dir():
-            dst.mkdir(parents=True, exist_ok=True)
-            continue
-        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst = output_dir / rendered_relative_path(rel, context)
+        if dst in destinations:
+            raise SystemExit(f"scaffolder: template produces duplicate path: {dst}")
+        destinations.add(dst)
         if is_text_file(src):
             text = src.read_text(encoding="utf-8")
-            dst.write_text(substitute(text, context), encoding="utf-8")
+            data = substitute(text, context).encode("utf-8")
         else:
-            shutil.copyfile(src, dst)
-        # Preserve the executable bit (useful for shell scripts under the
-        # template).
-        mode = src.stat().st_mode
-        if mode & 0o111:
-            dst.chmod(dst.stat().st_mode | 0o755)
-        created.append(dst)
+            data = src.read_bytes()
+        rendered_files.append((src, dst, data, src.stat().st_mode))
+
+    if refuse_existing:
+        conflicts = [dst for _, dst, _, _ in rendered_files if dst.exists()]
+        if conflicts:
+            formatted = "\n".join(f"  {path}" for path in conflicts)
+            raise SystemExit(f"scaffolder: refusing to overwrite existing files:\n{formatted}")
+
+    planned = [dst for _, dst, _, _ in rendered_files]
+    if dry_run:
+        return planned
+
+    created: list[Path] = []
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for _, dst, data, mode in rendered_files:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_bytes(data)
+            if mode & 0o111:
+                dst.chmod(dst.stat().st_mode | 0o755)
+            created.append(dst)
+    except Exception:
+        if refuse_existing:
+            for path in reversed(created):
+                path.unlink(missing_ok=True)
+        raise
     return created
 
 
@@ -143,7 +184,7 @@ def default_base_for(template_name: str) -> str | None:
 # --- CLI -------------------------------------------------------------------
 
 
-def parse_args(argv: list[str]) -> argparse.Namespace:
+def parse_legacy_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Scaffold a new game or experiment from a template.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -161,7 +202,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--output",
         type=Path,
         help=(
-            "Target directory. For type=experiment|game the default is "
+            "Target directory. Built-in templates default to "
             "experiments/<short-name> or games/<short-name>; for any other "
             "template you must supply this."
         ),
@@ -174,7 +215,61 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     p.add_argument("--force", action="store_true", help="Overwrite the target directory if it exists.")
     p.add_argument("--list", action="store_true", help="List available templates and exit.")
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    args.command = "new"
+    return args
+
+
+def parse_command_args(argv: list[str]) -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Create projects and add common authoring recipes.")
+    commands = p.add_subparsers(dest="command", required=True)
+
+    new = commands.add_parser("new", help="Create a project from a template.")
+    new.add_argument("type", help="Template to render (game, prototype, or experiment).")
+    new.add_argument("short_name", help="OS-friendly id, [a-z][a-z0-9_-]*.")
+    new.add_argument("--title", help="Display title; defaults to the short name.")
+    new.add_argument("--output", type=Path, help="Target directory override.")
+    new.add_argument("--templates-dir", type=Path, default=TEMPLATES_DIR)
+    new.add_argument("--force", action="store_true", help="Replace an existing target directory.")
+    new.set_defaults(list=False)
+
+    add = commands.add_parser("add", help="Add a recipe to an existing project.")
+    recipes = add.add_subparsers(dest="recipe", required=True)
+    room = recipes.add_parser("room", help="Add a room YAML and Lua pair.")
+    room.add_argument("room_id", help="Room id, [a-z][a-z0-9_-]*.")
+    room.add_argument(
+        "--project",
+        type=Path,
+        default=Path.cwd(),
+        help="Project directory or any path inside it (default: current directory).",
+    )
+    room.add_argument("--dry-run", action="store_true", help="Print files without writing them.")
+    room.add_argument("--recipes-dir", type=Path, default=RECIPES_DIR)
+
+    script_scene = recipes.add_parser(
+        "script-scene", help="Add a generic YAML + Lua scene and register it in game.yaml."
+    )
+    script_scene.add_argument("scene_id", help="Scene id, [a-z][a-z0-9_-]*.")
+    script_scene.add_argument(
+        "--project",
+        type=Path,
+        default=Path.cwd(),
+        help="Project directory or any path inside it (default: current directory).",
+    )
+    script_scene.add_argument(
+        "--dry-run", action="store_true", help="Print files and manifest change without writing them."
+    )
+    script_scene.add_argument("--recipes-dir", type=Path, default=RECIPES_DIR)
+    args = p.parse_args(argv)
+    if args.command == "new" and args.title is None:
+        args.title = args.short_name
+    return args
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    if argv and argv[0] in {"new", "add"}:
+        return parse_command_args(argv)
+    return parse_legacy_args(argv)
 
 
 def prompt_value(label: str, *, validator=None, allow_empty: bool = False) -> str:
@@ -251,8 +346,9 @@ def resolve_inputs(args: argparse.Namespace, available_templates: list[str]) -> 
     title = args.title or prompt_value("Title (display name, UTF-8 OK)")
 
     if output_override is None:
-        if template == "game":
-            # A game is a standalone repository, not a subdirectory of the engine.
+        if template in {"game", "prototype"}:
+            # A game or disposable prototype is a standalone project, not a
+            # subdirectory of the engine.
             # The workspace layout is:
             #
             #     point-and-click-game/
@@ -288,6 +384,13 @@ def resolve_inputs(args: argparse.Namespace, available_templates: list[str]) -> 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+
+    if args.command == "add":
+        if args.recipe == "room":
+            return add_room(args)
+        if args.recipe == "script-scene":
+            return add_script_scene(args)
+        raise SystemExit(f"scaffolder: unsupported recipe {args.recipe!r}")
 
     templates_dir: Path = args.templates_dir.resolve()
     if not templates_dir.is_dir():
@@ -327,16 +430,16 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"scaffolded {inputs['template']!r} at {output_dir} ({len(created)} files)")
 
-    if inputs["template"] == "game":
-        # A game is a standalone project: it does not join the engine's build, it
-        # links the engine as a library. Its next steps are its own repository and
-        # its own configure.
+    if inputs["template"] in {"game", "prototype"}:
+        # A game or prototype is standalone: it does not join the engine's build
+        # and instead links the engine as a library.
         engine_dir = Path.cwd()
         short = inputs["short_name"]
         print()
-        print("next steps — this is a standalone repository, not part of the engine:")
+        print("next steps — this is a standalone project, not part of the engine build:")
         print(f"    cd {output_dir}")
-        print("    git init && git add -A && git commit -m 'initial scaffold'")
+        if inputs["template"] == "game":
+            print("    git init && git add -A && git commit -m 'initial scaffold'")
         print(f"    cmake -S . -B build -DXADV2_ENGINE_DIR={engine_dir}")
         print('    cmake --build build -j"$(nproc)"')
         print("    ./run.sh")
@@ -354,6 +457,152 @@ def main(argv: list[str] | None = None) -> int:
             print(f"next step: add this line to {parent_cmake}:")
             print(f"    {line}")
 
+    return 0
+
+
+def find_project_root(start: Path) -> Path:
+    """Find the nearest ancestor containing the canonical game manifest."""
+    current = start.expanduser().resolve()
+    if current.is_file():
+        current = current.parent
+    for candidate in (current, *current.parents):
+        if (candidate / "data" / "game.yaml").is_file():
+            return candidate
+    raise SystemExit(
+        f"scaffolder: no project found from {start}; expected an ancestor containing data/game.yaml"
+    )
+
+
+def add_room(args: argparse.Namespace) -> int:
+    error = validate_short_name(args.room_id)
+    if error:
+        raise SystemExit("scaffolder: room " + error)
+
+    project_root = find_project_root(args.project)
+    recipe_dir = args.recipes_dir.expanduser().resolve() / "room"
+    if not recipe_dir.is_dir():
+        raise SystemExit(f"scaffolder: room recipe not found: {recipe_dir}")
+
+    files = render_template(
+        recipe_dir,
+        project_root,
+        {"room_id": args.room_id},
+        refuse_existing=True,
+        dry_run=args.dry_run,
+    )
+    action = "would create" if args.dry_run else "created"
+    print(f"{action} room {args.room_id!r} in {project_root}:")
+    for path in files:
+        print(f"  {path.relative_to(project_root)}")
+    if not args.dry_run:
+        print()
+        print(f'enter it from Lua with: change_room("{args.room_id}", "player_start")')
+    return 0
+
+
+def manifest_with_script_scene(text: str, scene_id: str) -> str:
+    """Return `text` with one ScriptScene list entry appended.
+
+    This intentionally edits the small manifest surface as text instead of
+    parsing and re-emitting YAML, so author comments and formatting survive.
+    """
+    lines = text.splitlines(keepends=True)
+    scenes_index = next(
+        (i for i, line in enumerate(lines) if re.match(r"^scenes:\s*(?:#.*)?(?:\r?\n)?$", line)),
+        None,
+    )
+    empty_index = next(
+        (i for i, line in enumerate(lines) if re.match(r"^scenes:\s*\[\s*\]\s*(?:#.*)?(?:\r?\n)?$", line)),
+        None,
+    )
+    if scenes_index is None and empty_index is None:
+        raise SystemExit("scaffolder: data/game.yaml has no root 'scenes:' list")
+
+    scenes_index = empty_index if scenes_index is None else scenes_index
+    block_end = len(lines)
+    for i in range(scenes_index + 1, len(lines)):
+        line = lines[i]
+        if line.strip() and not line.startswith((" ", "\t", "#", "\r", "\n")):
+            block_end = i
+            break
+
+    scene_block = "".join(lines[scenes_index:block_end])
+    ids = re.findall(r"^\s+-\s+id:\s*['\"]?([^\s#,'\"}\]]+)", scene_block, re.MULTILINE)
+    if scene_id in ids:
+        raise SystemExit(f"scaffolder: scene {scene_id!r} already exists in data/game.yaml")
+
+    entry = (
+        f"  - id: {scene_id}\n"
+        "    type: ScriptScene\n"
+        "    parameters:\n"
+        f"      data: scenes/{scene_id}/scene.yaml\n"
+        f"      logic: scenes/{scene_id}/scene.lua\n"
+    )
+    if empty_index is not None:
+        suffix = "\n" if lines[empty_index].endswith(("\n", "\r")) else ""
+        lines[empty_index] = "scenes:\n" + entry + suffix
+    else:
+        if block_end > scenes_index + 1 and lines[block_end - 1].strip():
+            entry += "\n"
+        lines.insert(block_end, entry)
+    return "".join(lines)
+
+
+def write_text_atomic(path: Path, text: str) -> None:
+    """Replace one UTF-8 text file without exposing a partially written file."""
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+        ) as handle:
+            handle.write(text)
+            temporary = Path(handle.name)
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def add_script_scene(args: argparse.Namespace) -> int:
+    error = validate_short_name(args.scene_id)
+    if error:
+        raise SystemExit("scaffolder: scene " + error)
+
+    project_root = find_project_root(args.project)
+    recipe_dir = args.recipes_dir.expanduser().resolve() / "script-scene"
+    if not recipe_dir.is_dir():
+        raise SystemExit(f"scaffolder: script-scene recipe not found: {recipe_dir}")
+
+    manifest = project_root / "data" / "game.yaml"
+    updated_manifest = manifest_with_script_scene(
+        manifest.read_text(encoding="utf-8"), args.scene_id
+    )
+    context = {"scene_id": args.scene_id}
+    files = render_template(
+        recipe_dir,
+        project_root,
+        context,
+        refuse_existing=True,
+        dry_run=True,
+    )
+
+    action = "would create" if args.dry_run else "created"
+    if not args.dry_run:
+        created: list[Path] = []
+        try:
+            created = render_template(
+                recipe_dir, project_root, context, refuse_existing=True
+            )
+            write_text_atomic(manifest, updated_manifest)
+        except Exception:
+            for path in reversed(created):
+                path.unlink(missing_ok=True)
+            raise
+
+    print(f"{action} script scene {args.scene_id!r} in {project_root}:")
+    for path in files:
+        print(f"  {path.relative_to(project_root)}")
+    print("  data/game.yaml (modify)")
     return 0
 
 

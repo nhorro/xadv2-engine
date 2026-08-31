@@ -1,0 +1,27 @@
+version: 1
+id: play
+
+background:
+  color: { r: 24, g: 28, b: 36 }
+  image: /backgrounds/interior.png
+
+entities:
+  hero:
+    animation:
+      source: /characters/hero/hero.anim.yml
+      sequence: stand_down
+    transform:
+      position: { x: 640, y: 560 }
+      scale: { x: 0.42, y: 0.42 }
+    z: 10
+
+  target:
+    sprite:
+      image: /ui/cursor_interact.png
+      origin: { x: 12, y: 12 }
+      tint: { r: 255, g: 220, b: 80, a: 220 }
+    transform:
+      position: { x: 640, y: 360 }
+      scale: { x: 1.5, y: 1.5 }
+    z: 20
+    visible: false

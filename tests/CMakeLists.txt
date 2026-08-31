@@ -40,6 +40,7 @@ add_executable(pac_core_tests
     spritesheet_test.cpp
     animation_test.cpp
     composite_sprite_test.cpp
+    script_scene_test.cpp
     avatar_test.cpp
     shader_effect_test.cpp
     state_store_test.cpp
@@ -55,12 +56,15 @@ add_executable(pac_core_tests
     cutscene_test.cpp
     command_builder_test.cpp
     command_controller_test.cpp
+    room_command_processor_test.cpp
+    room_input_router_test.cpp
     scumm_panel_config_test.cpp
     dialog_options_layout_test.cpp
     mover_test.cpp
     approach_follow_test.cpp
     inventory_test.cpp
     camera_test.cpp
+    room_viewport_test.cpp
     debug_overlay_test.cpp
     dev_actions_test.cpp
     speech_test.cpp
@@ -125,7 +129,8 @@ if(TARGET pac_example_01_hello_room)
         03_dialog_npc
         04_cutscene
         05_closeup
-        06_cpp_scene)
+        06_cpp_scene
+        07_script_scene)
         add_test(NAME example_${example}
                  COMMAND pac_example_${example} --frames 5
                  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

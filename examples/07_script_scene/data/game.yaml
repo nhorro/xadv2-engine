@@ -1,0 +1,25 @@
+version: 1
+id: script_scene
+
+resolution: { width: 1280, height: 720 }
+window:
+  fullscreen: false
+  width: 1280
+  height: 720
+
+resources:
+  src: "."
+
+languages:
+  - id: en
+    name: "English"
+    strings: strings/en.yaml
+
+entry: play
+
+scenes:
+  - id: play
+    type: ScriptScene
+    parameters:
+      data: scenes/play/scene.yaml
+      logic: scenes/play/scene.lua

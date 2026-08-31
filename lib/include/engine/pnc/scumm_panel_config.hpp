@@ -38,8 +38,10 @@ enum class InventoryStyle { TEXT, ICONS };
 struct ScummPanelBackground {
     ScummPanelBackgroundType type = ScummPanelBackgroundType::SOLID;
     sf::Color color{26, 24, 31};
+    // Multiplies the fallback/image alpha without affecting labels or controls.
+    // 1 = opaque, 0 = invisible; input capture is intentionally independent.
+    float opacity = 1.0f;
     std::string image;
-    std::string dialog_image; // optional division-free surface for dialog options
     ScummPanelScaleMode scale_mode = ScummPanelScaleMode::STRETCH;
     ScummPanelPadding nine_slice{12.0f, 12.0f, 12.0f, 12.0f};
 };

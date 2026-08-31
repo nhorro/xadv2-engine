@@ -16,7 +16,7 @@ repositories and consume the engine as a library — from a source checkout
 (`-DXADV2_ENGINE_DIR=…`, the mode to use while the API is unstable, since engine
 bugs are then fixable in place) or from an install (`find_package(pac_engine
 CONFIG)` → `pac::engine`; `PAC_BUILD_SHARED=ON` for a shared library). What lives
-here instead is `examples/`: six tiny games, one per feature, that exist to be
+here instead is `examples/`: seven tiny games, one per feature, that exist to be
 read and are smoke-run by CI. See
 [docs/authoring/building-a-game.md](docs/authoring/building-a-game.md) and
 `scripts/check-packaging.sh`.
@@ -42,6 +42,10 @@ point-and-click-game/
 `../games/<short_name>`; its build points back here with
 `-DXADV2_ENGINE_DIR=../../xadv2-engine`, and the authoring tools stay in this repo
 (`XADV2_ENGINE=…/xadv2-engine`) and run against any game's data directory.
+`python -m tools.scaffolder new prototype …` uses the same standalone layout but
+omits the full game shell. `python -m tools.scaffolder add room …` safely adds a
+YAML/Lua room pair; `add script-scene …` adds generic scene YAML/Lua and registers
+it in the nearest project's manifest without overwriting files.
 
 **Status: M0–M7 are merged. M8 (proving the engine is usable by content creators)
 is done: object `sprite` key (#138), the `avatar(id)` handle (#139), scripted NPC
@@ -297,7 +301,7 @@ alongside as `DepartureMono-OFL.txt`.
 - **Examples are documentation, not a game.** Each one shows *exactly one* feature
   and stays small enough to read in a sitting. Resist growing them into a game —
   that is what killed the last two. Add a new example only for a feature none of
-  the six covers; extend an existing one otherwise. They are self-contained (a
+  the seven covers; extend an existing one otherwise. They are self-contained (a
   manifest has one resource root), so the shared kit is copied into each:
   `examples/_assets/` is the source of truth, `python3 examples/tools/sync_assets.py`
   propagates it, and `--check` fails if a copy is stale. Placeholder art is

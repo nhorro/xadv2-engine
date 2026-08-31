@@ -7,6 +7,7 @@
 #include "engine/pnc/inventory.hpp"
 #include "engine/pnc/speech_manager.hpp"
 
+#include <SFML/Config.hpp>
 #include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/ConvexShape.hpp>
 #include <SFML/Graphics/Font.hpp>
@@ -15,7 +16,6 @@
 #include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Text.hpp>
 #include <SFML/Graphics/Texture.hpp>
-#include <SFML/Config.hpp>
 
 #include <algorithm>
 #include <array>
@@ -30,6 +30,13 @@
 namespace pac::pnc {
 
 namespace {
+
+sf::Color with_opacity(sf::Color color, float opacity) {
+    color.a = static_cast<sf::Uint8>(std::clamp(static_cast<float>(color.a) * opacity,
+                                               0.0f,
+                                               255.0f));
+    return color;
+}
 
 sf::FloatRect padded(sf::FloatRect rect, ScummPanelPadding pad) {
     rect.left += pad.left;
@@ -90,8 +97,7 @@ void center_text(sf::Text& text, sf::FloatRect rect) {
     place_text(text, rect, "center");
 }
 
-// A small filled triangle pointing up or down, inset within `rect`. Shared by the
-// dialog paging arrows and the icon-inventory paging arrows so they look identical.
+// A small filled triangle used by the icon-inventory paging arrows.
 void draw_v_arrow(sf::RenderTarget& target, sf::FloatRect rect, bool up, sf::Color color) {
     const float inset = rect.width * 0.2f;
     const float l = rect.left + inset;
@@ -114,77 +120,6 @@ void draw_v_arrow(sf::RenderTarget& target, sf::FloatRect rect, bool up, sf::Col
 }
 
 } // namespace
-
-DialogPageLayout layout_dialog_options(const std::vector<std::string>& labels,
-                                       int page_index,
-                                       sf::FloatRect area,
-                                       float line_height,
-                                       float option_gap,
-                                       float arrow_size,
-                                       const std::function<float(const std::string&)>& measure) {
-    DialogPageLayout out;
-    if (labels.empty() || line_height <= 0.0f || area.height <= 0.0f) {
-        return out;
-    }
-    // Reserve a right-hand gutter for the paging arrows so the text width — and
-    // therefore the wrapping and page breaks — stay stable whether or not the
-    // arrows end up shown. (If they aren't needed the gutter is just margin.)
-    const float gutter = arrow_size > 0.0f ? arrow_size + option_gap : 0.0f;
-    const float text_width = std::max(1.0f, area.width - gutter);
-
-    // Wrap every label once and remember each option's block height.
-    std::vector<std::vector<std::string>> wrapped;
-    std::vector<float> heights;
-    wrapped.reserve(labels.size());
-    heights.reserve(labels.size());
-    for (const std::string& label : labels) {
-        std::vector<std::string> lines = pac::core::wrap_text(label, text_width, measure);
-        heights.push_back(static_cast<float>(lines.size()) * line_height);
-        wrapped.push_back(std::move(lines));
-    }
-
-    // Pack whole options onto pages top-to-bottom. An option that does not fit
-    // in the space left on the current page is promoted to the next page; an
-    // option taller than a whole page still gets its own page (never clipped
-    // mid-option, just allowed to overflow on a page of its own).
-    std::vector<int> page_of(labels.size(), 0);
-    int page = 0;
-    float y = area.top;
-    for (std::size_t i = 0; i < labels.size(); ++i) {
-        const bool page_has_content = y > area.top + 0.001f;
-        if (page_has_content && y + heights[i] > area.top + area.height) {
-            ++page;
-            y = area.top;
-        }
-        page_of[i] = page;
-        y += heights[i] + option_gap;
-    }
-    out.page_count = page + 1;
-    out.page_index = std::max(0, std::min(page_index, out.page_count - 1));
-    out.has_prev = out.page_index > 0;
-    out.has_next = out.page_index < out.page_count - 1;
-
-    // Position the rows that fall on the laid-out page.
-    y = area.top;
-    for (std::size_t i = 0; i < labels.size(); ++i) {
-        if (page_of[i] != out.page_index) {
-            continue;
-        }
-        DialogPageLayout::Row row;
-        row.option_index = static_cast<int>(i);
-        row.lines = wrapped[i];
-        row.rect = {area.left, y, text_width, heights[i]};
-        out.rows.push_back(std::move(row));
-        y += heights[i] + option_gap;
-    }
-
-    if (gutter > 0.0f) {
-        const float ax = area.left + area.width - arrow_size;
-        out.prev_arrow = {ax, area.top, arrow_size, arrow_size};
-        out.next_arrow = {ax, area.top + area.height - arrow_size, arrow_size, arrow_size};
-    }
-    return out;
-}
 
 ScummPanel::ScummPanel(sf::FloatRect region, const sf::Font* font, ScummPanelTheme theme)
     : ScummPanel(default_scumm_panel_config(region),
@@ -237,15 +172,19 @@ ScummPanel::ScummPanel(ScummPanelConfig config,
                 // The pinned Android GLES2 fork is API-compatible with SFML
                 // 2.5, before Font::setSmooth was added. Its glyph atlas keeps
                 // the default smooth filtering, which is the game's setting.
-                (void)smooth;
+                (void) smooth;
 #endif
             }
         }
     }
 }
 
+sf::FloatRect ScummPanel::bounds() const {
+    return scale_rect(config_.layout.panel_rect);
+}
+
 bool ScummPanel::contains(sf::Vector2f p) const {
-    return scale_rect(config_.layout.panel_rect).contains(p);
+    return bounds().contains(p);
 }
 
 sf::FloatRect ScummPanel::scale_rect(sf::FloatRect design_rect) const {
@@ -747,21 +686,21 @@ std::string ScummPanel::background_variant(const InventoryModel& inventory,
     return first_existing(variants, {"inv_no_arrows", "normal"});
 }
 
-void ScummPanel::draw_background_image(sf::RenderTarget& target,
+bool ScummPanel::draw_background_image(sf::RenderTarget& target,
                                        const std::string& image,
                                        ScummPanelScaleMode mode) const {
     if (!resources_ || image.empty()) {
-        return;
+        return false;
     }
     try {
         const sf::Texture& texture = resources_->texture(image);
         if (mode == ScummPanelScaleMode::NINE_SLICE) {
-            draw_nine_slice(target, image);
-            return;
+            return draw_nine_slice(target, image);
         }
         const sf::FloatRect panel = scale_rect(config_.layout.panel_rect);
         const sf::Vector2u size = texture.getSize();
         sf::Sprite sprite(texture);
+        sprite.setColor(with_opacity(sf::Color::White, config_.layout.background.opacity));
         if (mode == ScummPanelScaleMode::FIT) {
             const float scale = std::min(panel.width / static_cast<float>(size.x),
                                          panel.height / static_cast<float>(size.y));
@@ -785,17 +724,23 @@ void ScummPanel::draw_background_image(sf::RenderTarget& target,
                             panel.height / static_cast<float>(size.y));
             target.draw(sprite);
         }
+        return true;
     } catch (const std::exception&) {
-        // Fall back to the solid panel fill below.
+        return false;
     }
 }
 
-void ScummPanel::draw_nine_slice(sf::RenderTarget& target, const std::string& image) const {
+bool ScummPanel::draw_nine_slice(sf::RenderTarget& target, const std::string& image) const {
     if (!resources_ || image.empty()) {
-        return;
+        return false;
     }
-    const sf::Texture& texture = resources_->texture(image);
-    const sf::Vector2u tex_size = texture.getSize();
+    const sf::Texture* texture = nullptr;
+    try {
+        texture = &resources_->texture(image);
+    } catch (const std::exception&) {
+        return false;
+    }
+    const sf::Vector2u tex_size = texture->getSize();
     const sf::FloatRect panel = scale_rect(config_.layout.panel_rect);
     const ScummPanelPadding margin = config_.layout.background.nine_slice;
     const float sx = static_cast<float>(runtime_size_.x) / config_.layout.design_size.x;
@@ -825,24 +770,21 @@ void ScummPanel::draw_nine_slice(sf::RenderTarget& target, const std::string& im
             if (sw <= 0 || sh <= 0 || dw <= 0.0f || dh <= 0.0f) {
                 continue;
             }
-            sf::Sprite sprite(texture, sf::IntRect(sxp[col], syp[row], sw, sh));
+            sf::Sprite sprite(*texture, sf::IntRect(sxp[col], syp[row], sw, sh));
+            sprite.setColor(with_opacity(sf::Color::White, config_.layout.background.opacity));
             sprite.setPosition(dx[col], dy[row]);
             sprite.setScale(dw / static_cast<float>(sw), dh / static_cast<float>(sh));
             target.draw(sprite);
         }
     }
+    return true;
 }
 
 void ScummPanel::draw_backdrop(sf::RenderTarget& target,
                                const InventoryModel* inventory,
                                const CommandState* command_state,
-                               sf::Vector2f cursor,
-                               bool suppress_command_bar) const {
+                               sf::Vector2f cursor) const {
     const sf::FloatRect panel = scale_rect(config_.layout.panel_rect);
-    sf::RectangleShape bg(sf::Vector2f(panel.width, panel.height));
-    bg.setPosition(panel.left, panel.top);
-    bg.setFillColor(config_.layout.background.color);
-    target.draw(bg);
 
     std::string image = config_.layout.background.type == ScummPanelBackgroundType::SOLID
                             ? std::string()
@@ -863,33 +805,50 @@ void ScummPanel::draw_backdrop(sf::RenderTarget& target,
             }
         }
     }
-    // Dialog options reuse the panel footprint but not its operative grid. A
-    // configured division-free surface keeps the material while removing stale
-    // verb, inventory, pagination, and system-button boundaries.
-    if (suppress_command_bar && !config_.layout.background.dialog_image.empty()) {
-        image = config_.layout.background.dialog_image;
-        mode = config_.layout.background.scale_mode;
-    }
-    if (!image.empty()) {
-        draw_background_image(target, image, mode);
-    } else if (!suppress_command_bar) {
-        // The command strip over a solid background. In dialog mode the strip +
-        // separator rule are suppressed — the action string has no meaning there.
-        const ScummCommandBarSkin& bar = config_.skin.command_bar;
-        const sf::FloatRect area = command_bar_area();
-        sf::RectangleShape strip(sf::Vector2f(area.width, area.height));
-        strip.setPosition(area.left, area.top);
-        strip.setFillColor(bar.background);
-        target.draw(strip);
-
-        if (bar.separator_thickness > 0.0f) {
-            const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
-            const float thickness = bar.separator_thickness * sy;
-            sf::RectangleShape rule(sf::Vector2f(panel.width, thickness));
-            rule.setPosition(panel.left, area.top + area.height - thickness);
-            rule.setFillColor(bar.separator);
-            target.draw(rule);
+    const bool image_drawn = !image.empty() && draw_background_image(target, image, mode);
+    const ScummCommandBarSkin& bar = config_.skin.command_bar;
+    const sf::FloatRect area = command_bar_area();
+    if (!image_drawn) {
+        const sf::Color background =
+            with_opacity(config_.layout.background.color, config_.layout.background.opacity);
+        const auto draw_background_rect = [&target, background](sf::FloatRect rect) {
+            if (rect.width <= 0.0f || rect.height <= 0.0f) return;
+            sf::RectangleShape shape({rect.width, rect.height});
+            shape.setPosition(rect.left, rect.top);
+            shape.setFillColor(background);
+            target.draw(shape);
+        };
+        const float left = std::max(panel.left, area.left);
+        const float top = std::max(panel.top, area.top);
+        const float right = std::min(panel.left + panel.width, area.left + area.width);
+        const float bottom = std::min(panel.top + panel.height, area.top + area.height);
+        if (left >= right || top >= bottom) {
+            draw_background_rect(panel);
+        } else {
+            draw_background_rect({panel.left, panel.top, panel.width, top - panel.top});
+            draw_background_rect(
+                {panel.left, bottom, panel.width, panel.top + panel.height - bottom});
+            draw_background_rect({panel.left, top, left - panel.left, bottom - top});
+            draw_background_rect(
+                {right, top, panel.left + panel.width - right, bottom - top});
         }
+
+        // The command bar replaces (rather than overlays) the panel material in
+        // its rectangle, so its configured alpha is applied exactly once.
+        sf::RectangleShape strip({area.width, area.height});
+        strip.setPosition(area.left, area.top);
+        strip.setFillColor(with_opacity(bar.background, config_.layout.background.opacity));
+        target.draw(strip);
+    }
+
+    // Image skins already contain their authored command strip and dividers.
+    if (!image_drawn && bar.separator_thickness > 0.0f) {
+        const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
+        const float thickness = bar.separator_thickness * sy;
+        sf::RectangleShape rule(sf::Vector2f(panel.width, thickness));
+        rule.setPosition(panel.left, area.top + area.height - thickness);
+        rule.setFillColor(with_opacity(bar.separator, config_.layout.background.opacity));
+        target.draw(rule);
     }
 }
 
@@ -1337,112 +1296,6 @@ void ScummPanel::draw_notebook(sf::RenderTarget& target,
         place_text(text, cell.rect, nb.text.align);
         target.draw(text);
     }
-}
-
-sf::FloatRect ScummPanel::options_area() const {
-    // Dialog options use the whole panel interior — there is no command bar in
-    // dialog mode, so the first option starts at the top of the panel (the
-    // command-bar band is reclaimed).
-    const sf::FloatRect panel = scale_rect(config_.layout.panel_rect);
-    const float sx = static_cast<float>(runtime_size_.x) / config_.layout.design_size.x;
-    const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
-    const float pad_x = theme_.pad * sx;
-    const float pad_y = theme_.pad * sy;
-    sf::FloatRect area{panel.left + pad_x,
-                       panel.top + pad_y,
-                       panel.width - 2.0f * pad_x,
-                       panel.height - 2.0f * pad_y};
-
-    // System buttons are not rendered or clickable in dialog mode. Reclaim their
-    // column as well, so the paging gutter sits at the panel's true right edge.
-    return area;
-}
-
-DialogPageLayout ScummPanel::dialog_layout(const std::vector<std::string>& options,
-                                           int page_index) const {
-    const sf::Font* font = font_or_default(inventory_font_);
-    const unsigned size = scaled_text_size(theme_.option_text_size);
-    const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
-    const float line_h = font ? font->getLineSpacing(size) : static_cast<float>(size) * 1.3f;
-    const float gap = theme_.option_gap * sy;
-    const float arrow = line_h; // one line tall; reserved as the paging gutter
-    std::function<float(const std::string&)> measure;
-    if (font) {
-        measure = [font, size](const std::string& s) {
-            return sf::Text(pac::core::utf8(s), *font, size).getLocalBounds().width;
-        };
-    } else {
-        measure = [size](const std::string& s) {
-            return static_cast<float>(s.size()) * static_cast<float>(size) * 0.5f;
-        };
-    }
-    return layout_dialog_options(options, page_index, options_area(), line_h, gap, arrow, measure);
-}
-
-void ScummPanel::draw_options(sf::RenderTarget& target,
-                              const pac::core::Strings& /*strings*/,
-                              const std::vector<std::string>& options,
-                              int page_index,
-                              sf::Vector2f cursor) const {
-    draw_backdrop(target, nullptr, nullptr, {-1.0f, -1.0f}, /*suppress_command_bar=*/true);
-
-    const sf::Font* option_font = font_or_default(inventory_font_);
-    if (!option_font) {
-        return;
-    }
-
-    const DialogPageLayout layout = dialog_layout(options, page_index);
-    const unsigned size = scaled_text_size(theme_.option_text_size);
-    const float line_h = option_font->getLineSpacing(size);
-
-    // Plain-text options (no boxes): resting / hovered color only.
-    for (const DialogPageLayout::Row& row : layout.rows) {
-        const bool hot = row.rect.contains(cursor);
-        const sf::Color color = hot ? theme_.verb_text_hover : theme_.verb_text;
-        float y = row.rect.top;
-        for (const std::string& line : row.lines) {
-            sf::Text text(pac::core::utf8(line), *option_font, size);
-            // Dialog options reuse the verb-text outline config for legibility.
-            apply_text_style(text, config_.skin.verb_text, color);
-            const sf::FloatRect b = text.getLocalBounds();
-            text.setPosition(row.rect.left - b.left, y);
-            target.draw(text);
-            y += line_h;
-        }
-    }
-
-    // Small vertical paging arrows, shown only when more than one page exists.
-    const auto arrow_color = [&](sf::FloatRect rect) {
-        return rect.contains(cursor) ? theme_.verb_text_hover : theme_.verb_text;
-    };
-    if (layout.has_prev) {
-        draw_v_arrow(target, layout.prev_arrow, true, arrow_color(layout.prev_arrow));
-    }
-    if (layout.has_next) {
-        draw_v_arrow(target, layout.next_arrow, false, arrow_color(layout.next_arrow));
-    }
-}
-
-DialogClick ScummPanel::click_dialog(sf::Vector2f p,
-                                     const std::vector<std::string>& options,
-                                     int page_index) const {
-    const DialogPageLayout layout = dialog_layout(options, page_index);
-    if (layout.has_prev && layout.prev_arrow.contains(p)) {
-        return {DialogClick::Kind::PAGE, -1, layout.page_index - 1};
-    }
-    if (layout.has_next && layout.next_arrow.contains(p)) {
-        return {DialogClick::Kind::PAGE, -1, layout.page_index + 1};
-    }
-    for (const DialogPageLayout::Row& row : layout.rows) {
-        if (row.rect.contains(p)) {
-            return {DialogClick::Kind::OPTION, row.option_index, 0};
-        }
-    }
-    return {};
-}
-
-int ScummPanel::dialog_page_count(const std::vector<std::string>& options) const {
-    return dialog_layout(options, 0).page_count;
 }
 
 } // namespace pac::pnc

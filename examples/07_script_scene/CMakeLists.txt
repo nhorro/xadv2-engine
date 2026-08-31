@@ -1,0 +1,2 @@
+add_executable(pac_example_07_script_scene main.cpp)
+target_link_libraries(pac_example_07_script_scene PRIVATE pac::engine pac_project_options)

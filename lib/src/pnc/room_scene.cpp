@@ -22,12 +22,11 @@
 #include "engine/core/text_layout.hpp"
 #include "engine/core/thumbnail.hpp"
 #include "engine/gfx/animated_sprite.hpp"
-#include "gfx/gles2_compat.hpp"
-#include "engine/pnc/approach_follow.hpp"
 #include "engine/pnc/data_error.hpp"
 #include "engine/pnc/dev_actions.hpp"
 #include "engine/pnc/pause_overlay.hpp"
 #include "engine/pnc/room.hpp"
+#include "gfx/gles2_compat.hpp"
 #include "pnc/dialog_internal.hpp"
 #include "pnc/room_lighting.hpp"
 #include "pnc/room_tuning_overlay.hpp"
@@ -54,20 +53,9 @@
 namespace pac::pnc {
 
 namespace {
-constexpr float kScenerFraction = 0.85f;
 constexpr float kAvatarScale = 1.1f;
-// Distance (world px) within which the avatar is considered "at" an approach
-// point: closer than this we don't bother walking / waiting.
-constexpr float kApproachReached = 8.0f;
 constexpr float kRoomFadeDefault = 0.3f; // change_room fade-out/in seconds
 constexpr float kPanelFadeDefault = 0.25f;
-
-// A hotspot bound to one of these kinds tracks a *moving* target, so a
-// `requires_approach` walk-then-act can follow its live position (#158). Region
-// binds are static and use the normal (area/approach) path.
-bool is_moving_bind(const std::string& bind) {
-    return bind.starts_with("npc:") || bind.starts_with("object:");
-}
 
 // Engine-reserved global-state keys backing declarative configs (#185): the live
 // config id per room and a per-(room,config) "seen" flag for first-enter tracking.
@@ -79,20 +67,6 @@ std::string config_cur_key(const std::string& room) {
 }
 std::string config_seen_key(const std::string& room, const std::string& config) {
     return "__config." + room + "." + config + ".seen";
-}
-
-sf::FloatRect tuning_panel_region(const ScummPanel& panel, sf::Vector2u runtime_size) {
-    const ScummPanelLayout& layout = panel.config().layout;
-    const float sx = layout.design_size.x > 0.0f
-                         ? static_cast<float>(runtime_size.x) / layout.design_size.x
-                         : 1.0f;
-    const float sy = layout.design_size.y > 0.0f
-                         ? static_cast<float>(runtime_size.y) / layout.design_size.y
-                         : 1.0f;
-    return {layout.panel_rect.left * sx,
-            layout.panel_rect.top * sy,
-            layout.panel_rect.width * sx,
-            layout.panel_rect.height * sy};
 }
 
 std::optional<pac::core::StateValue> to_state_value(const sol::object& v) {
@@ -221,7 +195,17 @@ struct RoomScene::Lua {
 };
 
 RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params)
-    : ctx_(ctx), ui_sounds_(params), command_controller_(*this) {
+    : RoomScene(ctx, params, RoomViewport::from_runtime(ctx.display.virtual_resolution())) {}
+
+RoomScene::RoomScene(pac::core::EngineContext& ctx,
+                     const pac::core::SceneParams& params,
+                     RoomViewport room_viewport)
+    : ctx_(ctx), ui_sounds_(params), room_viewport_(room_viewport), command_controller_(*this),
+      command_processor_(*this) {
+    if (!room_viewport_.valid()) {
+        ctx_.log.warn("RoomScene: invalid room viewport; using the virtual display resolution");
+        room_viewport_ = RoomViewport::from_runtime(ctx_.display.virtual_resolution());
+    }
     scene_id_ = params.get_or("__scene_id", "room_view");
     chapter_id_ = params.get_or("__chapter_id", params.get_or("chapter", ""));
     chapter_facts_path_ = params.get_or("__chapter_facts", params.get_or("facts", ""));
@@ -233,6 +217,7 @@ RoomScene::RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams
     player_char_ = params.get_or("player", "");
     font_path_ = params.get_or("font", "");
     scumm_panel_path_ = params.get_or("scumm_panel", "");
+    dialog_widget_path_ = params.get_or("dialog_widget", "");
     inventory_path_ = params.get_or("inventory", "");
     inventory_logic_ = params.get_or("inventory_logic", "");
     logic_path_ = params.get_or("logic", "");
@@ -295,15 +280,6 @@ bool RoomScene::tuning_overlay_active() const {
     return tuning_overlay_ && tuning_overlay_->active();
 }
 
-float RoomScene::scenery_height() const {
-    // Set from the panel config in enter(); the fraction is the pre-panel fallback
-    // (and the value enter() itself uses to place a default panel).
-    if (scenery_height_ > 0.0f) {
-        return scenery_height_;
-    }
-    return static_cast<float>(ctx_.display.virtual_resolution().y) * kScenerFraction;
-}
-
 void RoomScene::enter() {
     if (!chapter_facts_path_.empty()) {
         pac::core::bind_facts_resource(ctx_, chapter_facts_path_);
@@ -342,12 +318,9 @@ void RoomScene::enter() {
     }
 
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
-    const float scenery = scenery_height();
-    const sf::FloatRect default_panel_rect(0.0f,
-                                           scenery,
-                                           static_cast<float>(vres.x),
-                                           static_cast<float>(vres.y) - scenery);
-    ScummPanelConfig panel_config = default_scumm_panel_config(default_panel_rect);
+    // The built-in UI layout remains the classic bottom panel, but it is scaled
+    // independently by ScummPanel and never defines the room viewport.
+    ScummPanelConfig panel_config = default_scumm_panel_config(ScummPanelLayout{}.panel_rect);
     if (!scumm_panel_path_.empty()) {
         try {
             panel_config = parse_scumm_panel_config(ctx_.resources.read_text(scumm_panel_path_),
@@ -359,17 +332,76 @@ void RoomScene::enter() {
             ctx_.log.error(std::string("RoomScene: scumm_panel: ") + e.what());
         }
     }
-    // The scene owns everything above the panel. Derive the split from the panel's
-    // own top edge (converted from its design space to the virtual resolution) so a
-    // game that resizes the panel doesn't leave the scenery viewport, hotspot
-    // hit-testing and walk clamping stranded at the built-in fraction. Panels that
-    // keep the default rect land back on exactly kScenerFraction.
-    const sf::Vector2f design = panel_config.layout.design_size;
-    if (design.y > 0.0f) {
-        scenery_height_ =
-            panel_config.layout.panel_rect.top * (static_cast<float>(vres.y) / design.y);
+    ScummWidgetModel widget_model;
+    widget_model.strings = &ctx_.strings;
+    widget_model.evidence = [this, indicator = panel_config.evidence_indicator]() {
+        EvidenceProgress evidence;
+        if (!indicator.enabled) {
+            return evidence;
+        }
+        const auto read_count = [this](const std::string& key) -> int {
+            if (key.empty()) {
+                return 0;
+            }
+            const auto value = ctx_.state.get(key);
+            if (!value) {
+                return 0;
+            }
+            if (const double* number = std::get_if<double>(&*value)) {
+                return static_cast<int>(*number);
+            }
+            if (const bool* flag = std::get_if<bool>(&*value)) {
+                return *flag ? 1 : 0;
+            }
+            return 0;
+        };
+        evidence.collected = read_count(indicator.collected_state);
+        evidence.total = read_count(indicator.total_state);
+        return evidence;
+    };
+    widget_model.has_notification = [this](const std::string& item_id) {
+        const auto value = ctx_.state.get("inventory.notification." + item_id);
+        return value && std::holds_alternative<bool>(*value) && std::get<bool>(*value);
+    };
+    widget_model.localized_name = [this](const std::string& item_id,
+                                         const std::string& source_name) {
+        return ctx_.localization.text("inventory." + item_id + ".name", source_name);
+    };
+    ScummPanel panel(std::move(panel_config), vres, font_, &ctx_.resources);
+    scumm_widget_.emplace(std::move(panel),
+                          std::move(widget_model),
+                          [this](const RoomUiIntent& intent) { handle_ui_intent(intent); },
+                          WidgetTransition{panel_fade_duration_, true});
+    scumm_widget_->connect(ui_state_stream_);
+
+    DialogWidgetConfig dialog_config;
+    if (!dialog_widget_path_.empty()) {
+        try {
+            dialog_config = parse_dialog_widget_config(
+                ctx_.resources.read_text(dialog_widget_path_), dialog_widget_path_);
+        } catch (pac::core::LoadError& e) {
+            ctx_.log.error(std::string("RoomScene: dialog_widget: ") +
+                           e.with_file(dialog_widget_path_).what());
+        } catch (const std::exception& e) {
+            ctx_.log.error(std::string("RoomScene: dialog_widget: ") + e.what());
+        }
     }
-    panel_.emplace(std::move(panel_config), vres, font_, &ctx_.resources);
+    const sf::Font* dialog_font = font_;
+    if (!dialog_config.font.empty()) {
+        if (const sf::Font* configured = ctx_.resources.try_font(dialog_config.font)) {
+            dialog_font = configured;
+        }
+    }
+    dialog_widget_.emplace(std::move(dialog_config),
+                           vres,
+                           dialog_font,
+                           [this](const RoomUiIntent& intent) { handle_ui_intent(intent); });
+    dialog_widget_->connect(ui_state_stream_);
+    input_router_.clear();
+    input_router_.add(*dialog_widget_);
+    input_router_.add(*scumm_widget_);
+    input_router_.add(*this);
+    publish_ui_state();
 
     lua_ = std::make_unique<Lua>();
     lua_->log = &ctx_.log;
@@ -436,6 +468,13 @@ void RoomScene::enter() {
     L.set_function("enable_hotspot", [this](std::string id) { api_set_hotspot_enabled(id, true); });
     L.set_function("disable_hotspot",
                    [this](std::string id) { api_set_hotspot_enabled(id, false); });
+    L.set_function("set_ui_widget_visible", [this](std::string id, bool visible) {
+        api_set_ui_widget_visible(id, visible);
+    });
+    L.set_function("show_ui_widget",
+                   [this](std::string id) { api_set_ui_widget_visible(id, true); });
+    L.set_function("hide_ui_widget",
+                   [this](std::string id) { api_set_ui_widget_visible(id, false); });
     // Toggle a named obstacle (#143): a disabled obstacle stops blocking the
     // walkable area, so the player/NPCs can path through where it was.
     L.set_function("enable_obstacle", [this](std::string id) {
@@ -1073,6 +1112,7 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     current_room_id_ = id;
     current_zone_.clear();
     command_controller_.reset();
+    command_processor_.reset();
     warn_unsupported_shader_features(room_->data(), ctx_.log);
 
     // Apply the room's declarative ambience before on_load. AmbiencePlayer lives
@@ -1112,8 +1152,7 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
         }
     }
 
-    const sf::Vector2u vres = ctx_.display.virtual_resolution();
-    const sf::Vector2f viewport(static_cast<float>(vres.x), scenery_height());
+    const sf::Vector2f viewport = room_viewport_size();
     const sf::Vector2u room_size =
         compute_room_bounds(room_->data(), room_dir_, ctx_.resources, viewport, ctx_.log);
     camera_.emplace(viewport, room_size);
@@ -1364,8 +1403,7 @@ void RoomScene::unload_room() {
     dialog_text_anchor_.reset();
     // A command deferred for approach belongs to the outgoing room; drop it so it
     // can't fire into the new room (e.g. a zone hook changed rooms mid-walk).
-    pending_approach_.reset();
-    pending_moving_approach_.reset();
+    command_processor_.reset();
     // An auto-spawned handler task (M9 #183) was cancelled by the room scope
     // teardown above. The next room's enter() resets the command controller,
     // so just drop the awaiting id (otherwise update() in the new room would
@@ -1520,13 +1558,11 @@ void RoomScene::handle_event(const sf::Event& event) {
         event.key.code == sf::Keyboard::F9) {
         if (tuning_overlay_active()) {
             tuning_overlay_->close();
-        } else if (view_state_ == ViewState::COMMAND && room_ && panel_) {
+        } else if (view_state_ == ViewState::COMMAND && room_ && scumm_widget_) {
             if (!tuning_overlay_) {
                 tuning_overlay_ = std::make_unique<RoomTuningOverlay>();
             }
-            tuning_overlay_->open(room_->data(),
-                                  tuning_panel_region(*panel_, ctx_.display.virtual_resolution()),
-                                  font_);
+            tuning_overlay_->open(room_->data(), scumm_widget_->input_bounds(), font_);
         }
         return;
     }
@@ -1534,11 +1570,11 @@ void RoomScene::handle_event(const sf::Event& event) {
         tuning_overlay_->handle_event(event);
         return;
     }
-    // Track the pointer (virtual coords) so the top bar can preview the element
-    // under the cursor each frame (issue #28). Coordinates are already mapped to
-    // virtual space by the application's event rewrite.
-    if (event.type == sf::Event::MouseMoved) {
-        hover_vp_ = {static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y)};
+    const std::optional<RoutedInput> routed = routed_pointer_input(event);
+    // Track the rewritten virtual pointer before routing so menu rendering and
+    // debug tools share the same coordinates as widgets and the room adapter.
+    if (routed && routed->moved()) {
+        hover_vp_ = routed->position;
         if (view_state_ == ViewState::MENU) {
             int hovered = -1;
             const auto buttons = menu_buttons();
@@ -1554,7 +1590,8 @@ void RoomScene::handle_event(const sf::Event& event) {
             menu_hovered_ = hovered;
             return;
         }
-        sync_command_hover();
+        publish_ui_state();
+        (void) input_router_.route(*routed);
         return;
     }
     // Debug overlay toggles (#37): F1-F4 flip a layer. Only in dev (edit_mode);
@@ -1618,143 +1655,202 @@ void RoomScene::handle_event(const sf::Event& event) {
         handle_menu_event(event);
         return;
     }
-    // The secondary button clears the command being composed (design 04 §cancel):
-    // the player drops the verb and any operand and starts over, anywhere on screen.
-    if (event.type == sf::Event::MouseButtonReleased &&
-        event.mouseButton.button == sf::Mouse::Right) {
-        if (view_state_ == ViewState::COMMAND) {
-            command_controller_.cancel();
-            sync_command_hover();
-        }
+    if (!routed) {
         return;
     }
-    if (event.type != sf::Event::MouseButtonReleased ||
-        event.mouseButton.button != sf::Mouse::Left) {
-        return;
-    }
-    const sf::Vector2f vp{static_cast<float>(event.mouseButton.x),
-                          static_cast<float>(event.mouseButton.y)};
-    // Systemic panel buttons belong to command mode. Dialog mode owns the whole
-    // panel for its choices; opening settings/menu there would interrupt the
-    // dialog lifecycle and leave both interfaces active at once.
-    auto handle_system_button_if_clicked = [&]() {
-        if (!panel_ || !panel_->contains(vp)) {
-            return false;
-        }
-        const PanelIntent intent = panel_->click(vp, inventory_, command_controller_.state());
-        switch (intent.kind) {
-        case PanelIntent::Kind::OPEN_SETTINGS:
-            ctx_.scenes.open_settings();
-            return true;
-        case PanelIntent::Kind::OPEN_MENU:
-            enter_pause_menu();
-            return true;
-        case PanelIntent::Kind::PUSH_SCENE:
-            ctx_.scenes.push_scene(intent.scene);
-            return true;
-        default:
-            return false;
-        }
-    };
-    if (view_state_ == ViewState::COMMAND && handle_system_button_if_clicked()) {
-        return;
-    }
-    if (speech_.active()) {
-        speech_.skip();
-        ctx_.audio.voice.stop();
-        return;
-    }
-    if (view_state_ == ViewState::BLOCKED) {
-        // A cutscene-style block ignores input. But a block that is only the
-        // walk-to-approach wait (a queued command in pending_approach_, or a
-        // moving-target chase in pending_moving_approach_) is redirectable: a fresh
-        // click drops the queued command and re-routes to the new target (classic
-        // SCUMM redirect, issue #70). Stop the current walk and fall through to the
-        // normal click handling below, which issues the new movement/command.
-        if (!pending_approach_ && !pending_moving_approach_) {
-            return;
-        }
-        pending_approach_.reset();
-        pending_moving_approach_.reset();
+    // A deferred walk-to-act block is redirectable. Restore COMMAND before the
+    // ordered route so the same click can be consumed by whichever layer is now
+    // under it (floating widget first, room pointer last).
+    if (routed->primary_release() && view_state_ == ViewState::BLOCKED &&
+        command_processor_.has_deferred_command()) {
+        command_processor_.cancel_deferred_command();
         command_controller_.cancel();
         if (player_) {
             player_->stop();
         }
         view_state_ = ViewState::COMMAND;
     }
-    if (view_state_ == ViewState::DIALOG && dialog_) {
-        const std::vector<DialogOption> opts = dialog_->options();
-        if (panel_ && !opts.empty() && panel_->contains(vp)) {
-            std::vector<std::string> labels;
-            labels.reserve(opts.size());
-            for (const DialogOption& opt : opts) {
-                labels.push_back(opt.text);
-            }
-            const DialogClick click = panel_->click_dialog(vp, labels, dialog_page_);
-            if (click.kind == DialogClick::Kind::PAGE) {
-                dialog_page_ = click.page_index;
-            } else if (click.kind == DialogClick::Kind::OPTION) {
-                dialog_page_ = 0;
-                dialog_->choose(click.option_index);
-            }
+    publish_ui_state();
+    (void) input_router_.route(*routed);
+}
+
+InputResult RoomScene::handle(const RoutedInput& input) {
+    if (input.moved()) {
+        if (view_state_ != ViewState::COMMAND) {
+            command_controller_.clear_hover();
+            publish_ui_state();
+            return InputResult::CONSUMED;
         }
-        return;
+        if (!room_ || !room_viewport_rect().contains(input.position)) {
+            command_controller_.clear_hover();
+            publish_ui_state();
+            return InputResult::PASS;
+        }
+        const geom::Point world = virtual_to_world(input.position);
+        if (const RoomHotspot* hotspot = hotspot_under(world)) {
+            command_controller_.on_hotspot_hovered({hotspot->id});
+        } else if (room_->data().is_walkable(world)) {
+            command_controller_.on_walkable_hovered();
+        } else {
+            command_controller_.clear_hover();
+        }
+        publish_ui_state();
+        return InputResult::CONSUMED;
     }
 
-    if (panel_ && panel_->contains(vp)) {
-        const PanelIntent intent = panel_->click(vp, inventory_, command_controller_.state());
-        if (intent.kind == PanelIntent::Kind::SELECT_VERB) {
-            // Clicking the already-selected verb un-selects it, so the verb row is
-            // its own cancel affordance (design 04 §cancel).
-            const CommandState& state = command_controller_.state();
-            if (state.selected_verb && *state.selected_verb == intent.verb) {
-                command_controller_.cancel();
-            } else {
-                command_controller_.on_verb_selected({intent.verb});
-            }
-        } else if (intent.kind == PanelIntent::Kind::CLICK_INVENTORY) {
-            if (const auto cmd = command_controller_.on_inventory_item_selected({intent.item_id})) {
-                execute_command(*cmd);
-            }
-        } else if (intent.kind == PanelIntent::Kind::CHANGE_INVENTORY_PAGE) {
-            command_controller_.on_inventory_page_changed({intent.page_index});
-        } else if (intent.kind == PanelIntent::Kind::OPEN_SETTINGS) {
-            ctx_.scenes.open_settings();
-        } else if (intent.kind == PanelIntent::Kind::OPEN_NOTEBOOK) {
-            const ScummNotebookConfig& nb = panel_->config().notebook;
-            if (!nb.tab_state.empty()) {
-                ctx_.state.set(nb.tab_state, intent.tab);
-            }
-            if (!nb.scene.empty()) {
-                ctx_.scenes.push_scene(nb.scene);
-            }
+    if (input.secondary_release()) {
+        if (view_state_ == ViewState::COMMAND) {
+            command_controller_.cancel();
+            sync_command_hover();
+        }
+        return InputResult::CONSUMED;
+    }
+    if (!input.primary_release()) {
+        return room_viewport_rect().contains(input.position) ? InputResult::CONSUMED
+                                                             : InputResult::PASS;
+    }
+    if (speech_.active()) {
+        speech_.skip();
+        ctx_.audio.voice.stop();
+        publish_ui_state();
+        return InputResult::CONSUMED;
+    }
+    if (view_state_ != ViewState::COMMAND || !room_) {
+        command_controller_.clear_hover();
+        publish_ui_state();
+        return InputResult::CONSUMED;
+    }
+    if (!room_viewport_rect().contains(input.position)) {
+        return InputResult::PASS;
+    }
+
+    const geom::Point world = virtual_to_world(input.position);
+    if (const RoomHotspot* hotspot = hotspot_under(world)) {
+        if (const auto command = command_controller_.on_hotspot_clicked({hotspot->id})) {
+            (void) command_processor_.submit(*command);
+        }
+    } else if (command_controller_.state().builder_state != CommandBuilder::State::IDLE) {
+        command_controller_.cancel();
+    } else if (player_) {
+        const RoomData& data = room_->data();
+        player_->follow_path(
+            geom::find_path(player_->position(), world, data.walkable, data.active_obstacles()));
+    }
+    sync_command_hover();
+    return InputResult::CONSUMED;
+}
+
+void RoomScene::handle_ui_intent(const RoomUiIntent& intent) {
+    switch (intent.kind) {
+    case RoomUiIntent::Kind::NONE:
+        return;
+    case RoomUiIntent::Kind::SELECT_VERB: {
+        const CommandState& state = command_controller_.state();
+        if (state.selected_verb && *state.selected_verb == intent.verb) {
+            command_controller_.cancel();
+        } else {
+            command_controller_.on_verb_selected({intent.verb});
         }
         sync_command_hover();
         return;
     }
-
-    if (!room_) {
+    case RoomUiIntent::Kind::SELECT_INVENTORY_ITEM:
+        if (const auto command = command_controller_.on_inventory_item_selected({intent.id})) {
+            (void) command_processor_.submit(*command);
+        }
+        sync_command_hover();
+        return;
+    case RoomUiIntent::Kind::CHANGE_INVENTORY_PAGE:
+        command_controller_.on_inventory_page_changed({intent.index});
+        sync_command_hover();
+        return;
+    case RoomUiIntent::Kind::HOVER_VERB:
+        command_controller_.on_verb_hovered(intent.verb);
+        publish_ui_state();
+        return;
+    case RoomUiIntent::Kind::HOVER_INVENTORY_ITEM:
+        command_controller_.on_inventory_item_hovered(intent.id);
+        publish_ui_state();
+        return;
+    case RoomUiIntent::Kind::CLEAR_COMMAND_HOVER:
+        command_controller_.clear_hover();
+        publish_ui_state();
+        return;
+    case RoomUiIntent::Kind::CANCEL_COMMAND:
+        command_controller_.cancel();
+        sync_command_hover();
+        return;
+    case RoomUiIntent::Kind::DISMISS_SPEECH:
+        speech_.skip();
+        ctx_.audio.voice.stop();
+        publish_ui_state();
+        return;
+    case RoomUiIntent::Kind::OPEN_SETTINGS:
+        ctx_.scenes.open_settings();
+        return;
+    case RoomUiIntent::Kind::OPEN_MENU:
+        enter_pause_menu();
+        publish_ui_state();
+        return;
+    case RoomUiIntent::Kind::OPEN_NOTEBOOK:
+        if (!intent.state_key.empty()) {
+            ctx_.state.set(intent.state_key, intent.id);
+        }
+        if (!intent.scene.empty()) {
+            ctx_.scenes.push_scene(intent.scene);
+        }
+        return;
+    case RoomUiIntent::Kind::PUSH_SCENE:
+        if (!intent.scene.empty()) {
+            ctx_.scenes.push_scene(intent.scene);
+        }
+        return;
+    case RoomUiIntent::Kind::CHOOSE_DIALOG_OPTION:
+        if (dialog_) {
+            dialog_page_ = 0;
+            dialog_->choose(intent.index);
+        }
+        publish_ui_state();
+        return;
+    case RoomUiIntent::Kind::CHANGE_DIALOG_PAGE:
+        dialog_page_ = intent.index;
+        publish_ui_state();
         return;
     }
-    const geom::Point world = virtual_to_world(vp);
-    if (const RoomHotspot* hs = hotspot_under(world)) {
-        if (const auto cmd = command_controller_.on_hotspot_clicked({hs->id})) {
-            execute_command(*cmd);
-        }
-    } else if (command_controller_.state().builder_state != CommandBuilder::State::IDLE) {
-        // Clicking empty scenery while a command is being built cancels it and
-        // returns to IDLE (issue #28).
-        command_controller_.cancel();
-    } else if (player_) {
-        // IDLE: walk there. find_path clamps a click outside the walkable area to
-        // the nearest reachable point (issue #28) and routes around obstacles; the
-        // avatar walks the returned waypoints in order.
-        const RoomData& d = room_->data();
-        const auto path =
-            geom::find_path(player_->position(), world, d.walkable, d.active_obstacles());
-        player_->follow_path(path);
+}
+
+void RoomScene::publish_ui_state() {
+    if (!scumm_widget_ && !dialog_widget_) {
+        return;
     }
-    sync_command_hover();
+    RoomUiState state;
+    switch (view_state_) {
+    case ViewState::COMMAND:
+        state.mode = RoomInteractionMode::COMMAND;
+        break;
+    case ViewState::DIALOG:
+        state.mode = RoomInteractionMode::DIALOG;
+        break;
+    case ViewState::BLOCKED:
+        state.mode = RoomInteractionMode::BLOCKED;
+        break;
+    case ViewState::MENU:
+        state.mode = RoomInteractionMode::MENU;
+        break;
+    }
+    state.speech_active = speech_.active();
+    state.command = command_controller_.state();
+    state.inventory = inventory_;
+    state.dialog_page = dialog_page_;
+    state.widget_visibility = ui_widget_visibility_;
+    if (dialog_) {
+        const std::vector<DialogOption> options = dialog_->options();
+        state.dialog_options.reserve(options.size());
+        for (const DialogOption& option : options) {
+            state.dialog_options.push_back(option.text);
+        }
+    }
+    ui_state_stream_.publish(state);
 }
 
 CommandOperandInfo RoomScene::resolve_command_operand(const ObjectRef& object) const {
@@ -1786,65 +1882,158 @@ CommandOperandInfo RoomScene::resolve_command_operand(const ObjectRef& object) c
     return info;
 }
 
-void RoomScene::execute_command(const Command& cmd) {
-    // Resolve the room operand the command targets (if any) and its approach point.
-    const ObjectRef* room_target = nullptr;
-    if (cmd.param2 && cmd.param2->kind == ObjectKind::ROOM_OBJECT) {
-        room_target = &*cmd.param2;
-    } else if (cmd.param1.kind == ObjectKind::ROOM_OBJECT) {
-        room_target = &cmd.param1;
-    }
-    const RoomHotspot* hs = nullptr;
-    if (room_target && room_) {
-        const auto it = room_->data().hotspots.find(room_target->id);
-        if (it != room_->data().hotspots.end()) {
-            hs = &it->second;
-        }
-    }
-
-    if (hs && hs->approach && player_ && room_) {
-        // Always start walking toward the approach point. The (clamped-to-walkable)
-        // distance then decides whether we act now or wait to arrive.
-        const RoomData& d = room_->data();
-        geom::Point ap = *hs->approach;
-        if (!d.walkable.empty() && !d.is_walkable(ap)) {
-            ctx_.log.debug("approach point for hotspot '" + room_target->id +
-                           "' is outside the walkable area; clamped to the nearest walkable point");
-            ap = geom::closest_point_in_polygon(ap, d.walkable);
-        }
-        const bool far = geom::distance(player_->position(), ap) > kApproachReached;
-        walk_to_approach(*hs->approach, room_target->id);
-        if (hs->requires_approach && far) {
-            // Defer: block input and run the command on arrival (update() polls
-            // for the avatar to stop). The builder stays in COMMAND_EXECUTING.
-            pending_approach_ = PendingApproach{cmd, ap, room_target->id};
-            view_state_ = ViewState::BLOCKED;
-            return;
-        }
-    }
-
-    // #158: a bind-only hotspot (no static area, no approach point) bound to a
-    // *moving* NPC/object still honors `requires_approach` — walk toward the
-    // target's live position and re-target it as it moves, firing once in range
-    // (update() drives the chase).
-    if (hs && hs->area.empty() && !hs->approach && hs->requires_approach &&
-        is_moving_bind(hs->bind) && player_ && room_) {
-        if (const std::optional<geom::Point> target = live_bind_target(hs->bind)) {
-            const ChaseParams params; // interaction range / re-path / give-up tunables
-            if (geom::distance(player_->position(), *target) > params.interaction_range) {
-                pending_approach_.reset(); // mutually exclusive with the static path
-                const geom::Point dest = route_to(*target);
-                pending_moving_approach_ = PendingMovingApproach{cmd, room_target->id, dest, 0.0f};
-                view_state_ = ViewState::BLOCKED;
-                return;
-            }
-        }
-    }
-
-    dispatch_and_feedback(cmd);
+bool RoomScene::command_submission_enabled() const {
+    return view_state_ == ViewState::COMMAND && room_ && lua_ && !change_armed_ &&
+           !change_pending_ && !speech_.active();
 }
 
-void RoomScene::face_target(const Command& cmd) {
+CommandOperandValidation RoomScene::validate_command_operand(const ObjectRef& object,
+                                                             Verb verb) const {
+    const CommandOperandInfo info = resolve_command_operand(object);
+    bool available = info.found;
+    if (object.kind == ObjectKind::ROOM_OBJECT) {
+        available = available && room_ && room_->hotspot_enabled(object.id);
+    } else if (object.kind == ObjectKind::INVENTORY_OBJECT) {
+        available = available && inventory_.has(object.id);
+    }
+    const std::string id(verb_id(verb));
+    const bool affords =
+        verb == Verb::LOOK_AT ||
+        std::find(info.affordances.begin(), info.affordances.end(), id) != info.affordances.end();
+    return {available, available && affords, info.combinable};
+}
+
+RoomCommandTarget RoomScene::resolve_room_command_target(const std::string& hotspot_id) const {
+    RoomCommandTarget target;
+    if (!room_ || !room_->hotspot_enabled(hotspot_id)) {
+        return target;
+    }
+    const auto it = room_->data().hotspots.find(hotspot_id);
+    if (it == room_->data().hotspots.end()) {
+        return target;
+    }
+    const RoomHotspot& hotspot = it->second;
+    target.found = true;
+    target.approach = hotspot.approach;
+    target.requires_approach = hotspot.requires_approach;
+    target.moving = hotspot.bind.starts_with("npc:") || hotspot.bind.starts_with("object:");
+    if (target.moving) {
+        target.live_position = live_bind_target(hotspot.bind);
+        // A bind-only target that has disappeared is not a valid direct command
+        // operand. Pointer input could not hit it either, so adapters behave the
+        // same way as the room pointer path.
+        if (hotspot.area.empty() && !target.live_position) {
+            target.found = false;
+        }
+    }
+    return target;
+}
+
+bool RoomScene::command_player_available() const {
+    return player_.has_value();
+}
+
+geom::Point RoomScene::command_player_position() const {
+    return player_ ? player_->position() : geom::Point{};
+}
+
+bool RoomScene::command_player_moving() const {
+    return player_ && player_->moving();
+}
+
+std::string RoomScene::command_player_facing() const {
+    return player_ ? player_->facing() : std::string();
+}
+
+void RoomScene::restore_command_player_facing(const std::string& facing) {
+    if (player_) {
+        player_->face(facing);
+    }
+}
+
+VerbResult RoomScene::call_inventory_command(const std::string& item_id,
+                                             const std::string& verb,
+                                             std::optional<std::string> operand) {
+    return lua_ ? lua_->call_inventory(item_id, verb, std::move(operand)) : VerbResult{};
+}
+
+VerbResult RoomScene::call_hotspot_command(const std::string& hotspot_id,
+                                           const std::string& verb,
+                                           std::optional<std::string> operand) {
+    return room_ ? room_->call_hotspot(hotspot_id, verb, std::move(operand)) : VerbResult{};
+}
+
+VerbResult RoomScene::call_game_command(const std::string& verb,
+                                        const std::string& first,
+                                        std::optional<std::string> second) {
+    return lua_ ? lua_->call_game(verb, first, std::move(second)) : VerbResult{};
+}
+
+void RoomScene::begin_command_dispatch() {
+    spoke_during_command_ = false;
+}
+
+bool RoomScene::command_view_active() const {
+    return view_state_ == ViewState::COMMAND;
+}
+
+bool RoomScene::command_handler_task_armed() const {
+    return awaiting_handler_task_.has_value();
+}
+
+void RoomScene::arm_command_handler_task(pac::core::TaskId task) {
+    awaiting_handler_task_ = task;
+}
+
+void RoomScene::block_for_command() {
+    if (view_state_ == ViewState::COMMAND) {
+        view_state_ = ViewState::BLOCKED;
+    }
+}
+
+void RoomScene::unblock_after_command() {
+    if (view_state_ == ViewState::BLOCKED) {
+        view_state_ = ViewState::COMMAND;
+    }
+}
+
+bool RoomScene::command_spoke_during_dispatch() const {
+    return spoke_during_command_;
+}
+
+void RoomScene::present_command_caption(const std::string& caption) {
+    sf::Color color(230, 230, 230);
+    float gap = 48.0f;
+    if (const Character* character = cast_.character(player_char_)) {
+        color = character->speech_color;
+        gap = character->speech_gap;
+    }
+    const std::string id = pac::core::text_id({}, caption);
+    say(ctx_.localization.text(id, caption), color, gap, id);
+    if (speech_.active()) {
+        begin_talk_animation(player_char_, player_ && (player_->moving() || player_->acting()));
+    }
+}
+
+void RoomScene::present_unhandled_command() {
+    sf::Color color(230, 230, 230);
+    float gap = 48.0f;
+    if (const Character* character = cast_.character(player_char_)) {
+        color = character->speech_color;
+        gap = character->speech_gap;
+    }
+    say(ctx_.strings.caption("nothing_happens"), color, gap);
+    if (speech_.active()) {
+        begin_talk_animation(player_char_, player_ && (player_->moving() || player_->acting()));
+    }
+}
+
+void RoomScene::finish_command_execution() {
+    command_controller_.finish_execution();
+    sync_command_hover();
+}
+
+void RoomScene::face_command_target(const Command& cmd) {
     if (!player_ || !room_) {
         return;
     }
@@ -1896,74 +2085,6 @@ std::optional<geom::Point> RoomScene::hotspot_focus(const RoomHotspot& hs) const
     return std::nullopt;
 }
 
-void RoomScene::dispatch_and_feedback(const Command& cmd) {
-    spoke_during_command_ = false;
-    const bool player_was_moving = player_ && player_->moving();
-    const std::string movement_facing = player_ ? player_->facing() : std::string();
-    // Turn to face what we're about to act on / talk to, before dispatch (so the
-    // avatar already looks at an NPC when its dialog opens).
-    face_target(cmd);
-    const VerbResult result = dispatch(cmd);
-    // If dispatch flipped us into a non-command state (e.g. a `talk_to` handler
-    // called `start_dialog`), the dialog's first NPC line is already on screen;
-    // suppress the fallback caption that would otherwise overwrite it.
-    if (view_state_ != ViewState::COMMAND) {
-        command_controller_.finish_execution();
-        return;
-    }
-    // Auto-spawned handler that yielded (M9 #183): it took responsibility, so
-    // suppress the fallback caption, block input until it drains, and defer
-    // finish_execution to update() — which polls is_task_alive. The task is
-    // scoped to the room, so a `change_room` mid-handler cancels it cleanly
-    // (the room-scope teardown also clears awaiting_handler_task_).
-    if (result.in_flight) {
-        awaiting_handler_task_ = *result.in_flight;
-        view_state_ = ViewState::BLOCKED;
-        return;
-    }
-    // M9 #184: a synchronously-completed handler may still have armed a
-    // separate in-flight task via `cutscene(...)` (its wrapper calls
-    // _cutscene_arm before returning). Treat it like the yielded case —
-    // defer finish_execution to the drain logic below.
-    if (awaiting_handler_task_) {
-        view_state_ = ViewState::BLOCKED;
-        return;
-    }
-    sf::Color color(230, 230, 230);
-    float gap = 48.0f;
-    if (const Character* c = cast_.character(player_char_)) {
-        color = c->speech_color;
-        gap = c->speech_gap;
-    }
-    // Show a returned caption. Otherwise fall back to "nothing happens" ONLY when
-    // no handler took responsibility — a handler that ran (opened a close-up,
-    // changed state, spoke via talk(), or just returned nothing) suppresses the
-    // default, since it already decided how to react.
-    // An immediate observation can be made mid-stride. `face_target` above is
-    // still useful for stationary interactions, but restore the route facing
-    // when this command did not stop the walk.
-    if (player_was_moving && player_ && player_->moving()) {
-        player_->face(movement_facing);
-    }
-    if (result.caption) {
-        const std::string id = pac::core::text_id({}, *result.caption);
-        say(ctx_.localization.text(id, *result.caption), color, gap, id);
-        // Command captions are Julia reacting while normal play continues. Let
-        // an in-flight walk or scripted gesture keep its animation; when she is
-        // already idle, use the talk loop.
-        if (speech_.active()) {
-            begin_talk_animation(player_char_, player_ && (player_->moving() || player_->acting()));
-        }
-    } else if (!result.handled && !spoke_during_command_) {
-        say(ctx_.strings.caption("nothing_happens"), color, gap);
-        if (speech_.active()) {
-            begin_talk_animation(player_char_, player_ && (player_->moving() || player_->acting()));
-        }
-    }
-    command_controller_.finish_execution();
-    sync_command_hover();
-}
-
 std::optional<sf::FloatRect> RoomScene::object_frame_bounds(const std::string& object_id) const {
     if (!room_ || !room_->object_visible(object_id)) {
         return std::nullopt;
@@ -1999,9 +2120,10 @@ const RoomHotspot* RoomScene::hotspot_under(geom::Point world) const {
                              [this](const std::string& id) { return object_frame_bounds(id); });
 }
 
-void RoomScene::walk_to_approach(geom::Point approach, const std::string& hotspot_id) {
+geom::Point RoomScene::route_command_player_to(geom::Point approach,
+                                               const std::string& hotspot_id) {
     if (!player_ || !room_) {
-        return;
+        return approach;
     }
     const RoomData& d = room_->data();
     geom::Point ap = approach;
@@ -2012,14 +2134,16 @@ void RoomScene::walk_to_approach(geom::Point approach, const std::string& hotspo
             "': approach point outside walkable area; routing to nearest reachable point");
     }
     // Near-enough short-circuit: don't shuffle in place when already there.
-    if (geom::distance(player_->position(), ap) <= kApproachReached) {
-        return;
+    constexpr float approach_reached = 8.0f;
+    if (geom::distance(player_->position(), ap) <= approach_reached) {
+        return ap;
     }
     const auto path = geom::find_path(player_->position(), ap, d.walkable, d.active_obstacles());
     player_->follow_path(path);
+    return ap;
 }
 
-geom::Point RoomScene::route_to(geom::Point target) {
+geom::Point RoomScene::reroute_command_player_to(geom::Point target) {
     const RoomData& d = room_->data();
     geom::Point dest = target;
     if (!d.walkable.empty() && !d.is_walkable(dest)) {
@@ -2046,40 +2170,6 @@ std::optional<geom::Point> RoomScene::live_bind_target(const std::string& bind) 
     return std::nullopt;
 }
 
-VerbResult RoomScene::dispatch(const Command& cmd) {
-    const std::string verb(verb_id(cmd.verb));
-    const ObjectRef& p1 = cmd.param1;
-    // Most specific handler that EXISTS wins and takes responsibility: stop as soon
-    // as one is `handled` (even if it returned no caption), so a silent action
-    // handler doesn't fall through to the default. Only when no handler exists at
-    // any level does the (last) game-fallback result — typically unhandled — flow
-    // back, and the caller shows the default caption.
-    if (cmd.param2) {
-        const ObjectRef& p2 = *cmd.param2;
-        if (p1.kind == ObjectKind::INVENTORY_OBJECT) {
-            if (VerbResult r = lua_->call_inventory(p1.id, verb, p2.id); r.handled) {
-                return r;
-            }
-        }
-        if (p2.kind == ObjectKind::ROOM_OBJECT && room_) {
-            if (VerbResult r = room_->call_hotspot(p2.id, verb, p1.id); r.handled) {
-                return r;
-            }
-        }
-        return lua_->call_game(verb, p1.id, p2.id);
-    }
-    if (p1.kind == ObjectKind::INVENTORY_OBJECT) {
-        if (VerbResult r = lua_->call_inventory(p1.id, verb, std::nullopt); r.handled) {
-            return r;
-        }
-    } else if (p1.kind == ObjectKind::ROOM_OBJECT && room_) {
-        if (VerbResult r = room_->call_hotspot(p1.id, verb, std::nullopt); r.handled) {
-            return r;
-        }
-    }
-    return lua_->call_game(verb, p1.id, std::nullopt);
-}
-
 std::string RoomScene::command_verb_label(Verb verb) const {
     return ctx_.strings.verb_label(std::string(verb_id(verb)));
 }
@@ -2093,33 +2183,12 @@ std::string RoomScene::command_walk_label() const {
 }
 
 void RoomScene::sync_command_hover() {
-    if (view_state_ != ViewState::COMMAND) {
+    if (!scumm_widget_) {
         command_controller_.clear_hover();
         return;
     }
-    if (panel_ && panel_->contains(hover_vp_)) {
-        const PanelIntent in = panel_->click(hover_vp_, inventory_, command_controller_.state());
-        if (in.kind == PanelIntent::Kind::SELECT_VERB) {
-            command_controller_.on_verb_hovered(in.verb);
-        } else if (in.kind == PanelIntent::Kind::CLICK_INVENTORY) {
-            command_controller_.on_inventory_item_hovered(in.item_id);
-        } else {
-            command_controller_.clear_hover();
-        }
-        return;
-    }
-    if (room_) {
-        const geom::Point world = virtual_to_world(hover_vp_);
-        if (const RoomHotspot* hs = hotspot_under(world)) {
-            command_controller_.on_hotspot_hovered({hs->id});
-        } else if (room_->data().is_walkable(world)) {
-            command_controller_.on_walkable_hovered();
-        } else {
-            command_controller_.clear_hover();
-        }
-        return;
-    }
-    command_controller_.clear_hover();
+    publish_ui_state();
+    (void) input_router_.route({RoutedInputKind::POINTER_MOVED, hover_vp_});
 }
 
 void RoomScene::update(float dt) {
@@ -2264,46 +2333,7 @@ void RoomScene::update(float dt) {
             ctx_.scripting.set_current_scope(previous_scope);
         }
     }
-    // A command deferred until the player reaches a `requires_approach` hotspot's
-    // approach point fires once the avatar stops (path complete, or as close as
-    // pathing allowed). We unblock first so dispatch runs in the COMMAND view.
-    if (pending_approach_ && player_ && !player_->moving()) {
-        const Command cmd = pending_approach_->cmd;
-        pending_approach_.reset();
-        view_state_ = ViewState::COMMAND;
-        dispatch_and_feedback(cmd);
-    }
-    // #158: a command deferred behind a moving bound target. Each frame re-resolve
-    // the target's live position and decide whether to keep walking, re-route, or
-    // fire. A reset target (NPC despawned / object removed) fires from here so the
-    // block can't outlive its target.
-    if (pending_moving_approach_ && player_ && room_) {
-        PendingMovingApproach& pend = *pending_moving_approach_;
-        pend.elapsed += dt;
-        const RoomHotspot* hs = nullptr;
-        if (const auto it = room_->data().hotspots.find(pend.hotspot_id);
-            it != room_->data().hotspots.end()) {
-            hs = &it->second;
-        }
-        const std::optional<geom::Point> target = hs ? live_bind_target(hs->bind) : std::nullopt;
-        const ChaseParams params;
-        const ChaseDecision dec = target ? evaluate_chase(player_->position(),
-                                                          *target,
-                                                          pend.last_dest,
-                                                          player_->moving(),
-                                                          pend.elapsed,
-                                                          params)
-                                         : ChaseDecision{ChaseAction::Fire, {}};
-        if (dec.action == ChaseAction::Fire) {
-            const Command cmd = pend.cmd;
-            pending_moving_approach_.reset();
-            view_state_ = ViewState::COMMAND;
-            dispatch_and_feedback(cmd);
-        } else if (dec.action == ChaseAction::Repath) {
-            pend.last_dest = route_to(dec.repath_to);
-        }
-        // Wait: keep walking the current path.
-    }
+    command_processor_.update(dt);
     // M9 #186: a deferred on_room_resume(fn) beat fires now that this room is the
     // live, ticking scene again (update() only runs on the top scene, so reaching
     // here means the close-up that registered it has popped). Fire only from a
@@ -2354,8 +2384,10 @@ void RoomScene::update(float dt) {
     // Cursor affordance (#73): request the INTERACT cursor when an interactive
     // hotspot is under the pointer in COMMAND. hover_vp_ is offscreen (-1,-1)
     // until the first MouseMoved, so this stays DEFAULT until the mouse moves.
-    if (view_state_ == ViewState::COMMAND && room_ && hover_vp_.y >= 0.0f &&
-        hover_vp_.y < scenery_height() && hotspot_under(virtual_to_world(hover_vp_)) != nullptr) {
+    const bool pointer_over_panel = scumm_widget_ && scumm_widget_->captures(hover_vp_);
+    if (view_state_ == ViewState::COMMAND && room_ && !pointer_over_panel &&
+        room_viewport_rect().contains(hover_vp_) &&
+        hotspot_under(virtual_to_world(hover_vp_)) != nullptr) {
         ctx_.cursor.want(pac::core::CursorKind::INTERACT);
     }
     prev_view_state_ = view_state_;
@@ -2390,16 +2422,11 @@ void RoomScene::update(float dt) {
         }
     }
 
-    const bool should_hide_panel = view_state_ == ViewState::BLOCKED;
-    if (should_hide_panel != panel_hidden_) {
-        panel_hidden_ = should_hide_panel;
-        if (panel_hidden_) {
-            panel_fade_.fade_out(panel_fade_duration_);
-        } else {
-            panel_fade_.fade_in(panel_fade_duration_);
-        }
+    if (scumm_widget_ || dialog_widget_) {
+        publish_ui_state();
+        if (scumm_widget_) scumm_widget_->update(dt);
+        if (dialog_widget_) dialog_widget_->update(dt);
     }
-    panel_fade_.update(dt);
     if (cutscene_active_) {
         ctx_.cursor.want_hidden();
     }
@@ -2530,11 +2557,9 @@ std::string RoomScene::debug_hud_text() const {
 }
 
 void RoomScene::draw(sf::RenderTarget& target) const {
-    const sf::Vector2u vres = ctx_.display.virtual_resolution();
     if (room_ && camera_) {
         sf::View scenery(camera_->view_rect());
-        scenery.setViewport(ctx_.display.viewport_for(
-            sf::FloatRect(0.0f, 0.0f, static_cast<float>(vres.x), scenery_height())));
+        scenery.setViewport(ctx_.display.viewport_for(room_viewport_rect()));
 
         const RoomPostProcess* post =
             tuning_overlay_active()
@@ -2638,8 +2663,9 @@ void RoomScene::draw(sf::RenderTarget& target) const {
         bool scenery_composited = false;
 
         if (scenery_effects_active) {
-            const sf::Vector2u post_size{vres.x,
-                                         static_cast<unsigned>(std::ceil(scenery_height()))};
+            const sf::Vector2f viewport_size = room_viewport_size();
+            const sf::Vector2u post_size{static_cast<unsigned>(std::ceil(viewport_size.x)),
+                                         static_cast<unsigned>(std::ceil(viewport_size.y))};
             if (!post_process_target_ || post_process_target_->getSize() != post_size) {
                 auto next = std::make_unique<sf::RenderTexture>();
                 if (next->create(post_size.x, post_size.y)) {
@@ -2763,72 +2789,11 @@ void RoomScene::draw(sf::RenderTarget& target) const {
     }
 
     target.setView(ctx_.display.view());
-    // The SCUMM panel fades beneath a black mask when entering BLOCKED
-    // (cutscene-like) state, then fades back in when command mode returns.
     if (tuning_overlay_active()) {
         tuning_overlay_->draw(target);
-    } else if (panel_) {
-        if (view_state_ == ViewState::DIALOG) {
-            // Options show only while awaiting a choice; while a line is being
-            // spoken the option list is empty, so we draw nothing and leave a
-            // clean bar under the scenery (the speech bubble floats over it).
-            const std::vector<DialogOption> opts =
-                dialog_ ? dialog_->options() : std::vector<DialogOption>{};
-            if (!opts.empty()) {
-                std::vector<std::string> labels;
-                labels.reserve(opts.size());
-                for (const DialogOption& opt : opts) {
-                    labels.push_back(opt.text);
-                }
-                panel_->draw_options(target, ctx_.strings, labels, dialog_page_, hover_vp_);
-            }
-        } else {
-            EvidenceProgress evidence;
-            const ScummEvidenceIndicator& ev = panel_->config().evidence_indicator;
-            if (ev.enabled) {
-                const auto read_count = [this](const std::string& key) -> int {
-                    if (key.empty()) {
-                        return 0;
-                    }
-                    const auto v = ctx_.state.get(key);
-                    if (!v) {
-                        return 0;
-                    }
-                    if (const double* d = std::get_if<double>(&*v)) {
-                        return static_cast<int>(*d);
-                    }
-                    if (const bool* b = std::get_if<bool>(&*v)) {
-                        return *b ? 1 : 0;
-                    }
-                    return 0;
-                };
-                evidence.collected = read_count(ev.collected_state);
-                evidence.total = read_count(ev.total_state);
-            }
-            panel_->draw(
-                target,
-                ctx_.strings,
-                inventory_,
-                command_controller_.state(),
-                hover_vp_,
-                evidence,
-                [this](const std::string& item_id) {
-                    const auto value = ctx_.state.get("inventory.notification." + item_id);
-                    return value && std::holds_alternative<bool>(*value) && std::get<bool>(*value);
-                },
-                [this](const std::string& item_id, const std::string& source_name) {
-                    return ctx_.localization.text("inventory." + item_id + ".name", source_name);
-                });
-        }
-    }
-    const sf::Uint8 panel_fade_a = panel_fade_.alpha255();
-    if (!tuning_overlay_active() && panel_fade_a > 0) {
-        const sf::Vector2u vres = ctx_.display.virtual_resolution();
-        sf::RectangleShape panel_mask(
-            {static_cast<float>(vres.x), static_cast<float>(vres.y) - scenery_height()});
-        panel_mask.setPosition(0.0f, scenery_height());
-        panel_mask.setFillColor(sf::Color(0, 0, 0, panel_fade_a));
-        target.draw(panel_mask);
+    } else {
+        if (scumm_widget_) scumm_widget_->draw(target);
+        if (dialog_widget_) dialog_widget_->draw(target);
     }
     if (view_state_ == ViewState::MENU) {
         draw_menu(target);
@@ -2919,6 +2884,16 @@ void RoomScene::api_set_hotspot_enabled(const std::string& hotspot_id, bool enab
     if (room_) {
         room_->set_hotspot_enabled(hotspot_id, enabled);
     }
+}
+
+void RoomScene::api_set_ui_widget_visible(const std::string& widget_id, bool visible) {
+    const auto it = ui_widget_visibility_.find(widget_id);
+    if (it == ui_widget_visibility_.end()) {
+        ctx_.log.warn("set_ui_widget_visible: unknown room UI widget '" + widget_id + "'");
+        return;
+    }
+    it->second = visible;
+    publish_ui_state();
 }
 
 void RoomScene::api_set_room_state(const std::string& key, pac::core::StateValue value) {
@@ -3981,6 +3956,7 @@ bool RoomScene::restore(const pac::core::GameState& state) {
         lua_->pending_resume.clear();
     }
     command_controller_.reset();
+    command_processor_.reset();
     speech_.skip();
     ctx_.audio.voice.stop();
 

@@ -107,6 +107,31 @@ TEST_CASE("view_rect reflects center and viewport") {
     CHECK(r.height == doctest::Approx(612.0f));
 }
 
+TEST_CASE("a full-height viewport scrolls a larger room on both axes") {
+    Camera cam({1280.0f, 720.0f}, {1915u, 821u});
+
+    cam.snap_to({0.0f, 0.0f});
+    CHECK(cam.top_left().x == doctest::Approx(0.0f));
+    CHECK(cam.top_left().y == doctest::Approx(0.0f));
+    CHECK(cam.view_rect().width == doctest::Approx(1280.0f));
+    CHECK(cam.view_rect().height == doctest::Approx(720.0f));
+
+    cam.snap_to({1915.0f, 821.0f});
+    CHECK(cam.top_left().x == doctest::Approx(635.0f));
+    CHECK(cam.top_left().y == doctest::Approx(101.0f));
+}
+
+TEST_CASE("camera accepts a non-widescreen runtime viewport") {
+    Camera cam({900.0f, 1200.0f}, {1600u, 1800u});
+
+    cam.snap_to({1600.0f, 1800.0f});
+    const sf::FloatRect view = cam.view_rect();
+    CHECK(view.left == doctest::Approx(700.0f));
+    CHECK(view.top == doctest::Approx(600.0f));
+    CHECK(view.width == doctest::Approx(900.0f));
+    CHECK(view.height == doctest::Approx(1200.0f));
+}
+
 TEST_CASE("camera_look_at snaps the center (clamped) and suspends follow") {
     Camera cam({1280.0f, 612.0f}, {3000u, 1000u});
     CHECK(cam.following());

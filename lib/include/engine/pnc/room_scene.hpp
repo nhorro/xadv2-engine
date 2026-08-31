@@ -12,11 +12,17 @@
 #include "engine/pnc/command_controller.hpp"
 #include "engine/pnc/debug_overlay.hpp"
 #include "engine/pnc/dialog.hpp"
+#include "engine/pnc/dialog_widget.hpp"
 #include "engine/pnc/inventory.hpp"
 #include "engine/pnc/pause_overlay.hpp"
+#include "engine/pnc/room_command_processor.hpp"
+#include "engine/pnc/room_input_router.hpp"
 #include "engine/pnc/room_renderer.hpp"
 #include "engine/pnc/room_runtime.hpp"
-#include "engine/pnc/scumm_panel.hpp"
+#include "engine/pnc/room_ui_intent.hpp"
+#include "engine/pnc/room_ui_state.hpp"
+#include "engine/pnc/room_viewport.hpp"
+#include "engine/pnc/scumm_widget.hpp"
 #include "engine/pnc/speech_manager.hpp"
 #include "engine/pnc/ui_sound_cues.hpp"
 
@@ -47,7 +53,10 @@ class RoomTuningOverlay;
 /// scrolling camera over the scenery viewport, the SCUMM panel + command builder
 /// + dispatcher, regions/objects with z-order, and zone-driven room transitions.
 /// State persists across room changes (precursor to GameState in M5).
-class RoomScene : public pac::core::Scene, private CommandControllerHost {
+class RoomScene : public pac::core::Scene,
+                  private CommandControllerHost,
+                  private RoomCommandProcessorHost,
+                  private RoomInputLayer {
 public:
     /// High-level state of the room view (design 04 §Room view states). The
     /// SCUMM panel layout, input routing, and scripted-input gating all key off
@@ -57,6 +66,9 @@ public:
     enum class ViewState { COMMAND, DIALOG, BLOCKED, MENU };
 
     RoomScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params);
+    RoomScene(pac::core::EngineContext& ctx,
+              const pac::core::SceneParams& params,
+              RoomViewport room_viewport);
     ~RoomScene() override;
 
     void enter() override;
@@ -88,6 +100,7 @@ public:
     void api_show_object(const std::string& object_id, bool visible);
     void api_set_layer_visible(const std::string& layer_id, bool visible);
     void api_set_hotspot_enabled(const std::string& hotspot_id, bool enabled);
+    void api_set_ui_widget_visible(const std::string& widget_id, bool visible);
     void api_set_room_state(const std::string& key, pac::core::StateValue value);
     [[nodiscard]] std::optional<pac::core::StateValue>
     api_get_room_state(const std::string& key) const;
@@ -192,6 +205,9 @@ public:
     [[nodiscard]] std::string api_current_room_config(const std::string& room_id) const;
     [[nodiscard]] InventoryModel& inventory() { return inventory_; }
     [[nodiscard]] ViewState view_state() const { return view_state_; }
+    /// Direct completed-command boundary for tests, debug tooling, and future
+    /// non-pointer adapters. Normal room and SCUMM input use this same sink.
+    [[nodiscard]] RoomCommandSink& command_sink() { return command_processor_; }
 
     /// Snapshot of all persistent state — the payload SaveService writes. Pure
     /// read: no side effects, safe to call mid-update from autosave hooks.
@@ -295,34 +311,27 @@ private:
     void draw_ambient(sf::RenderTarget& target) const; // float_text labels (world space)
     void trigger_menu(const MenuButton& button);
     void sync_command_hover();
+    [[nodiscard]] InputResult handle(const RoutedInput& input) override;
+    void handle_ui_intent(const RoomUiIntent& intent);
+    void publish_ui_state();
     /// Route the player to a hotspot's approach point through the find_path seam:
     /// clamps an approach outside the walkable area to the nearest reachable point
     /// (dev warning) and short-circuits when already near it (issue #22).
-    void walk_to_approach(geom::Point approach, const std::string& hotspot_id);
-    /// Route the player toward `target` (clamped into the walkable area) via the
-    /// find_path seam and return the clamped destination the path was built to.
-    /// The moving-target approach (#158) re-routes here as its target moves.
-    geom::Point route_to(geom::Point target);
+    /// Route the player toward an authored static approach point and return the
+    /// clamped destination used by the command processor.
+    geom::Point route_command_player_to(geom::Point approach,
+                                        const std::string& hotspot_id) override;
+    /// Route toward a moving target and return the clamped destination.
+    geom::Point reroute_command_player_to(geom::Point target) override;
     /// Live floor/anchor position of a hotspot's `npc:`/`object:` bound target (the
     /// point on the walkable plane to walk toward), or nullopt if the target is
     /// absent. Used by the moving-target approach (#158) — distinct from
     /// `hotspot_focus`, which returns the bounds *center* for facing.
     std::optional<geom::Point> live_bind_target(const std::string& bind) const;
-    void execute_command(const Command& cmd);
-    /// Route a command through the handler chain (inventory -> hotspot ->
-    /// game.lua fallback), stopping at the first handler that exists. The result's
-    /// `handled` flag lets the caller suppress the default caption when a handler
-    /// ran (even silently); `caption` carries a returned line.
-    VerbResult dispatch(const Command& cmd);
-    /// Run a command and produce its feedback: shows a returned caption, or the
-    /// "nothing happens" fallback only when the handler returned no caption and
-    /// did not speak (e.g. via talk()). Shared by the immediate path and the
-    /// deferred approach-arrival path.
-    void dispatch_and_feedback(const Command& cmd);
     /// Turn the player to face the room hotspot a command targets, so the avatar
     /// looks at what it examines / talks to. No-op when the command has no room
     /// target or the player isn't placed.
-    void face_target(const Command& cmd);
+    void face_command_target(const Command& cmd) override;
     /// A representative world point for a hotspot (its area centroid, else the
     /// bound region/object centre), used to decide which way to face. nullopt when
     /// the hotspot has no resolvable footprint.
@@ -333,6 +342,37 @@ private:
     [[nodiscard]] std::string command_verb_label(Verb verb) const override;
     [[nodiscard]] std::string command_connector_label(Verb verb) const override;
     [[nodiscard]] std::string command_walk_label() const override;
+
+    // --- RoomCommandProcessorHost: domain execution bridge -----------------
+    [[nodiscard]] bool command_submission_enabled() const override;
+    [[nodiscard]] CommandOperandValidation validate_command_operand(const ObjectRef& object,
+                                                                    Verb verb) const override;
+    [[nodiscard]] RoomCommandTarget
+    resolve_room_command_target(const std::string& hotspot_id) const override;
+    [[nodiscard]] bool command_player_available() const override;
+    [[nodiscard]] geom::Point command_player_position() const override;
+    [[nodiscard]] bool command_player_moving() const override;
+    [[nodiscard]] std::string command_player_facing() const override;
+    void restore_command_player_facing(const std::string& facing) override;
+    VerbResult call_inventory_command(const std::string& item_id,
+                                      const std::string& verb,
+                                      std::optional<std::string> operand) override;
+    VerbResult call_hotspot_command(const std::string& hotspot_id,
+                                    const std::string& verb,
+                                    std::optional<std::string> operand) override;
+    VerbResult call_game_command(const std::string& verb,
+                                 const std::string& first,
+                                 std::optional<std::string> second) override;
+    void begin_command_dispatch() override;
+    [[nodiscard]] bool command_view_active() const override;
+    [[nodiscard]] bool command_handler_task_armed() const override;
+    void arm_command_handler_task(pac::core::TaskId task) override;
+    void block_for_command() override;
+    void unblock_after_command() override;
+    [[nodiscard]] bool command_spoke_during_dispatch() const override;
+    void present_command_caption(const std::string& caption) override;
+    void present_unhandled_command() override;
+    void finish_command_execution() override;
     /// Multi-line debug HUD text (#37): room/zone/view-state, command-builder
     /// state, and a dump of world/room/region state. Drawn by the F4 overlay.
     [[nodiscard]] std::string debug_hud_text() const;
@@ -350,7 +390,8 @@ private:
     /// Remove the most recently added held inventory item.
     void dev_remove_last_item();
     [[nodiscard]] geom::Point virtual_to_world(sf::Vector2f virtual_point) const;
-    [[nodiscard]] float scenery_height() const;
+    [[nodiscard]] sf::Vector2f room_viewport_size() const { return room_viewport_.size; }
+    [[nodiscard]] sf::FloatRect room_viewport_rect() const { return room_viewport_.virtual_rect(); }
     void check_zones();
     /// Hit-test the scenery at `world` with full bind support: supplies object
     /// frame bounds (from the loaded textures) to RoomRuntime::hotspot_at (#22).
@@ -374,9 +415,10 @@ private:
     std::string player_char_;
     std::string font_path_;
     std::string scumm_panel_path_;
-    /// Height of the scenery viewport, derived in enter() from the panel's top
-    /// edge. 0 until then; scenery_height() falls back to the built-in fraction.
-    float scenery_height_ = 0.0f;
+    std::string dialog_widget_path_;
+    /// Explicit runtime rendering/camera extent. It never derives from the SCUMM
+    /// panel or any other UI rectangle.
+    RoomViewport room_viewport_;
     std::string inventory_path_;
     std::string inventory_logic_;
     std::string logic_path_;
@@ -401,7 +443,7 @@ private:
     SpeechManager speech_;
     std::vector<AmbientLabel> ambient_; // active float_text labels (transient)
     // Set whenever a line is shown via say()/say_at(); cleared before each command
-    // dispatch so execute_command() can tell whether the verb handler already
+    // dispatch so the command processor can tell whether the verb handler already
     // spoke (e.g. called talk()) and skip the "nothing happens" fallback caption.
     bool spoke_during_command_ = false;
     RoomRenderer renderer_;
@@ -418,7 +460,12 @@ private:
     // F1-F4. Only rendered / responsive to keys when ctx_.dev.edit_mode is set.
     DebugOverlayFlags debug_flags_;
     CommandController command_controller_;
-    std::optional<ScummPanel> panel_;
+    RoomCommandProcessor command_processor_;
+    RoomInputRouter input_router_;
+    RoomUiStateStream ui_state_stream_;
+    std::optional<ScummWidget> scumm_widget_;
+    std::optional<DialogWidget> dialog_widget_;
+    std::map<std::string, bool> ui_widget_visibility_{{"scumm", true}, {"dialog", true}};
     // Last known pointer position in virtual coords; drives the top-bar hover
     // preview. Off-screen until the first MouseMoved so nothing is "hovered".
     sf::Vector2f hover_vp_{-1.0f, -1.0f};
@@ -461,10 +508,6 @@ private:
     pac::core::ScreenFade room_fade_;
     bool change_armed_ = false;
     float fade_duration_ = 0.0f;
-    // The panel remains drawn beneath a black mask while this fade animates;
-    // alpha 1 means the panel is fully hidden.
-    pac::core::ScreenFade panel_fade_;
-    bool panel_hidden_ = false;
     float panel_fade_duration_ = 0.25f;
     // Monotonic seconds since the scene began, fed to shaders' `u_time` uniform.
     float shader_time_ = 0.0f;
@@ -481,30 +524,6 @@ private:
     // Previous frame's view state: a transition back into COMMAND resumes camera
     // follow after a scripted override (issue #25).
     ViewState prev_view_state_ = ViewState::COMMAND;
-
-    // A command whose hotspot is marked `requires_approach`: the player must walk
-    // to the approach point before the action fires. While set, the view is
-    // BLOCKED (no new input) and the builder stays in COMMAND_EXECUTING; update()
-    // runs the deferred dispatch once the avatar stops at the point.
-    struct PendingApproach {
-        Command cmd;
-        geom::Point target;
-        std::string hotspot_id;
-    };
-    std::optional<PendingApproach> pending_approach_;
-
-    // Like PendingApproach, but for a hotspot bound to a *moving* NPC/object with no
-    // static approach point (#158). The destination is recomputed from the target's
-    // live position each frame; `last_dest` is where the current path was routed and
-    // `elapsed` bounds the chase (give-up timeout). Mutually exclusive with
-    // pending_approach_.
-    struct PendingMovingApproach {
-        Command cmd;
-        std::string hotspot_id;
-        geom::Point last_dest;
-        float elapsed = 0.0f;
-    };
-    std::optional<PendingMovingApproach> pending_moving_approach_;
 
     // Scripted `avatar(id):move_to(...)` calls in flight (#139): each records the
     // moving avatar, the script scope to wake, and the unique event the Lua

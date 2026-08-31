@@ -42,6 +42,8 @@ Jump to the matching section of [05 — Scripting API](../development/design/05-
 - **Dialog** — `start_dialog`, tree options, `on_exit`, `once` flags.
 - **Audio** — music and SFX playback.
 - **Resources** — `resource_path` and logical asset paths.
+- **ScriptScene** — scene-local context, normalized input, fixed-step `update`,
+  and safe id-based entity handles. See [Scriptable scenes](script-scenes.md).
 
 !!! warning "Persistence"
     Lua locals, closures, and running coroutines are **transient** and are never
