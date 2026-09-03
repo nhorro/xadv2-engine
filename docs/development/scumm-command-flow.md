@@ -1,46 +1,29 @@
 # SCUMM Command Flow
 
-The command system follows the design rule that the SCUMM panel is a view/input
-component, not the command system itself.
+The SCUMM panel is a view/input component, not the command system.
+
+As-built tour: [Point & click kit](tour/07-point-and-click.md).
+Do not extract a third `CommandDispatcher` — that object is `RoomCommandProcessor`.
 
 ```text
-RoomScene input hit testing -> CommandController -> CommandState -> ScummPanel
-ScummPanel command UI intents ------^
-ScummPanel navigation intents -> SceneManager overlays
-CommandController completed command -> RoomScene movement + Lua dispatch
+RoomScene input router
+  DialogWidget / ScummWidget  -> RoomUiIntent -> RoomScene::handle_ui_intent
+  RoomScene scenery adapter   -> hotspot / walk
+CommandController             -> Command (when builder reaches COMMAND_READY)
+RoomCommandSink::submit       -> RoomCommandProcessor
+  validate, walk to approach or chase moving bind
+  dispatch Lua:
+    1. inventory handler
+    2. hotspot handler
+    3. game.lua fallback
 ```
 
-## Responsibilities
+`ScummPanel` renders `CommandState` and emits panel intents. `ScummWidget`
+adapts those to `RoomUiIntent`. Neither owns `CommandBuilder` or calls Lua.
 
-`ScummPanel` renders `CommandState` and translates panel clicks into UI intents:
-verb selection, inventory item selection, inventory page changes, and independent
-navigation intents such as opening Settings. It does not inspect room hotspots,
-own `CommandBuilder`, execute Lua handlers, or decide whether a command is valid.
+`CommandController` owns the builder and preview text.
+`RoomCommandProcessor` owns validation, approach/chase, and handler order.
+`RoomScene` orchestrates and currently implements the host interfaces.
+New command policy does not belong in the scene.
 
-`CommandController` owns `CommandBuilder` and the authoritative `CommandState`.
-It receives UI intents and room-object events, resolves operand metadata through
-its host, computes the command preview text, and returns a completed
-language-independent `Command` when the builder reaches `COMMAND_READY`.
-
-`RoomScene` remains the orchestrator. It maps physical input to either panel
-space or room/world space, emits the corresponding controller input, handles
-walk-to-approach behavior, and dispatches completed commands to the current room,
-inventory behavior, or global `game.lua` fallback.
-
-Navigation controls in the panel are not command controls. For example, the
-Settings button emits `OPEN_SETTINGS`; `RoomScene` consumes it and asks
-`SceneManager` to push the configured Settings overlay without touching
-`CommandController`.
-
-## Current Boundary
-
-This first refactoring keeps movement and Lua dispatch in `RoomScene` so behavior
-stays equivalent. The next natural extraction is a `CommandDispatcher` that owns
-the existing handler precedence:
-
-1. First operand inventory handler.
-2. Second operand hotspot handler.
-3. Global `game.lua` fallback.
-
-That dispatcher should still consume completed `Command` values, not SCUMM panel
-state or UI strings.
+Navigation buttons (`OPEN_SETTINGS`, `PUSH_SCENE`) are not commands.

@@ -1,18 +1,14 @@
-# Third Person Point & Click Game Engine — Design
+# Historical design (archived)
 
-Design documentation for the **Extraordinary Adventures Engine**, a C++20 / SFML
-engine for third-person SCUMM-style point-and-click adventure games, scripted in
-Lua and configured with YAML.
+These pages are **not** the source of truth for new engine work.
 
-> **These documents are the source of truth for the engine.** The implementation
-> follows the design; where the code diverges, the code is what changes.
+They are the design documents from the v2 rewrite. They mix target spec,
+MVP tags, issue numbers, and descriptions that no longer match the tree
+(localization, Android, `EngineContext` fields, panel-sized camera).
 
-## Start here
+**Current reference:** [as-built tour](../tour/index.md) and
+[target architecture and debt](../tour/target-and-debt.md).
 
-**[00 — Index](00-index.md)** — reading order, architecture diagram, glossary,
-requirement traceability, and conventions. Read it first, then `01`–`06` in
-order.
+**This folder:** frozen. Do not extend it. See [history](../history/README.md).
 
-The design proper is [`01`](01-engine-requirements.md) through
-[`05`](05-scripting-api.md); the per-file field reference is
-[`06 — Data formats`](06-data-formats.md).
+The original index is [00 — Index](00-index.md).
