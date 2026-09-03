@@ -1,59 +1,44 @@
 # Extraordinary Adventures Engine
 
-`xadv2-engine` is a ground-up rebuild of the **Extraordinary Adventures Engine**:
-a C++17 / SFML engine for third-person, SCUMM-style point-and-click adventure
-games, scripted in **Lua** and configured with **YAML**.
+`xadv2-engine` is a C++20 / SFML 2D game engine with **Lua** scripting,
+**YAML** data, and an optional point-and-click adventure kit.
 
-This documentation is organized around three audiences. Start with the section
-that matches what you are trying to do.
+This site covers two audiences: people changing the engine, and people
+authoring a game against its Lua and YAML API.
 
 <div class="grid cards" markdown>
 
--   :material-cog: __Technical__
+-   :material-cog: __Engine__
 
     ---
 
-    For **engine developers**. The canonical design documents (the source of
-    truth for the engine) plus the C++ and content coding guides — how the engine
-    is built and how to make decisions so the game can evolve.
+    As-built architecture, implementation conventions, and separately labelled
+    technical-debt plans.
 
-    [:octicons-arrow-right-24: Go to Technical](development/index.md)
+    [:octicons-arrow-right-24: Engine](development/index.md)
 
--   :material-script-text: __Content Creators__
-
-    ---
-
-    For **game authors**. The Lua scripting API reference, the YAML data-format
-    reference, and how to use the asset/authoring tools. No C++ required.
-
-    [:octicons-arrow-right-24: Go to Content Creators](authoring/index.md)
-
--   :material-palette: __Arte y Narrativa__ _(Español)_
+-   :material-script-text: __Authoring API__
 
     ---
 
-    Para **artistas y guionistas**. Diseño de fondos y sprites (conceptos,
-    técnicas, prompts) y escritura de historias y puzzles para aventuras
-    point & click.
+    Lua API, YAML data formats, chapter manifests, scenery/lighting fields,
+    and the tools that emit that data. No C++ required.
 
-    [:octicons-arrow-right-24: Ir a Arte y Narrativa](art/index.md)
+    [:octicons-arrow-right-24: Authoring API](authoring/index.md)
 
 </div>
 
 ## About this documentation
 
-- **Technical** and **Content Creators** are written in **English**.
-- **Arte y Narrativa** is written in **Spanish**.
-- All content is authored in Markdown under [`docs/`](https://github.com/nhorro/xadv2-engine/tree/develop/docs)
-  and rendered with [MkDocs](https://www.mkdocs.org/) + the
-  [Material](https://squidfunk.github.io/mkdocs-material/) theme. See
-  [Building this site](#building-this-site).
+- Engine and authoring pages are in **English**.
+- Content is Markdown under [`docs/`](https://github.com/nhorro/xadv2-engine/tree/develop/docs),
+  rendered with [MkDocs](https://www.mkdocs.org/) + [Material](https://squidfunk.github.io/mkdocs-material/).
 
-!!! note "The design docs remain the source of truth"
-    The implementation follows the design, not the other way around. Where code
-    diverges from the [design documents](development/design/00-index.md), the code is
-    what changes. This site renders those documents in place; it does not replace
-    them.
+!!! note "As-built tour first"
+    Engine developers start in the
+    [architecture tour](development/tour/index.md). The older
+    [design documents](development/history/design/00-index.md) are frozen history.
+    Game authors start in the [Authoring API](authoring/index.md).
 
 ## Building this site
 
@@ -64,7 +49,3 @@ pip install -r docs/requirements.txt
 mkdocs serve          # live preview at http://127.0.0.1:8000
 mkdocs build          # static HTML site into ./site/
 ```
-
-The standalone design **PDF** is still produced by
-[`docs/development/design/build-pdf.sh`](https://github.com/nhorro/xadv2-engine/blob/develop/docs/development/design/build-pdf.sh)
-(Markdown → HTML → headless-Chrome print), independent of MkDocs.

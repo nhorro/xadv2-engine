@@ -3,7 +3,7 @@ project(xadv2_engine VERSION 0.9.0 LANGUAGES CXX)
 
 # This project is built in two situations, and it must behave differently in each:
 #
-#   * standalone  — engine development: build the examples, experiments and tests.
+#   * standalone  — engine development: build the examples and tests.
 #   * as a subproject — a GAME's build did `add_subdirectory(<engine>)` (or
 #     FetchContent) to compile the engine from source alongside itself. It wants
 #     the library and nothing else.
@@ -30,7 +30,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(PAC_BUILD_TESTS "Build the test suite" ${PROJECT_IS_TOP_LEVEL})
 option(PAC_BUILD_EXAMPLES "Build the examples" ${PROJECT_IS_TOP_LEVEL})
-option(PAC_BUILD_EXPERIMENTS "Build the experiments" ${PROJECT_IS_TOP_LEVEL})
 option(PAC_INSTALL "Generate install + export rules for the engine" ${PROJECT_IS_TOP_LEVEL})
 option(PAC_BUILD_SHARED "Build the engine as a shared library" OFF)
 option(PAC_ENABLE_WARNINGS "Enable -Wall -Wextra -Wpedantic" ON)
@@ -62,7 +61,7 @@ if(PAC_ENABLE_SANITIZERS)
 endif()
 
 # Kept as the in-tree convenience alias for "warnings + sanitizers", which is what
-# every engine-owned target (examples, experiments, tests) wants. Not exported.
+# every engine-owned target (examples and tests) wants. Not exported.
 add_library(pac_project_options INTERFACE)
 target_compile_features(pac_project_options INTERFACE cxx_std_20)
 target_link_libraries(pac_project_options INTERFACE pac_warnings pac_sanitizers)
@@ -73,10 +72,6 @@ add_subdirectory(lib)
 
 if(PAC_BUILD_EXAMPLES)
     add_subdirectory(examples)
-endif()
-
-if(PAC_BUILD_EXPERIMENTS)
-    add_subdirectory(experiments)
 endif()
 
 if(PAC_BUILD_TESTS)

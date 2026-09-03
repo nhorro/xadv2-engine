@@ -9,7 +9,7 @@ namespace pac::pnc {
 ///
 /// This is deliberately independent of every UI/widget rectangle. The normal
 /// composition root supplies the complete virtual display resolution; focused
-/// experiments and tests may inject a different extent explicitly.
+/// examples and tests may inject a different extent explicitly.
 struct RoomViewport {
     sf::Vector2f size{0.0f, 0.0f};
 

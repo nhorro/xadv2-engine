@@ -3,7 +3,7 @@
 # about and no walkable area: the player doesn't walk here, only looks.
 #
 # Authoring tip: the polygons below were traced with the close-up editor
-# (`python -m tools.closeup_editor serve --closeup <this file>`).
+# (`xadv2-closeup-editor serve --closeup <this file>` from xadv2-tools).
 version: 1
 id: painting_closeup
 

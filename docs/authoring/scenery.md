@@ -131,8 +131,8 @@ scene, so keep moving-character corridors close to flat unless their lighting
 should inherit the receiver surface.
 
 The engine renders the first eight visible lights that overlap the camera. See
-[Data formats](../development/design/06-data-formats.md#room-roomsidyaml) for all cone, colour, and
-modulation fields.
+[Light YAML and parameters](room-lighting-tutorial.md#light-yaml-and-parameters)
+for the cone, colour, and modulation fields.
 
 ---
 
@@ -226,7 +226,9 @@ objects:
 ```
 
 - `z:` is `auto` by default (sorts by the scaled bottom edge); set a number or a `baseline:` for perspective pieces.
-- `scale:` resizes it (uniform, aspect-locked). The [room editor](tools/room-editor.md) sets `position`/`scale` visually.
+- `scale:` resizes it (uniform, aspect-locked). The
+  [xadv2 room editor](https://github.com/nhorro/xadv2-tools/tree/main/room_editor)
+  sets `position`/`scale` visually.
 - `rotation:` is clockwise degrees around the visual pivot and can also be changed from Lua.
 
 Drive it from Lua with the **`object(id)` handle**:
@@ -341,7 +343,8 @@ disable_obstacle("crate")   -- player can now path through where it was
 enable_obstacle("crate")    -- block it again
 ```
 
-Obstacle enable/disable is saved per room. The [room editor](tools/room-editor.md)
+Obstacle enable/disable is saved per room. The
+[xadv2 room editor](https://github.com/nhorro/xadv2-tools/tree/main/room_editor)
 draws the walkable area and obstacles (press F1 in-game to see them too).
 
 ---
@@ -388,4 +391,5 @@ room.hotspots = {
 
 - [Lua API reference](lua-api.md) — every function and handle.
 - [Data formats](data-formats.md) — every field for rooms, cast, manifest.
-- [Tools](tools/index.md) — the room editor, spritesheet packer, and chroma-key lab for preparing this art.
+- [xadv2-tools](https://github.com/nhorro/xadv2-tools) — room and close-up
+  editors, spritesheet packing, and asset preparation.

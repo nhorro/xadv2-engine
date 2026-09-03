@@ -50,7 +50,9 @@ Thank you for your interest in contributing to xadv2-engine. This project is a r
 Documentation is important for this project.
 
 - The main project overview is in `README.md`.
-- Design and architecture content lives under `docs/development/design/`.
+- Current architecture documentation lives under `docs/development/tour/`.
+- Proposals and debt tracking live under `docs/development/plans/`; superseded
+  design documents live under `docs/development/history/` and are not contracts.
 - If you add a new engine feature or data format, document it alongside the code.
 
 ## Pull Request Process

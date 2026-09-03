@@ -1,8 +1,8 @@
 Extraordinary Adventures Engine v2
 ==================================
 
-A C++20/SFML engine for third-person, SCUMM-style point-and-click adventure games,
-scripted in **Lua** and configured in **YAML**. A remake of
+A C++20/SFML 2D game engine with Lua scripting, YAML data, and an optional
+point-and-click adventure kit. A remake of
 [Extraordinary Adventures](https://github.com/nhorro/ea-engine).
 
 **This repository is the engine, not a game.** Games live in their own
@@ -10,14 +10,16 @@ repositories and link the engine as a library — see
 [docs/authoring/building-a-game.md](docs/authoring/building-a-game.md):
 
 ~~~bash
-# scaffold a standalone game (lands in ../games/, alongside the engine checkout)
-python -m tools.scaffolder new game mygame --title "My Game"
+# From the engine checkout, install the sibling toolkit and scaffold a game.
+python -m pip install -e ../xadv2-tools
+mkdir -p ../games
+xadv2-scaffold new game mygame --title "My Game" --output ../games
 
 # or make a disposable, direct-to-room prototype in ../games/
-python -m tools.scaffolder new prototype ui_lab --title "UI Lab"
+xadv2-scaffold new prototype ui_lab --title "UI Lab" --output ../games
 
 # add a generic YAML + Lua scene to that prototype
-python -m tools.scaffolder add script-scene arcade --project ../games/ui_lab
+xadv2-scaffold add script-scene arcade --project ../games/ui_lab
 
 cd ../games/mygame
 cmake -S . -B build -DXADV2_ENGINE_DIR=~/workspace/point-and-click-game/xadv2-engine   # engine from source
@@ -80,9 +82,8 @@ to it (the script also auto-detects a sibling `..\vcpkg`), then:
 
 This stamps the vcpkg baseline, vcpkg-installs yaml-cpp and Lua 5.4, fetches the
 same pinned modified SFML source used on Linux/Android, and builds the engine +
-examples (sol2 and doctest stay header-only). For the IDE
-/ CMake preset flow that CI uses (`cmake --preset windows-msvc`), see the Windows
-section of [CLAUDE.md](CLAUDE.md).
+examples (sol2 and doctest stay header-only). CI uses the
+`cmake --preset windows-msvc` preset.
 
 ### Android (experimental)
 
@@ -100,12 +101,12 @@ emulator, or upload it to a USB/wireless-debugging phone. See
 Docker
 ------
 
-Containerized environments to build/run the engine and the authoring tools on
-Linux without installing the toolchain locally. See [docker/README.md](docker/README.md).
+Containerized environments to build/run the engine on Linux without installing
+the toolchain locally. See [docker/README.md](docker/README.md). Authoring tools
+and their container live in [xadv2-tools](https://github.com/nhorro/xadv2-tools).
 
 ~~~bash
 docker compose run --rm engine-test   # build the engine + run the headless tests
-docker compose up room-editor         # then open http://localhost:8000
 docker compose run --rm engine        # run an example (X11 + audio, desktop host)
 ~~~
 
@@ -118,6 +119,6 @@ pip install -r docs/requirements.txt
 mkdocs serve -a localhost:8002 # Room/closeup editors use 8000/8001 by default
 ~~~
 
-The canonical design lives in [docs/development/design/](docs/development/design/) —
-requirements, architecture, the Lua API, and an exhaustive data-format reference.
-The implementation follows the design: where the code diverges, the code changes.
+Start with the [as-built architecture tour](docs/development/tour/index.md).
+The older [design folder](docs/development/history/design/) is frozen history.
+Game authors use the [authoring API](docs/authoring/index.md) (Lua, YAML, tools).

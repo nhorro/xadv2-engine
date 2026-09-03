@@ -14,7 +14,7 @@ Move its actor with WASD/arrows and click to place a marker.
 From the engine checkout, point the recipe at any directory inside your game:
 
 ```bash
-python -m tools.scaffolder add script-scene arcade --project ../games/my_game
+xadv2-scaffold add script-scene arcade --project ../games/my_game
 ```
 
 This creates `data/scenes/arcade/scene.{yaml,lua}` and adds the following
@@ -60,7 +60,7 @@ entities:
 Every entity has a transform, `z`, and visibility, plus exactly one `sprite` or
 `animation` visual. Relative assets resolve from the YAML file; `/...` resolves
 from the game's resource root. See the exhaustive
-[data format](../development/design/06-data-formats.md#script-scene--scenesidsceneyaml).
+[entity format](#define-entities-in-yaml).
 
 ## Script behavior in Lua
 
@@ -93,7 +93,7 @@ The optional callbacks are `on_enter(ctx)`, `on_input(ctx,event)`,
 `update(ctx,dt)`, and `on_leave(ctx)`. Input coordinates use the manifest's
 virtual resolution on every platform. Use entity handles to change transforms,
 visibility, z-order, and animation. The complete method and event tables are in
-[the scripting API](../development/design/05-scripting-api.md#scriptscene-scripts).
+[the scene API below](#script-behavior-in-lua).
 
 Callbacks themselves cannot yield. Start a yielding sequence with `spawn`; it is
 scoped to the scene and cancelled automatically when the scene leaves:

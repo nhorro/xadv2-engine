@@ -3,7 +3,7 @@
 // On-disk format for `.pak` resource archives (issue #109). One archive contains
 // a flat collection of files keyed by logical resource path (the same paths the
 // rest of the engine uses); the runtime backend is `PackResourceSource`. Both
-// the C++ runtime and the Python packer in `tools/pack/` MUST agree on the
+// the C++ runtime and the Python packer in `nhorro/xadv2-tools/pack/` MUST agree on the
 // values declared here, so this header is the canonical specification.
 //
 // On-disk layout (all integers little-endian):

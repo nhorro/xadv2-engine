@@ -1,24 +1,18 @@
 site_name: Extraordinary Adventures Engine
 site_description: >-
-  Documentation for xadv2-engine — a C++17 / SFML engine for third-person
-  SCUMM-style point-and-click adventure games, scripted in Lua and configured
-  with YAML.
+  Documentation for xadv2-engine — a C++20 / SFML 2D game engine with Lua
+  scripting, YAML data, and an optional point-and-click adventure kit.
 site_author: Nicolás Horro
 repo_url: https://github.com/nhorro/xadv2-engine
 repo_name: nhorro/xadv2-engine
 edit_uri: edit/develop/docs/
 
-# The existing markdown lives under docs/; MkDocs renders it in place so the
-# canonical design docs (docs/development/design/) stay the source of truth and the
-# build-pdf.sh pipeline keeps working unchanged.
 docs_dir: docs
 site_dir: site
 
 theme:
   name: material
   language: en
-  # Typography is fully controlled by the bundled xkcd/pencil fonts in
-  # docs/stylesheets/extra.css; don't pull Material's Google web fonts.
   font: false
   features:
     - navigation.tabs
@@ -61,7 +55,11 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji:
@@ -74,54 +72,50 @@ extra_css:
 plugins:
   - search
 
-# Files kept under docs/ that are not site content (build inputs / scripts).
 exclude_docs: |
   requirements.txt
-  development/design/build-pdf.sh
+  development/history/design/build-pdf.sh
 
-# Working documents that are pages but should not appear as standalone nav entries.
 not_in_nav: |
   README.md
-  development/design/README.md
+  development/history/design/README.md
+  development/history/README.md
 
-# The three audiences (see docs/index.md). Technical + Content Creators are in
-# English; Arte y Narrativa is authored in Spanish.
 nav:
   - Home: index.md
-  - Development:
+  - Engine:
       - development/index.md
-      - Design:
-          - Index: development/design/00-index.md
-          - Engine requirements: development/design/01-engine-requirements.md
-          - Architecture overview: development/design/02-architecture-overview.md
-          - Generic 2D concepts: development/design/03-2d-game-concepts.md
-          - Point & click concepts: development/design/04-point-and-click-concepts.md
-          - Scripting API: development/design/05-scripting-api.md
-          - Data formats: development/design/06-data-formats.md
-          - Implementation plan: development/design/implementation-plan.md
+      - Architecture tour:
+          - Index: development/tour/index.md
+          - Design drivers: development/tour/00-drivers.md
+          - Core abstractions: development/tour/01-core-abstractions.md
+          - Point & click kit: development/tour/02-point-and-click.md
+      - Plans and technical debt:
+          - Target and debt: development/plans/target-and-debt.md
+          - Proposed code layout and Doxygen: development/plans/code-layout.md
       - Coding guides:
           - Conventions & formatting: development/coding-conventions.md
-          - C++ engine guide: development/coding-guide/cpp-engine.md
-          - Lua & content guide: development/coding-guide/lua-game.md
       - Internals:
           - SCUMM command flow: development/scumm-command-flow.md
-  - Content Creators:
+      - Historical design:
+          - History note: development/history/README.md
+          - Index: development/history/design/00-index.md
+          - Engine requirements: development/history/design/01-engine-requirements.md
+          - Architecture overview: development/history/design/02-architecture-overview.md
+          - Generic 2D concepts: development/history/design/03-2d-game-concepts.md
+          - Point & click concepts: development/history/design/04-point-and-click-concepts.md
+          - Scripting API: development/history/design/05-scripting-api.md
+          - Data formats: development/history/design/06-data-formats.md
+          - Implementation plan: development/history/design/implementation-plan.md
+          - Old C++ engine guide: development/history/cpp-engine-guide.md
+          - Old Lua authoring guide: development/history/lua-game-guide.md
+  - Authoring API:
       - authoring/index.md
       - Building a game: authoring/building-a-game.md
       - Lua API reference: authoring/lua-api.md
       - Data formats: authoring/data-formats.md
+      - Game and chapter manifests: authoring/chapter-manifests.md
       - Scriptable scenes: authoring/script-scenes.md
+      - Localization: authoring/localization.md
       - Scenery authoring: authoring/scenery.md
       - Lighting, shadows & grading: authoring/room-lighting-tutorial.md
-      - Tools:
-          - authoring/tools/index.md
-          - Scaffolder: authoring/tools/scaffolder.md
-          - Chroma key lab: authoring/tools/chromakeylab.md
-          - Spritesheet packer: authoring/tools/spritesheet-packer.md
-          - Room editor: authoring/tools/room-editor.md
-          - Close-up editor: authoring/tools/closeup-editor.md
-          - Avatar maker: authoring/tools/avatar-maker.md
-  - Arte y Narrativa:
-      - art/index.md
-      - Fondos y sprites: art/backgrounds-sprites.md
-      - Narrativa y puzzles: art/storytelling-puzzles.md

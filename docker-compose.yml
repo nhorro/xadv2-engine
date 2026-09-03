@@ -2,15 +2,12 @@
 #
 #   engine       build + run the sample game           (needs X11 on the host)
 #   engine-test  build + run the headless test suite    (no display needed)
-#   room-editor  the web-based room YAML editor         (browser -> localhost:8000)
-#   tools        interactive shell with the Python tools + the repo mounted
 #
 # Quick start:
 #   docker compose run --rm engine-test          # build the engine, run tests
-#   docker compose up room-editor                # then open http://localhost:8000
 #   xhost +local: && docker compose run --rm engine   # run the game (X11)
 #
-# See docker/README.md for X11 setup and per-tool commands.
+# See docker/README.md for X11 setup and engine commands.
 
 services:
   engine:
@@ -48,26 +45,3 @@ services:
       dockerfile: docker/engine.Dockerfile
     image: xadv2-engine
     command: ctest --test-dir build --output-on-failure
-
-  room-editor:
-    build:
-      context: .
-      dockerfile: docker/tools.Dockerfile
-    image: xadv2-tools
-    ports:
-      - "8000:8000"
-    # Edit room YAML on the host; the tool code comes from the image.
-    volumes:
-      - ./games:/work/games
-
-  tools:
-    image: xadv2-tools
-    build:
-      context: .
-      dockerfile: docker/tools.Dockerfile
-    # Whole repo mounted for ad-hoc CLI tool runs (packers, avatarmaker, ...).
-    volumes:
-      - .:/work
-    entrypoint: ["/bin/bash"]
-    stdin_open: true
-    tty: true

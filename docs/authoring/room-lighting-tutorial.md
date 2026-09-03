@@ -15,7 +15,7 @@ model is:
 The examples use a 1280×720 game with a 1280×592 scenery viewport. Coordinates
 and light ranges are room pixels, so adjust the numbers for your own resolution.
 For the exhaustive schema, keep the
-[room data-format reference](../development/design/06-data-formats.md#room-roomsidyaml)
+[scenery authoring reference](scenery.md)
 open beside this guide.
 
 ## The rendering pipeline
@@ -176,7 +176,7 @@ scale 1. The ellipse follows perspective scaling. `color.a` is opacity from 0 to
 
 Use the smallest ellipse that convincingly plants the feet. A large dark oval
 looks like a stain and competes with the more expressive projected shadow added
-later. See the [cast appearance fields](../development/design/06-data-formats.md#cast-castyaml).
+later. See [Scenery authoring](scenery.md#npcs-characters-in-the-room).
 
 ## Step 2: establish ambient illumination
 
@@ -211,7 +211,7 @@ easier to judge when the floor and characters have not already disappeared.
 
 ## Step 3: place direct lights in the room editor
 
-Start the [room editor](tools/room-editor.md), select **lights** from the mode
+Start the [xadv2 room editor](https://github.com/nhorro/xadv2-tools/tree/main/room_editor), select **lights** from the mode
 list, and choose **Add omni** or **Add spotlight**.
 
 The editor represents each light with simple room-space primitives:
@@ -591,7 +591,7 @@ light("window_daylight"):set_intensity(0.35, 0.8)
 
 Overrides are transient and reset on room reload. Reapply persistent story
 states from `on_load`. Modulation multiplies the current runtime intensity.
-See the [light handle API](../development/design/05-scripting-api.md#light-handle).
+See the [light handle API](lua-api.md#scenery-light-and-ui).
 
 ## Tips for point-and-click rooms
 
@@ -666,12 +666,9 @@ fields.
 
 - [Scenery authoring](scenery.md) — layers, depth, objects, NPCs, hotspots,
   walk-behinds, and the shorter lighting recipe.
-- [Room editor](tools/room-editor.md) — starting the editor and its modes.
-- [Room YAML reference](../development/design/06-data-formats.md#room-roomsidyaml)
-  — authoritative field types, defaults, limits, and validation.
-- [Generic 2D concepts: shaders and room effects](../development/design/03-2d-game-concepts.md#shaders)
-  — the technical model behind drawable shaders, lighting, grading, and shadows.
-- [Dynamic-light Lua handles](../development/design/05-scripting-api.md#light-handle)
-  — runtime enable/intensity and occluder controls.
-- [Art guide: backgrounds and sprites](../art/backgrounds-sprites.md) — composition,
-  contrast, asset preparation, and visual storytelling.
+- [xadv2 room editor](https://github.com/nhorro/xadv2-tools/tree/main/room_editor)
+  — installation, startup, and editor modes.
+- [Scenery authoring](scenery.md) — current room YAML examples and the rendering
+  model behind layers, lighting, grading, and shadows.
+- [Dynamic-light Lua handles](lua-api.md#scenery-light-and-ui) — runtime
+  enable/intensity and occluder controls.

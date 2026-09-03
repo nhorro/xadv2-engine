@@ -1,4 +1,0 @@
-# Local test specimens used while iterating on the notebook. Drop your own
-# images under data/<set>/ and they stay out of git.
-data/
-*_extracted.png
