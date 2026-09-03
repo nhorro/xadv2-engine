@@ -1,6 +1,6 @@
 site_name: Extraordinary Adventures Engine
 site_description: >-
-  Documentation for xadv2-engine — a C++17 / SFML engine for third-person
+  Documentation for xadv2-engine — a C++20 / SFML engine for third-person
   SCUMM-style point-and-click adventure games, scripted in Lua and configured
   with YAML.
 site_author: Nicolás Horro
@@ -8,17 +8,12 @@ repo_url: https://github.com/nhorro/xadv2-engine
 repo_name: nhorro/xadv2-engine
 edit_uri: edit/develop/docs/
 
-# The existing markdown lives under docs/; MkDocs renders it in place so the
-# canonical design docs (docs/development/design/) stay the source of truth and the
-# build-pdf.sh pipeline keeps working unchanged.
 docs_dir: docs
 site_dir: site
 
 theme:
   name: material
   language: en
-  # Typography is fully controlled by the bundled xkcd/pencil fonts in
-  # docs/stylesheets/extra.css; don't pull Material's Google web fonts.
   font: false
   features:
     - navigation.tabs
@@ -74,23 +69,35 @@ extra_css:
 plugins:
   - search
 
-# Files kept under docs/ that are not site content (build inputs / scripts).
 exclude_docs: |
   requirements.txt
   development/design/build-pdf.sh
 
-# Working documents that are pages but should not appear as standalone nav entries.
 not_in_nav: |
   README.md
   development/design/README.md
+  development/history/README.md
+  art/index.md
+  art/backgrounds-sprites.md
+  art/storytelling-puzzles.md
 
-# The three audiences (see docs/index.md). Technical + Content Creators are in
-# English; Arte y Narrativa is authored in Spanish.
 nav:
   - Home: index.md
-  - Development:
+  - Engine:
       - development/index.md
-      - Design:
+      - Architecture tour:
+          - Index: development/tour/index.md
+          - Core abstractions: development/tour/01-core-abstractions.md
+          - Point & click kit: development/tour/07-point-and-click.md
+          - Target and debt: development/tour/target-and-debt.md
+      - Coding guides:
+          - Conventions & formatting: development/coding-conventions.md
+          - C++ engine guide: development/coding-guide/cpp-engine.md
+          - Lua & content guide: development/coding-guide/lua-game.md
+      - Internals:
+          - SCUMM command flow: development/scumm-command-flow.md
+      - Historical design:
+          - History note: development/history/README.md
           - Index: development/design/00-index.md
           - Engine requirements: development/design/01-engine-requirements.md
           - Architecture overview: development/design/02-architecture-overview.md
@@ -99,18 +106,14 @@ nav:
           - Scripting API: development/design/05-scripting-api.md
           - Data formats: development/design/06-data-formats.md
           - Implementation plan: development/design/implementation-plan.md
-      - Coding guides:
-          - Conventions & formatting: development/coding-conventions.md
-          - C++ engine guide: development/coding-guide/cpp-engine.md
-          - Lua & content guide: development/coding-guide/lua-game.md
-      - Internals:
-          - SCUMM command flow: development/scumm-command-flow.md
-  - Content Creators:
+  - Authoring API:
       - authoring/index.md
       - Building a game: authoring/building-a-game.md
       - Lua API reference: authoring/lua-api.md
       - Data formats: authoring/data-formats.md
+      - Game and chapter manifests: authoring/chapter-manifests.md
       - Scriptable scenes: authoring/script-scenes.md
+      - Localization: authoring/localization.md
       - Scenery authoring: authoring/scenery.md
       - Lighting, shadows & grading: authoring/room-lighting-tutorial.md
       - Tools:
@@ -121,7 +124,3 @@ nav:
           - Room editor: authoring/tools/room-editor.md
           - Close-up editor: authoring/tools/closeup-editor.md
           - Avatar maker: authoring/tools/avatar-maker.md
-  - Arte y Narrativa:
-      - art/index.md
-      - Fondos y sprites: art/backgrounds-sprites.md
-      - Narrativa y puzzles: art/storytelling-puzzles.md
