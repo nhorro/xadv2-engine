@@ -56,7 +56,11 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji:
@@ -87,9 +91,11 @@ nav:
       - development/index.md
       - Architecture tour:
           - Index: development/tour/index.md
+          - Design drivers: development/tour/00-drivers.md
           - Core abstractions: development/tour/01-core-abstractions.md
           - Point & click kit: development/tour/07-point-and-click.md
           - Target and debt: development/tour/target-and-debt.md
+          - Code layout and Doxygen: development/tour/code-layout.md
       - Coding guides:
           - Conventions & formatting: development/coding-conventions.md
           - C++ engine guide: development/coding-guide/cpp-engine.md
