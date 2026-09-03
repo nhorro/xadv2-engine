@@ -1,102 +1,58 @@
 # Architecture tour
 
-Do **not** start with `RoomScene`. Do **not** start with the historical design
-pages (M4, issue numbers). Start with the few abstractions every later flow
-reuses, then learn one vertical slice at a time.
+This tour has five jobs:
 
-The pages under [`../design/`](../design/00-index.md) are [archived](../history/README.md).
-This tour is the as-built map. The destination model — P&C as a kit on core 2D —
-is in [target architecture and debt](target-and-debt.md).
+1. **Drivers from now on** — platform-agnostic games; a general 2D engine plus
+   optional kits (point-and-click); Lua strong enough that a simple game needs
+   no kit; kits make complex games efficient and still YAML/Lua.
+2. **Onboard a new developer** — concepts and pitfalls, not `room_scene.cpp` first.
+3. **Support refactors** — interfaces, dependencies, sequences, diagrams.
+4. **Navigate the tree** — proposed subdivisions under the existing layers.
+5. **Index the C++ API** — Doxygen on public headers; this tour stays the story.
 
----
-
-## The rule
-
-One idea per document:
-
-- A **concept chapter** names types, ownership, and invariants. No feature history.
-- A **flow chapter** is one sequence: diagram, collaborating types, pitfalls for
-  that sequence only.
-
-If a chapter needs more than about 15 types, split it.
+Historical pages under [`../design/`](../design/00-index.md) are
+[archived](../history/README.md).
 
 ---
 
-## Reading order
+## Read in this order
 
+| Doc | Job |
+|-----|-----|
+| [Design drivers](00-drivers.md) | Rules for new work. Start here. |
+| [1 — Core abstractions](01-core-abstractions.md) | `Game`, `Scene`, loop, resources, Lua preview. |
+| [Point & click kit](07-point-and-click.md) | Commands, session vs widgets, sequences, pitfalls. |
+| [Target architecture and debt](target-and-debt.md) | Gap vs drivers; what to extract and in what order. |
+| [Code layout and Doxygen](code-layout.md) | Folder split and API index. |
+
+Still to write: Lua in depth, draw pipeline, lighting, persistence, platform.
+
+```mermaid
+flowchart TB
+  D[Drivers] --> C[Core abstractions]
+  C --> Lua[Lua chapter]
+  C --> Kit[P&C kit]
+  C --> Layout[Code layout]
+  Kit --> Debt[Target and debt]
+  Layout --> Debt
 ```
-0. This map
-1. Core abstractions          ← start here
-2. Lua: state, bindings, coroutines        (to write)
-3. Scenes and the stack                    (to write)
-4. Display, coordinates, input             (to write)
-5. Resources and packaging                 (to write)
-6. Generic 2D: sprites and ScriptScene     (to write)
-7. Point & click model
-8–9. Room session + SCUMM composer         (folded into 7 for now)
-10. Rendering, z-sort, shaders             (to write)
-11. Lighting                               (to write)
-12. Persistence and chapters               (to write)
-13. Platform (SFML / Android)              (to write)
-14. How a game plugs in (Fuera de Cuadro)  (see target-and-debt)
-```
-
-Chapters 1–5 are required before editing engine code.
-Chapter 7 is required before editing verbs, rooms, or the panel.
-Chapters 10–11 before editing a `.frag` or a light in YAML.
-
-Written today:
-
-- [1 — Core abstractions](01-core-abstractions.md)
-- [Point & click kit](07-point-and-click.md)
-- [Target architecture and debt](target-and-debt.md)
-
----
-
-## Why this order
-
-A developer who opens `room_scene.cpp` first sees lighting RTs, Lua usertypes,
-pause menus, and footsteps in one file and concludes the architecture is “the
-scene class.” The engine is:
-
-```
-Game  →  Scene stack  →  EngineContext services
-                ↑
-         one Lua state + scopes
-                ↑
-         logical resources
-                ↑
-         virtual coordinates / Display
-                ↑
-         SFML window
-```
-
-Point-and-click is a kit on top of that. Lighting is a pass on the room
-renderer. Neither is a third engine.
 
 ---
 
 ## Three-day onboarding
 
-**Day 1 — core.** Read chapter 1. Build the engine. Run `01_hello_room` and
-`07_script_scene`. Trace `run()` → `enter()` once in a debugger.
+**Day 1.** Drivers + core. Build the engine. Run `01_hello_room` and
+`07_script_scene` (the no-kit path).
 
-**Day 2 — genre kit.** Read the [P&C guide](07-point-and-click.md). Run
-`02_scumm_inventory` with `edit_mode` and F4. Write a headless test that
-`submit`s `LOOK_AT` without a mouse event.
+**Day 2.** P&C kit. Run `02_scumm_inventory` with `edit_mode` and F4. Submit a
+`LOOK_AT` in a headless test.
 
-**Day 3 — product.** Skim Fuera de Cuadro `src/game.cpp` and one chapter
-`chapter.yaml`. Follow `talk` from Lua to `SpeechManager`. Do not start a
-feature on day 3.
+**Day 3.** One FdC room YAML+Lua pair. Follow `talk`. No feature work.
 
 ---
 
 ## PR rule
 
-Before a change lands, the author should answer:
-
-1. Is this a core/gfx capability, a P&C policy, or a game feature?
-2. If it is a capability, does it live below `pnc`?
-3. Does it add methods to `RoomScene`? If yes, the default is reject.
-
-Details: [target architecture and debt](target-and-debt.md).
+1. Capability, kit policy, or game feature?
+2. If a capability, does it live below `pnc` and have a Lua surface (or a ticket)?
+3. Does it add methods to `RoomScene`? Default is reject.
