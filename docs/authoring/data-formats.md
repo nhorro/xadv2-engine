@@ -1,28 +1,29 @@
 # Data formats reference
 
-!!! abstract "Canonical reference"
-    The complete, authoritative field reference for every YAML and Lua data file
-    lives in the design document
-    [06 — Data formats](../development/design/06-data-formats.md). This page is the
-    author-facing entry point. When this page and `06` disagree, **`06` wins**.
+This is the current map of the data files the engine loads. Focused pages linked
+below contain the maintained examples and field descriptions. The archived v2
+design is background only; it is not an API contract.
 
-`Type` notation used throughout `06`: `{a, b}` is a mapping with those keys,
-`[T]` is a list of `T`, `polygon` is `[{x, y}, ...]`, `path` is a logical
-resource path relative to `resources.src`.
+Type notation: `{a, b}` is a mapping with those keys, `[T]` is a list of `T`,
+`polygon` is `[{x, y}, ...]`, and `path` is a logical resource path.
 
 ## The files a game is made of
 
 | File | Purpose | Reference |
 |------|---------|-----------|
-| `game.yaml` (manifest) | Resolution, scenes, resources, `strings`, `languages`, save config. | [06 — Data formats](../development/design/06-data-formats.md) |
-| `cast/*.yaml` | Characters: ids, names, spritesheets, default poses. | [06 — Data formats](../development/design/06-data-formats.md) |
-| `rooms/<id>.yaml` | Room layout: layers, walkable area, regions, objects, hotspots, zones, avatar starts. | [06 — Data formats](../development/design/06-data-formats.md) |
+| `game.yaml` / `chapter.yaml` | Resolution, resources, languages, scenes, chapter composition. | [Game and chapter manifests](chapter-manifests.md) |
+| `cast.yaml` | Appearances and characters: ids, names, sprites, speech presentation. | [Lua API: avatars](lua-api.md#avatars-and-room-objects) |
+| `rooms/<id>.yaml` | Layers, walkable area, regions, objects, hotspots, zones, avatars, lights. | [Scenery authoring](scenery.md) |
 | `rooms/<id>.lua` | Room behavior: hooks, verb handlers, scripted actions. | [Lua API](lua-api.md) |
 | `scenes/<id>/scene.yaml` | Generic static/animated entities and initial transforms for a `ScriptScene`. | [Scriptable scenes](script-scenes.md) |
 | `scenes/<id>/scene.lua` | Generic lifecycle, normalized input, and fixed-step logic. | [Scriptable scenes](script-scenes.md) |
-| `strings/*` | Engine UI strings, looked up by key (R3). | [06 — Data formats](../development/design/06-data-formats.md) |
+| `dialogs/<id>.lua` | Dialog nodes, options, predicates, and actions. | [Lua API: dialog scripts](lua-api.md#dialog-scripts) |
+| `inventory.yaml` / `inventory.lua` | Item presentation/affordances and item verb handlers. | [Lua API: inventory](lua-api.md#inventory-and-global-fallbacks) |
+| `closeups/<id>/closeup.yml` / `logic.lua` | Examine image, polygon hotspots, and click behavior. | [Lua API: close-ups](lua-api.md#close-ups) |
+| `facts.yaml` | Declared boolean story flags used by the Lua typo guard. | [Lua API: persistent state](lua-api.md#persistent-state) |
+| `strings/*` | Engine UI strings, looked up by key. | [Localization](localization.md) |
 | `translations/*` | Additional-language game-content catalogs keyed by stable text id. | [Localization](localization.md) |
-| Spritesheet `*.yaml` | Atlas + animation definitions (often tool-generated). | [Spritesheet packer](tools/spritesheet-packer.md) |
+| Spritesheet `*.yaml` | Atlas + animation definitions (often tool-generated). | [xadv2-tools](https://github.com/nhorro/xadv2-tools) |
 
 ## Conventions
 
@@ -35,12 +36,6 @@ resource path relative to `resources.src`.
 
 ## See also
 
-- [Lua & content authoring guide § The YAML / Lua split](../development/coding-guide/lua-game.md)
+- [Lua API reference](lua-api.md)
 - [Lua API reference](lua-api.md)
 - [Localization and native-language voice](localization.md)
-
----
-
-> **TODO (skeleton):** add a minimal copy-pasteable starter for each file
-> (manifest, a room, a cast entry) with inline comments, alongside the exhaustive
-> reference in `06`.

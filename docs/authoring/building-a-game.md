@@ -16,29 +16,32 @@ copies live; it is not a repo, and the engine knows nothing about it.
 ```
 point-and-click-game/
 ├── xadv2-engine/          the engine (this repository)
-│   ├── lib/  examples/  tools/  docs/
+│   └── lib/  examples/  docs/
+├── xadv2-tools/           editors, asset pipeline, and scaffolder
 └── games/                 one working copy per game repository
     ├── ingreso-urgente/
     └── mygame/            the scaffolder puts new games here
 ```
 
 That layout is why a game's build points at the engine with a relative path
-(`-DXADV2_ENGINE_DIR=../../xadv2-engine`) and the tools are reachable at
-`../../xadv2-engine`. Nothing depends on it — use `--output` and absolute paths if
-you keep your games elsewhere.
+(`-DXADV2_ENGINE_DIR=../../xadv2-engine`). Nothing depends on it — use explicit
+paths if you keep the repositories elsewhere.
 
 ## 1. Scaffold
 
-From the engine checkout:
+Install the sibling tools checkout once, create the workspace container, and
+choose it explicitly as the output directory:
 
 ```bash
-python -m tools.scaffolder --type game --short-name mygame --title "My Game"
+python -m pip install -e ../xadv2-tools
+mkdir -p ../games
+xadv2-scaffold new game mygame --title "My Game" --output ../games
 ```
 
-It writes a **standalone project** into the workspace's games directory
-(`../games/mygame`), never inside the engine — with a manifest, a starting room, a
-placeholder character, a title screen and an intro cutscene already wired
-together. Then:
+It writes a **standalone project** at `../games/mygame`, with a manifest, a
+starting room, a placeholder character, a title screen, and an intro cutscene
+already wired together. Without `--output`, the scaffolder writes beneath the
+current directory. Then:
 
 ```bash
 cd ../games/mygame
@@ -64,7 +67,7 @@ checkout, rebuild your game, and keep working — no install step, no version
 juggling. Your fix is then a normal PR against the engine.
 
 The engine contributes *only its library* to your build: it detects that it is not
-the top-level project and leaves its own examples, tests and experiments off.
+the top-level project and leaves its own examples and tests off.
 
 ### Installed mode — once the engine settles
 
@@ -161,25 +164,21 @@ cutscene and an inventory are all *data*.
 | `pac::lua` | You need Lua's headers on their own. Rare. |
 | `pac::sanitizers` | Never explicitly — `pac::engine` propagates it. If the engine was built with sanitizers, your game is too, because mixing sanitized and unsanitized objects is unsafe. |
 
-## 4. The authoring tools stay in the engine repo
+## 4. Author with `xadv2-tools`
 
-They are Python and they work on *any* game's data directory. Point them at yours:
+The separate [xadv2-tools](https://github.com/nhorro/xadv2-tools) repository works
+on any game's data directory. With its editable install active:
 
 ```bash
-export XADV2_ENGINE=~/workspace/point-and-click-game/xadv2-engine
-
 # trace a room's walkable area, hotspots, objects — in the browser
-(cd $XADV2_ENGINE && python -m tools.room_editor serve \
-    --room   ~/workspace/point-and-click-game/games/mygame/data/rooms/lab.yaml \
-    --base-path ~/workspace/point-and-click-game/games/mygame/data)
+xadv2-room-editor serve --data-path data --room lab.yaml
 
 # trace a close-up's hotspots
-(cd $XADV2_ENGINE && python -m tools.closeup_editor serve \
-    --closeup ~/workspace/point-and-click-game/games/mygame/data/closeups/desk/closeup.yml \
-    --base-path ~/workspace/point-and-click-game/games/mygame/data)
+xadv2-closeup-editor serve \
+    --closeup data/closeups/desk/closeup.yml --base-path data
 
 # pack the game's resources into one archive for shipping
-python $XADV2_ENGINE/tools/pack/pack.py data build/resources.pak
+xadv2-pack data build/resources.pak
 ```
 
 The runtime auto-discovers a `resources.pak` next to the binary, so a packed build

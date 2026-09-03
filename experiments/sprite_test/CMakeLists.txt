@@ -1,2 +1,0 @@
-add_executable(pac_sprite_test main.cpp)
-target_link_libraries(pac_sprite_test PRIVATE pac_engine pac_project_options)

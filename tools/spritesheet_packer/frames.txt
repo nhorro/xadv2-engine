@@ -1,7 +1,0 @@
-# One row per original spritesheet row.
-# Names are read left-to-right, then top-to-bottom.
-
-sf wf0 wf1 wf2 wf3
-sr wr0 wr1 wr2 wr3
-sb wb0 wb1 wb2 wb3
-sl wl0 wl1 wl2 wl3

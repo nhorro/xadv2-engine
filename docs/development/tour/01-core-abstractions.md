@@ -153,7 +153,7 @@ Fonts and music must outlive the `sf::` objects that reference their bytes; the 
 
 ---
 
-## 1.8 Lua (preview; full story is chapter 2)
+## 1.8 Lua
 
 One `lua_State`, owned by `Scripting`, wrapped by sol2. Nothing else creates a state.
 
@@ -166,7 +166,7 @@ Saved games never resume coroutines. They restore `GameState` and run `on_load` 
 
 ---
 
-## 1.9 Persistence (preview; full story is chapter 12)
+## 1.9 Persistence
 
 If it must survive a process death, it lives in an engine store:
 

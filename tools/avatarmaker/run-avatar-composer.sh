@@ -1,1 +1,0 @@
-python3 avatar_composer.py   --atlas data/test_output/avatar/atlas_merged.yml   --animation data/test_output/avatar/avatar_animation.yml

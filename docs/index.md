@@ -1,8 +1,7 @@
 # Extraordinary Adventures Engine
 
-`xadv2-engine` is a C++20 / SFML engine for third-person, SCUMM-style
-point-and-click adventure games, scripted in **Lua** and configured with
-**YAML**.
+`xadv2-engine` is a C++20 / SFML 2D game engine with **Lua** scripting,
+**YAML** data, and an optional point-and-click adventure kit.
 
 This site covers two audiences: people changing the engine, and people
 authoring a game against its Lua and YAML API.
@@ -13,7 +12,8 @@ authoring a game against its Lua and YAML API.
 
     ---
 
-    As-built architecture tour, target core-vs-P&C split, C++ guides.
+    As-built architecture, implementation conventions, and separately labelled
+    technical-debt plans.
 
     [:octicons-arrow-right-24: Engine](development/index.md)
 
@@ -37,7 +37,7 @@ authoring a game against its Lua and YAML API.
 !!! note "As-built tour first"
     Engine developers start in the
     [architecture tour](development/tour/index.md). The older
-    [design documents](development/design/00-index.md) are frozen history.
+    [design documents](development/history/design/00-index.md) are frozen history.
     Game authors start in the [Authoring API](authoring/index.md).
 
 ## Building this site

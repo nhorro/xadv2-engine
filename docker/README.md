@@ -1,15 +1,15 @@
 # Docker environments
 
-Containerized environments to build/run the engine and the authoring tools on
-Linux without installing the toolchain on the host (issue #125). Everything is
-driven from `docker-compose.yml` at the repo root.
+Containerized environments to build and run the engine on Linux without
+installing the toolchain on the host. Everything is driven from
+`docker-compose.yml` at the repo root. The separate
+[xadv2-tools](https://github.com/nhorro/xadv2-tools) repository owns authoring
+tool containers.
 
 | Service | Purpose | Needs |
 |---------|---------|-------|
 | `engine` | Build + run the sample game | X11 display |
 | `engine-test` | Build + run the headless doctest/CTest suite | — |
-| `room-editor` | Web-based room YAML editor | a browser |
-| `tools` | Interactive shell with the Python tools + repo mounted | — |
 
 Prerequisites: Docker Engine and the Compose plugin (`docker compose version`).
 
@@ -73,53 +73,10 @@ libpulse).
 > game silently. For ALSA instead of pulse, drop those lines and expose the sound
 > devices: `docker compose run --rm --device /dev/snd engine`.
 
-## Room editor (browser tool)
-
-```bash
-docker compose up room-editor
-# then open http://localhost:8000
-```
-
-It serves an example's rooms (`examples/01_hello_room/data/rooms`, bind-mounted from
-the host so edits persist). Pick a room from the dropdown and edit. Point it at a
-different folder by overriding the command:
-
-```bash
-docker compose run --rm --service-ports room-editor \
-    python3 -m tools.room_editor serve --base-path games/othergame/data/rooms \
-    --host 0.0.0.0 --port 8000
-```
-
-## Other tools (interactive shell)
-
-```bash
-docker compose run --rm tools
-```
-
-Drops you into a shell at `/work` (the repo, mounted live) with Python, PyYAML,
-numpy, and OpenCV available. Examples:
-
-```bash
-# Pack a spritesheet
-python3 tools/spritesheet_packer/pack_spritesheet.py --help
-
-# Chroma-key a frame sequence
-python3 tools/chromakeylab/chroma_key_tuner.py --help
-
-# Avatarmaker (browser UI) — publish its port when launching the shell:
-#   docker compose run --rm --service-ports tools
-python3 tools/avatarmaker/avatar_composer.py \
-    --atlas <atlas.yml> --animation <anim.yml> --host 0.0.0.0 --port 8766
-```
-
-The containerized OpenCV is the **headless** wheel, so the interactive `cv2`
-preview windows (the chroma tuner GUI) are unavailable in the container — run
-that one on the host, or build a GUI-enabled tools image with X11 like `engine`.
-
 ## Notes
 
 - The engine image compiles into `/work/build`; the host's own `build*` dirs are
   excluded from the build context by `.dockerignore`, so a host (e.g. Fedora)
   build never leaks into the Linux image.
-- Rebuild after changing dependencies or the Dockerfiles:
-  `docker compose build engine room-editor`.
+- Rebuild after changing dependencies or the Dockerfile:
+  `docker compose build engine engine-test`.

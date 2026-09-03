@@ -49,7 +49,7 @@ void write_u64_le(std::ofstream& out, std::uint64_t v) {
     out.write(reinterpret_cast<const char*>(b), 8);
 }
 
-/// Build a pak file with the given entries, mirroring tools/pack/pack.py.
+/// Build a pak file with the given entries, mirroring xadv2-tools/pack/pack.py.
 /// Returns the host path so the test can pass it to PackResourceSource.
 std::filesystem::path write_test_pak(const std::filesystem::path& dir,
                                      const std::vector<std::pair<std::string, std::string>>& files,

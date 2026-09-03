@@ -2,7 +2,7 @@
 
 The SCUMM panel is a view/input component, not the command system.
 
-As-built tour: [Point & click kit](tour/07-point-and-click.md).
+As-built tour: [Point & click kit](tour/02-point-and-click.md).
 Do not extract a third `CommandDispatcher` — that object is `RoomCommandProcessor`.
 
 ```text

@@ -73,7 +73,6 @@ set(PAC_LUA_LIBRARIES lua-android)
 # to SFML and the engine's private rendering compatibility layer.
 set(PAC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(PAC_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(PAC_BUILD_EXPERIMENTS OFF CACHE BOOL "" FORCE)
 set(PAC_INSTALL OFF CACHE BOOL "" FORCE)
 set(PAC_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 add_subdirectory("${PAC_ENGINE_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/xadv2-engine")

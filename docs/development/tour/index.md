@@ -7,10 +7,9 @@ This tour has five jobs:
    no kit; kits make complex games efficient and still YAML/Lua.
 2. **Onboard a new developer** — concepts and pitfalls, not `room_scene.cpp` first.
 3. **Support refactors** — interfaces, dependencies, sequences, diagrams.
-4. **Navigate the tree** — proposed subdivisions under the existing layers.
-5. **Index the C++ API** — Doxygen on public headers; this tour stays the story.
+4. **Navigate the current tree** — name the code that implements each concept.
 
-Historical pages under [`../design/`](../design/00-index.md) are
+Historical pages under [`../history/design/`](../history/design/00-index.md) are
 [archived](../history/README.md).
 
 ---
@@ -21,20 +20,15 @@ Historical pages under [`../design/`](../design/00-index.md) are
 |-----|-----|
 | [Design drivers](00-drivers.md) | Rules for new work. Start here. |
 | [1 — Core abstractions](01-core-abstractions.md) | `Game`, `Scene`, loop, resources, Lua preview. |
-| [Point & click kit](07-point-and-click.md) | Commands, session vs widgets, sequences, pitfalls. |
-| [Target architecture and debt](target-and-debt.md) | Gap vs drivers; what to extract and in what order. |
-| [Code layout and Doxygen](code-layout.md) | Folder split and API index. |
+| [Point & click kit](02-point-and-click.md) | Commands, session vs widgets, sequences, pitfalls. |
 
-Still to write: Lua in depth, draw pipeline, lighting, persistence, platform.
+Proposed changes are kept separately in [plans and technical debt](../plans/target-and-debt.md).
 
 ```mermaid
 flowchart TB
   D[Drivers] --> C[Core abstractions]
-  C --> Lua[Lua chapter]
   C --> Kit[P&C kit]
-  C --> Layout[Code layout]
-  Kit --> Debt[Target and debt]
-  Layout --> Debt
+  C --> Lua[Current Lua API]
 ```
 
 ---
