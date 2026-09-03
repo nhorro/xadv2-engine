@@ -9,7 +9,8 @@ scripted in **Lua** and configured in **YAML**. A remake of
 repositories and link the engine as a library — see
 [docs/authoring/building-a-game.md](docs/authoring/building-a-game.md):
 
-~~~bash
+~~~
+bash
 # scaffold a standalone game (lands in ../games/, alongside the engine checkout)
 python -m tools.scaffolder new game mygame --title "My Game"
 
@@ -38,7 +39,8 @@ C++, and a generic YAML + Lua `ScriptScene`. They are the engine's worked
 documentation, and CI smoke-runs every one of them, so what they show is what the
 engine actually does.
 
-~~~bash
+~~~
+bash
 ./run-game.sh                  # 01_hello_room
 ./run-game.sh 03_dialog_npc    # any example, by directory name
 ~~~
@@ -55,14 +57,16 @@ The engine builds its pinned modified SFML source on every platform. On
 Ubuntu/Debian, install its native window/audio dependencies together with the
 engine's YAML and Lua dependencies:
 
-~~~bash
+~~~
+bash
 sudo apt install build-essential cmake libx11-dev libxrandr-dev libxcursor-dev \
     libudev-dev libgl1-mesa-dev \
     libfreetype-dev libopenal-dev libflac-dev libvorbis-dev \
     libyaml-cpp-dev liblua5.4-dev
 ~~~
 
-~~~bash
+~~~
+bash
 ./build-linux.sh
 ~~~
 
@@ -72,9 +76,10 @@ Or directly: `cmake -S . -B build && cmake --build build -j"$(nproc)"`, then
 ### Windows
 
 Requires a [vcpkg](https://github.com/microsoft/vcpkg) checkout. Set `VCPKG_ROOT`
-to it (the script also auto-detects a sibling `..\vcpkg`), then:
+to it (the script also auto-detects a sibling `..\\vcpkg`), then:
 
-~~~bat
+~~~
+bat
 .\build-windows.bat            REM Debug; pass Release for an optimized build
 ~~~
 
@@ -92,7 +97,8 @@ emulator, or upload it to a USB/wireless-debugging phone. See
 
 ### Packaging check
 
-~~~bash
+~~~
+bash
 ./scripts/check-packaging.sh   # installs the engine, then builds an external game
                                # against it — both find_package and source mode
 ~~~
@@ -103,7 +109,8 @@ Docker
 Containerized environments to build/run the engine and the authoring tools on
 Linux without installing the toolchain locally. See [docker/README.md](docker/README.md).
 
-~~~bash
+~~~
+bash
 docker compose run --rm engine-test   # build the engine + run the headless tests
 docker compose up room-editor         # then open http://localhost:8000
 docker compose run --rm engine        # run an example (X11 + audio, desktop host)
@@ -112,12 +119,13 @@ docker compose run --rm engine        # run an example (X11 + audio, desktop hos
 Documentation
 -------------
 
-~~~bash
+~~~
+bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r docs/requirements.txt
 mkdocs serve -a localhost:8002 # Room/closeup editors use 8000/8001 by default
 ~~~
 
-The canonical design lives in [docs/development/design/](docs/development/design/) —
-requirements, architecture, the Lua API, and an exhaustive data-format reference.
-The implementation follows the design: where the code diverges, the code changes.
+Start with the [as-built architecture tour](docs/development/tour/index.md).
+The older [design folder](docs/development/design/) is frozen history.
+Game authors use the [authoring API](docs/authoring/index.md) (Lua, YAML, tools).
