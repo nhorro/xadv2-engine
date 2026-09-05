@@ -30,12 +30,14 @@ class Scene;
 class SceneManager {
 public:
     using Builder = std::function<std::unique_ptr<Scene>(const std::string& id)>;
+    using SceneEntered = std::function<void(const std::string& id)>;
 
     /// User-initiated action currently waiting in the standard confirmation
     /// overlay. NONE means no modal confirmation is active.
     enum class ConfirmationAction { NONE, QUIT_APPLICATION, GOTO_SCENE };
 
     void set_builder(Builder builder);
+    void set_scene_entered_callback(SceneEntered callback);
     void set_settings_scene_id(std::string id);
     void set_confirmation_scene_id(std::string id);
 
@@ -105,6 +107,7 @@ private:
     void do_goto(const std::string& id);
 
     Builder builder_;
+    SceneEntered scene_entered_;
     std::string settings_scene_id_;
     std::string confirmation_scene_id_;
     std::string save_scene_id_;

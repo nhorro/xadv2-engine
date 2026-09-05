@@ -70,6 +70,9 @@ public:
                                          const std::string& first,
                                          std::optional<std::string> second) = 0;
 
+    /// Called once for every valid, accepted player command, before any required
+    /// approach walk. Default no-op keeps headless hosts transport-agnostic.
+    virtual void record_command_submission(const Command&) {}
     virtual void begin_command_dispatch() = 0;
     [[nodiscard]] virtual bool command_view_active() const = 0;
     [[nodiscard]] virtual bool command_handler_task_armed() const = 0;

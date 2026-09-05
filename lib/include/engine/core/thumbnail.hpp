@@ -40,7 +40,7 @@ public:
     /// gameplay rect (`vp.offset` + `vp.size`, in window pixels) and downscaled
     /// to `kWidth x kHeight`. Silently no-ops on a zero-sized window or
     /// viewport. Must be called between `scenes.draw` and `window.display`.
-    void capture(const sf::RenderWindow& window, const Viewport& vp);
+    void capture(sf::RenderWindow& window, const Viewport& vp);
 
     /// Mark the currently cached image as stale (e.g. after the player leaves
     /// COMMAND state for a long while). Calling `image()` then returns an

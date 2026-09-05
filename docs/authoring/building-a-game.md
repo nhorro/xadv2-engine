@@ -135,6 +135,11 @@ int main(int argc, char** argv) {
 }
 ```
 
+The shared option parser accepts `--frames N`, `--shot image.png`, `--pak
+resources.pak`, and `--record walkthrough.csv`. The last option writes a
+[timestamped semantic gameplay recording](gameplay-recording.md) for playtest
+review and automation tooling.
+
 If your game adds a **scene type of its own** in C++ — a journal, a map, a
 minigame; something whose *interaction model* the engine doesn't have — it also
 links `pac::sol2`, which is what lets it install its own Lua functions:

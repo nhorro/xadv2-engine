@@ -5,6 +5,7 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
+#include "engine/core/gameplay_recorder.hpp"
 #include "engine/core/localization.hpp"
 #include "engine/core/lua_api.hpp"
 #include "engine/core/manifest.hpp"
@@ -350,6 +351,8 @@ parse_run_options(int argc, char** argv, RunOptions& opts, const std::string& de
             opts.max_frames = std::atoi(v.c_str());
         } else if (std::string v = value_of(arg, "--shot", i); !v.empty()) {
             opts.screenshot_path = std::move(v);
+        } else if (std::string v = value_of(arg, "--record", i); !v.empty()) {
+            opts.recording_path = std::move(v);
         } else if (std::string v = value_of(arg, "--pak", i); !v.empty()) {
             opts.pak_path = std::move(v);
         } else if (!arg.empty() && arg[0] != '-') {
@@ -476,6 +479,15 @@ static int run_impl(const std::string& manifest_path,
     SaveService saves(save_data_dir(manifest.id, executable_dir(opts.argv0)), log);
     CursorState cursor_state;
     Thumbnail thumbnail;
+    GameplayRecorder recorder;
+    if (!opts.recording_path.empty()) {
+        if (!recorder.start_csv(opts.recording_path)) {
+            log.error("could not open gameplay recording '" + opts.recording_path + "'");
+            return 1;
+        }
+        log.info("recording gameplay to " +
+                 std::filesystem::absolute(recorder.csv_path()).string());
+    }
 
     EngineContext ctx{display,
                       resources,
@@ -493,6 +505,7 @@ static int run_impl(const std::string& manifest_path,
                       localization,
                       settings_store,
                       thumbnail,
+                      recorder,
                       manifest.speech,
                       {}};
     bind_core_api(ctx, manifest.facts_path);
@@ -540,6 +553,9 @@ static int run_impl(const std::string& manifest_path,
             log.error("unknown scene type '" + desc->type + "' for scene '" + id + "'");
         }
         return scene;
+    });
+    scenes.set_scene_entered_callback([&recorder](const std::string& id) {
+        recorder.record("scene_enter", id);
     });
 
     bool settings_seen = false;
@@ -901,17 +917,9 @@ static int run_impl(const std::string& manifest_path,
                                pause_font);
         }
 
-        // Thumbnail refresh (issue #119): every ~0.5s while the active scene
-        // is in a thumbnail-friendly state (RoomScene COMMAND), capture the
-        // current framebuffer cropped to the gameplay viewport. The save
-        // picker reads `ctx.thumbnail.image()` when the player saves. Throttle
-        // keeps the per-frame GPU readback off the hot path.
-        constexpr int kThumbnailEveryFrames = 30;
-        const Scene* top = scenes.top();
-        if (!paused && top && top->wants_thumbnail() && (frames % kThumbnailEveryFrames) == 0) {
-            thumbnail.capture(window, display.viewport());
-        }
-
+        // Full-window readbacks come before thumbnail generation. The latter
+        // binds a 256x144 off-screen framebuffer, so keeping these phases
+        // ordered prevents F12/--shot from ever observing that target.
         const bool last_frame = (opts.max_frames > 0 && frames + 1 >= opts.max_frames);
         if (last_frame && !opts.screenshot_path.empty()) {
             if (save_screenshot(window, opts.screenshot_path)) {
@@ -937,6 +945,17 @@ static int run_impl(const std::string& manifest_path,
             }
         }
 #endif
+
+        // Thumbnail refresh (issue #119): every ~0.5s while the active scene
+        // is in a thumbnail-friendly state (RoomScene COMMAND), capture the
+        // current framebuffer cropped to the gameplay viewport. The save
+        // picker reads `ctx.thumbnail.image()` when the player saves. Throttle
+        // keeps the per-frame GPU readback off the hot path.
+        constexpr int kThumbnailEveryFrames = 30;
+        const Scene* top = scenes.top();
+        if (!paused && top && top->wants_thumbnail() && (frames % kThumbnailEveryFrames) == 0) {
+            thumbnail.capture(window, display.viewport());
+        }
 
         // Feed the profiler before the vsync wait so `work_seconds` reflects only
         // CPU + draw cost, while `frame_seconds` carries the full frame-to-frame

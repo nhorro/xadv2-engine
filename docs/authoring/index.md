@@ -20,13 +20,14 @@ or narrative craft.
 
 0. **[Building a game](./building-a-game.md)**.
 1. **[Lua API reference](lua-api.md)** while you script.
-2. **[Data formats reference](data-formats.md)** while you write YAML.
-3. **[Game and chapter manifests](chapter-manifests.md)**.
-4. **[Scriptable scenes](script-scenes.md)** when the interaction model is not a room.
-5. **[Localization and native-language voice](localization.md)**.
-6. **[Scenery authoring](scenery.md)** — layers, regions, objects, hotspots, walk-behinds.
-7. **[Lighting, shadows, and grading](room-lighting-tutorial.md)** — YAML lights and F9 tuning.
-8. **[xadv2-tools](https://github.com/nhorro/xadv2-tools)** — the separate room
+2. **[Gameplay recording](gameplay-recording.md)** for timed walkthrough review.
+3. **[Data formats reference](data-formats.md)** while you write YAML.
+4. **[Game and chapter manifests](chapter-manifests.md)**.
+5. **[Scriptable scenes](script-scenes.md)** when the interaction model is not a room.
+6. **[Localization and native-language voice](localization.md)**.
+7. **[Scenery authoring](scenery.md)** — layers, regions, objects, hotspots, walk-behinds.
+8. **[Lighting, shadows, and grading](room-lighting-tutorial.md)** — YAML lights and F9 tuning.
+9. **[xadv2-tools](https://github.com/nhorro/xadv2-tools)** — the separate room
    editor, close-up editor, packer, and scaffolder repository.
 
 ## Concepts
@@ -42,6 +43,7 @@ or narrative craft.
 | Dialog | Branching conversation trees. | [Lua API](lua-api.md) |
 | Inventory | Items the player carries and combines. | [Lua API](lua-api.md) |
 | State | Persistent facts (`set_state`, room/region stores). | [Lua API](lua-api.md) |
+| Recording | Timestamped semantic playthrough events. | [Gameplay recording](gameplay-recording.md) |
 
 ## Conventions
 

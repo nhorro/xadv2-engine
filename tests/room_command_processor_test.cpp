@@ -38,6 +38,7 @@ struct FakeProcessorHost : RoomCommandProcessorHost {
     std::string caption;
     int unhandled = 0;
     int finished = 0;
+    std::vector<Command> recorded;
 
     bool command_submission_enabled() const override { return enabled && view_active; }
 
@@ -98,6 +99,8 @@ struct FakeProcessorHost : RoomCommandProcessorHost {
         calls.push_back("game:" + verb + ":" + first + ":" + second.value_or(""));
         return game_result;
     }
+
+    void record_command_submission(const Command& command) override { recorded.push_back(command); }
 
     void begin_command_dispatch() override { spoke = false; }
     bool command_view_active() const override { return view_active; }
@@ -303,4 +306,25 @@ TEST_CASE("processor rejects disabled stale and malformed submissions") {
     host.enabled = false;
     CHECK(processor.submit(open_door()) == CommandSubmission::REJECTED);
     CHECK(host.finished == 5);
+    CHECK(host.recorded.empty());
+}
+
+TEST_CASE("processor records an accepted deferred command exactly once") {
+    FakeProcessorHost host;
+    add_room_operand(host, "door");
+    host.targets["door"].approach = sf::Vector2f{100.0f, 0.0f};
+    host.targets["door"].requires_approach = true;
+    host.hotspot_result.handled = true;
+    RoomCommandProcessor processor(host);
+
+    CHECK(processor.submit(open_door()) == CommandSubmission::DEFERRED);
+    REQUIRE(host.recorded.size() == 1);
+    CHECK(host.recorded[0].verb == Verb::OPEN);
+    CHECK(host.recorded[0].param1.kind == ObjectKind::ROOM_OBJECT);
+    CHECK(host.recorded[0].param1.id == "door");
+    CHECK_FALSE(host.recorded[0].param2.has_value());
+    host.player_position = {100.0f, 0.0f};
+    host.player_moving = false;
+    processor.update(0.016f);
+    CHECK(host.recorded.size() == 1);
 }

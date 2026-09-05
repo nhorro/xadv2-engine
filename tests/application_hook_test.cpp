@@ -44,6 +44,21 @@ public:
 
 } // namespace
 
+TEST_CASE("standard command line accepts gameplay recording output") {
+    char exe[] = "game";
+    char record[] = "--record";
+    char output[] = "runs/walkthrough.csv";
+    char shot[] = "--shot=frame.png";
+    char manifest[] = "custom.yaml";
+    char* argv[] = {exe, record, output, shot, manifest};
+    pac::core::RunOptions options;
+
+    const std::string selected = pac::core::parse_run_options(5, argv, options, "game.yaml");
+    CHECK(selected == "custom.yaml");
+    CHECK(options.recording_path == "runs/walkthrough.csv");
+    CHECK(options.screenshot_path == "frame.png");
+}
+
 TEST_CASE(
     "application configure hook runs after core Lua bindings and setup failure aborts startup") {
 #if defined(_WIN32)

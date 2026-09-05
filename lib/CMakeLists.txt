@@ -120,6 +120,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/core/lua_api.cpp
     src/core/user_data.cpp
     src/core/save_service.cpp
+    src/core/gameplay_recorder.cpp
     src/core/thumbnail.cpp
     src/core/screenshot.cpp
     src/core/profiler.cpp

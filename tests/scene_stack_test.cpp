@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace pac::core;
 
@@ -79,6 +80,16 @@ TEST_CASE("goto / push / pop lifecycle and stack size") {
     CHECK(g_counts["a"].left == 1);
     CHECK(g_counts["a"].prepared_for_exit == 0);
     CHECK(g_counts["c"].entered == 1);
+}
+
+TEST_CASE("scene entry callback observes top-level and overlay entries") {
+    SceneManager m = make_manager();
+    std::vector<std::string> entered;
+    m.set_scene_entered_callback([&entered](const std::string& id) { entered.push_back(id); });
+    m.goto_scene("room");
+    m.push_scene("notebook");
+    m.apply_pending();
+    CHECK(entered == std::vector<std::string>{"room", "notebook"});
 }
 
 TEST_CASE("transitions are deferred until apply_pending") {

@@ -24,6 +24,8 @@ CommandSubmission RoomCommandProcessor::submit(Command command) {
         return CommandSubmission::REJECTED;
     }
 
+    host_.record_command_submission(command);
+
     if (target_ref && target.approach && host_.command_player_available()) {
         const geom::Point before = host_.command_player_position();
         const geom::Point destination =

@@ -71,6 +71,8 @@ add_executable(pac_core_tests
     text_encoding_test.cpp
     dialog_test.cpp
     save_service_test.cpp
+    gameplay_recorder_test.cpp
+    screenshot_test.cpp
     user_data_test.cpp
     profiler_test.cpp
     application_hook_test.cpp

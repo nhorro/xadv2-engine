@@ -257,12 +257,14 @@ private:
     void say(const std::string& text,
              sf::Color color,
              float gap = 48.0f,
-             const std::string& text_id = {});
+             const std::string& text_id = {},
+             const std::string& speaker_id = {});
     void say_at(const std::string& text,
                 sf::Color color,
                 geom::Point world,
                 float gap = 48.0f,
-                const std::string& text_id = {});
+                const std::string& text_id = {},
+                const std::string& speaker_id = {});
 
     // Ambient floating text (`float_text` Lua API): non-blocking, time-limited
     // labels over the scenery, independent of the single SpeechManager line —
@@ -363,6 +365,7 @@ private:
     VerbResult call_game_command(const std::string& verb,
                                  const std::string& first,
                                  std::optional<std::string> second) override;
+    void record_command_submission(const Command& command) override;
     void begin_command_dispatch() override;
     [[nodiscard]] bool command_view_active() const override;
     [[nodiscard]] bool command_handler_task_armed() const override;

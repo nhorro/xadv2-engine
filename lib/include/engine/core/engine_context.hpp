@@ -10,6 +10,7 @@ namespace pac::core {
 class Diagnostics;
 class Display;
 class Localization;
+class GameplayRecorder;
 class ResourceCache;
 class SaveService;
 class SceneManager;
@@ -63,6 +64,10 @@ struct EngineContext {
     /// candidates (`Scene::wants_thumbnail()`); the in-game pause menu hands
     /// it to `SaveService` when the player opens the save picker.
     Thumbnail& thumbnail;
+    /// Semantic gameplay event bus and optional CSV walkthrough recording.
+    /// Producers publish actions, navigation, choices, and speech here; future
+    /// live automation can attach another observer without changing producers.
+    GameplayRecorder& recorder;
     /// Game-wide spoken-line typography. Scene-specific fonts remain UI fonts.
     SpeechConfig speech;
     /// Session-only strings supplied by the game executable for presentation

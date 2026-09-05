@@ -12,7 +12,6 @@ namespace pac::core {
 /// by `path`'s extension). Call after drawing and before RenderWindow::display().
 /// Returns false when the framebuffer cannot be copied or the file cannot be
 /// written. The caller owns directory creation and diagnostics.
-[[nodiscard]] bool save_screenshot(const sf::RenderWindow& window,
-                                   const std::filesystem::path& path);
+[[nodiscard]] bool save_screenshot(sf::RenderWindow& window, const std::filesystem::path& path);
 
 } // namespace pac::core

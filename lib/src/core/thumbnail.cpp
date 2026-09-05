@@ -29,7 +29,7 @@ bool Thumbnail::ensure_rt() {
     return true;
 }
 
-void Thumbnail::capture(const sf::RenderWindow& window, const Viewport& vp) {
+void Thumbnail::capture(sf::RenderWindow& window, const Viewport& vp) {
 #if defined(__ANDROID__)
     // SFML 2.6's OpenGL ES 1 backend reads textures through optional
     // framebuffer extension entry points. They are unavailable on some Android
@@ -76,6 +76,10 @@ void Thumbnail::capture(const sf::RenderWindow& window, const Viewport& vp) {
     rt_->display();
 
     image_ = rt_->getTexture().copyToImage();
+    // RenderTexture::clear/draw/display makes its context current. Restore the
+    // window for any later framebuffer consumer in this frame (F12/--shot and
+    // RenderWindow::display itself).
+    window.setActive(true);
 #endif
 }
 

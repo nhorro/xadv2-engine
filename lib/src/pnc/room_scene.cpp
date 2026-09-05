@@ -5,6 +5,7 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
+#include "engine/core/gameplay_recorder.hpp"
 #include "engine/core/load_error.hpp"
 #include "engine/core/localization.hpp"
 #include "engine/core/lua_api.hpp"
@@ -56,6 +57,18 @@ namespace {
 constexpr float kAvatarScale = 1.1f;
 constexpr float kRoomFadeDefault = 0.3f; // change_room fade-out/in seconds
 constexpr float kPanelFadeDefault = 0.25f;
+
+std::string object_kind_id(ObjectKind kind) {
+    switch (kind) {
+    case ObjectKind::ROOM_OBJECT:
+        return "room_object";
+    case ObjectKind::INVENTORY_OBJECT:
+        return "inventory_object";
+    case ObjectKind::NONE:
+        return "none";
+    }
+    return "none";
+}
 
 // Engine-reserved global-state keys backing declarative configs (#185): the live
 // config id per room and a per-(room,config) "seen" flag for first-enter tracking.
@@ -1110,6 +1123,10 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
 
     room_.emplace(std::move(data));
     current_room_id_ = id;
+    ctx_.recorder.record("room_enter",
+                         id,
+                         pac::core::GameplayRecorder::json_object(
+                             {{"scene", scene_id_}, {"entry_point", entry_point}}));
     current_zone_.clear();
     command_controller_.reset();
     command_processor_.reset();
@@ -1436,16 +1453,18 @@ geom::Point RoomScene::speech_anchor(const Avatar& a) const {
 void RoomScene::say(const std::string& text,
                     sf::Color color,
                     float gap,
-                    const std::string& text_id) {
+                    const std::string& text_id,
+                    const std::string& speaker_id) {
     const geom::Point pos = player_ ? speech_anchor(*player_) : geom::Point{640.0f, 360.0f};
-    say_at(text, color, pos, gap, text_id);
+    say_at(text, color, pos, gap, text_id, speaker_id);
 }
 
 void RoomScene::say_at(const std::string& text,
                        sf::Color color,
                        geom::Point world,
                        float gap,
-                       const std::string& text_id) {
+                       const std::string& text_id,
+                       const std::string& speaker_id) {
     if (text.empty()) {
         return;
     }
@@ -1462,6 +1481,14 @@ void RoomScene::say_at(const std::string& text,
         }
     }
     speech_.show(text, world, color, duration, gap);
+    if (speech_.active()) {
+        const std::string effective_id = pac::core::text_id(text_id, text);
+        ctx_.recorder.record(
+            "speech",
+            effective_id,
+            pac::core::GameplayRecorder::json_object(
+                {{"speaker", speaker_id}, {"room", current_room_id_}, {"text", text}}));
+    }
     spoke_during_command_ = true;
 }
 
@@ -1732,6 +1759,12 @@ InputResult RoomScene::handle(const RoutedInput& input) {
     } else if (command_controller_.state().builder_state != CommandBuilder::State::IDLE) {
         command_controller_.cancel();
     } else if (player_) {
+        ctx_.recorder.record(
+            "action",
+            "walk_to",
+            pac::core::GameplayRecorder::json_object({{"room", current_room_id_},
+                                                      {"x", std::to_string(world.x)},
+                                                      {"y", std::to_string(world.y)}}));
         const RoomData& data = room_->data();
         player_->follow_path(
             geom::find_path(player_->position(), world, data.walkable, data.active_obstacles()));
@@ -1807,6 +1840,18 @@ void RoomScene::handle_ui_intent(const RoomUiIntent& intent) {
         return;
     case RoomUiIntent::Kind::CHOOSE_DIALOG_OPTION:
         if (dialog_) {
+            const std::vector<DialogOption> options = dialog_->options();
+            if (intent.index >= 0 && static_cast<std::size_t>(intent.index) < options.size()) {
+                const DialogOption& option = options[static_cast<std::size_t>(intent.index)];
+                ctx_.recorder.record("dialog_option",
+                                     option.text_id,
+                                     pac::core::GameplayRecorder::json_object(
+                                         {{"dialog", dialog_->npc_id()},
+                                          {"node", dialog_->current_node()},
+                                          {"room", current_room_id_},
+                                          {"index", std::to_string(intent.index)},
+                                          {"text", option.text}}));
+            }
             dialog_page_ = 0;
             dialog_->choose(intent.index);
         }
@@ -1969,6 +2014,20 @@ VerbResult RoomScene::call_game_command(const std::string& verb,
     return lua_ ? lua_->call_game(verb, first, std::move(second)) : VerbResult{};
 }
 
+void RoomScene::record_command_submission(const Command& command) {
+    const std::string second_kind =
+        command.param2 ? object_kind_id(command.param2->kind) : std::string();
+    const std::string second_id = command.param2 ? command.param2->id : std::string();
+    ctx_.recorder.record("action",
+                         std::string(verb_id(command.verb)),
+                         pac::core::GameplayRecorder::json_object(
+                             {{"room", current_room_id_},
+                              {"param1_kind", object_kind_id(command.param1.kind)},
+                              {"param1", command.param1.id},
+                              {"param2_kind", second_kind},
+                              {"param2", second_id}}));
+}
+
 void RoomScene::begin_command_dispatch() {
     spoke_during_command_ = false;
 }
@@ -2009,7 +2068,7 @@ void RoomScene::present_command_caption(const std::string& caption) {
         gap = character->speech_gap;
     }
     const std::string id = pac::core::text_id({}, caption);
-    say(ctx_.localization.text(id, caption), color, gap, id);
+    say(ctx_.localization.text(id, caption), color, gap, id, player_char_);
     if (speech_.active()) {
         begin_talk_animation(player_char_, player_ && (player_->moving() || player_->acting()));
     }
@@ -2022,7 +2081,7 @@ void RoomScene::present_unhandled_command() {
         color = character->speech_color;
         gap = character->speech_gap;
     }
-    say(ctx_.strings.caption("nothing_happens"), color, gap);
+    say(ctx_.strings.caption("nothing_happens"), color, gap, {}, player_char_);
     if (speech_.active()) {
         begin_talk_animation(player_char_, player_ && (player_->moving() || player_->acting()));
     }
@@ -2930,12 +2989,12 @@ std::string RoomScene::api_talk(const std::string& speaker_id,
     // without an in-room avatar fall back to the player position.
     if (room_) {
         if (const Avatar* npc = room_->npc(speaker_id)) {
-            say_at(localized, color, speech_anchor(*npc), gap, effective_id);
+            say_at(localized, color, speech_anchor(*npc), gap, effective_id, speaker_id);
         } else {
-            say(localized, color, gap, effective_id);
+            say(localized, color, gap, effective_id, speaker_id);
         }
     } else {
-        say(localized, color, gap, effective_id);
+        say(localized, color, gap, effective_id, speaker_id);
     }
     // Nothing shown (empty text) -> no event, so the Lua wrapper never waits.
     if (!speech_.active()) {
@@ -3538,7 +3597,7 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
                 pos = speech_anchor(*a);
             }
         }
-        say_at(text, color, pos, gap, text_id);
+        say_at(text, color, pos, gap, text_id, speaker_id);
         if (speech_.active()) {
             begin_talk_animation(speaker_id, false, player_char_);
         }
@@ -3552,7 +3611,7 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
             gap = c->speech_gap;
         }
         const geom::Point pos = player_ ? speech_anchor(*player_) : geom::Point{640.0f, 360.0f};
-        say_at(text, color, pos, gap, text_id);
+        say_at(text, color, pos, gap, text_id, player_char_);
         if (speech_.active()) {
             begin_talk_animation(player_char_, false, speaker_id);
         }

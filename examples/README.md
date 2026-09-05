@@ -34,6 +34,9 @@ From the repo root, after `cmake --build build`:
 
 # or directly, which is what the smoke tests do:
 ./build/examples/05_closeup/pac_example_05_closeup --frames 60 --shot out.png
+
+# record a playthrough as semantic events (stop the game normally when done):
+./build/examples/03_dialog_npc/pac_example_03_dialog_npc --record walkthrough.csv
 ```
 
 In-game, with `development.edit_mode` on (all examples): **F1** walkable area,
@@ -41,6 +44,10 @@ In-game, with `development.edit_mode` on (all examples): **F1** walkable area,
 the room's YAML + Lua without restarting. In Debug builds, **F12** saves the
 current frame as a timestamped PNG under `screenshots/`; this works in every
 scene and while the game is paused.
+
+`--record path.csv` records scene and room entries, player actions, dialog
+choices, and spoken lines with elapsed timestamps. See
+[Gameplay recording](../docs/authoring/gameplay-recording.md) for the schema.
 
 ## Assets
 

@@ -112,6 +112,7 @@ nav:
   - Authoring API:
       - authoring/index.md
       - Building a game: authoring/building-a-game.md
+      - Gameplay recording: authoring/gameplay-recording.md
       - Lua API reference: authoring/lua-api.md
       - Data formats: authoring/data-formats.md
       - Game and chapter manifests: authoring/chapter-manifests.md

@@ -4,6 +4,7 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
+#include "engine/core/gameplay_recorder.hpp"
 #include "engine/core/localization.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/scene_manager.hpp"
@@ -249,6 +250,10 @@ std::string CloseUpScene::api_talk(const std::string& speaker,
     if (!speech_.active()) {
         return std::string(); // empty text -> nothing shown -> never wait
     }
+    ctx_.recorder.record("speech",
+                         effective_id,
+                         pac::core::GameplayRecorder::json_object(
+                             {{"speaker", speaker}, {"scene", scene_id_}, {"text", localized}}));
     const std::string event = "__closeup_spoke." + std::to_string(++talk_seq_);
     pending_speech_.push_back({closeup_scope_, event});
     return event;
@@ -261,6 +266,10 @@ std::string CloseUpScene::display_name(const CloseUpHotspot& hs) const {
 }
 
 void CloseUpScene::activate(const CloseUpHotspot& hs) {
+    ctx_.recorder.record(
+        "action",
+        "activate",
+        pac::core::GameplayRecorder::json_object({{"scene", scene_id_}, {"hotspot", hs.id}}));
     // A scripted handler wins. Ignore a new activation while one is still running
     // (so a multi-step handler isn't interrupted by another click).
     if (scripted_ && runtime_.has_hotspot(hs.id)) {

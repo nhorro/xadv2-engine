@@ -14,6 +14,10 @@ void SceneManager::set_builder(Builder builder) {
     builder_ = std::move(builder);
 }
 
+void SceneManager::set_scene_entered_callback(SceneEntered callback) {
+    scene_entered_ = std::move(callback);
+}
+
 void SceneManager::set_settings_scene_id(std::string id) {
     settings_scene_id_ = std::move(id);
 }
@@ -142,6 +146,9 @@ void SceneManager::do_goto(const std::string& id) {
     }
     std::unique_ptr<Scene> scene = build(id);
     if (scene) {
+        if (scene_entered_) {
+            scene_entered_(id);
+        }
         scene->enter();
         stack_.push_back(std::move(scene));
         current_scene_id_ = id;
@@ -182,6 +189,9 @@ void SceneManager::apply_pending() {
         case OpKind::PUSH: {
             std::unique_ptr<Scene> scene = build(op.id);
             if (scene) {
+                if (scene_entered_) {
+                    scene_entered_(op.id);
+                }
                 scene->enter();
                 stack_.push_back(std::move(scene));
             }
