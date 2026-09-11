@@ -18,6 +18,7 @@ hotspots:
     area: [ {x: 0, y: 0}, {x: 100, y: 0}, {x: 100, y: 100}, {x: 0, y: 100} ]
   panel:
     name: "un panel"
+    type: exit
     area: [ {x: 200, y: 200}, {x: 300, y: 200}, {x: 300, y: 300}, {x: 200, y: 300} ]
     goto: hall_map
 )YAML";
@@ -41,6 +42,7 @@ TEST_CASE("parse_closeup reads background and hotspots with actions") {
     const CloseUpHotspot* panel = c.hotspot_at({250.0f, 250.0f});
     REQUIRE(panel != nullptr);
     CHECK(panel->goto_scene == "hall_map");
+    CHECK(panel->type == CloseUpHotspotType::EXIT);
 
     // A miss outside every polygon.
     CHECK(c.hotspot_at({500.0f, 500.0f}) == nullptr);
@@ -83,4 +85,9 @@ TEST_CASE("parse_closeup enforces id/background and hotspot geometry with stable
               parse_closeup(
                   "id: x\nbackground: a.png\nhotspots:\n  h:\n    area: [ {x: 0, y: 0} ]\n");
           }) == "closeup.hotspot-area-degenerate");
+    CHECK(error_code([] {
+              parse_closeup("id: x\nbackground: a.png\nhotspots:\n  h:\n"
+                            "    type: portal\n"
+                            "    area: [{x: 0, y: 0}, {x: 1, y: 0}, {x: 0, y: 1}]\n");
+          }) == "closeup.hotspot-type-invalid");
 }

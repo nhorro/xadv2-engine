@@ -295,6 +295,8 @@ hotspots:
     name: puerta
     area: [ {x: 489, y: 211}, {x: 547, y: 211}, {x: 547, y: 334}, {x: 489, y: 334} ]
     approach: at_door                # walk here first, then act
+    type: exit                       # language-independent exit cursor
+    default_verb: open               # direct UI: click/tap
     affordances: [ look_at, open ]
   drawer:    { name: cajón,  bind: region:drawer, affordances: [ look_at, open ] }
   fan:       { name: ventilador, bind: object:fan, affordances: [ look_at, use ] }
@@ -303,6 +305,12 @@ hotspots:
 
 - **`bind: object:<id>` / `region:<id>` / `npc:<id>`** hit-tests the bound visual's *live* bounds — so a hotspot on a moving object or NPC follows it, and is inactive while that NPC/object is absent.
 - **`approach`** (a point) makes it walk-then-act; omit it (or on a moving bind) and the verb fires immediately.
+- **`default_verb`** is the action used by a click/tap when the room uses
+  `direct_room_ui`; it defaults to `look_at` and must either be `look_at` or
+  appear in `affordances`.
+- **`type`** accepts `object` (the default) or `exit`. The latter gives room
+  transitions their own textless cursor. It can be edited directly in YAML
+  while room editors catch up with the field.
 - Toggle interactivity: `enable_hotspot(id)` / `disable_hotspot(id)`.
 
 Handlers live in the room's Lua, keyed by hotspot id then verb:

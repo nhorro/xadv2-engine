@@ -3,6 +3,8 @@
 #include "engine/pnc/command_state.hpp"
 #include "engine/pnc/inventory.hpp"
 
+#include <SFML/System/Vector2.hpp>
+
 #include <cstddef>
 #include <functional>
 #include <map>
@@ -13,6 +15,14 @@ namespace pac::pnc {
 
 enum class RoomInteractionMode { COMMAND, DIALOG, BLOCKED, MENU };
 
+struct DirectContextMenuState {
+    ObjectRef target;
+    sf::Vector2f position{0.0f, 0.0f};
+    std::vector<Verb> actions;
+
+    [[nodiscard]] bool open() const { return target.valid() && !actions.empty(); }
+};
+
 /// Presentation snapshot published by a live room. Values and IDs only: widgets
 /// never retain pointers into RoomRuntime across a room change.
 struct RoomUiState {
@@ -21,7 +31,11 @@ struct RoomUiState {
     CommandState command;
     InventoryModel inventory;
     std::vector<std::string> dialog_options;
+    std::vector<bool> dialog_option_selected;
     int dialog_page = 0;
+    bool inventory_open = false;
+    std::string action_text;
+    DirectContextMenuState context_menu;
     std::map<std::string, bool> widget_visibility;
 
     [[nodiscard]] bool widget_visible(const std::string& id) const {

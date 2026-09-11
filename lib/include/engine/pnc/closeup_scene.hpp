@@ -54,6 +54,13 @@ public:
 private:
     void exit();
     void activate(const CloseUpHotspot& hs);
+    [[nodiscard]] sf::FloatRect close_button_bounds() const;
+    [[nodiscard]] sf::FloatRect clues_button_bounds() const;
+    [[nodiscard]] bool clues_visible() const;
+    void toggle_clues();
+    [[nodiscard]] std::string hotspot_seen_key(const CloseUpHotspot& hs) const;
+    [[nodiscard]] bool hotspot_is_new(const CloseUpHotspot& hs) const;
+    void mark_hotspot_seen(const CloseUpHotspot& hs);
     /// The display name for `hs`: a runtime override set by the scripted
     /// `set_hotspot_name(id, name)`, or the YAML `name` when none.
     [[nodiscard]] std::string display_name(const CloseUpHotspot& hs) const;
@@ -71,6 +78,7 @@ private:
     std::string on_exit_;    // scene id on back-out; empty -> pop the overlay
     std::string music_path_; // optional temporary score cue while this view is open
     float music_transition_ = 2.5f;
+    float music_exit_transition_ = 0.25f;
     sf::Color default_background_color_ = sf::Color::Black;
     std::optional<pac::core::MusicState> previous_music_;
     bool music_override_started_ = false;
@@ -81,6 +89,7 @@ private:
     SpeechManager speech_;
     geom::Point hover_{-1.0f, -1.0f};
     const CloseUpHotspot* hovered_ = nullptr;
+    float affordance_time_ = 0.0f;
 
     // Scripting (optional `logic:` sidecar).
     CloseUpRuntime runtime_;
@@ -94,6 +103,9 @@ private:
     // (e.g. an examined sample renamed from "unidentified" to its identification).
     // Persistence is the script's job (re-apply from saved state in on_enter).
     std::map<std::string, std::string> hotspot_names_;
+    // Script-controlled freshness overrides. This lets a clue become visually
+    // "new" again when later story state unlocks another response.
+    std::map<std::string, bool> hotspot_new_overrides_;
     // Off-screen "shout" banner set by scripted `shout(text)`: a styled line across
     // the top, independent of the speech bubble. Empty = nothing shown.
     std::string shout_text_;

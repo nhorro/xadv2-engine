@@ -57,6 +57,7 @@ struct DialogWidgetConfig {
     std::string font;
     unsigned font_size = 19;
     sf::Color text{225, 209, 171};
+    sf::Color selected_text{153, 147, 130};
     sf::Color hover_text{43, 183, 214};
     float text_outline_thickness = 0.0f;
     sf::Color text_outline{0, 0, 0, 210};

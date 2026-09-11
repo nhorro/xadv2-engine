@@ -23,11 +23,13 @@ or narrative craft.
 2. **[Gameplay recording](gameplay-recording.md)** for timed walkthrough review.
 3. **[Data formats reference](data-formats.md)** while you write YAML.
 4. **[Game and chapter manifests](chapter-manifests.md)**.
-5. **[Scriptable scenes](script-scenes.md)** when the interaction model is not a room.
-6. **[Localization and native-language voice](localization.md)**.
-7. **[Scenery authoring](scenery.md)** — layers, regions, objects, hotspots, walk-behinds.
-8. **[Lighting, shadows, and grading](room-lighting-tutorial.md)** — YAML lights and F9 tuning.
-9. **[xadv2-tools](https://github.com/nhorro/xadv2-tools)** — the separate room
+5. **[Direct room interaction](direct-room-interaction.md)** for tap, double-tap,
+   and drag-based room controls.
+6. **[Scriptable scenes](script-scenes.md)** when the interaction model is not a room.
+7. **[Localization and native-language voice](localization.md)**.
+8. **[Scenery authoring](scenery.md)** — layers, regions, objects, hotspots, walk-behinds.
+9. **[Lighting, shadows, and grading](room-lighting-tutorial.md)** — YAML lights and F9 tuning.
+10. **[xadv2-tools](https://github.com/nhorro/xadv2-tools)** — the separate room
    editor, close-up editor, packer, and scaffolder repository.
 
 ## Concepts
@@ -39,7 +41,7 @@ or narrative craft.
 | ScriptScene | YAML entity registry plus Lua input/update. | [Scriptable scenes](script-scenes.md) |
 | Room | A place inside the room view, `rooms/<id>.{yaml,lua}`. | [Data formats](data-formats.md) |
 | Cast & avatars | Characters that move and speak. | [Lua API](lua-api.md) |
-| Hotspots & verbs | Interactive regions and actions. | [Lua API](lua-api.md) |
+| Hotspots & verbs | Interactive regions and actions. | [Direct room interaction](direct-room-interaction.md) |
 | Dialog | Branching conversation trees. | [Lua API](lua-api.md) |
 | Inventory | Items the player carries and combines. | [Lua API](lua-api.md) |
 | State | Persistent facts (`set_state`, room/region stores). | [Lua API](lua-api.md) |

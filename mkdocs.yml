@@ -116,6 +116,7 @@ nav:
       - Lua API reference: authoring/lua-api.md
       - Data formats: authoring/data-formats.md
       - Game and chapter manifests: authoring/chapter-manifests.md
+      - Direct room interaction: authoring/direct-room-interaction.md
       - Scriptable scenes: authoring/script-scenes.md
       - Localization: authoring/localization.md
       - Scenery authoring: authoring/scenery.md

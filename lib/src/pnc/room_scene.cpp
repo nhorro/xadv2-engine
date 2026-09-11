@@ -214,7 +214,7 @@ RoomScene::RoomScene(pac::core::EngineContext& ctx,
                      const pac::core::SceneParams& params,
                      RoomViewport room_viewport)
     : ctx_(ctx), ui_sounds_(params), room_viewport_(room_viewport), command_controller_(*this),
-      command_processor_(*this) {
+      direct_action_composer_(*this), command_processor_(*this) {
     if (!room_viewport_.valid()) {
         ctx_.log.warn("RoomScene: invalid room viewport; using the virtual display resolution");
         room_viewport_ = RoomViewport::from_runtime(ctx_.display.virtual_resolution());
@@ -230,6 +230,7 @@ RoomScene::RoomScene(pac::core::EngineContext& ctx,
     player_char_ = params.get_or("player", "");
     font_path_ = params.get_or("font", "");
     scumm_panel_path_ = params.get_or("scumm_panel", "");
+    direct_room_ui_path_ = params.get_or("direct_room_ui", "");
     dialog_widget_path_ = params.get_or("dialog_widget", "");
     inventory_path_ = params.get_or("inventory", "");
     inventory_logic_ = params.get_or("inventory_logic", "");
@@ -381,17 +382,44 @@ void RoomScene::enter() {
         return ctx_.localization.text("inventory." + item_id + ".name", source_name);
     };
     ScummPanel panel(std::move(panel_config), vres, font_, &ctx_.resources);
-    scumm_widget_.emplace(std::move(panel),
-                          std::move(widget_model),
-                          [this](const RoomUiIntent& intent) { handle_ui_intent(intent); },
-                          WidgetTransition{panel_fade_duration_, true});
+    scumm_widget_.emplace(
+        std::move(panel),
+        std::move(widget_model),
+        [this](const RoomUiIntent& intent) { handle_ui_intent(intent); },
+        WidgetTransition{panel_fade_duration_, true});
     scumm_widget_->connect(ui_state_stream_);
+
+    if (!direct_room_ui_path_.empty()) {
+        try {
+            direct_room_ui_config_ =
+                parse_direct_room_ui_config(ctx_.resources.read_text(direct_room_ui_path_));
+            DirectRoomWidgetModel direct_model;
+            direct_model.strings = &ctx_.strings;
+            direct_model.resources = &ctx_.resources;
+            direct_model.has_notification = widget_model.has_notification;
+            direct_model.localized_name = widget_model.localized_name;
+            direct_room_widget_.emplace(
+                direct_room_ui_config_,
+                vres,
+                font_,
+                std::move(direct_model),
+                [this](const RoomUiIntent& intent) { handle_ui_intent(intent); });
+            direct_room_widget_->connect(ui_state_stream_);
+            scumm_widget_.reset();
+        } catch (pac::core::LoadError& e) {
+            ctx_.log.error(std::string("RoomScene: direct_room_ui: ") +
+                           e.with_file(direct_room_ui_path_).what());
+        } catch (const std::exception& e) {
+            ctx_.log.error(std::string("RoomScene: direct_room_ui: ") + e.what());
+        }
+    }
 
     DialogWidgetConfig dialog_config;
     if (!dialog_widget_path_.empty()) {
         try {
-            dialog_config = parse_dialog_widget_config(
-                ctx_.resources.read_text(dialog_widget_path_), dialog_widget_path_);
+            dialog_config =
+                parse_dialog_widget_config(ctx_.resources.read_text(dialog_widget_path_),
+                                           dialog_widget_path_);
         } catch (pac::core::LoadError& e) {
             ctx_.log.error(std::string("RoomScene: dialog_widget: ") +
                            e.with_file(dialog_widget_path_).what());
@@ -412,7 +440,11 @@ void RoomScene::enter() {
     dialog_widget_->connect(ui_state_stream_);
     input_router_.clear();
     input_router_.add(*dialog_widget_);
-    input_router_.add(*scumm_widget_);
+    if (direct_room_widget_) {
+        input_router_.add(*direct_room_widget_);
+    } else if (scumm_widget_) {
+        input_router_.add(*scumm_widget_);
+    }
     input_router_.add(*this);
     publish_ui_state();
 
@@ -1369,6 +1401,11 @@ void RoomScene::seat_player(const std::string& entry_point, bool allow_entry_wal
 }
 
 void RoomScene::unload_room() {
+    cancel_direct_gestures();
+    inventory_open_ = false;
+    active_action_text_.clear();
+    active_action_remaining_ = 0.0f;
+    active_action_in_progress_ = false;
     if (tuning_overlay_) {
         tuning_overlay_->close();
     }
@@ -1571,6 +1608,7 @@ void RoomScene::skip_active_cutscene() {
         view_state_ = ViewState::COMMAND;
     }
     command_controller_.finish_execution();
+    active_action_in_progress_ = false;
     if (camera_) {
         camera_->follow_player();
     }
@@ -1585,11 +1623,14 @@ void RoomScene::handle_event(const sf::Event& event) {
         event.key.code == sf::Keyboard::F9) {
         if (tuning_overlay_active()) {
             tuning_overlay_->close();
-        } else if (view_state_ == ViewState::COMMAND && room_ && scumm_widget_) {
+        } else if (view_state_ == ViewState::COMMAND && room_ &&
+                   (scumm_widget_ || direct_room_widget_)) {
             if (!tuning_overlay_) {
                 tuning_overlay_ = std::make_unique<RoomTuningOverlay>();
             }
-            tuning_overlay_->open(room_->data(), scumm_widget_->input_bounds(), font_);
+            const sf::FloatRect controls = scumm_widget_ ? scumm_widget_->input_bounds()
+                                                         : direct_room_widget_->controls_bounds();
+            tuning_overlay_->open(room_->data(), controls, font_);
         }
         return;
     }
@@ -1678,6 +1719,22 @@ void RoomScene::handle_event(const sf::Event& event) {
         }
         return;
     }
+    if (view_state_ == ViewState::DIALOG && event.type == sf::Event::KeyPressed) {
+        int option = -1;
+        if (event.key.code >= sf::Keyboard::Num1 && event.key.code <= sf::Keyboard::Num9) {
+            option = static_cast<int>(event.key.code) - static_cast<int>(sf::Keyboard::Num1);
+        } else if (event.key.code >= sf::Keyboard::Numpad1 &&
+                   event.key.code <= sf::Keyboard::Numpad9) {
+            option = static_cast<int>(event.key.code) - static_cast<int>(sf::Keyboard::Numpad1);
+        }
+        if (option >= 0) {
+            RoomUiIntent intent;
+            intent.kind = RoomUiIntent::Kind::CHOOSE_DIALOG_OPTION;
+            intent.index = option;
+            handle_ui_intent(intent);
+            return;
+        }
+    }
     if (view_state_ == ViewState::MENU) {
         handle_menu_event(event);
         return;
@@ -1696,6 +1753,7 @@ void RoomScene::handle_event(const sf::Event& event) {
             player_->stop();
         }
         view_state_ = ViewState::COMMAND;
+        cancel_direct_gestures();
     }
     publish_ui_state();
     (void) input_router_.route(*routed);
@@ -1727,18 +1785,35 @@ InputResult RoomScene::handle(const RoutedInput& input) {
 
     if (input.secondary_release()) {
         if (view_state_ == ViewState::COMMAND) {
-            command_controller_.cancel();
-            sync_command_hover();
+            if (direct_room_widget_) {
+                pending_direct_long_press_.reset();
+                open_direct_context_menu(input.position);
+            } else {
+                command_controller_.cancel();
+                cancel_direct_gestures();
+                sync_command_hover();
+            }
         }
         return InputResult::CONSUMED;
+    }
+    if (input.kind == RoutedInputKind::PRIMARY_PRESSED) {
+        dismiss_direct_context_menu();
+        if (direct_room_widget_ && view_state_ == ViewState::COMMAND && room_ &&
+            room_viewport_rect().contains(input.position)) {
+            pending_direct_long_press_ = PendingDirectLongPress{};
+        }
+        return room_viewport_rect().contains(input.position) ? InputResult::CONSUMED
+                                                             : InputResult::PASS;
     }
     if (!input.primary_release()) {
         return room_viewport_rect().contains(input.position) ? InputResult::CONSUMED
                                                              : InputResult::PASS;
     }
+    pending_direct_long_press_.reset();
     if (speech_.active()) {
         speech_.skip();
         ctx_.audio.voice.stop();
+        cancel_direct_gestures();
         publish_ui_state();
         return InputResult::CONSUMED;
     }
@@ -1753,12 +1828,22 @@ InputResult RoomScene::handle(const RoutedInput& input) {
 
     const geom::Point world = virtual_to_world(input.position);
     if (const RoomHotspot* hotspot = hotspot_under(world)) {
-        if (const auto command = command_controller_.on_hotspot_clicked({hotspot->id})) {
-            (void) command_processor_.submit(*command);
+        if (direct_room_widget_) {
+            dismiss_direct_context_menu();
+            if (const auto command =
+                    direct_action_composer_.interact({ObjectKind::ROOM_OBJECT, hotspot->id})) {
+                (void) command_processor_.submit(*command);
+            }
+        } else {
+            if (const auto command = command_controller_.on_hotspot_clicked({hotspot->id})) {
+                (void) command_processor_.submit(*command);
+            }
         }
-    } else if (command_controller_.state().builder_state != CommandBuilder::State::IDLE) {
+    } else if (!direct_room_widget_ &&
+               command_controller_.state().builder_state != CommandBuilder::State::IDLE) {
         command_controller_.cancel();
     } else if (player_) {
+        dismiss_direct_context_menu();
         ctx_.recorder.record(
             "action",
             "walk_to",
@@ -1771,6 +1856,141 @@ InputResult RoomScene::handle(const RoutedInput& input) {
     }
     sync_command_hover();
     return InputResult::CONSUMED;
+}
+
+std::vector<Verb> RoomScene::direct_secondary_actions(const ObjectRef& target) const {
+    const CommandOperandInfo info = resolve_direct_operand(target);
+    if (!info.found) {
+        return {};
+    }
+    std::vector<Verb> actions;
+    const auto add = [&](Verb verb) {
+        // GIVE and USE stay as inventory drag/drop gestures in the direct UI.
+        if (verb == info.default_verb || verb == Verb::GIVE || verb == Verb::USE ||
+            std::find(actions.begin(), actions.end(), verb) != actions.end()) {
+            return;
+        }
+        if (direct_action_composer_.perform(target, verb)) {
+            actions.push_back(verb);
+        }
+    };
+    add(Verb::LOOK_AT);
+    for (const std::string& id : info.affordances) {
+        if (const auto verb = verb_from_id(id)) {
+            add(*verb);
+        }
+    }
+    return actions;
+}
+
+void RoomScene::open_direct_context_menu(sf::Vector2f position) {
+    dismiss_direct_context_menu();
+    if (!direct_room_widget_ || view_state_ != ViewState::COMMAND || !room_ ||
+        !room_viewport_rect().contains(position) || direct_room_widget_->captures(position)) {
+        return;
+    }
+    if (const RoomHotspot* hotspot = hotspot_under(virtual_to_world(position))) {
+        const ObjectRef target{ObjectKind::ROOM_OBJECT, hotspot->id};
+        std::vector<Verb> actions = direct_secondary_actions(target);
+        if (!actions.empty()) {
+            inventory_open_ = false;
+            direct_context_menu_ = {target, position, std::move(actions)};
+        }
+    }
+    publish_ui_state();
+}
+
+void RoomScene::dismiss_direct_context_menu() {
+    direct_context_menu_ = {};
+}
+
+void RoomScene::cancel_direct_gestures() {
+    pending_direct_long_press_.reset();
+    dismiss_direct_context_menu();
+    direct_drag_action_text_.clear();
+    if (direct_room_widget_) {
+        direct_room_widget_->cancel_gesture();
+    }
+}
+
+ObjectRef RoomScene::direct_drop_target_at(sf::Vector2f position) const {
+    ObjectRef target;
+    if (direct_room_widget_) {
+        if (const auto item = direct_room_widget_->inventory_item_at(position)) {
+            target = {ObjectKind::INVENTORY_OBJECT, *item};
+        }
+    }
+    const bool over_direct_ui = direct_room_widget_ && direct_room_widget_->contains_ui(position);
+    if (!target.valid() && !over_direct_ui && room_ && room_viewport_rect().contains(position)) {
+        if (const RoomHotspot* hotspot = hotspot_under(virtual_to_world(position))) {
+            target = {ObjectKind::ROOM_OBJECT, hotspot->id};
+        }
+    }
+    return target;
+}
+
+std::string RoomScene::direct_incomplete_drop_text(const std::string& item_id) const {
+    const ObjectRef source{ObjectKind::INVENTORY_OBJECT, item_id};
+    const CommandOperandInfo info = resolve_command_operand(source);
+    if (!info.found || info.name.empty()) {
+        return {};
+    }
+    return command_verb_label(Verb::USE) + " " + info.name + " " +
+           command_connector_label(Verb::USE);
+}
+
+std::optional<Command> RoomScene::direct_hover_command() const {
+    if (!direct_room_widget_ || view_state_ != ViewState::COMMAND || direct_context_menu_.open()) {
+        return std::nullopt;
+    }
+    const auto& hovered = command_controller_.state().hovered_object;
+    if (!hovered) {
+        return std::nullopt;
+    }
+    if (const auto interaction = direct_action_composer_.interact(*hovered)) {
+        return interaction;
+    }
+    return direct_action_composer_.examine(*hovered);
+}
+
+pac::core::CursorKind RoomScene::direct_hover_cursor() const {
+    const CommandState& command = command_controller_.state();
+    if (!direct_room_widget_ || view_state_ != ViewState::COMMAND) {
+        return pac::core::CursorKind::DEFAULT;
+    }
+    if (command.hover == CommandHoverKind::WALKABLE) {
+        return pac::core::CursorKind::WALK;
+    }
+    const auto& hovered = command.hovered_object;
+    if (!hovered) {
+        return pac::core::CursorKind::DEFAULT;
+    }
+    bool exit = false;
+    if (hovered->kind == ObjectKind::ROOM_OBJECT && room_) {
+        const auto found = room_->data().hotspots.find(hovered->id);
+        exit = found != room_->data().hotspots.end() && found->second.type == RoomHotspotType::EXIT;
+    }
+    const CommandOperandInfo info = resolve_direct_operand(*hovered);
+    return direct_cursor_kind(info.default_verb, exit);
+}
+
+std::string RoomScene::format_command(const Command& command) const {
+    if (direct_room_widget_ && command.param1.kind == ObjectKind::ROOM_OBJECT && room_) {
+        const auto found = room_->data().hotspots.find(command.param1.id);
+        if (found != room_->data().hotspots.end() && found->second.type == RoomHotspotType::EXIT) {
+            const CommandOperandInfo info = resolve_direct_operand(command.param1);
+            if (command.verb == info.default_verb) {
+                return resolve_command_operand(command.param1).name;
+            }
+        }
+    }
+    std::string text =
+        command_verb_label(command.verb) + " " + resolve_command_operand(command.param1).name;
+    if (command.param2) {
+        text += " " + command_connector_label(command.verb) + " " +
+                resolve_command_operand(*command.param2).name;
+    }
+    return text;
 }
 
 void RoomScene::handle_ui_intent(const RoomUiIntent& intent) {
@@ -1794,8 +2014,75 @@ void RoomScene::handle_ui_intent(const RoomUiIntent& intent) {
         sync_command_hover();
         return;
     case RoomUiIntent::Kind::CHANGE_INVENTORY_PAGE:
+        if (direct_room_widget_) {
+            direct_room_widget_->cancel_gesture();
+        }
         command_controller_.on_inventory_page_changed({intent.index});
         sync_command_hover();
+        return;
+    case RoomUiIntent::Kind::TOGGLE_INVENTORY:
+        cancel_direct_gestures();
+        inventory_open_ = !inventory_open_;
+        publish_ui_state();
+        return;
+    case RoomUiIntent::Kind::EXAMINE_INVENTORY_ITEM:
+        pending_direct_long_press_.reset();
+        if (const auto command =
+                direct_action_composer_.examine({ObjectKind::INVENTORY_OBJECT, intent.id})) {
+            (void) command_processor_.submit(*command);
+        }
+        publish_ui_state();
+        return;
+    case RoomUiIntent::Kind::INTERACT_INVENTORY_ITEM:
+        pending_direct_long_press_.reset();
+        if (const auto command =
+                direct_action_composer_.interact({ObjectKind::INVENTORY_OBJECT, intent.id})) {
+            (void) command_processor_.submit(*command);
+        }
+        publish_ui_state();
+        return;
+    case RoomUiIntent::Kind::PREVIEW_INVENTORY_DROP: {
+        if (intent.id.empty()) {
+            direct_drag_action_text_.clear();
+        } else {
+            const ObjectRef target = direct_drop_target_at(intent.position);
+            const auto command =
+                direct_action_composer_.drop_inventory({ObjectKind::INVENTORY_OBJECT, intent.id},
+                                                       target);
+            direct_drag_action_text_ =
+                command ? format_command(*command) : direct_incomplete_drop_text(intent.id);
+        }
+        publish_ui_state();
+        return;
+    }
+    case RoomUiIntent::Kind::DROP_INVENTORY_ITEM: {
+        pending_direct_long_press_.reset();
+        direct_drag_action_text_.clear();
+        const ObjectRef target = direct_drop_target_at(intent.position);
+        if (const auto command =
+                direct_action_composer_.drop_inventory({ObjectKind::INVENTORY_OBJECT, intent.id},
+                                                       target)) {
+            const CommandSubmission submission = command_processor_.submit(*command);
+            if (submission != CommandSubmission::REJECTED &&
+                target.kind == ObjectKind::ROOM_OBJECT) {
+                inventory_open_ = false;
+            }
+        }
+        publish_ui_state();
+        return;
+    }
+    case RoomUiIntent::Kind::CHOOSE_CONTEXT_ACTION: {
+        const ObjectRef target = direct_context_menu_.target;
+        dismiss_direct_context_menu();
+        if (const auto command = direct_action_composer_.perform(target, intent.verb)) {
+            (void) command_processor_.submit(*command);
+        }
+        publish_ui_state();
+        return;
+    }
+    case RoomUiIntent::Kind::DISMISS_CONTEXT_MENU:
+        dismiss_direct_context_menu();
+        publish_ui_state();
         return;
     case RoomUiIntent::Kind::HOVER_VERB:
         command_controller_.on_verb_hovered(intent.verb);
@@ -1823,7 +2110,6 @@ void RoomScene::handle_ui_intent(const RoomUiIntent& intent) {
         return;
     case RoomUiIntent::Kind::OPEN_MENU:
         enter_pause_menu();
-        publish_ui_state();
         return;
     case RoomUiIntent::Kind::OPEN_NOTEBOOK:
         if (!intent.state_key.empty()) {
@@ -1865,7 +2151,7 @@ void RoomScene::handle_ui_intent(const RoomUiIntent& intent) {
 }
 
 void RoomScene::publish_ui_state() {
-    if (!scumm_widget_ && !dialog_widget_) {
+    if (!scumm_widget_ && !direct_room_widget_ && !dialog_widget_) {
         return;
     }
     RoomUiState state;
@@ -1887,12 +2173,24 @@ void RoomScene::publish_ui_state() {
     state.command = command_controller_.state();
     state.inventory = inventory_;
     state.dialog_page = dialog_page_;
+    state.inventory_open = inventory_open_;
+    state.action_text =
+        direct_drag_action_text_.empty() ? active_action_text_ : direct_drag_action_text_;
+    state.context_menu = direct_context_menu_;
+    if (state.action_text.empty()) {
+        if (const auto proposed = direct_hover_command()) {
+            state.action_text = format_command(*proposed);
+        }
+    }
     state.widget_visibility = ui_widget_visibility_;
     if (dialog_) {
         const std::vector<DialogOption> options = dialog_->options();
         state.dialog_options.reserve(options.size());
-        for (const DialogOption& option : options) {
-            state.dialog_options.push_back(option.text);
+        state.dialog_option_selected.reserve(options.size());
+        for (std::size_t i = 0; i < options.size(); ++i) {
+            const DialogOption& option = options[i];
+            state.dialog_options.push_back(std::to_string(i + 1) + ". " + option.text);
+            state.dialog_option_selected.push_back(option.selected);
         }
     }
     ui_state_stream_.publish(state);
@@ -1927,6 +2225,18 @@ CommandOperandInfo RoomScene::resolve_command_operand(const ObjectRef& object) c
     return info;
 }
 
+CommandOperandInfo RoomScene::resolve_direct_operand(const ObjectRef& object) const {
+    return resolve_command_operand(object);
+}
+
+bool RoomScene::direct_target_is_npc(const ObjectRef& object) const {
+    if (object.kind != ObjectKind::ROOM_OBJECT || !room_) {
+        return false;
+    }
+    const auto found = room_->data().hotspots.find(object.id);
+    return found != room_->data().hotspots.end() && found->second.bind.starts_with("npc:");
+}
+
 bool RoomScene::command_submission_enabled() const {
     return view_state_ == ViewState::COMMAND && room_ && lua_ && !change_armed_ &&
            !change_pending_ && !speech_.active();
@@ -1942,8 +2252,10 @@ CommandOperandValidation RoomScene::validate_command_operand(const ObjectRef& ob
         available = available && inventory_.has(object.id);
     }
     const std::string id(verb_id(verb));
+    const bool npc_give = verb == Verb::GIVE && object.kind == ObjectKind::ROOM_OBJECT &&
+                          direct_target_is_npc(object);
     const bool affords =
-        verb == Verb::LOOK_AT ||
+        verb == Verb::LOOK_AT || npc_give ||
         std::find(info.affordances.begin(), info.affordances.end(), id) != info.affordances.end();
     return {available, available && affords, info.combinable};
 }
@@ -2015,6 +2327,11 @@ VerbResult RoomScene::call_game_command(const std::string& verb,
 }
 
 void RoomScene::record_command_submission(const Command& command) {
+    if (direct_room_widget_) {
+        active_action_text_ = format_command(command);
+        active_action_remaining_ = 0.8f;
+        active_action_in_progress_ = true;
+    }
     const std::string second_kind =
         command.param2 ? object_kind_id(command.param2->kind) : std::string();
     const std::string second_id = command.param2 ? command.param2->id : std::string();
@@ -2089,6 +2406,7 @@ void RoomScene::present_unhandled_command() {
 
 void RoomScene::finish_command_execution() {
     command_controller_.finish_execution();
+    active_action_in_progress_ = false;
     sync_command_hover();
 }
 
@@ -2242,8 +2560,14 @@ std::string RoomScene::command_walk_label() const {
 }
 
 void RoomScene::sync_command_hover() {
+    if (direct_room_widget_) {
+        publish_ui_state();
+        (void) input_router_.route({RoutedInputKind::POINTER_MOVED, hover_vp_});
+        return;
+    }
     if (!scumm_widget_) {
         command_controller_.clear_hover();
+        publish_ui_state();
         return;
     }
     publish_ui_state();
@@ -2252,6 +2576,20 @@ void RoomScene::sync_command_hover() {
 
 void RoomScene::update(float dt) {
     shader_time_ += dt; // drives shaders' u_time uniform
+    if (pending_direct_long_press_ && view_state_ == ViewState::COMMAND) {
+        pending_direct_long_press_->elapsed += std::max(0.0f, dt);
+        if (pending_direct_long_press_->elapsed >=
+            direct_room_ui_config_.interaction.long_press_seconds) {
+            pending_direct_long_press_.reset();
+            open_direct_context_menu(hover_vp_);
+        }
+    }
+    if (!active_action_in_progress_ && active_action_remaining_ > 0.0f) {
+        active_action_remaining_ = std::max(0.0f, active_action_remaining_ - dt);
+        if (active_action_remaining_ <= 0.0f) {
+            active_action_text_.clear();
+        }
+    }
     // Advance the change_room fade; once fully black, commit the deferred load.
     room_fade_.update(dt);
     if (change_armed_ && room_fade_.opaque()) {
@@ -2433,6 +2771,7 @@ void RoomScene::update(float dt) {
             view_state_ = ViewState::COMMAND;
         }
         command_controller_.finish_execution();
+        active_action_in_progress_ = false;
     }
     // Returning to COMMAND (e.g. a cutscene unblocking) resumes camera follow
     // after a scripted override (issue #25).
@@ -2440,13 +2779,20 @@ void RoomScene::update(float dt) {
         camera_->follow_player();
     }
     sync_command_hover();
-    // Cursor affordance (#73): request the INTERACT cursor when an interactive
-    // hotspot is under the pointer in COMMAND. hover_vp_ is offscreen (-1,-1)
-    // until the first MouseMoved, so this stays DEFAULT until the mouse moves.
-    const bool pointer_over_panel = scumm_widget_ && scumm_widget_->captures(hover_vp_);
-    if (view_state_ == ViewState::COMMAND && room_ && !pointer_over_panel &&
-        room_viewport_rect().contains(hover_vp_) &&
-        hotspot_under(virtual_to_world(hover_vp_)) != nullptr) {
+    // Direct interaction communicates the authored default action with a cursor
+    // family. The classic panel retains its generic interact cursor.
+    const bool classic_hotspot = !direct_room_widget_ && view_state_ == ViewState::COMMAND &&
+                                 room_ && !(scumm_widget_ && scumm_widget_->captures(hover_vp_)) &&
+                                 room_viewport_rect().contains(hover_vp_) &&
+                                 hotspot_under(virtual_to_world(hover_vp_)) != nullptr;
+    if (direct_room_widget_ && direct_room_widget_->dragging()) {
+        ctx_.cursor.want_hidden();
+    } else if (direct_room_widget_ && direct_context_menu_.open() &&
+               direct_room_widget_->context_action_at(hover_vp_)) {
+        ctx_.cursor.want(pac::core::CursorKind::INTERACT);
+    } else if (direct_room_widget_) {
+        ctx_.cursor.want(direct_hover_cursor());
+    } else if (classic_hotspot) {
         ctx_.cursor.want(pac::core::CursorKind::INTERACT);
     }
     prev_view_state_ = view_state_;
@@ -2481,10 +2827,14 @@ void RoomScene::update(float dt) {
         }
     }
 
-    if (scumm_widget_ || dialog_widget_) {
+    if (scumm_widget_ || direct_room_widget_ || dialog_widget_) {
         publish_ui_state();
-        if (scumm_widget_) scumm_widget_->update(dt);
-        if (dialog_widget_) dialog_widget_->update(dt);
+        if (scumm_widget_)
+            scumm_widget_->update(dt);
+        if (direct_room_widget_)
+            direct_room_widget_->update(dt);
+        if (dialog_widget_)
+            dialog_widget_->update(dt);
     }
     if (cutscene_active_) {
         ctx_.cursor.want_hidden();
@@ -2851,8 +3201,12 @@ void RoomScene::draw(sf::RenderTarget& target) const {
     if (tuning_overlay_active()) {
         tuning_overlay_->draw(target);
     } else {
-        if (scumm_widget_) scumm_widget_->draw(target);
-        if (dialog_widget_) dialog_widget_->draw(target);
+        if (scumm_widget_)
+            scumm_widget_->draw(target);
+        if (direct_room_widget_)
+            direct_room_widget_->draw(target);
+        if (dialog_widget_)
+            dialog_widget_->draw(target);
     }
     if (view_state_ == ViewState::MENU) {
         draw_menu(target);
@@ -3632,6 +3986,16 @@ void RoomScene::api_start_dialog(const std::string& dialog_id, const std::string
     host.mark_option_consumed = [this, consumed_key](const std::string& node, int idx) {
         ctx_.state.set(consumed_key(node, idx), true);
     };
+    auto selected_key = [dialog_id](const std::string& node, int idx) {
+        return "__dialog_selected." + dialog_id + "." + node + "." + std::to_string(idx);
+    };
+    host.is_option_selected = [this, selected_key](const std::string& node, int idx) {
+        const auto v = ctx_.state.get(selected_key(node, idx));
+        return v && std::holds_alternative<bool>(*v) && std::get<bool>(*v);
+    };
+    host.mark_option_selected = [this, selected_key](const std::string& node, int idx) {
+        ctx_.state.set(selected_key(node, idx), true);
+    };
     // Dialog scope: spawn run-callbacks (and anything they spawn) here so they
     // are bounded by the dialog's lifetime. Cancelling the scope on dialog end
     // / room change kills them deterministically — `spawn` from inside `run`
@@ -3829,7 +4193,7 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
 
     // Heading.
     sf::Text title(pac::core::utf8(ctx_.strings.ui_label("pause")), *font_, 36);
-    title.setFillColor(sf::Color(255, 240, 180));
+    title.setFillColor(sf::Color(245, 224, 177));
     const sf::FloatRect tb = title.getLocalBounds();
     title.setPosition((static_cast<float>(vres.x) - tb.width) / 2.0f - tb.left,
                       static_cast<float>(vres.y) * 0.18f);
@@ -3842,18 +4206,18 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
         sf::RectangleShape box(sf::Vector2f(bt.rect.width, bt.rect.height));
         box.setPosition(bt.rect.left, bt.rect.top);
         if (!bt.enabled) {
-            box.setFillColor(sf::Color(24, 26, 36));
-            box.setOutlineColor(sf::Color(50, 54, 70));
+            box.setFillColor(sf::Color(26, 22, 18));
+            box.setOutlineColor(sf::Color(78, 64, 47));
         } else {
-            box.setFillColor(hot ? sf::Color(70, 90, 140) : sf::Color(34, 38, 54));
-            box.setOutlineColor(sf::Color(90, 100, 130));
+            box.setFillColor(hot ? sf::Color(88, 61, 34) : sf::Color(38, 30, 22));
+            box.setOutlineColor(hot ? sf::Color(181, 139, 64) : sf::Color(125, 102, 67));
         }
         box.setOutlineThickness(1.5f);
         target.draw(box);
 
         sf::Text txt(pac::core::utf8(bt.label), *font_, 20);
-        txt.setFillColor(!bt.enabled ? sf::Color(120, 128, 145)
-                                     : (hot ? sf::Color::White : sf::Color(220, 224, 235)));
+        txt.setFillColor(!bt.enabled ? sf::Color(112, 98, 79)
+                                     : (hot ? sf::Color(245, 224, 177) : sf::Color(230, 218, 190)));
         const sf::FloatRect b = txt.getLocalBounds();
         txt.setPosition(bt.rect.left + (bt.rect.width - b.width) / 2.0f - b.left,
                         bt.rect.top + (bt.rect.height - b.height) / 2.0f - b.top);
@@ -3876,9 +4240,14 @@ bool RoomScene::enter_pause_menu() {
     if (view_state_ == ViewState::MENU) {
         return true;
     }
+    if (direct_room_widget_) {
+        inventory_open_ = false;
+        cancel_direct_gestures();
+    }
     paused_from_ = view_state_;
     menu_hovered_ = -1;
     view_state_ = ViewState::MENU;
+    publish_ui_state();
     return true;
 }
 
@@ -3888,6 +4257,7 @@ void RoomScene::leave_pause_menu() {
     }
     view_state_ = paused_from_.value_or(ViewState::COMMAND);
     paused_from_.reset();
+    publish_ui_state();
 }
 
 bool RoomScene::pause_menu_active() const {

@@ -1,7 +1,6 @@
 #include "engine/pnc/case_resolution_scene.hpp"
 
 #include "engine/core/audio.hpp"
-#include "engine/core/cursor.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
@@ -361,8 +360,6 @@ void CaseResolutionScene::handle_event(const sf::Event& event) {
 
 void CaseResolutionScene::update(float dt) {
     feedback_left_ = std::max(0.0f, feedback_left_ - dt);
-    if (loaded_ && pointer_is_actionable(mouse_))
-        ctx_.cursor.want(pac::core::CursorKind::INTERACT);
 }
 
 void CaseResolutionScene::draw(sf::RenderTarget& target) const {

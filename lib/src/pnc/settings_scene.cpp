@@ -1,7 +1,6 @@
 #include "engine/pnc/settings_scene.hpp"
 
 #include "engine/core/audio.hpp"
-#include "engine/core/cursor.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
@@ -35,6 +34,13 @@ constexpr float kVolumeStep = 0.05f;
 // Menu layout as fractions of the virtual height, shared by draw + hit-testing.
 constexpr float kRowsTopFrac = 0.28f; // top (y) of the first row's text
 constexpr float kRowStepFrac = 0.08f; // vertical pitch between rows
+
+// Warm neutral menu palette shared in spirit with ConfirmationScene. It stays
+// legible over both the default fill and game-provided parchment backgrounds.
+const sf::Color kBackground(13, 11, 9);
+const sf::Color kTitle(245, 224, 177);
+const sf::Color kSelected(255, 242, 207);
+const sf::Color kNormal(200, 187, 160);
 
 pac::core::DisplayMode mode_of(const pac::core::Settings& s) {
     return {{s.window_width, s.window_height}, s.fullscreen};
@@ -344,11 +350,6 @@ void SettingsScene::handle_event(const sf::Event& event) {
 
 void SettingsScene::update(float dt) {
     (void) dt;
-    // Same hover affordance as the rest of the game: the custom cursor switches
-    // to its interact variant while pointing at a settings row.
-    if (hovered_) {
-        ctx_.cursor.want(pac::core::CursorKind::INTERACT);
-    }
 }
 
 void SettingsScene::draw(sf::RenderTarget& target) const {
@@ -358,7 +359,7 @@ void SettingsScene::draw(sf::RenderTarget& target) const {
     const auto vh = static_cast<float>(vres.y);
 
     sf::RectangleShape bg(sf::Vector2f(vw, vh));
-    bg.setFillColor(sf::Color(12, 14, 22));
+    bg.setFillColor(kBackground);
     target.draw(bg);
 
     if (!background_path_.empty()) {
@@ -392,14 +393,14 @@ void SettingsScene::draw(sf::RenderTarget& target) const {
         target.draw(text);
     };
 
-    centered(strings.ui_label("settings"), vh * 0.14f, font_size_ + 12u, sf::Color::White);
+    centered(strings.ui_label("settings"), vh * 0.14f, font_size_ + 12u, kTitle);
 
     const float row_y0 = vh * kRowsTopFrac;
     const float row_dy = vh * kRowStepFrac;
     for (int i = 0; i < ROW_COUNT; ++i) {
         const RowView row = row_view(i);
         const bool selected = (i == row_);
-        const sf::Color color = selected ? sf::Color(255, 240, 180) : sf::Color(180, 185, 200);
+        const sf::Color color = selected ? kSelected : kNormal;
         const std::string marker = selected ? "> " : "  ";
         std::string text;
         if (row.selectable_value) {

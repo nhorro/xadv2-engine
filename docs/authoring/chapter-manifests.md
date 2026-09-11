@@ -38,7 +38,7 @@ scene_defaults:
     font: ./shared/fonts/ui.ttf
   RoomScene:
     player: player
-    scumm_panel: ./shared/ui/scumm_panel.yml
+    direct_room_ui: ./shared/ui/direct_room_ui.yml
 
 scenes:
   - id: title
@@ -108,6 +108,11 @@ Paths are normalized and may not escape the resource root. Imported chapter
 files are loaded through the resource backend, so the same declarations work in
 a `.pak`.
 
+`RoomScene` accepts either the classic `scumm_panel` composer or the streamlined
+`direct_room_ui` composer. The latter changes only ordinary room interaction;
+pushed close-ups, maps, notebooks, and deduction scenes keep their own UI. See
+[Direct room interaction](direct-room-interaction.md).
+
 ## Defaults and profiles
 
 `scene_defaults.all` applies to every scene. A key matching a scene type applies
@@ -121,6 +126,7 @@ scene_profiles:
     type: CloseUp
     music: /shared/music/mystery.ogg
     music_transition: 2.5
+    music_exit_transition: 0.25
 
 scenes:
   - id: letter
@@ -148,8 +154,19 @@ hotspots:
   signature:
     name: signature
     area: [{x: 10, y: 10}, {x: 80, y: 10}, {x: 80, y: 40}]
+  back:
+    name: back
+    type: exit
+    area: [{x: 0, y: 0}, {x: 40, y: 0}, {x: 40, y: 40}]
 ```
 
 An explicit data `id` remains supported and is checked against the scene id.
 `background_color` may be supplied by CloseUp scene defaults and overridden in
-the data file.
+the data file. A hotspot `type` may be `object` (the default) or `exit`; exit
+hotspots use the same textless exit cursor as room transitions.
+
+Object hotspots receive persistent discovery affordances automatically: a
+pulsing question marker before activation and a subdued check afterward. A
+script whose handler gains new content later can call
+`set_hotspot_new("signature", true)` during `on_enter`; pass `false` to mark it
+exhausted again.

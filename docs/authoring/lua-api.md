@@ -250,8 +250,10 @@ Object pose is transient. Object visibility is persistent when changed through
 | `block_input()` / `unblock_input()` | transient |
 | `set_room_view_state("command" | "blocked")` | transient |
 
-Current widget ids are `scumm` and `dialog`. The `dialog` and `menu` room-view
-states are engine-managed and cannot be selected through `set_room_view_state`.
+Current widget ids are `scumm`, `direct`, and `dialog`. A room uses either the
+classic `scumm` composer or the `direct` composer. The `dialog` and `menu`
+room-view states are engine-managed and cannot be selected through
+`set_room_view_state`.
 
 `light(id)` exposes `set_enabled(bool)`, `enable()`, `disable()`, `enabled()`,
 `set_intensity(value, seconds?)`, and `intensity()`. `light_occluder(id)` exposes
@@ -310,6 +312,9 @@ return {
 
 Tree hooks and a node's `run` are direct calls. An option may define `when`,
 `run`, `to`, `once`, `silent`, and a stable `id`; its `run` is coroutine-enabled.
+A repeatable option remains visible after selection; the standard dialog widget
+numbers it and styles it as already selected. Number keys select the
+corresponding visible option.
 A node has either `options` or `to`. `END` is available only while the dialog
 file is loading and ends the conversation.
 
@@ -337,8 +342,13 @@ return {
 }
 ```
 
-While it is open, `set_hotspot_name(id, name)` changes a hover label,
-`shout(text?)` controls the top banner, and `close_closeup()` queues dismissal.
+Close-ups expose a persistent touch-friendly back button. Fresh hotspots have a
+subtle pulsing question marker and use the magnifier cursor; activated hotspots
+retain a quiet check and use `look_seen`. This visited state is saved
+automatically. While the view is open, `set_hotspot_name(id, name)` changes a
+hover label, `set_hotspot_new(id, bool)` lets staged content announce or clear a
+new response, `shout(text?)` controls the top banner, and `close_closeup()` queues
+dismissal.
 The room below is frozen, although its instant state/scenery functions remain
 bound. Do not wait on room movement from the overlay; use `on_room_resume(fn)`
 for a blocking beat after dismissal.

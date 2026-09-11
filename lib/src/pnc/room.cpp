@@ -323,8 +323,7 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
             if (normal) {
                 if (!normal.IsMap() || !normal["image"]) {
                     room_fail("room.normal-map-invalid",
-                              "room '" + room.id +
-                                  "': 'lighting.normal_map' needs an image",
+                              "room '" + room.id + "': 'lighting.normal_map' needs an image",
                               normal);
                 }
                 config.normal_map = normal["image"].as<std::string>();
@@ -332,15 +331,15 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                     config.normal_origin = parse_point(normal["origin"]);
                 }
                 config.normal_scale = normal["scale"] ? normal["scale"].as<float>() : 1.0f;
-                config.normal_strength =
-                    normal["strength"] ? normal["strength"].as<float>() : 1.0f;
+                config.normal_strength = normal["strength"] ? normal["strength"].as<float>() : 1.0f;
                 if (config.normal_map.empty() || !std::isfinite(config.normal_scale) ||
                     config.normal_scale <= 0.0f || !std::isfinite(config.normal_strength) ||
                     config.normal_strength < 0.0f || config.normal_strength > 2.0f) {
-                    room_fail("room.normal-map-params-invalid",
-                              "room '" + room.id +
-                                  "': normal map needs non-empty image, scale > 0, and strength 0..2",
-                              normal);
+                    room_fail(
+                        "room.normal-map-params-invalid",
+                        "room '" + room.id +
+                            "': normal map needs non-empty image, scale > 0, and strength 0..2",
+                        normal);
                 }
             }
 
@@ -420,10 +419,11 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                     }
                     if (!std::isfinite(light.radius) || light.radius <= 0.0f ||
                         !std::isfinite(light.height) || light.height <= 0.0f) {
-                        room_fail("room.light-radius-invalid",
-                                  "room '" + room.id + "': light '" + light.id +
-                                      "' radius and height must be finite numbers greater than zero",
-                                  radius);
+                        room_fail(
+                            "room.light-radius-invalid",
+                            "room '" + room.id + "': light '" + light.id +
+                                "' radius and height must be finite numbers greater than zero",
+                            radius);
                     }
                     if (!std::isfinite(light.intensity) || light.intensity < 0.0f ||
                         light.intensity > 4.0f) {
@@ -514,16 +514,14 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
             if (occluders) {
                 if (!occluders.IsSequence()) {
                     room_fail("room.light-occluders-not-sequence",
-                              "room '" + room.id +
-                                  "': 'lighting.occluders' must be a sequence",
+                              "room '" + room.id + "': 'lighting.occluders' must be a sequence",
                               occluders);
                 }
                 std::set<std::string> ids;
                 for (const YAML::Node& node : occluders) {
                     if (!node.IsMap() || !node["id"] || !node["area"]) {
                         room_fail("room.light-occluder-invalid",
-                                  "room '" + room.id +
-                                      "': each light occluder needs id and area",
+                                  "room '" + room.id + "': each light occluder needs id and area",
                                   node);
                     }
                     LightOccluder occluder;
@@ -534,7 +532,8 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                         occluder.area.size() < 2) {
                         room_fail("room.light-occluder-params-invalid",
                                   "room '" + room.id +
-                                      "': light occluder ids must be unique and areas need at least 2 points",
+                                      "': light occluder ids must be unique and areas need at "
+                                      "least 2 points",
                                   node);
                     }
                     config.occluders.push_back(std::move(occluder));
@@ -565,16 +564,16 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                 shadow.light = parse_point(projected["light"]);
             } else {
                 shadow.source = projected["source"].as<std::string>();
-                const bool known = room.dynamic_lighting &&
-                                   std::any_of(room.dynamic_lighting->lights.begin(),
-                                               room.dynamic_lighting->lights.end(),
-                                               [&shadow](const RoomLight& light) {
-                                                   return light.id == shadow.source;
-                                               });
+                const bool known =
+                    room.dynamic_lighting && std::any_of(room.dynamic_lighting->lights.begin(),
+                                                         room.dynamic_lighting->lights.end(),
+                                                         [&shadow](const RoomLight& light) {
+                                                             return light.id == shadow.source;
+                                                         });
                 if (shadow.source.empty() || !known) {
                     room_fail("room.projected-shadows-source-invalid",
-                              "room '" + room.id + "': projected shadow source '" +
-                                  shadow.source + "' is not a declared dynamic light",
+                              "room '" + room.id + "': projected shadow source '" + shadow.source +
+                                  "' is not a declared dynamic light",
                               projected["source"]);
                 }
             }
@@ -663,8 +662,7 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
             layer.z = ln["z"] ? ln["z"].as<float>() : 0.0f;
             layer.interactive = ln["interactive"] ? ln["interactive"].as<bool>() : false;
             layer.visible = ln["visible"] ? ln["visible"].as<bool>() : true;
-            layer.extend_bounds =
-                ln["extend_bounds"] ? ln["extend_bounds"].as<bool>() : true;
+            layer.extend_bounds = ln["extend_bounds"] ? ln["extend_bounds"].as<bool>() : true;
             if (const YAML::Node origin = ln["origin"]) {
                 layer.origin = parse_point(origin);
             }
@@ -862,6 +860,19 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
             }
             hs.default_verb =
                 node["default_verb"] ? node["default_verb"].as<std::string>() : "look_at";
+            if (node["type"]) {
+                const std::string type = node["type"].as<std::string>();
+                if (type == "object") {
+                    hs.type = RoomHotspotType::OBJECT;
+                } else if (type == "exit") {
+                    hs.type = RoomHotspotType::EXIT;
+                } else {
+                    room_fail("room.hotspot-type-invalid",
+                              "room '" + room.id + "': hotspot '" + hs.id +
+                                  "' type must be 'object' or 'exit'",
+                              node["type"]);
+                }
+            }
             if (hs.default_verb != "look_at" &&
                 std::find(hs.affordances.begin(), hs.affordances.end(), hs.default_verb) ==
                     hs.affordances.end()) {

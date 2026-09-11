@@ -48,6 +48,14 @@ return {
     s.update(0.0f); // resume the spawned handler to completion
     CHECK(s.run_string("assert(counter.skull == 1)"));
 
+    // Discovery/seen presentation belongs to CloseUpScene and must never make
+    // the underlying authored action one-shot. A later activation spawns the
+    // same handler again.
+    const TaskId repeated = rt.spawn_hotspot(s, scope, "skull");
+    CHECK(repeated != 0);
+    s.update(0.0f);
+    CHECK(s.run_string("assert(counter.skull == 2)"));
+
     rt.run_on_exit();
     CHECK(s.run_string("assert(counter.exit == 1)"));
 }

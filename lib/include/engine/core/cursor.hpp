@@ -5,9 +5,10 @@
 
 namespace pac::core {
 
-/// The cursor appearances the engine can show. DEFAULT is the resting pointer;
-/// INTERACT signals an interactive target under the pointer (issue #73).
-enum class CursorKind : std::uint8_t { DEFAULT, INTERACT };
+/// Cursor appearances requested by gameplay scenes. INTERACT is the hand/action
+/// family; the other kinds communicate intent without translated cursor text.
+/// LOOK_SEEN lets close-ups distinguish exhausted clues from fresh discoveries.
+enum class CursorKind : std::uint8_t { DEFAULT, INTERACT, LOOK, LOOK_SEEN, TALK, EXIT, WALK };
 
 /// Return the resting cursor's eased dark-to-light blend on a cosine wave.
 /// Invalid or disabled intervals stay on the dark tone.

@@ -162,6 +162,9 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/pnc/command.cpp
     src/pnc/command_builder.cpp
     src/pnc/command_controller.cpp
+    src/pnc/direct_action.cpp
+    src/pnc/direct_room_ui_config.cpp
+    src/pnc/direct_room_widget.cpp
     src/pnc/room_command_processor.cpp
     src/pnc/routed_input.cpp
     src/pnc/room_input_router.cpp

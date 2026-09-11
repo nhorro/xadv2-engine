@@ -603,9 +603,20 @@ Manifest parse_manifest(const std::string& yaml_text) {
         m.cursor.image = cursor["image"] ? cursor["image"].as<std::string>() : std::string();
         m.cursor.interact =
             cursor["interact"] ? cursor["interact"].as<std::string>() : std::string();
+        m.cursor.look = cursor["look"] ? cursor["look"].as<std::string>() : std::string();
+        m.cursor.look_seen =
+            cursor["look_seen"] ? cursor["look_seen"].as<std::string>() : std::string();
+        m.cursor.talk = cursor["talk"] ? cursor["talk"].as<std::string>() : std::string();
+        m.cursor.exit = cursor["exit"] ? cursor["exit"].as<std::string>() : std::string();
+        m.cursor.walk = cursor["walk"] ? cursor["walk"].as<std::string>() : std::string();
         if (const YAML::Node hot = cursor["hotspot"]) {
             m.cursor.hotspot = {hot["x"] ? hot["x"].as<unsigned>() : 0u,
                                 hot["y"] ? hot["y"].as<unsigned>() : 0u};
+        }
+        m.cursor.action_hotspot = m.cursor.hotspot;
+        if (const YAML::Node hot = cursor["action_hotspot"]) {
+            m.cursor.action_hotspot = {hot["x"] ? hot["x"].as<unsigned>() : 0u,
+                                       hot["y"] ? hot["y"].as<unsigned>() : 0u};
         }
         if (const YAML::Node blink = cursor["blink"]) {
             if (!blink.IsMap() || !blink["interval"]) {

@@ -3,9 +3,9 @@
 Companion: [tour index](index.md). Read this before editing `room_scene.cpp` or the verb panel.
 
 The room view is not one class. It is a **session** (`RoomScene`) that wires an
-**action model** (commands) to **widgets** (SCUMM panel, dialog list) and a
-**world** (room data, avatars, camera). The SCUMM panel is one way to *compose*
-a command. It is not the command system.
+**action model** (commands) to **widgets** (classic SCUMM panel, direct room
+controls, dialog list) and a **world** (room data, avatars, camera). Each room UI
+is only a way to *compose* a command. It is not the command system.
 
 ---
 
@@ -84,7 +84,8 @@ Action: `Command` / `CommandBuilder` / `CommandState` / `CommandController` /
 `RoomCommandSink` / `RoomCommandProcessor`.
 
 UI: `RoomUiIntent`, `RoomUiState` + stream, `UiWidget`, `RoomInputRouter`,
-`ScummPanel` (painter), `ScummWidget` (adapter), `DialogWidget`.
+`ScummPanel` (painter), `ScummWidget` (adapter), `DirectRoomWidget`,
+`DialogWidget`.
 
 `ScummPanel` must not call Lua, own the builder, or know hotspot polygons.
 
@@ -92,14 +93,15 @@ UI: `RoomUiIntent`, `RoomUiState` + stream, `UiWidget`, `RoomInputRouter`,
 RoomScene
   RoomRuntime + Camera + Avatars + Renderer
   CommandController → CommandBuilder
+  DirectActionComposer
   RoomCommandProcessor  (submit / approach / Lua order)
-  ScummWidget + DialogWidget  ← RoomUiStateStream
+  (ScummWidget | DirectRoomWidget) + DialogWidget  ← RoomUiStateStream
 ```
 
 `RoomScene` is also the host, Lua façade, wait-board, persist-map owner, and
 pause-menu painter. That is debt.
 
-`enter()` registers input layers in order: `DialogWidget`, `ScummWidget`,
+`enter()` registers input layers in order: `DialogWidget`, the selected room UI,
 then the scenery adapter (`RoomScene` itself).
 
 ---
@@ -110,6 +112,12 @@ then the scenery adapter (`RoomScene` itself).
 click → hotspot → `provide_object` → `COMMAND_READY` → `submit`. If the door
 has an approach and the player is far: `BLOCKED` + deferred. When the mover
 stops: dispatch `hotspots.door.look_at`, else `game.lua` fallback.
+
+**Direct room actions.** A single hotspot tap waits for the double-tap window,
+then submits `LOOK_AT`. A second tap on the same hotspot cancels that examination
+and submits its `default_verb`. An inventory drag asks `DirectActionComposer` for
+`GIVE item TO npc` or combinable `USE item WITH target`, then uses the same
+`RoomCommandProcessor` path as the classic panel.
 
 **Give key to clerk.** `GIVE` → inventory `key` → room `clerk` → walk →
 `inventory.key.give("clerk")` then hotspot then `game.lua`.
@@ -153,7 +161,7 @@ autosave if allowed → fade in.
 | Sentence preview | `CommandController` + strings |
 | Walk-to-use / chase | `RoomCommandProcessor`, `approach_follow.hpp` |
 | Lua handler order | `RoomCommandProcessor::dispatch` only |
-| Move/hide the panel | `scumm_panel.yml`, `set_ui_widget_visible` |
+| Configure room controls | `scumm_panel.yml` or `direct_room_ui.yml` |
 | Hit-testing | `RoomRuntime::hotspot_at`, `RoomScene::hotspot_under` |
 | Z-order | YAML `z` / `baseline`; renderer sort |
 | Yielding wait | a wait-board, not another `pending_*` on the scene |

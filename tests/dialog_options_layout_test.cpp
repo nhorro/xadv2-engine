@@ -168,6 +168,7 @@ dialog_widget:
   max_width: 760
   max_height: 240
   background: "#101820CC"
+  selected_text: "#777777"
   opacity: 0.9
   fade_duration: 0.35
   capture_while_hiding: false
@@ -177,6 +178,7 @@ dialog_widget:
     CHECK(config.placement.anchor == WidgetAnchor::CENTER);
     CHECK(config.placement.offset == sf::Vector2f(12.0f, -8.0f));
     CHECK(config.background.a == 204);
+    CHECK(config.selected_text == sf::Color(119, 119, 119));
     CHECK(config.opacity == doctest::Approx(0.9f));
     CHECK(config.transition.fade_duration == doctest::Approx(0.35f));
     CHECK_FALSE(config.transition.capture_while_hiding);

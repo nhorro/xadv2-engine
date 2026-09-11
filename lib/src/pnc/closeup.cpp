@@ -118,6 +118,19 @@ CloseUpData parse_closeup(const std::string& yaml_text,
             hs.id = kv.first.as<std::string>();
             const YAML::Node node = kv.second;
             hs.name = node["name"] ? node["name"].as<std::string>() : hs.id;
+            if (node["type"]) {
+                const std::string type = node["type"].as<std::string>();
+                if (type == "object") {
+                    hs.type = CloseUpHotspotType::OBJECT;
+                } else if (type == "exit") {
+                    hs.type = CloseUpHotspotType::EXIT;
+                } else {
+                    closeup_fail("closeup.hotspot-type-invalid",
+                                 "close-up '" + data.id + "': hotspot '" + hs.id +
+                                     "' type must be 'object' or 'exit'",
+                                 node["type"]);
+                }
+            }
             if (!node["area"]) {
                 closeup_fail("closeup.hotspot-no-area",
                              "close-up '" + data.id + "': hotspot '" + hs.id + "' needs an 'area'",

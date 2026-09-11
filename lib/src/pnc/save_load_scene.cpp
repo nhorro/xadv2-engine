@@ -1,6 +1,5 @@
 #include "engine/pnc/save_load_scene.hpp"
 
-#include "engine/core/cursor.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
@@ -45,6 +44,21 @@ constexpr float kButtonW = 130.0f;
 constexpr float kButtonH = 40.0f;
 constexpr float kInputH = 32.0f;
 constexpr float kInnerPad = 14.0f;
+
+// Warm brown/cream palette, matching ConfirmationScene and replacing the
+// generic blue-gray controls that clashed with game-provided menu art.
+const sf::Color kBackground(13, 11, 9);
+const sf::Color kSurface(26, 22, 18);
+const sf::Color kSurfaceDeep(18, 15, 12);
+const sf::Color kSurfaceRaised(38, 30, 22);
+const sf::Color kSurfaceHot(88, 61, 34);
+const sf::Color kBorder(125, 102, 67);
+const sf::Color kBorderQuiet(78, 64, 47);
+const sf::Color kBorderHot(181, 139, 64);
+const sf::Color kText(230, 218, 190);
+const sf::Color kTextStrong(245, 224, 177);
+const sf::Color kTextMuted(155, 139, 112);
+const sf::Color kTextDisabled(112, 98, 79);
 
 // A row's vertical band consists of the thumb (top), a label line (below the
 // thumb's top), and a second line for either the description (load mode) or
@@ -415,9 +429,6 @@ void SaveLoadScene::cancel() {
 
 void SaveLoadScene::update(float dt) {
     (void) dt;
-    if (hovered_row_ >= 0 || back_hovered_) {
-        ctx_.cursor.want(pac::core::CursorKind::INTERACT);
-    }
 }
 
 namespace {
@@ -428,15 +439,15 @@ void draw_thumbnail_placeholder(sf::RenderTarget& target,
                                 const std::string& placeholder) {
     sf::RectangleShape box(sf::Vector2f(dst.width, dst.height));
     box.setPosition(dst.left, dst.top);
-    box.setFillColor(sf::Color(18, 22, 32));
-    box.setOutlineColor(sf::Color(70, 78, 95));
+    box.setFillColor(kSurfaceDeep);
+    box.setOutlineColor(kBorderQuiet);
     box.setOutlineThickness(1.0f);
     target.draw(box);
     if (!font) {
         return;
     }
     sf::Text txt(pac::core::utf8(placeholder), *font, 14);
-    txt.setFillColor(sf::Color(120, 128, 145));
+    txt.setFillColor(kTextMuted);
     const sf::FloatRect b = txt.getLocalBounds();
     txt.setPosition(dst.left + (dst.width - b.width) / 2.0f - b.left,
                     dst.top + (dst.height - b.height) / 2.0f - b.top);
@@ -467,11 +478,11 @@ void draw_button(sf::RenderTarget& target,
     sf::RectangleShape box(sf::Vector2f(rect.width, rect.height));
     box.setPosition(rect.left, rect.top);
     if (!enabled) {
-        box.setFillColor(sf::Color(24, 26, 36));
-        box.setOutlineColor(sf::Color(50, 54, 70));
+        box.setFillColor(kSurface);
+        box.setOutlineColor(kBorderQuiet);
     } else {
-        box.setFillColor(hot ? sf::Color(70, 90, 140) : sf::Color(34, 38, 54));
-        box.setOutlineColor(sf::Color(90, 100, 130));
+        box.setFillColor(hot ? kSurfaceHot : kSurfaceRaised);
+        box.setOutlineColor(hot ? kBorderHot : kBorder);
     }
     box.setOutlineThickness(1.5f);
     target.draw(box);
@@ -479,8 +490,7 @@ void draw_button(sf::RenderTarget& target,
         return;
     }
     sf::Text txt(pac::core::utf8(label), *font, 18);
-    txt.setFillColor(!enabled ? sf::Color(120, 128, 145)
-                              : (hot ? sf::Color::White : sf::Color(220, 224, 235)));
+    txt.setFillColor(!enabled ? kTextDisabled : (hot ? kTextStrong : kText));
     const sf::FloatRect b = txt.getLocalBounds();
     txt.setPosition(rect.left + (rect.width - b.width) / 2.0f - b.left,
                     rect.top + (rect.height - b.height) / 2.0f - b.top);
@@ -495,8 +505,8 @@ void draw_input(sf::RenderTarget& target,
                 bool focused) {
     sf::RectangleShape box(sf::Vector2f(rect.width, rect.height));
     box.setPosition(rect.left, rect.top);
-    box.setFillColor(focused ? sf::Color(18, 22, 36) : sf::Color(24, 26, 36));
-    box.setOutlineColor(focused ? sf::Color(140, 160, 220) : sf::Color(60, 66, 86));
+    box.setFillColor(focused ? kSurfaceDeep : kSurface);
+    box.setOutlineColor(focused ? kBorderHot : kBorderQuiet);
     box.setOutlineThickness(focused ? 2.0f : 1.0f);
     target.draw(box);
     if (!font) {
@@ -504,7 +514,7 @@ void draw_input(sf::RenderTarget& target,
     }
     const bool empty = text.isEmpty();
     sf::Text txt(empty ? pac::core::utf8(hint) : text, *font, 16);
-    txt.setFillColor(empty ? sf::Color(110, 116, 134) : sf::Color(230, 230, 230));
+    txt.setFillColor(empty ? kTextMuted : kText);
     const sf::FloatRect b = txt.getLocalBounds();
     txt.setPosition(rect.left + 10.0f - b.left,
                     rect.top + (rect.height - b.height) / 2.0f - b.top - 1.0f);
@@ -512,7 +522,7 @@ void draw_input(sf::RenderTarget& target,
     if (focused && !empty) {
         sf::RectangleShape caret(sf::Vector2f(1.5f, rect.height - 10.0f));
         caret.setPosition(rect.left + 10.0f + b.width + 2.0f, rect.top + 5.0f);
-        caret.setFillColor(sf::Color(230, 230, 230));
+        caret.setFillColor(kTextStrong);
         target.draw(caret);
     }
 }
@@ -525,7 +535,7 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
     const auto vh = static_cast<float>(vres.y);
 
     sf::RectangleShape bg(sf::Vector2f(vw, vh));
-    bg.setFillColor(sf::Color(12, 14, 22));
+    bg.setFillColor(kBackground);
     target.draw(bg);
 
     if (!background_path_.empty()) {
@@ -556,7 +566,7 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
         const std::string title =
             mode_ == Mode::SAVE ? strings.ui_label("save_game") : strings.ui_label("load_game");
         sf::Text title_text(pac::core::utf8(title), *font_, font_size_ + 14u);
-        title_text.setFillColor(sf::Color(255, 240, 180));
+        title_text.setFillColor(kTextStrong);
         title_text.setOutlineColor(sf::Color(0, 0, 0, 200));
         title_text.setOutlineThickness(2.0f);
         const sf::FloatRect b = title_text.getLocalBounds();
@@ -580,9 +590,9 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
         // Row backplate
         sf::RectangleShape plate(sf::Vector2f(v.row.width, v.row.height));
         plate.setPosition(v.row.left, v.row.top);
-        plate.setFillColor(focused ? sf::Color(28, 34, 54, 230)
-                                   : sf::Color(20, 22, 30, hovered ? 230 : 210));
-        plate.setOutlineColor(focused ? sf::Color(150, 170, 220) : sf::Color(60, 66, 86));
+        plate.setFillColor(focused ? sf::Color(58, 43, 27, 235)
+                                   : sf::Color(24, 20, 16, hovered ? 235 : 216));
+        plate.setOutlineColor(focused ? kBorderHot : kBorderQuiet);
         plate.setOutlineThickness(focused ? 2.0f : 1.0f);
         target.draw(plate);
 
@@ -606,7 +616,7 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
             sf::RectangleShape outline(sf::Vector2f(kThumbW, kThumbH));
             outline.setPosition(thumb.left, thumb.top);
             outline.setFillColor(sf::Color::Transparent);
-            outline.setOutlineColor(sf::Color(70, 78, 95));
+            outline.setOutlineColor(kBorderQuiet);
             outline.setOutlineThickness(1.0f);
             target.draw(outline);
         } else {
@@ -624,7 +634,7 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
                          thumb.left + kThumbW + kInnerPad * 2.0f,
                          v.row.top + kInnerPad,
                          font_size_,
-                         sf::Color(230, 234, 245));
+                         kText);
 
             std::string secondary;
             if (v.exists) {
@@ -641,7 +651,7 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
                          thumb.left + kThumbW + kInnerPad * 2.0f,
                          v.row.top + kInnerPad + static_cast<float>(font_size_) + 6.0f,
                          16,
-                         v.exists ? sf::Color(190, 200, 220) : sf::Color(130, 138, 158));
+                         v.exists ? sf::Color(194, 179, 148) : kTextMuted);
         }
 
         // Input (save mode + manual slot).

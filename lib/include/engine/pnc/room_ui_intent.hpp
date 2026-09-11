@@ -2,6 +2,8 @@
 
 #include "engine/pnc/command.hpp"
 
+#include <SFML/System/Vector2.hpp>
+
 #include <functional>
 #include <string>
 
@@ -15,6 +17,13 @@ struct RoomUiIntent {
         SELECT_VERB,
         SELECT_INVENTORY_ITEM,
         CHANGE_INVENTORY_PAGE,
+        TOGGLE_INVENTORY,
+        EXAMINE_INVENTORY_ITEM,
+        INTERACT_INVENTORY_ITEM,
+        PREVIEW_INVENTORY_DROP,
+        DROP_INVENTORY_ITEM,
+        CHOOSE_CONTEXT_ACTION,
+        DISMISS_CONTEXT_MENU,
         HOVER_VERB,
         HOVER_INVENTORY_ITEM,
         CLEAR_COMMAND_HOVER,
@@ -34,6 +43,7 @@ struct RoomUiIntent {
     int index = 0;
     std::string scene;
     std::string state_key;
+    sf::Vector2f position{0.0f, 0.0f};
 };
 
 using RoomUiIntentSink = std::function<void(const RoomUiIntent&)>;

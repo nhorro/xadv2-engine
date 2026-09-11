@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/core/cursor.hpp"
 #include "engine/core/game_state.hpp"
 #include "engine/core/scene.hpp"
 #include "engine/core/screen_fade.hpp"
@@ -13,6 +14,9 @@
 #include "engine/pnc/debug_overlay.hpp"
 #include "engine/pnc/dialog.hpp"
 #include "engine/pnc/dialog_widget.hpp"
+#include "engine/pnc/direct_action.hpp"
+#include "engine/pnc/direct_room_ui_config.hpp"
+#include "engine/pnc/direct_room_widget.hpp"
 #include "engine/pnc/inventory.hpp"
 #include "engine/pnc/pause_overlay.hpp"
 #include "engine/pnc/room_command_processor.hpp"
@@ -55,6 +59,7 @@ class RoomTuningOverlay;
 /// State persists across room changes (precursor to GameState in M5).
 class RoomScene : public pac::core::Scene,
                   private CommandControllerHost,
+                  private DirectActionHost,
                   private RoomCommandProcessorHost,
                   private RoomInputLayer {
 public:
@@ -316,6 +321,15 @@ private:
     [[nodiscard]] InputResult handle(const RoutedInput& input) override;
     void handle_ui_intent(const RoomUiIntent& intent);
     void publish_ui_state();
+    void open_direct_context_menu(sf::Vector2f position);
+    void dismiss_direct_context_menu();
+    [[nodiscard]] std::vector<Verb> direct_secondary_actions(const ObjectRef& target) const;
+    void cancel_direct_gestures();
+    [[nodiscard]] ObjectRef direct_drop_target_at(sf::Vector2f position) const;
+    [[nodiscard]] std::string direct_incomplete_drop_text(const std::string& item_id) const;
+    [[nodiscard]] std::optional<Command> direct_hover_command() const;
+    [[nodiscard]] pac::core::CursorKind direct_hover_cursor() const;
+    [[nodiscard]] std::string format_command(const Command& command) const;
     /// Route the player to a hotspot's approach point through the find_path seam:
     /// clamps an approach outside the walkable area to the nearest reachable point
     /// (dev warning) and short-circuits when already near it (issue #22).
@@ -341,6 +355,8 @@ private:
 
     [[nodiscard]] CommandOperandInfo
     resolve_command_operand(const ObjectRef& object) const override;
+    [[nodiscard]] CommandOperandInfo resolve_direct_operand(const ObjectRef& object) const override;
+    [[nodiscard]] bool direct_target_is_npc(const ObjectRef& object) const override;
     [[nodiscard]] std::string command_verb_label(Verb verb) const override;
     [[nodiscard]] std::string command_connector_label(Verb verb) const override;
     [[nodiscard]] std::string command_walk_label() const override;
@@ -418,6 +434,7 @@ private:
     std::string player_char_;
     std::string font_path_;
     std::string scumm_panel_path_;
+    std::string direct_room_ui_path_;
     std::string dialog_widget_path_;
     /// Explicit runtime rendering/camera extent. It never derives from the SCUMM
     /// panel or any other UI rectangle.
@@ -463,12 +480,27 @@ private:
     // F1-F4. Only rendered / responsive to keys when ctx_.dev.edit_mode is set.
     DebugOverlayFlags debug_flags_;
     CommandController command_controller_;
+    DirectActionComposer direct_action_composer_;
     RoomCommandProcessor command_processor_;
     RoomInputRouter input_router_;
     RoomUiStateStream ui_state_stream_;
     std::optional<ScummWidget> scumm_widget_;
+    std::optional<DirectRoomWidget> direct_room_widget_;
     std::optional<DialogWidget> dialog_widget_;
-    std::map<std::string, bool> ui_widget_visibility_{{"scumm", true}, {"dialog", true}};
+    std::map<std::string, bool> ui_widget_visibility_{{"scumm", true},
+                                                      {"direct", true},
+                                                      {"dialog", true}};
+    DirectRoomUiConfig direct_room_ui_config_;
+    bool inventory_open_ = false;
+    std::string active_action_text_;
+    std::string direct_drag_action_text_;
+    float active_action_remaining_ = 0.0f;
+    bool active_action_in_progress_ = false;
+    DirectContextMenuState direct_context_menu_;
+    struct PendingDirectLongPress {
+        float elapsed = 0.0f;
+    };
+    std::optional<PendingDirectLongPress> pending_direct_long_press_;
     // Last known pointer position in virtual coords; drives the top-bar hover
     // preview. Off-screen until the first MouseMoved so nothing is "hovered".
     sf::Vector2f hover_vp_{-1.0f, -1.0f};

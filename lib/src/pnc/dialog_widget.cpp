@@ -6,11 +6,11 @@
 #include "engine/core/text_layout.hpp"
 #include "engine/pnc/data_error.hpp"
 
+#include <SFML/Graphics/ConvexShape.hpp>
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/Text.hpp>
-#include <SFML/Graphics/ConvexShape.hpp>
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
@@ -22,9 +22,8 @@ namespace pac::pnc {
 
 namespace {
 
-[[noreturn]] void fail(const std::string& code,
-                       const std::string& message,
-                       const YAML::Node& at = YAML::Node()) {
+[[noreturn]] void
+fail(const std::string& code, const std::string& message, const YAML::Node& at = YAML::Node()) {
     pac::core::fail_at<DataError>("dialog-widget-loader", code, message, at);
 }
 
@@ -49,7 +48,8 @@ float number(const YAML::Node& node,
 }
 
 bool boolean(const YAML::Node& node, const std::string& field, bool fallback) {
-    if (!node) return fallback;
+    if (!node)
+        return fallback;
     try {
         return node.as<bool>();
     } catch (const YAML::Exception&) {
@@ -58,17 +58,27 @@ bool boolean(const YAML::Node& node, const std::string& field, bool fallback) {
 }
 
 WidgetAnchor anchor(const YAML::Node& node) {
-    if (!node) return WidgetAnchor::BOTTOM_CENTER;
+    if (!node)
+        return WidgetAnchor::BOTTOM_CENTER;
     const std::string value = node.as<std::string>();
-    if (value == "top_left") return WidgetAnchor::TOP_LEFT;
-    if (value == "top_center") return WidgetAnchor::TOP_CENTER;
-    if (value == "top_right") return WidgetAnchor::TOP_RIGHT;
-    if (value == "center_left") return WidgetAnchor::CENTER_LEFT;
-    if (value == "center") return WidgetAnchor::CENTER;
-    if (value == "center_right") return WidgetAnchor::CENTER_RIGHT;
-    if (value == "bottom_left") return WidgetAnchor::BOTTOM_LEFT;
-    if (value == "bottom_center") return WidgetAnchor::BOTTOM_CENTER;
-    if (value == "bottom_right") return WidgetAnchor::BOTTOM_RIGHT;
+    if (value == "top_left")
+        return WidgetAnchor::TOP_LEFT;
+    if (value == "top_center")
+        return WidgetAnchor::TOP_CENTER;
+    if (value == "top_right")
+        return WidgetAnchor::TOP_RIGHT;
+    if (value == "center_left")
+        return WidgetAnchor::CENTER_LEFT;
+    if (value == "center")
+        return WidgetAnchor::CENTER;
+    if (value == "center_right")
+        return WidgetAnchor::CENTER_RIGHT;
+    if (value == "bottom_left")
+        return WidgetAnchor::BOTTOM_LEFT;
+    if (value == "bottom_center")
+        return WidgetAnchor::BOTTOM_CENTER;
+    if (value == "bottom_right")
+        return WidgetAnchor::BOTTOM_RIGHT;
     fail("dialog-widget.anchor-invalid", "placement.anchor is not recognized", node);
 }
 
@@ -82,9 +92,12 @@ sf::Color color(const YAML::Node& node, const std::string& field, sf::Color fall
         fail("dialog-widget.color-invalid", field + " must be #RRGGBB or #RRGGBBAA", node);
     }
     const auto nibble = [](char c) {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        if (c >= '0' && c <= '9')
+            return c - '0';
+        if (c >= 'a' && c <= 'f')
+            return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F')
+            return c - 'A' + 10;
         return -1;
     };
     std::array<int, 8> n{};
@@ -100,9 +113,7 @@ sf::Color color(const YAML::Node& node, const std::string& field, sf::Color fall
             alpha ? static_cast<sf::Uint8>(n[6] * 16 + n[7]) : sf::Uint8{255}};
 }
 
-std::string asset(const YAML::Node& node,
-                  const std::string& base_dir,
-                  const std::string& field) {
+std::string asset(const YAML::Node& node, const std::string& base_dir, const std::string& field) {
     if (!node) {
         return {};
     }
@@ -172,8 +183,10 @@ DialogPageLayout layout_dialog_options(const std::vector<std::string>& labels,
     out.has_next = out.page_index < out.page_count - 1;
     y = area.top;
     for (std::size_t i = 0; i < labels.size(); ++i) {
-        if (page_of[i] != out.page_index) continue;
-        out.rows.push_back({static_cast<int>(i), wrapped[i], {area.left, y, text_width, heights[i]}});
+        if (page_of[i] != out.page_index)
+            continue;
+        out.rows.push_back(
+            {static_cast<int>(i), wrapped[i], {area.left, y, text_width, heights[i]}});
         y += heights[i] + option_gap;
     }
     if (gutter > 0.0f) {
@@ -185,7 +198,7 @@ DialogPageLayout layout_dialog_options(const std::vector<std::string>& labels,
 }
 
 DialogWidgetConfig parse_dialog_widget_config(const std::string& yaml_text,
-                                               const std::string& logical_path) {
+                                              const std::string& logical_path) {
     YAML::Node root;
     try {
         root = YAML::Load(yaml_text);
@@ -205,12 +218,21 @@ DialogWidgetConfig parse_dialog_widget_config(const std::string& yaml_text,
         config.design_size = {number(size[0], "design_size.width", 1280.0f, 1.0f, 100000.0f),
                               number(size[1], "design_size.height", 720.0f, 1.0f, 100000.0f)};
     }
-    config.min_width = number(node["min_width"], "min_width", config.min_width, 1.0f, config.design_size.x);
-    config.max_width = number(node["max_width"], "max_width", config.max_width, 1.0f, config.design_size.x);
-    config.max_height = number(node["max_height"], "max_height", config.max_height, 1.0f, config.design_size.y);
-    config.option_gap = number(node["option_gap"], "option_gap", config.option_gap, 0.0f, config.design_size.y);
-    config.border_thickness = number(node["border_thickness"], "border_thickness", config.border_thickness, 0.0f, 20.0f);
-    config.text_outline_thickness = number(node["text_outline_thickness"], "text_outline_thickness", config.text_outline_thickness, 0.0f, 20.0f);
+    config.min_width =
+        number(node["min_width"], "min_width", config.min_width, 1.0f, config.design_size.x);
+    config.max_width =
+        number(node["max_width"], "max_width", config.max_width, 1.0f, config.design_size.x);
+    config.max_height =
+        number(node["max_height"], "max_height", config.max_height, 1.0f, config.design_size.y);
+    config.option_gap =
+        number(node["option_gap"], "option_gap", config.option_gap, 0.0f, config.design_size.y);
+    config.border_thickness =
+        number(node["border_thickness"], "border_thickness", config.border_thickness, 0.0f, 20.0f);
+    config.text_outline_thickness = number(node["text_outline_thickness"],
+                                           "text_outline_thickness",
+                                           config.text_outline_thickness,
+                                           0.0f,
+                                           20.0f);
     if (config.min_width > config.max_width) {
         fail("dialog-widget.width-invalid", "min_width must be <= max_width", node);
     }
@@ -220,7 +242,9 @@ DialogWidgetConfig parse_dialog_widget_config(const std::string& yaml_text,
         }
         if (const YAML::Node position = placement["position"]) {
             if (!position.IsSequence() || position.size() != 2) {
-                fail("dialog-widget.position-invalid", "placement.position must be [x, y]", position);
+                fail("dialog-widget.position-invalid",
+                     "placement.position must be [x, y]",
+                     position);
             }
             config.placement.position = {
                 number(position[0], "placement.position.x", 0.5f, 0.0f, 1.0f),
@@ -231,9 +255,16 @@ DialogWidgetConfig parse_dialog_widget_config(const std::string& yaml_text,
             if (!offset.IsSequence() || offset.size() != 2) {
                 fail("dialog-widget.offset-invalid", "placement.offset must be [x, y]", offset);
             }
-            config.placement.offset = {
-                number(offset[0], "placement.offset.x", 0.0f, -config.design_size.x, config.design_size.x),
-                number(offset[1], "placement.offset.y", -24.0f, -config.design_size.y, config.design_size.y)};
+            config.placement.offset = {number(offset[0],
+                                              "placement.offset.x",
+                                              0.0f,
+                                              -config.design_size.x,
+                                              config.design_size.x),
+                                       number(offset[1],
+                                              "placement.offset.y",
+                                              -24.0f,
+                                              -config.design_size.y,
+                                              config.design_size.y)};
         }
     }
     config.opacity = number(node["opacity"], "opacity", config.opacity, 0.0f, 1.0f);
@@ -247,7 +278,9 @@ DialogWidgetConfig parse_dialog_widget_config(const std::string& yaml_text,
                                                      config.transition.capture_while_hiding);
     if (const YAML::Node padding = node["padding"]) {
         if (!padding.IsSequence() || padding.size() != 4) {
-            fail("dialog-widget.padding-invalid", "padding must be [left, top, right, bottom]", padding);
+            fail("dialog-widget.padding-invalid",
+                 "padding must be [left, top, right, bottom]",
+                 padding);
         }
         config.padding = {number(padding[0], "padding.left", 20.0f, 0.0f, config.design_size.x),
                           number(padding[1], "padding.top", 14.0f, 0.0f, config.design_size.y),
@@ -255,8 +288,10 @@ DialogWidgetConfig parse_dialog_widget_config(const std::string& yaml_text,
                           number(padding[3], "padding.bottom", 14.0f, 0.0f, config.design_size.y)};
     }
     config.font = asset(node["font"], base_dir, "font");
-    config.font_size = static_cast<unsigned>(number(node["font_size"], "font_size", static_cast<float>(config.font_size), 1.0f, 300.0f));
+    config.font_size = static_cast<unsigned>(
+        number(node["font_size"], "font_size", static_cast<float>(config.font_size), 1.0f, 300.0f));
     config.text = color(node["text"], "text", config.text);
+    config.selected_text = color(node["selected_text"], "selected_text", config.selected_text);
     config.hover_text = color(node["hover_text"], "hover_text", config.hover_text);
     config.text_outline = color(node["text_outline"], "text_outline", config.text_outline);
     config.background = color(node["background"], "background", config.background);
@@ -286,13 +321,16 @@ void DialogWidget::connect(RoomUiStateStream& stream) {
 }
 
 InputResult DialogWidget::handle(const RoutedInput& input) {
-    if (!captures(input.position)) return InputResult::PASS;
+    if (!captures(input.position))
+        return InputResult::PASS;
     if (input.moved()) {
         cursor_ = input.position;
         return InputResult::CONSUMED;
     }
-    if (!input.primary_release()) return InputResult::CONSUMED;
-    if (!dialog_active_) return InputResult::CONSUMED;
+    if (!input.primary_release())
+        return InputResult::CONSUMED;
+    if (!dialog_active_)
+        return InputResult::CONSUMED;
     if (state_.speech_active) {
         RoomUiIntent intent;
         intent.kind = RoomUiIntent::Kind::DISMISS_SPEECH;
@@ -341,7 +379,8 @@ void DialogWidget::update(float dt) {
 
 DialogPageLayout DialogWidget::current_layout() const {
     DialogPageLayout empty;
-    if (state_.dialog_options.empty()) return empty;
+    if (state_.dialog_options.empty())
+        return empty;
     const float sx = static_cast<float>(runtime_size_.x) / config_.design_size.x;
     const float sy = static_cast<float>(runtime_size_.y) / config_.design_size.y;
     const unsigned size = std::max(1u, static_cast<unsigned>(std::lround(config_.font_size * sy)));
@@ -361,16 +400,18 @@ DialogPageLayout DialogWidget::current_layout() const {
     const float max_text =
         std::max(min_text, config_.max_width * sx - pad_left - pad_right - gutter);
     float widest = min_text;
-    for (const std::string& option : state_.dialog_options) widest = std::max(widest, measure(option));
+    for (const std::string& option : state_.dialog_options)
+        widest = std::max(widest, measure(option));
     const float text_width = std::clamp(widest, min_text, max_text);
-    const float max_content_height = std::max(line_height, config_.max_height * sy - pad_top - pad_bottom);
+    const float max_content_height =
+        std::max(line_height, config_.max_height * sy - pad_top - pad_bottom);
     DialogPageLayout layout = layout_dialog_options(state_.dialog_options,
-                                                     state_.dialog_page,
-                                                     {0.0f, 0.0f, text_width, max_content_height},
-                                                     line_height,
-                                                     gap,
-                                                     0.0f,
-                                                     measure);
+                                                    state_.dialog_page,
+                                                    {0.0f, 0.0f, text_width, max_content_height},
+                                                    line_height,
+                                                    gap,
+                                                    0.0f,
+                                                    measure);
     const bool paged = layout.page_count > 1;
     const float content_width = text_width + (paged ? gutter : 0.0f);
     if (paged) {
@@ -383,8 +424,10 @@ DialogPageLayout DialogWidget::current_layout() const {
                                        measure);
     }
     float used_height = 0.0f;
-    for (const auto& row : layout.rows) used_height = std::max(used_height, row.rect.top + row.rect.height);
-    if (layout.has_prev || layout.has_next) used_height = std::max(used_height, 2.0f * arrow + gap);
+    for (const auto& row : layout.rows)
+        used_height = std::max(used_height, row.rect.top + row.rect.height);
+    if (layout.has_prev || layout.has_next)
+        used_height = std::max(used_height, 2.0f * arrow + gap);
     used_height = std::max(used_height, line_height);
     const float box_width = pad_left + content_width + pad_right;
     const float box_height = pad_top + used_height + pad_bottom;
@@ -414,7 +457,8 @@ DialogPageLayout DialogWidget::current_layout() const {
 }
 
 void DialogWidget::draw(sf::RenderTarget& target) const {
-    if (!presentation_.rendered() || state_.dialog_options.empty()) return;
+    if (!presentation_.rendered() || state_.dialog_options.empty())
+        return;
     const DialogPageLayout layout = current_layout();
     surface_.draw(target, presentation_, layout.box, [this, &layout](sf::RenderTarget& surface) {
         sf::RectangleShape box({layout.box.width, layout.box.height});
@@ -424,13 +468,20 @@ void DialogWidget::draw(sf::RenderTarget& target) const {
         box.setOutlineThickness(config_.border_thickness * sx);
         box.setOutlineColor(config_.border);
         surface.draw(box);
-        if (!font_) return;
+        if (!font_)
+            return;
         const float sy = static_cast<float>(runtime_size_.y) / config_.design_size.y;
         const unsigned size =
             std::max(1u, static_cast<unsigned>(std::lround(config_.font_size * sy)));
         const float line_height = font_->getLineSpacing(size);
         for (const auto& row : layout.rows) {
-            const sf::Color fill = row.rect.contains(cursor_) ? config_.hover_text : config_.text;
+            const bool selected =
+                row.option_index >= 0 &&
+                static_cast<std::size_t>(row.option_index) < state_.dialog_option_selected.size() &&
+                state_.dialog_option_selected[static_cast<std::size_t>(row.option_index)];
+            const sf::Color fill = row.rect.contains(cursor_)
+                                       ? config_.hover_text
+                                       : (selected ? config_.selected_text : config_.text);
             float y = row.rect.top;
             for (const std::string& line : row.lines) {
                 sf::Text text(pac::core::utf8(line), *font_, size);
@@ -459,7 +510,8 @@ void DialogWidget::draw(sf::RenderTarget& target) const {
 }
 
 void DialogWidget::emit(RoomUiIntent intent) {
-    if (intent_sink_) intent_sink_(intent);
+    if (intent_sink_)
+        intent_sink_(intent);
 }
 
 } // namespace pac::pnc

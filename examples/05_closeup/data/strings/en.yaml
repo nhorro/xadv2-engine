@@ -39,6 +39,7 @@ ui:
   thumbnail_placeholder: "No capture"
   quit_to_title: "Return to title"
   back:     "Back"
+  clues:    "Clues"
   notes:    "Field notes"   # pause-menu label for the custom scene in 06_cpp_scene
   apply:    "Apply"
   manual_continue_hint: "click or [enter] to continue, [esc] to skip"

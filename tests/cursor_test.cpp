@@ -31,3 +31,13 @@ TEST_CASE("cursor appearance requests reset completely each frame") {
     CHECK_FALSE(cursor.inverted);
     CHECK_FALSE(cursor.hidden);
 }
+
+TEST_CASE("cursor state carries direct action families") {
+    pac::core::CursorState cursor;
+    cursor.want(pac::core::CursorKind::LOOK);
+    CHECK(cursor.requested == pac::core::CursorKind::LOOK);
+    cursor.want(pac::core::CursorKind::TALK);
+    CHECK(cursor.requested == pac::core::CursorKind::TALK);
+    cursor.want(pac::core::CursorKind::EXIT);
+    CHECK(cursor.requested == pac::core::CursorKind::EXIT);
+}

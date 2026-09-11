@@ -50,6 +50,10 @@ struct DialogHost {
     std::function<bool(const std::string& node_id, int option_index)> is_option_consumed;
     /// Mark (node_id, raw_option_index) as consumed.
     std::function<void(const std::string& node_id, int option_index)> mark_option_consumed;
+    /// Selection history is independent of `once`: repeatable options remain
+    /// visible but can be styled as already discussed.
+    std::function<bool(const std::string& node_id, int option_index)> is_option_selected;
+    std::function<void(const std::string& node_id, int option_index)> mark_option_selected;
     /// Spawn the option's `run` callback (or invoke it synchronously in tests).
     /// `fn` is owned by the runtime for the duration of the call. Optional: if
     /// unset, the runtime calls the function inline and treats it as finished
@@ -74,6 +78,7 @@ struct DialogOption {
     int index = 0;
     std::string text_id;
     std::string text;
+    bool selected = false;
 };
 
 /// Runtime for one dialog tree (per design 04 §Dialog system). The header keeps

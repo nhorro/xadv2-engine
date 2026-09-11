@@ -270,7 +270,13 @@ TEST_CASE("optional cursor block is parsed") {
                        "cursor:\n"
                        "  image: ui/c.png\n"
                        "  interact: ui/h.png\n"
+                       "  look: ui/eye.png\n"
+                       "  look_seen: ui/eye-seen.png\n"
+                       "  talk: ui/talk.png\n"
+                       "  exit: ui/exit.png\n"
+                       "  walk: ui/foot.png\n"
                        "  hotspot: { x: 2, y: 3 }\n"
+                       "  action_hotspot: { x: 7, y: 8 }\n"
                        "  blink:\n"
                        "    interval: 0.35\n"
                        "    steps: 16\n"
@@ -278,8 +284,14 @@ TEST_CASE("optional cursor block is parsed") {
                        "    light: { r: 253, g: 254, b: 255 }\n");
     CHECK(m.cursor.image == "ui/c.png");
     CHECK(m.cursor.interact == "ui/h.png");
+    CHECK(m.cursor.look == "ui/eye.png");
+    CHECK(m.cursor.look_seen == "ui/eye-seen.png");
+    CHECK(m.cursor.talk == "ui/talk.png");
+    CHECK(m.cursor.exit == "ui/exit.png");
+    CHECK(m.cursor.walk == "ui/foot.png");
     CHECK(m.cursor.hotspot.x == 2u);
     CHECK(m.cursor.hotspot.y == 3u);
+    CHECK(m.cursor.action_hotspot == sf::Vector2u(7u, 8u));
     CHECK(m.cursor.blink.interval == doctest::Approx(0.35f));
     CHECK(m.cursor.blink.steps == 16u);
     CHECK(m.cursor.blink.dark == sf::Color(48, 49, 50));
@@ -290,8 +302,14 @@ TEST_CASE("cursor block is optional — defaults to no custom cursor") {
     const Manifest m = parse_manifest(kValid);
     CHECK(m.cursor.image.empty());
     CHECK(m.cursor.interact.empty());
+    CHECK(m.cursor.look.empty());
+    CHECK(m.cursor.look_seen.empty());
+    CHECK(m.cursor.talk.empty());
+    CHECK(m.cursor.exit.empty());
+    CHECK(m.cursor.walk.empty());
     CHECK(m.cursor.hotspot.x == 0u);
     CHECK(m.cursor.hotspot.y == 0u);
+    CHECK(m.cursor.action_hotspot == sf::Vector2u(0u, 0u));
     CHECK_FALSE(m.cursor.blink.enabled());
 }
 

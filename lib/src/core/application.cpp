@@ -74,7 +74,7 @@ void draw_generic_pause(sf::RenderTarget& target,
     }
 
     sf::Text title(utf8(strings.ui_label("pause")), *font, 36);
-    title.setFillColor(sf::Color(255, 240, 180));
+    title.setFillColor(sf::Color(245, 224, 177));
     const sf::FloatRect title_bounds = title.getLocalBounds();
     title.setPosition((width - title_bounds.width) / 2.0f - title_bounds.left,
                       height * 0.34f - title_bounds.top);
@@ -84,13 +84,13 @@ void draw_generic_pause(sf::RenderTarget& target,
     const sf::Vector2f button_pos{(width - button_size.x) / 2.0f, height * 0.52f};
     sf::RectangleShape button(button_size);
     button.setPosition(button_pos);
-    button.setFillColor(sf::Color(34, 38, 54));
-    button.setOutlineColor(sf::Color(90, 100, 130));
+    button.setFillColor(sf::Color(38, 30, 22));
+    button.setOutlineColor(sf::Color(125, 102, 67));
     button.setOutlineThickness(1.5f);
     target.draw(button);
 
     sf::Text resume(utf8(strings.ui_label("resume")), *font, 20);
-    resume.setFillColor(sf::Color(220, 224, 235));
+    resume.setFillColor(sf::Color(230, 218, 190));
     const sf::FloatRect resume_bounds = resume.getLocalBounds();
     resume.setPosition(
         button_pos.x + (button_size.x - resume_bounds.width) / 2.0f - resume_bounds.left,
@@ -554,9 +554,8 @@ static int run_impl(const std::string& manifest_path,
         }
         return scene;
     });
-    scenes.set_scene_entered_callback([&recorder](const std::string& id) {
-        recorder.record("scene_enter", id);
-    });
+    scenes.set_scene_entered_callback(
+        [&recorder](const std::string& id) { recorder.record("scene_enter", id); });
 
     bool settings_seen = false;
     bool confirmation_seen = false;
@@ -609,15 +608,62 @@ static int run_impl(const std::string& manifest_path,
     const std::unique_ptr<sf::Cursor> cursor_default =
         load_cursor(source, manifest.cursor.image, manifest.cursor.hotspot, log);
     const std::unique_ptr<sf::Cursor> cursor_interact =
-        cursor_default ? load_cursor(source, manifest.cursor.interact, manifest.cursor.hotspot, log)
-                       : nullptr;
+        cursor_default
+            ? load_cursor(source, manifest.cursor.interact, manifest.cursor.action_hotspot, log)
+            : nullptr;
+    const std::unique_ptr<sf::Cursor> cursor_look =
+        cursor_default
+            ? load_cursor(source, manifest.cursor.look, manifest.cursor.action_hotspot, log)
+            : nullptr;
+    const std::unique_ptr<sf::Cursor> cursor_look_seen =
+        cursor_default
+            ? load_cursor(source, manifest.cursor.look_seen, manifest.cursor.action_hotspot, log)
+            : nullptr;
+    const std::unique_ptr<sf::Cursor> cursor_talk =
+        cursor_default
+            ? load_cursor(source, manifest.cursor.talk, manifest.cursor.action_hotspot, log)
+            : nullptr;
+    const std::unique_ptr<sf::Cursor> cursor_exit =
+        cursor_default
+            ? load_cursor(source, manifest.cursor.exit, manifest.cursor.action_hotspot, log)
+            : nullptr;
+    const std::unique_ptr<sf::Cursor> cursor_walk =
+        cursor_default
+            ? load_cursor(source, manifest.cursor.walk, manifest.cursor.action_hotspot, log)
+            : nullptr;
     const std::unique_ptr<sf::Cursor> cursor_default_inverted =
         cursor_default
             ? load_cursor(source, manifest.cursor.image, manifest.cursor.hotspot, log, true)
             : nullptr;
     const std::unique_ptr<sf::Cursor> cursor_interact_inverted =
-        cursor_interact
-            ? load_cursor(source, manifest.cursor.interact, manifest.cursor.hotspot, log, true)
+        cursor_interact ? load_cursor(source,
+                                      manifest.cursor.interact,
+                                      manifest.cursor.action_hotspot,
+                                      log,
+                                      true)
+                        : nullptr;
+    const std::unique_ptr<sf::Cursor> cursor_look_inverted =
+        cursor_look
+            ? load_cursor(source, manifest.cursor.look, manifest.cursor.action_hotspot, log, true)
+            : nullptr;
+    const std::unique_ptr<sf::Cursor> cursor_look_seen_inverted =
+        cursor_look_seen ? load_cursor(source,
+                                       manifest.cursor.look_seen,
+                                       manifest.cursor.action_hotspot,
+                                       log,
+                                       true)
+                         : nullptr;
+    const std::unique_ptr<sf::Cursor> cursor_talk_inverted =
+        cursor_talk
+            ? load_cursor(source, manifest.cursor.talk, manifest.cursor.action_hotspot, log, true)
+            : nullptr;
+    const std::unique_ptr<sf::Cursor> cursor_exit_inverted =
+        cursor_exit
+            ? load_cursor(source, manifest.cursor.exit, manifest.cursor.action_hotspot, log, true)
+            : nullptr;
+    const std::unique_ptr<sf::Cursor> cursor_walk_inverted =
+        cursor_walk
+            ? load_cursor(source, manifest.cursor.walk, manifest.cursor.action_hotspot, log, true)
             : nullptr;
     const std::vector<std::unique_ptr<sf::Cursor>> cursor_blink_frames =
         cursor_default ? load_cursor_blink_frames(source,
@@ -863,7 +909,6 @@ static int run_impl(const std::string& manifest_path,
             cursor_state.reset();
         }
 
-        const bool interact = active_cursor_kind == CursorKind::INTERACT && cursor_interact;
         const float blink_progress =
             cursor_blink_progress(cursor_blink_elapsed, manifest.cursor.blink.interval);
         const std::size_t blink_frame =
@@ -872,10 +917,35 @@ static int run_impl(const std::string& manifest_path,
                       blink_progress * static_cast<float>(cursor_blink_frames.size() - 1)))
                 : 0;
         const sf::Cursor* requested_cursor = nullptr;
-        if (interact) {
-            requested_cursor = active_cursor_inverted && cursor_interact_inverted
-                                   ? cursor_interact_inverted.get()
-                                   : cursor_interact.get();
+        const auto action_cursor =
+            [&](const std::unique_ptr<sf::Cursor>& normal,
+                const std::unique_ptr<sf::Cursor>& inverted) -> const sf::Cursor* {
+            const sf::Cursor* fallback = nullptr;
+            if (cursor_interact) {
+                fallback = active_cursor_inverted && cursor_interact_inverted
+                               ? cursor_interact_inverted.get()
+                               : cursor_interact.get();
+            } else {
+                fallback = active_cursor_inverted && cursor_default_inverted
+                               ? cursor_default_inverted.get()
+                               : cursor_default.get();
+            }
+            if (!normal)
+                return fallback;
+            return active_cursor_inverted && inverted ? inverted.get() : normal.get();
+        };
+        if (active_cursor_kind == CursorKind::INTERACT) {
+            requested_cursor = action_cursor(cursor_interact, cursor_interact_inverted);
+        } else if (active_cursor_kind == CursorKind::LOOK) {
+            requested_cursor = action_cursor(cursor_look, cursor_look_inverted);
+        } else if (active_cursor_kind == CursorKind::LOOK_SEEN) {
+            requested_cursor = action_cursor(cursor_look_seen, cursor_look_seen_inverted);
+        } else if (active_cursor_kind == CursorKind::TALK) {
+            requested_cursor = action_cursor(cursor_talk, cursor_talk_inverted);
+        } else if (active_cursor_kind == CursorKind::EXIT) {
+            requested_cursor = action_cursor(cursor_exit, cursor_exit_inverted);
+        } else if (active_cursor_kind == CursorKind::WALK) {
+            requested_cursor = action_cursor(cursor_walk, cursor_walk_inverted);
         } else if (cursor_blinks) {
             if (active_cursor_inverted && !cursor_blink_frames_inverted.empty()) {
                 requested_cursor = cursor_blink_frames_inverted[blink_frame].get();

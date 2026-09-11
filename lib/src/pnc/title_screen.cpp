@@ -1,7 +1,6 @@
 #include "engine/pnc/title_screen.hpp"
 
 #include "engine/core/audio.hpp"
-#include "engine/core/cursor.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
@@ -256,11 +255,8 @@ void TitleScreen::update(float dt) {
         rebuild_entries();
         hovered_ = -1; // cached widths and row labels changed under the pointer
     }
-    // Use the same hover affordance as the rest of the game: the custom game
-    // cursor switches to its INTERACT variant over a clickable menu entry.
-    if (hovered_ >= 0) {
-        ctx_.cursor.want(pac::core::CursorKind::INTERACT);
-    }
+    // Menus retain the resting pointer; semantic action cursors are reserved for
+    // playable scenes where they communicate an in-world verb.
 }
 
 void TitleScreen::draw(sf::RenderTarget& target) const {

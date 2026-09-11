@@ -428,6 +428,22 @@ hotspots:
     CHECK_FALSE(r.hotspots.at("distant_ok").requires_approach); // explicit opt-out
 }
 
+TEST_CASE("parse_room reads and validates semantic hotspot types") {
+    const RoomData room = parse_room(R"yaml(
+id: r
+hotspots:
+  door: { name: door, area: [{x: 0, y: 0}, {x: 10, y: 0}, {x: 0, y: 10}], type: exit }
+  shelf: { name: shelf, area: [{x: 20, y: 0}, {x: 30, y: 0}, {x: 20, y: 10}] }
+)yaml");
+    CHECK(room.hotspots.at("door").type == RoomHotspotType::EXIT);
+    CHECK(room.hotspots.at("shelf").type == RoomHotspotType::OBJECT);
+
+    CHECK(error_code([] {
+              parse_room("id: r\nhotspots:\n  h: { name: h, area: [{x: 0, y: 0}, {x: 1, y: 0}, {x: "
+                         "0, y: 1}], type: portal }\n");
+          }) == "room.hotspot-type-invalid");
+}
+
 TEST_CASE("parse_room reads streamed and random room ambience layers") {
     const RoomData r = parse_room(R"YAML(
 id: street

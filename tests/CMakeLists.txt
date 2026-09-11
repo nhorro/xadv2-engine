@@ -56,6 +56,8 @@ add_executable(pac_core_tests
     cutscene_test.cpp
     command_builder_test.cpp
     command_controller_test.cpp
+    direct_action_test.cpp
+    direct_room_ui_test.cpp
     room_command_processor_test.cpp
     room_input_router_test.cpp
     scumm_panel_config_test.cpp

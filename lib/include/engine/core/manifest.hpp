@@ -67,14 +67,23 @@ struct CursorBlinkConfig {
 };
 
 /// Custom point-and-click cursor (issue #73). `image` is the resting cursor;
-/// `interact` (optional) is shown over an interactive hotspot. `hotspot` is the
-/// pointer's active pixel (the click point) within both images. An optional blink
-/// alternates the resting cursor between two solid RGB tones while preserving
-/// the source image's alpha. When `image` is empty the OS cursor is kept.
+/// `interact` (optional) is the generic/hand action image; `look`, `talk`, and
+/// `look_seen`, `exit`, and `walk` specialize it. `hotspot` is the resting
+/// pointer's active pixel, while
+/// `action_hotspot` applies to all action images and defaults to `hotspot`. An
+/// optional blink alternates the resting cursor between two solid RGB tones
+/// while preserving alpha. When `image` is empty the OS cursor is kept.
 struct CursorConfig {
     std::string image;
+    // `interact` is the backwards-compatible generic/hand cursor.
     std::string interact;
+    std::string look;
+    std::string look_seen;
+    std::string talk;
+    std::string exit;
+    std::string walk;
     sf::Vector2u hotspot{0, 0};
+    sf::Vector2u action_hotspot{0, 0};
     CursorBlinkConfig blink;
 };
 

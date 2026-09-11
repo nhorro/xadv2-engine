@@ -9,6 +9,8 @@
 
 namespace pac::pnc {
 
+enum class CloseUpHotspotType { OBJECT, EXIT };
+
 /// One examinable region of a close-up: a hit-test polygon (in the close-up's
 /// virtual-resolution space) with a localized `name` shown as a look caption, and
 /// an optional `goto_scene` outcome that switches scenes when clicked (issue #76).
@@ -17,6 +19,7 @@ struct CloseUpHotspot {
     std::string name;       // localized caption / hover label
     geom::Polygon area;     // hit-test polygon
     std::string goto_scene; // optional scene id to switch to on click
+    CloseUpHotspotType type = CloseUpHotspotType::OBJECT;
 };
 
 /// Parsed close-up / examine view (`closeups/<id>.yaml`): a full-screen background

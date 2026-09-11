@@ -10,11 +10,14 @@
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/scene_params.hpp"
 #include "engine/core/scripting.hpp"
+#include "engine/core/state_store.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/text_encoding.hpp"
 #include "engine/core/text_id.hpp"
 #include "engine/core/text_layout.hpp" // core::wrap_text
 
+#include <SFML/Graphics/CircleShape.hpp>
+#include <SFML/Graphics/ConvexShape.hpp>
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
@@ -25,7 +28,9 @@
 #include <sol/sol.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
+#include <variant>
 
 namespace pac::pnc {
 
@@ -35,6 +40,7 @@ const sf::Color kDefaultSpeechColor(230, 230, 230);
 // Where a scripted close-up's speech floats: bottom-centre of the virtual screen
 // (place_speech raises the balloon above this point, subtitle-like).
 constexpr float kTalkAnchorY = 0.86f; // fraction of the virtual height
+constexpr const char* kCluesVisibleStateKey = "__ui.closeup_clues_visible";
 } // namespace
 
 struct CloseUpScene::Impl {
@@ -54,6 +60,13 @@ CloseUpScene::CloseUpScene(pac::core::EngineContext& ctx, const pac::core::Scene
     } catch (const std::exception&) {
         ctx_.log.warn("CloseUp: invalid music_transition; using 2.5 seconds");
         music_transition_ = 2.5f;
+    }
+    try {
+        music_exit_transition_ =
+            std::max(0.01f, std::stof(params.get_or("music_exit_transition", "0.25")));
+    } catch (const std::exception&) {
+        ctx_.log.warn("CloseUp: invalid music_exit_transition; using 0.25 seconds");
+        music_exit_transition_ = 0.25f;
     }
     const auto color_channel = [&params](const std::string& channel, sf::Uint8 fallback) {
         try {
@@ -162,6 +175,24 @@ void CloseUpScene::enter() {
         L.set_function("set_hotspot_name", [this](std::string id, std::string name) {
             hotspot_names_[id] = std::move(name);
         });
+        // A staged clue can become fresh again when new story knowledge changes
+        // its handler. Authors opt in at that transition; ordinary hotspots are
+        // tracked automatically after their first activation.
+        L.set_function("set_hotspot_new", [this](std::string id, bool is_new) {
+            hotspot_new_overrides_[id] = is_new;
+            const auto found =
+                std::find_if(data_.hotspots.begin(),
+                             data_.hotspots.end(),
+                             [&id](const CloseUpHotspot& hs) { return hs.id == id; });
+            if (found == data_.hotspots.end()) {
+                return;
+            }
+            if (is_new) {
+                ctx_.state.erase(hotspot_seen_key(*found));
+            } else {
+                ctx_.state.set(hotspot_seen_key(*found), true);
+            }
+        });
         L.set_function("shout", [this](sol::optional<std::string> text) {
             shout_text_ = text.value_or(std::string());
         });
@@ -195,6 +226,7 @@ void CloseUpScene::leave() {
         }
         L["_closeup_talk_start"] = sol::lua_nil;
         L["set_hotspot_name"] = sol::lua_nil;
+        L["set_hotspot_new"] = sol::lua_nil;
         L["shout"] = sol::lua_nil;
         L["close_closeup"] = sol::lua_nil;
         ctx_.scripting.set_current_scope(ctx_.scripting.global_scope());
@@ -205,7 +237,12 @@ void CloseUpScene::leave() {
     ctx_.audio.voice.stop();
 
     if (music_override_started_ && previous_music_) {
-        if (!ctx_.audio.music.restore_state(*previous_music_, music_transition_)) {
+        // A close-up cue belongs to the view, so it must not linger after the
+        // view has gone. Silence is restored immediately; an existing room cue
+        // gets a short crossfade to avoid an audible discontinuity.
+        if (!previous_music_->playing || previous_music_->logical.empty()) {
+            ctx_.audio.music.stop();
+        } else if (!ctx_.audio.music.restore_state(*previous_music_, music_exit_transition_)) {
             ctx_.log.warn("CloseUp: could not restore the previous music cue");
         }
     }
@@ -265,6 +302,46 @@ std::string CloseUpScene::display_name(const CloseUpHotspot& hs) const {
     return ctx_.localization.text("closeup." + data_.id + ".hotspot." + hs.id + ".name", source);
 }
 
+sf::FloatRect CloseUpScene::close_button_bounds() const {
+    const float height = static_cast<float>(ctx_.display.virtual_resolution().y);
+    return {16.0f, height - 70.0f, 132.0f, 54.0f};
+}
+
+sf::FloatRect CloseUpScene::clues_button_bounds() const {
+    const sf::Vector2u resolution = ctx_.display.virtual_resolution();
+    return {static_cast<float>(resolution.x) - 180.0f,
+            static_cast<float>(resolution.y) - 70.0f,
+            164.0f,
+            54.0f};
+}
+
+bool CloseUpScene::clues_visible() const {
+    const std::optional<pac::core::StateValue> value = ctx_.state.get(kCluesVisibleStateKey);
+    return !value || !std::holds_alternative<bool>(*value) || std::get<bool>(*value);
+}
+
+void CloseUpScene::toggle_clues() {
+    ctx_.state.set(kCluesVisibleStateKey, !clues_visible());
+}
+
+std::string CloseUpScene::hotspot_seen_key(const CloseUpHotspot& hs) const {
+    return "__closeup_seen." + data_.id + "." + hs.id;
+}
+
+bool CloseUpScene::hotspot_is_new(const CloseUpHotspot& hs) const {
+    const auto override = hotspot_new_overrides_.find(hs.id);
+    if (override != hotspot_new_overrides_.end()) {
+        return override->second;
+    }
+    const std::optional<pac::core::StateValue> value = ctx_.state.get(hotspot_seen_key(hs));
+    return !value || !std::holds_alternative<bool>(*value) || !std::get<bool>(*value);
+}
+
+void CloseUpScene::mark_hotspot_seen(const CloseUpHotspot& hs) {
+    ctx_.state.set(hotspot_seen_key(hs), true);
+    hotspot_new_overrides_[hs.id] = false;
+}
+
 void CloseUpScene::activate(const CloseUpHotspot& hs) {
     ctx_.recorder.record(
         "action",
@@ -277,9 +354,16 @@ void CloseUpScene::activate(const CloseUpHotspot& hs) {
             return;
         }
         active_handler_ = runtime_.spawn_hotspot(ctx_.scripting, closeup_scope_, hs.id);
+        if (active_handler_ != 0) {
+            // Seen/freshness is presentation state only. It records that an
+            // action started, but is never consulted to decide whether that
+            // action may run again.
+            mark_hotspot_seen(hs);
+        }
         ctx_.scripting.set_current_scope(ctx_.scripting.global_scope());
         return;
     }
+    mark_hotspot_seen(hs);
     if (!hs.goto_scene.empty()) {
         ctx_.scenes.goto_scene(hs.goto_scene);
         return;
@@ -307,6 +391,16 @@ void CloseUpScene::handle_event(const sf::Event& event) {
             return;
         }
         if (event.mouseButton.button == sf::Mouse::Left) {
+            const sf::Vector2f released{static_cast<float>(event.mouseButton.x),
+                                        static_cast<float>(event.mouseButton.y)};
+            if (close_button_bounds().contains(released)) {
+                exit();
+                return;
+            }
+            if (clues_button_bounds().contains(released)) {
+                toggle_clues();
+                return;
+            }
             // A click dismisses a showing caption/line first (like in-room speech) —
             // this is also how a scripted multi-step talk is advanced.
             if (speech_.active()) {
@@ -324,6 +418,7 @@ void CloseUpScene::handle_event(const sf::Event& event) {
 }
 
 void CloseUpScene::update(float dt) {
+    affordance_time_ += dt;
     speech_.update(dt);
     // Wake any scripted talk(...) once its line has cleared (duration elapsed or
     // skipped) so the next line in a sequence runs (mirrors RoomScene).
@@ -334,8 +429,15 @@ void CloseUpScene::update(float dt) {
         pending_speech_.clear();
     }
     hovered_ = loaded_ ? data_.hotspot_at(hover_) : nullptr;
-    if (hovered_ != nullptr) {
-        ctx_.cursor.want(pac::core::CursorKind::INTERACT);
+    if (close_button_bounds().contains(hover_) || clues_button_bounds().contains(hover_)) {
+        hovered_ = nullptr;
+    }
+    if (close_button_bounds().contains(hover_)) {
+        ctx_.cursor.want(pac::core::CursorKind::EXIT);
+    } else if (!clues_button_bounds().contains(hover_) && hovered_ != nullptr) {
+        ctx_.cursor.want(hovered_->type == CloseUpHotspotType::EXIT ? pac::core::CursorKind::EXIT
+                         : hotspot_is_new(*hovered_)                ? pac::core::CursorKind::LOOK
+                                                     : pac::core::CursorKind::LOOK_SEEN);
     }
 }
 
@@ -360,6 +462,136 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
         } catch (const std::exception& e) {
             ctx_.log.error(e.what());
         }
+    }
+
+    // Close-up affordances are deliberately light on the artwork: fresh clues
+    // pulse in cyan, exhausted clues retain a quiet check, and navigation
+    // hotspots keep their dedicated exit cursor instead of receiving markers.
+    if (loaded_ && font_ != nullptr && !speech_.active() && clues_visible()) {
+        const float pulse = 0.5f + 0.5f * std::sin(affordance_time_ * 3.2f);
+        const auto draw_segment =
+            [&target](sf::Vector2f from, sf::Vector2f to, float thickness, sf::Color color) {
+                const sf::Vector2f delta = to - from;
+                const float length = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+                sf::RectangleShape segment({length, thickness});
+                segment.setOrigin(0.0f, thickness / 2.0f);
+                segment.setPosition(from);
+                segment.setRotation(std::atan2(delta.y, delta.x) * 180.0f / 3.14159265f);
+                segment.setFillColor(color);
+                target.draw(segment);
+            };
+        for (const CloseUpHotspot& hs : data_.hotspots) {
+            if (hs.type == CloseUpHotspotType::EXIT || hs.area.empty()) {
+                continue;
+            }
+            sf::Vector2f anchor{};
+            for (const geom::Point point : hs.area) {
+                anchor += point;
+            }
+            anchor /= static_cast<float>(hs.area.size());
+            anchor.x = std::clamp(anchor.x, 24.0f, vw - 24.0f);
+            anchor.y = std::clamp(anchor.y, 24.0f, vh - 82.0f);
+            const bool fresh = hotspot_is_new(hs);
+            const bool hovered = hovered_ == &hs;
+            const float radius = fresh ? 13.0f + pulse * 2.5f : 10.0f;
+            sf::CircleShape halo(radius, 40);
+            halo.setOrigin(radius, radius);
+            halo.setPosition(anchor);
+            halo.setFillColor({9, 14, 17, static_cast<sf::Uint8>(hovered ? 190 : 118)});
+            halo.setOutlineThickness(hovered ? 2.5f : 1.5f);
+            halo.setOutlineColor(
+                fresh ? sf::Color(43, 183, 214, static_cast<sf::Uint8>(150 + pulse * 90.0f))
+                      : sf::Color(225, 209, 171, 105));
+            target.draw(halo);
+            if (fresh) {
+                sf::Text question("?", *font_, 18);
+                question.setStyle(sf::Text::Bold);
+                question.setFillColor(sf::Color(244, 234, 210, 235));
+                const sf::FloatRect q = question.getLocalBounds();
+                question.setOrigin(q.left + q.width / 2.0f, q.top + q.height / 2.0f);
+                question.setPosition(anchor);
+                target.draw(question);
+            } else {
+                const sf::Color tick(43, 183, 214, hovered ? 235 : 150);
+                draw_segment(anchor + sf::Vector2f(-5.5f, 0.5f),
+                             anchor + sf::Vector2f(-1.0f, 5.0f),
+                             2.5f,
+                             tick);
+                draw_segment(anchor + sf::Vector2f(-1.0f, 5.0f),
+                             anchor + sf::Vector2f(7.0f, -5.0f),
+                             2.5f,
+                             tick);
+            }
+        }
+    }
+
+    // Persistent back control: large enough for touch, but visually transparent
+    // so it does not compete with evidence in the close-up.
+    const sf::FloatRect close_bounds = close_button_bounds();
+    const bool close_hovered = close_bounds.contains(hover_);
+    const float close_radius = 22.0f;
+    const sf::Vector2f close_center{close_bounds.left + 26.0f,
+                                    close_bounds.top + close_bounds.height / 2.0f};
+    sf::CircleShape close_button(close_radius, 48);
+    close_button.setOrigin(close_radius, close_radius);
+    close_button.setPosition(close_center);
+    close_button.setFillColor(close_hovered ? sf::Color(17, 39, 46, 205)
+                                            : sf::Color(9, 14, 17, 125));
+    close_button.setOutlineColor(close_hovered ? sf::Color(43, 183, 214, 245)
+                                               : sf::Color(225, 209, 171, 145));
+    close_button.setOutlineThickness(close_hovered ? 2.0f : 1.0f);
+    target.draw(close_button);
+    sf::ConvexShape back(3);
+    back.setPoint(0, close_center + sf::Vector2f(-7.0f, 0.0f));
+    back.setPoint(1, close_center + sf::Vector2f(5.0f, -9.0f));
+    back.setPoint(2, close_center + sf::Vector2f(5.0f, 9.0f));
+    back.setFillColor(close_hovered ? sf::Color(43, 183, 214) : sf::Color(244, 234, 210));
+    target.draw(back);
+
+    // Player-controlled clue visibility: the preference is shared by all
+    // close-ups and stored in the save state. The generous transparent hit area
+    // keeps the small checkbox comfortable on touch screens.
+    const sf::FloatRect clues_bounds = clues_button_bounds();
+    const bool clues_hovered = clues_bounds.contains(hover_);
+    sf::RectangleShape clues_plate({clues_bounds.width, clues_bounds.height});
+    clues_plate.setPosition(clues_bounds.left, clues_bounds.top);
+    clues_plate.setFillColor(clues_hovered ? sf::Color(9, 14, 17, 135) : sf::Color::Transparent);
+    target.draw(clues_plate);
+    const sf::FloatRect check_bounds{clues_bounds.left + clues_bounds.width - 30.0f,
+                                     clues_bounds.top + 16.0f,
+                                     22.0f,
+                                     22.0f};
+    sf::RectangleShape checkbox({check_bounds.width, check_bounds.height});
+    checkbox.setPosition(check_bounds.left, check_bounds.top);
+    checkbox.setFillColor(sf::Color(9, 14, 17, 145));
+    checkbox.setOutlineColor(clues_hovered ? sf::Color(43, 183, 214, 245)
+                                           : sf::Color(225, 209, 171, 175));
+    checkbox.setOutlineThickness(clues_hovered ? 2.0f : 1.0f);
+    target.draw(checkbox);
+    if (clues_visible()) {
+        const auto draw_segment =
+            [&target](sf::Vector2f from, sf::Vector2f to, float thickness, sf::Color color) {
+                const sf::Vector2f delta = to - from;
+                const float length = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+                sf::RectangleShape segment({length, thickness});
+                segment.setOrigin(0.0f, thickness / 2.0f);
+                segment.setPosition(from);
+                segment.setRotation(std::atan2(delta.y, delta.x) * 180.0f / 3.14159265f);
+                segment.setFillColor(color);
+                target.draw(segment);
+            };
+        const sf::Vector2f anchor{check_bounds.left + check_bounds.width / 2.0f,
+                                  check_bounds.top + check_bounds.height / 2.0f};
+        const sf::Color tick =
+            clues_hovered ? sf::Color(43, 183, 214) : sf::Color(244, 234, 210, 225);
+        draw_segment(anchor + sf::Vector2f(-6.0f, 0.0f),
+                     anchor + sf::Vector2f(-1.5f, 5.0f),
+                     2.5f,
+                     tick);
+        draw_segment(anchor + sf::Vector2f(-1.5f, 5.0f),
+                     anchor + sf::Vector2f(7.0f, -6.0f),
+                     2.5f,
+                     tick);
     }
 
     if (font_ != nullptr) {
@@ -401,12 +633,26 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
             target.draw(label);
         }
 
-        sf::Text hint(pac::core::utf8("[Esc] " + ctx_.strings.ui_label("back")), *font_, 18);
-        hint.setFillColor(sf::Color(200, 200, 210, 180));
-        hint.setOutlineColor(sf::Color(0, 0, 0, 180));
-        hint.setOutlineThickness(1.0f);
-        hint.setPosition(16.0f, vh - 32.0f);
-        target.draw(hint);
+        sf::Text back_label(pac::core::utf8(ctx_.strings.ui_label("back")), *font_, 18);
+        back_label.setFillColor(close_hovered ? sf::Color(244, 234, 210)
+                                              : sf::Color(225, 209, 171, 205));
+        back_label.setOutlineColor(sf::Color(0, 0, 0, 210));
+        back_label.setOutlineThickness(1.0f);
+        const sf::FloatRect b = back_label.getLocalBounds();
+        back_label.setPosition(close_bounds.left + 55.0f,
+                               close_bounds.top + (close_bounds.height - b.height) / 2.0f - b.top);
+        target.draw(back_label);
+
+        sf::Text clues_label(pac::core::utf8(ctx_.strings.ui_label("clues")), *font_, 18);
+        clues_label.setFillColor(clues_hovered ? sf::Color(244, 234, 210)
+                                               : sf::Color(225, 209, 171, 205));
+        clues_label.setOutlineColor(sf::Color(0, 0, 0, 210));
+        clues_label.setOutlineThickness(1.0f);
+        const sf::FloatRect clues_text = clues_label.getLocalBounds();
+        clues_label.setPosition(
+            clues_bounds.left + 8.0f,
+            clues_bounds.top + (clues_bounds.height - clues_text.height) / 2.0f - clues_text.top);
+        target.draw(clues_label);
     }
 
     speech_.draw(target, speech_font_);

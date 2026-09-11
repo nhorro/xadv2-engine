@@ -40,6 +40,7 @@ struct TestHost {
     std::vector<std::string> player;
     bool speaking = false;
     std::set<std::pair<std::string, int>> consumed;
+    std::set<std::pair<std::string, int>> selected;
     // Records what the dialog asked us to anchor NPC speech to, and the npc
     // count at the moment it was set (to assert it lands before the first line).
     std::string anchor;
@@ -72,6 +73,12 @@ struct TestHost {
         h.mark_option_consumed = [this](const std::string& node, int idx) {
             consumed.insert({node, idx});
         };
+        h.is_option_selected = [this](const std::string& node, int idx) {
+            return selected.count({node, idx}) > 0;
+        };
+        h.mark_option_selected = [this](const std::string& node, int idx) {
+            selected.insert({node, idx});
+        };
         return h;
     }
 };
@@ -100,6 +107,31 @@ LoadedTree load_tree(Scripting& s, Diagnostics& log, const std::string& src) {
     sol::optional<sol::table> t = r;
     REQUIRE(t.has_value());
     return {*t, end_sentinel};
+}
+
+DialogRuntime build(Scripting& s, Diagnostics& log, TestHost& host, LoadedTree lt);
+Diagnostics quiet();
+
+TEST_CASE("repeatable dialog options expose persistent selected history") {
+    Diagnostics log = quiet();
+    Scripting s(log);
+    TestHost host;
+    const std::string source = R"lua(
+return {
+  start = "hub",
+  hub = { options = { { "Ask again", to = END, silent = true } } },
+}
+)lua";
+
+    DialogRuntime first = build(s, log, host, load_tree(s, log, source));
+    REQUIRE(first.options().size() == 1);
+    CHECK_FALSE(first.options()[0].selected);
+    first.choose(0);
+    CHECK(host.selected.count({"hub", 1}) == 1);
+
+    DialogRuntime second = build(s, log, host, load_tree(s, log, source));
+    REQUIRE(second.options().size() == 1);
+    CHECK(second.options()[0].selected);
 }
 
 DialogRuntime build(Scripting& s, Diagnostics& log, TestHost& host, LoadedTree lt) {

@@ -1167,10 +1167,13 @@ CloseUp` scene): `data`
 scripting), `cast` (opt, cast file for `talk` speech colours), `font` (opt, UI
 text such as hover labels, banners, and the back hint), `music` (opt, temporary
 music cue crossfaded in while the close-up is open), `music_transition` (opt,
-crossfade/fade-out duration in seconds, default `2.5`), and `on_exit` (opt scene
-id entered on back-out; omitted ⇒ pop back to the opener). On exit, the previous
-music cue is restored at its captured playback position; if there was none, the
-temporary cue fades to silence. Ambience and sound effects are not affected.
+entry crossfade duration in seconds, default `2.5`), `music_exit_transition`
+(opt, crossfade duration back to an existing cue, default `0.25`), and `on_exit`
+(opt scene id entered on back-out; omitted ⇒ pop back to the opener). On exit,
+the previous music cue is restored at its captured playback position; if there
+was none, the temporary cue stops with the view. Ambience and sound effects are
+not affected. The player can hide or restore the `?`/check clue markers with the
+persistent `ui.clues` checkbox shared by all close-ups.
 Scripted `talk` uses the manifest's top-level `speech` style.
 
 In a version-2 descriptor, `source: ./closeups/letter` is shorthand for

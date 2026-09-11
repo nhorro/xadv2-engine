@@ -43,6 +43,8 @@ struct BackgroundLayer {
     std::vector<gfx::ShaderEffect> shaders;
 };
 
+enum class RoomHotspotType { OBJECT, EXIT };
+
 struct RoomHotspot {
     std::string id;
     std::string name;                     // localized noun
@@ -50,6 +52,9 @@ struct RoomHotspot {
     std::optional<geom::Point> approach;  // resolved approach point, if any
     std::vector<std::string> affordances; // verbs the UI may offer
     std::string default_verb = "look_at";
+    // Semantic presentation hint for direct interaction UIs. EXIT keeps room
+    // transitions visually distinct without putting translated text in a cursor.
+    RoomHotspotType type = RoomHotspotType::OBJECT;
     std::string
         bind; // "object:<id>" / "region:<id>" / "npc:<id>" hit source (RoomRuntime::hotspot_at)
     bool enabled = true;

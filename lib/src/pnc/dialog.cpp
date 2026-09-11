@@ -203,6 +203,7 @@ struct DialogRuntime::Impl {
             const std::string suffix = authored_id ? *authored_id : std::to_string(raw);
             view.text_id = line_id("option", suffix);
             view.text = localized(view.text_id, *text);
+            view.selected = host.is_option_selected && host.is_option_selected(current_node, raw);
             visible.push_back(std::move(view));
             visible_raw_index.push_back(raw);
         }
@@ -520,6 +521,9 @@ void DialogRuntime::choose(int index) {
         return;
     }
     s.chosen_raw = s.visible_raw_index[index];
+    if (s.host.mark_option_selected) {
+        s.host.mark_option_selected(s.current_node, s.chosen_raw);
+    }
     sol::optional<sol::table> node = s.tree[s.current_node];
     sol::optional<sol::table> opts = node ? (*node)["options"] : sol::optional<sol::table>{};
     sol::optional<sol::table> opt = opts ? (*opts)[s.chosen_raw] : sol::optional<sol::table>{};

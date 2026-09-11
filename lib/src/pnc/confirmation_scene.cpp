@@ -1,6 +1,5 @@
 #include "engine/pnc/confirmation_scene.hpp"
 
-#include "engine/core/cursor.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
 #include "engine/core/resource_cache.hpp"
@@ -137,9 +136,6 @@ void ConfirmationScene::handle_event(const sf::Event& event) {
 
 void ConfirmationScene::update(float dt) {
     (void) dt;
-    if (hovered_ >= 0) {
-        ctx_.cursor.want(pac::core::CursorKind::INTERACT);
-    }
 }
 
 void ConfirmationScene::draw(sf::RenderTarget& target) const {
