@@ -1149,8 +1149,9 @@ level:
 | Field | Req | Type | Default | Meaning |
 |-------|-----|------|---------|---------|
 | `name` | opt | string | id | Localized label; shown as a caption on a look and as the hover label. |
+| `type` | opt | enum | `object` | `object`, `exit`, `previous_page`, or `next_page`. Page types draw a directional arrow and navigate without discarding the underlying scene. |
 | `area` | req | polygon | — | Hit-test polygon, in the close-up's virtual-resolution space (≥ 3 points). |
-| `goto` | opt | scene id | — | If set, clicking switches to this scene (when the hotspot has no scripted handler); otherwise the click shows `name` as a look caption. |
+| `goto` | req* | scene id | — | Required for page types and used as their target close-up scene id. For other types, clicking switches to this scene when the hotspot has no scripted handler; otherwise the click shows `name` as a look caption. |
 
 ### Close-up scripting — `closeups/<id>.lua` (optional)
 

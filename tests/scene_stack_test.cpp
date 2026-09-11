@@ -243,6 +243,38 @@ TEST_CASE("overlays (push/pop) are never faded") {
     CHECK(m.size() == 1);
 }
 
+TEST_CASE("replace top scene preserves the scene below an overlay") {
+    g_counts.clear();
+    SceneManager m = make_manager();
+    m.goto_scene("room");
+    m.push_scene("page_1");
+    m.apply_pending();
+
+    m.replace_top_scene("page_2");
+    m.apply_pending();
+
+    CHECK(m.size() == 2);
+    CHECK(m.current_scene_id() == "room");
+    CHECK(g_counts["room"].left == 0);
+    CHECK(g_counts["page_1"].left == 1);
+    CHECK(g_counts["page_2"].entered == 1);
+}
+
+TEST_CASE("replace top scene keeps the old scene when the target is unknown") {
+    g_counts.clear();
+    SceneManager m = make_manager();
+    m.goto_scene("room");
+    m.push_scene("page_1");
+    m.apply_pending();
+
+    m.replace_top_scene("bad");
+    m.apply_pending();
+
+    CHECK(m.running());
+    CHECK(m.size() == 2);
+    CHECK(g_counts["page_1"].left == 0);
+}
+
 TEST_CASE("pause menu ownership survives overlays and resumes its owning scene") {
     SceneManager m = make_manager();
     m.goto_scene("pausable");

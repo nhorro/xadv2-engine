@@ -41,6 +41,10 @@ const sf::Color kDefaultSpeechColor(230, 230, 230);
 // (place_speech raises the balloon above this point, subtitle-like).
 constexpr float kTalkAnchorY = 0.86f; // fraction of the virtual height
 constexpr const char* kCluesVisibleStateKey = "__ui.closeup_clues_visible";
+
+bool is_page_navigation(CloseUpHotspotType type) {
+    return type == CloseUpHotspotType::PREVIOUS_PAGE || type == CloseUpHotspotType::NEXT_PAGE;
+}
 } // namespace
 
 struct CloseUpScene::Impl {
@@ -363,6 +367,12 @@ void CloseUpScene::activate(const CloseUpHotspot& hs) {
         ctx_.scripting.set_current_scope(ctx_.scripting.global_scope());
         return;
     }
+    // Without an authored handler, page turns are declarative navigation. Replace
+    // only this overlay so the live room remains underneath.
+    if (is_page_navigation(hs.type)) {
+        ctx_.scenes.replace_top_scene(hs.goto_scene);
+        return;
+    }
     mark_hotspot_seen(hs);
     if (!hs.goto_scene.empty()) {
         ctx_.scenes.goto_scene(hs.goto_scene);
@@ -435,8 +445,9 @@ void CloseUpScene::update(float dt) {
     if (close_button_bounds().contains(hover_)) {
         ctx_.cursor.want(pac::core::CursorKind::EXIT);
     } else if (!clues_button_bounds().contains(hover_) && hovered_ != nullptr) {
-        ctx_.cursor.want(hovered_->type == CloseUpHotspotType::EXIT ? pac::core::CursorKind::EXIT
-                         : hotspot_is_new(*hovered_)                ? pac::core::CursorKind::LOOK
+        ctx_.cursor.want(is_page_navigation(hovered_->type) ? pac::core::CursorKind::INTERACT
+                         : hovered_->type == CloseUpHotspotType::EXIT ? pac::core::CursorKind::EXIT
+                         : hotspot_is_new(*hovered_)                  ? pac::core::CursorKind::LOOK
                                                      : pac::core::CursorKind::LOOK_SEEN);
     }
 }
@@ -464,9 +475,52 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
         }
     }
 
+    // Page navigation is always visible, independent of clue-marker preference.
+    // The polygon remains the generous touch target; this icon communicates its
+    // direction at the polygon's centre without needing another bitmap asset.
+    if (loaded_) {
+        for (const CloseUpHotspot& hs : data_.hotspots) {
+            if (!is_page_navigation(hs.type) || hs.area.empty()) {
+                continue;
+            }
+            sf::Vector2f anchor{};
+            for (const geom::Point point : hs.area) {
+                anchor += point;
+            }
+            anchor /= static_cast<float>(hs.area.size());
+            anchor.x = std::clamp(anchor.x, 28.0f, vw - 28.0f);
+            anchor.y = std::clamp(anchor.y, 28.0f, vh - 82.0f);
+            const bool hovered = hovered_ == &hs;
+            const float radius = 22.0f;
+            sf::CircleShape plate(radius, 48);
+            plate.setOrigin(radius, radius);
+            plate.setPosition(anchor);
+            plate.setFillColor(hovered ? sf::Color(17, 39, 46, 220) : sf::Color(9, 14, 17, 150));
+            plate.setOutlineThickness(hovered ? 2.0f : 1.0f);
+            plate.setOutlineColor(hovered ? sf::Color(43, 183, 214, 245)
+                                          : sf::Color(225, 209, 171, 175));
+            target.draw(plate);
+
+            const float direction = hs.type == CloseUpHotspotType::NEXT_PAGE ? 1.0f : -1.0f;
+            sf::ConvexShape arrow(7);
+            const sf::Vector2f points[] = {{-11.0f, -4.5f},
+                                           {2.0f, -4.5f},
+                                           {2.0f, -9.5f},
+                                           {12.0f, 0.0f},
+                                           {2.0f, 9.5f},
+                                           {2.0f, 4.5f},
+                                           {-11.0f, 4.5f}};
+            for (std::size_t i = 0; i < 7; ++i) {
+                arrow.setPoint(i, anchor + sf::Vector2f(points[i].x * direction, points[i].y));
+            }
+            arrow.setFillColor(hovered ? sf::Color(43, 183, 214) : sf::Color(244, 234, 210));
+            target.draw(arrow);
+        }
+    }
+
     // Close-up affordances are deliberately light on the artwork: fresh clues
     // pulse in cyan, exhausted clues retain a quiet check, and navigation
-    // hotspots keep their dedicated exit cursor instead of receiving markers.
+    // hotspots keep their dedicated cursor/icon instead of receiving markers.
     if (loaded_ && font_ != nullptr && !speech_.active() && clues_visible()) {
         const float pulse = 0.5f + 0.5f * std::sin(affordance_time_ * 3.2f);
         const auto draw_segment =
@@ -481,7 +535,8 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
                 target.draw(segment);
             };
         for (const CloseUpHotspot& hs : data_.hotspots) {
-            if (hs.type == CloseUpHotspotType::EXIT || hs.area.empty()) {
+            if (hs.type == CloseUpHotspotType::EXIT || is_page_navigation(hs.type) ||
+                hs.area.empty()) {
                 continue;
             }
             sf::Vector2f anchor{};

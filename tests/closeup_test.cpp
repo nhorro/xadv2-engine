@@ -90,4 +90,27 @@ TEST_CASE("parse_closeup enforces id/background and hotspot geometry with stable
                             "    type: portal\n"
                             "    area: [{x: 0, y: 0}, {x: 1, y: 0}, {x: 0, y: 1}]\n");
           }) == "closeup.hotspot-type-invalid");
+    CHECK(error_code([] {
+              parse_closeup("id: x\nbackground: a.png\nhotspots:\n  next:\n"
+                            "    type: next_page\n"
+                            "    area: [{x: 0, y: 0}, {x: 1, y: 0}, {x: 0, y: 1}]\n");
+          }) == "closeup.page-target-missing");
+}
+
+TEST_CASE("parse_closeup reads previous and next page navigation") {
+    const CloseUpData closeup =
+        parse_closeup("id: book\nbackground: book.png\nhotspots:\n"
+                      "  previous:\n"
+                      "    type: previous_page\n"
+                      "    goto: book_page_1\n"
+                      "    area: [{x: 0, y: 0}, {x: 10, y: 0}, {x: 0, y: 10}]\n"
+                      "  next:\n"
+                      "    type: next_page\n"
+                      "    goto: book_page_3\n"
+                      "    area: [{x: 20, y: 0}, {x: 30, y: 0}, {x: 20, y: 10}]\n");
+    REQUIRE(closeup.hotspots.size() == 2);
+    CHECK(closeup.hotspots[0].type == CloseUpHotspotType::PREVIOUS_PAGE);
+    CHECK(closeup.hotspots[0].goto_scene == "book_page_1");
+    CHECK(closeup.hotspots[1].type == CloseUpHotspotType::NEXT_PAGE);
+    CHECK(closeup.hotspots[1].goto_scene == "book_page_3");
 }

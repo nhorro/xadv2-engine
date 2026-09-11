@@ -24,9 +24,9 @@ class Scene;
 ///
 /// A full-screen `goto_scene` can fade to black and back: when a transition
 /// duration is set, a queued GOTO fades out, swaps the stack at black, then fades
-/// in. Overlays (PUSH/POP — e.g. the pause/settings menu) and QUIT are never
-/// faded. With the default duration of 0 the swap is instant (and the headless
-/// stack tests see the original behavior).
+/// in. Overlay operations (PUSH/POP/REPLACE_TOP) and QUIT are never faded. With
+/// the default duration of 0 the swap is instant (and the headless stack tests
+/// see the original behavior).
 class SceneManager {
 public:
     using Builder = std::function<std::unique_ptr<Scene>(const std::string& id)>;
@@ -59,9 +59,12 @@ public:
     void goto_scene(const std::string& id); // replace stack; "QUIT" token quits
     void push_scene(const std::string& id); // overlay above the current scene
     void pop_scene();                       // remove the top scene
-    void open_settings();                   // engine-handled: push the SettingsScene
-    void open_save();                       // engine-handled: push the save picker
-    void open_load();                       // engine-handled: push the load picker
+    /// Replace only the top scene, preserving anything below it. Intended for
+    /// peer overlays such as pages in a multi-page close-up.
+    void replace_top_scene(const std::string& id);
+    void open_settings(); // engine-handled: push the SettingsScene
+    void open_save();     // engine-handled: push the save picker
+    void open_load();     // engine-handled: push the load picker
     /// Ask before a user-initiated application exit. Falls back to an immediate
     /// quit when the manifest has no ConfirmationScene.
     void request_quit();
@@ -97,7 +100,7 @@ public:
     void draw(sf::RenderTarget& target) const;
 
 private:
-    enum class OpKind { GOTO, PUSH, POP, QUIT };
+    enum class OpKind { GOTO, PUSH, POP, REPLACE_TOP, QUIT };
     struct Op {
         OpKind kind;
         std::string id;

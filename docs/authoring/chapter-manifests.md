@@ -158,12 +158,19 @@ hotspots:
     name: back
     type: exit
     area: [{x: 0, y: 0}, {x: 40, y: 0}, {x: 40, y: 40}]
+  next:
+    type: next_page
+    goto: letter_page_2
+    area: [{x: 1160, y: 0}, {x: 1280, y: 0}, {x: 1280, y: 720}, {x: 1160, y: 720}]
 ```
 
 An explicit data `id` remains supported and is checked against the scene id.
 `background_color` may be supplied by CloseUp scene defaults and overridden in
-the data file. A hotspot `type` may be `object` (the default) or `exit`; exit
-hotspots use the same textless exit cursor as room transitions.
+the data file. A hotspot `type` may be `object` (the default), `exit`,
+`previous_page`, or `next_page`. Exit hotspots use the same textless exit cursor
+as room transitions. Page hotspots require a `goto` target, always draw a
+directional arrow, and replace only the close-up overlay so the underlying room
+remains live.
 
 Object hotspots receive persistent discovery affordances automatically: a
 pulsing question marker before activation and a subdued check afterward. A

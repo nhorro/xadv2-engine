@@ -54,6 +54,14 @@ void SceneManager::pop_scene() {
     pending_.push_back({OpKind::POP, {}});
 }
 
+void SceneManager::replace_top_scene(const std::string& id) {
+    if (id == "QUIT") {
+        quit();
+        return;
+    }
+    pending_.push_back({OpKind::REPLACE_TOP, id});
+}
+
 void SceneManager::open_settings() {
     if (settings_scene_id_.empty()) {
         return;
@@ -204,6 +212,30 @@ void SceneManager::apply_pending() {
             }
             if (stack_.empty()) {
                 running_ = false;
+            }
+            break;
+        }
+        case OpKind::REPLACE_TOP: {
+            // Build first: a bad target must not destroy a still-usable overlay.
+            std::unique_ptr<Scene> scene = build(op.id);
+            if (!scene) {
+                if (stack_.empty()) {
+                    running_ = false;
+                }
+                break;
+            }
+            const bool replacing_root = stack_.size() <= 1;
+            if (!stack_.empty()) {
+                stack_.back()->leave();
+                stack_.pop_back();
+            }
+            if (scene_entered_) {
+                scene_entered_(op.id);
+            }
+            scene->enter();
+            stack_.push_back(std::move(scene));
+            if (replacing_root) {
+                current_scene_id_ = op.id;
             }
             break;
         }

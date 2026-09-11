@@ -39,7 +39,7 @@ namespace pac::pnc {
 /// beneath (instant `spawn_npc`/`despawn_npc`/… — the room is frozen under the
 /// overlay, so blocking room moves are not available). Unscripted close-ups keep
 /// the simple per-hotspot `look` caption / `goto` behavior. Reuses the hotspot
-/// polygons, the SpeechManager, and the custom cursor affordance.
+/// polygons, the SpeechManager, and custom cursor affordances.
 class CloseUpScene : public pac::core::Scene {
 public:
     CloseUpScene(pac::core::EngineContext& ctx, const pac::core::SceneParams& params);

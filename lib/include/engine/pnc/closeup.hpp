@@ -9,16 +9,17 @@
 
 namespace pac::pnc {
 
-enum class CloseUpHotspotType { OBJECT, EXIT };
+enum class CloseUpHotspotType { OBJECT, EXIT, PREVIOUS_PAGE, NEXT_PAGE };
 
 /// One examinable region of a close-up: a hit-test polygon (in the close-up's
 /// virtual-resolution space) with a localized `name` shown as a look caption, and
-/// an optional `goto_scene` outcome that switches scenes when clicked (issue #76).
+/// a type-specific action. Page-navigation hotspots require `goto_scene` and
+/// replace this overlay while preserving the scene below it.
 struct CloseUpHotspot {
     std::string id;
     std::string name;       // localized caption / hover label
     geom::Polygon area;     // hit-test polygon
-    std::string goto_scene; // optional scene id to switch to on click
+    std::string goto_scene; // destination scene; required by page-navigation types
     CloseUpHotspotType type = CloseUpHotspotType::OBJECT;
 };
 

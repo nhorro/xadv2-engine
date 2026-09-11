@@ -124,10 +124,15 @@ CloseUpData parse_closeup(const std::string& yaml_text,
                     hs.type = CloseUpHotspotType::OBJECT;
                 } else if (type == "exit") {
                     hs.type = CloseUpHotspotType::EXIT;
+                } else if (type == "previous_page") {
+                    hs.type = CloseUpHotspotType::PREVIOUS_PAGE;
+                } else if (type == "next_page") {
+                    hs.type = CloseUpHotspotType::NEXT_PAGE;
                 } else {
                     closeup_fail("closeup.hotspot-type-invalid",
                                  "close-up '" + data.id + "': hotspot '" + hs.id +
-                                     "' type must be 'object' or 'exit'",
+                                     "' type must be 'object', 'exit', 'previous_page', or "
+                                     "'next_page'",
                                  node["type"]);
                 }
             }
@@ -145,6 +150,14 @@ CloseUpData parse_closeup(const std::string& yaml_text,
             }
             if (node["goto"]) {
                 hs.goto_scene = node["goto"].as<std::string>();
+            }
+            if ((hs.type == CloseUpHotspotType::PREVIOUS_PAGE ||
+                 hs.type == CloseUpHotspotType::NEXT_PAGE) &&
+                hs.goto_scene.empty()) {
+                closeup_fail("closeup.page-target-missing",
+                             "close-up '" + data.id + "': page hotspot '" + hs.id +
+                                 "' requires a non-empty 'goto' scene id",
+                             node);
             }
             data.hotspots.push_back(std::move(hs));
         }
