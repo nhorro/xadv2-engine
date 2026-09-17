@@ -92,6 +92,12 @@ Strings parse_strings(const std::string& yaml_text) {
     s.ui = read_string_map(root["ui"]);
     s.defaults = read_string_map(root["defaults"]);
 
+    // Foundation / non-P&C games: skip verb and last-resort caption tables.
+    // Lookups still return a visible `?key` placeholder.
+    if (root["minimal"] && root["minimal"].as<bool>()) {
+        return s;
+    }
+
     if (s.verbs.empty()) {
         strings_fail("strings.verbs-missing", "'verbs' must be a non-empty mapping", root);
     }

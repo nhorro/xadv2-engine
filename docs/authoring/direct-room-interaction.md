@@ -107,6 +107,8 @@ direct_room_ui:
   action_text: [300, 566, 680, 42]
   action_text_offset: [18, 26]
   action_follows_cursor: true
+  bag_label: inventory
+  menu_label: options
   context_menu:
     cell_size: [78, 64]
     gap: 6
@@ -150,5 +152,8 @@ The optional `style` mapping accepts `#RRGGBB` or `#RRGGBBAA` colors for
 `hover_border`, `button_background`, `button_border`, `button_hover`, `text`,
 `disabled_text`, `action_background`, `action_outline`, and `notification`. It
 also accepts positive `border_thickness`, `text_size`, `action_text_size`, and
-`action_outline_thickness` values. Set the action background alpha to zero for
-outlined text without a container.
+`action_outline_thickness` values. `button_radius_ratio` controls the persistent
+control plate radius as a fraction of the button's shortest side and must not
+exceed `0.5`. Set the action background alpha to zero for outlined text without
+a container. Optional `bag_label` and `menu_label` values are localization keys;
+when present, their labels fade in above the corresponding hovered control.

@@ -41,9 +41,24 @@ const sf::Color kDefaultSpeechColor(230, 230, 230);
 // (place_speech raises the balloon above this point, subtitle-like).
 constexpr float kTalkAnchorY = 0.86f; // fraction of the virtual height
 constexpr const char* kCluesVisibleStateKey = "__ui.closeup_clues_visible";
+constexpr float kClueMarkersFadeIn = 0.18f;
+constexpr float kClueMarkersFadeOut = 0.10f;
 
 bool is_page_navigation(CloseUpHotspotType type) {
     return type == CloseUpHotspotType::PREVIOUS_PAGE || type == CloseUpHotspotType::NEXT_PAGE;
+}
+
+float move_towards(float current, float target, float distance) {
+    if (current < target) {
+        return std::min(target, current + distance);
+    }
+    return std::max(target, current - distance);
+}
+
+sf::Color with_opacity(sf::Color color, float opacity) {
+    color.a = static_cast<sf::Uint8>(std::lround(
+        static_cast<float>(color.a) * std::clamp(opacity, 0.0f, 1.0f)));
+    return color;
 }
 } // namespace
 
@@ -116,6 +131,7 @@ void CloseUpScene::enter() {
     } catch (const std::exception& e) {
         ctx_.log.error(std::string("CloseUp: ") + e.what());
     }
+    clue_markers_opacity_ = clues_visible() ? 1.0f : 0.0f;
 
     // Optional score overlay. Music is a distinct service from ambience and SFX,
     // so the room soundscape continues uninterrupted under the close-up.
@@ -438,6 +454,18 @@ void CloseUpScene::update(float dt) {
         }
         pending_speech_.clear();
     }
+    // Treat the whole scripted hotspot handler as one presentation. Without
+    // this, the scheduler's one-frame hand-off between consecutive talk lines
+    // briefly made clue markers reappear. A short asymmetric fade keeps the
+    // artwork stable while still making the preference change feel responsive.
+    const bool handler_active =
+        active_handler_ != 0 && ctx_.scripting.is_task_alive(active_handler_);
+    const bool markers_requested =
+        loaded_ && clues_visible() && !speech_.active() && !handler_active;
+    const float target = markers_requested ? 1.0f : 0.0f;
+    const float duration = markers_requested ? kClueMarkersFadeIn : kClueMarkersFadeOut;
+    clue_markers_opacity_ =
+        move_towards(clue_markers_opacity_, target, dt / duration);
     hovered_ = loaded_ ? data_.hotspot_at(hover_) : nullptr;
     if (close_button_bounds().contains(hover_) || clues_button_bounds().contains(hover_)) {
         hovered_ = nullptr;
@@ -521,7 +549,8 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
     // Close-up affordances are deliberately light on the artwork: fresh clues
     // pulse in cyan, exhausted clues retain a quiet check, and navigation
     // hotspots keep their dedicated cursor/icon instead of receiving markers.
-    if (loaded_ && font_ != nullptr && !speech_.active() && clues_visible()) {
+    const float clue_opacity = std::clamp(clue_markers_opacity_, 0.0f, 1.0f);
+    if (loaded_ && font_ != nullptr && clue_opacity > 0.0f) {
         const float pulse = 0.5f + 0.5f * std::sin(affordance_time_ * 3.2f);
         const auto draw_segment =
             [&target](sf::Vector2f from, sf::Vector2f to, float thickness, sf::Color color) {
@@ -552,22 +581,25 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
             sf::CircleShape halo(radius, 40);
             halo.setOrigin(radius, radius);
             halo.setPosition(anchor);
-            halo.setFillColor({9, 14, 17, static_cast<sf::Uint8>(hovered ? 190 : 118)});
+            halo.setFillColor(with_opacity(
+                {9, 14, 17, static_cast<sf::Uint8>(hovered ? 190 : 118)}, clue_opacity));
             halo.setOutlineThickness(hovered ? 2.5f : 1.5f);
-            halo.setOutlineColor(
+            halo.setOutlineColor(with_opacity(
                 fresh ? sf::Color(43, 183, 214, static_cast<sf::Uint8>(150 + pulse * 90.0f))
-                      : sf::Color(225, 209, 171, 105));
+                      : sf::Color(225, 209, 171, 105),
+                clue_opacity));
             target.draw(halo);
             if (fresh) {
                 sf::Text question("?", *font_, 18);
                 question.setStyle(sf::Text::Bold);
-                question.setFillColor(sf::Color(244, 234, 210, 235));
+                question.setFillColor(with_opacity(sf::Color(244, 234, 210, 235), clue_opacity));
                 const sf::FloatRect q = question.getLocalBounds();
                 question.setOrigin(q.left + q.width / 2.0f, q.top + q.height / 2.0f);
                 question.setPosition(anchor);
                 target.draw(question);
             } else {
-                const sf::Color tick(43, 183, 214, hovered ? 235 : 150);
+                const sf::Color tick = with_opacity(
+                    sf::Color(43, 183, 214, hovered ? 235 : 150), clue_opacity);
                 draw_segment(anchor + sf::Vector2f(-5.5f, 0.5f),
                              anchor + sf::Vector2f(-1.0f, 5.0f),
                              2.5f,
@@ -678,7 +710,9 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
 
         // Hover affordance: the examined thing's (possibly renamed) name across the
         // top, unless a caption is already showing there.
-        if (hovered_ != nullptr && !speech_.active()) {
+        const bool handler_active =
+            active_handler_ != 0 && ctx_.scripting.is_task_alive(active_handler_);
+        if (hovered_ != nullptr && !speech_.active() && !handler_active) {
             sf::Text label(pac::core::utf8(display_name(*hovered_)), *font_, 24);
             label.setFillColor(kCaptionColor);
             label.setOutlineColor(sf::Color(0, 0, 0, 200));
@@ -705,7 +739,7 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
         clues_label.setOutlineThickness(1.0f);
         const sf::FloatRect clues_text = clues_label.getLocalBounds();
         clues_label.setPosition(
-            clues_bounds.left + 8.0f,
+            check_bounds.left - 8.0f - clues_text.left - clues_text.width,
             clues_bounds.top + (clues_bounds.height - clues_text.height) / 2.0f - clues_text.top);
         target.draw(clues_label);
     }

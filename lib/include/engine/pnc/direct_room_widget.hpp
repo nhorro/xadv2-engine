@@ -71,9 +71,16 @@ private:
     [[nodiscard]] int current_page() const;
     void activate_item(const std::string& item_id);
     void emit(RoomUiIntent intent) const;
-    void draw_button(sf::RenderTarget& target, sf::FloatRect rect, bool hovered) const;
+    void draw_button(sf::RenderTarget& target,
+                     sf::FloatRect rect,
+                     float hover_amount,
+                     bool pressed) const;
     void draw_bag_icon(sf::RenderTarget& target, sf::FloatRect rect) const;
     void draw_menu_icon(sf::RenderTarget& target, sf::FloatRect rect) const;
+    void draw_control_label(sf::RenderTarget& target,
+                            sf::FloatRect rect,
+                            const std::string& key,
+                            float opacity) const;
     void draw_inventory(sf::RenderTarget& target) const;
     bool draw_item_icon(sf::RenderTarget& target,
                         const std::string& item_id,
@@ -102,6 +109,10 @@ private:
     std::optional<std::string> pressed_item_;
     sf::Vector2f press_position_{};
     std::optional<std::string> dragged_item_;
+    enum class PressedControl { NONE, BAG, MENU };
+    PressedControl pressed_control_ = PressedControl::NONE;
+    float bag_hover_ = 0.0f;
+    float menu_hover_ = 0.0f;
 };
 
 } // namespace pac::pnc

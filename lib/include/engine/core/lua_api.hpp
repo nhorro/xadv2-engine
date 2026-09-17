@@ -11,9 +11,9 @@ class Scripting;
 
 /// Register the core (layer-agnostic) Lua API as flat snake_case globals: flow is
 /// provided by the scripting service (`spawn`/`wait`/`emit`/`wait_event`); this
-/// adds `resource_path`, audio (`play_music`/`crossfade_music`/`stop_music`/`play_sound`/
-/// `stop_sound`/`stop_sounds`), and state (`get_state`/`set_state`). Genre APIs (talk,
-/// change_room, ...) are registered by the point-and-click layer in later milestones.
+/// adds `resource_path`, audio, state (`get_state`/`set_state`), localization
+/// (`tr`/`set_language`/`language`), and geom (`distance`/`point_in_polygon`).
+/// Genre APIs (talk, change_room, ...) are registered by the point-and-click kit.
 /// Also wires the declared-facts proxy (issue #188): if `facts_path` is present it
 /// is parsed and bound via `bind_facts` below. The default preserves the original
 /// root-level `facts.yaml` convention.

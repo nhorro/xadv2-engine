@@ -90,6 +90,7 @@ private:
     geom::Point hover_{-1.0f, -1.0f};
     const CloseUpHotspot* hovered_ = nullptr;
     float affordance_time_ = 0.0f;
+    float clue_markers_opacity_ = 1.0f;
 
     // Scripting (optional `logic:` sidecar).
     CloseUpRuntime runtime_;

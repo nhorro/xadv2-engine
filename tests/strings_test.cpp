@@ -69,6 +69,13 @@ TEST_CASE("verb_panel_label uses the short label when present, else falls back t
     CHECK(d.verb_panel_label("look_at") == d.verb_label("look_at"));
 }
 
+TEST_CASE("parse_strings accepts a minimal table for non-P&C games") {
+    const Strings s = parse_strings("version: 1\nlanguage: en\nminimal: true\n");
+    CHECK(s.language == "en");
+    CHECK(s.verb_label("look_at") == "?look_at");
+    CHECK(s.caption("nothing_happens") == "?nothing_happens");
+}
+
 TEST_CASE("parse_strings requires the core blocks") {
     auto drop = [](const std::string& block) {
         std::string y = kValid;

@@ -80,6 +80,8 @@ direct_room_ui:
   bag_button: [80, 60, 10, 10]
   menu_button: [90, 60, 10, 10]
   action_text: [20, 65, 60, 10]
+  bag_label: inventory
+  menu_label: options
   inventory:
     panel: [10, 10, 80, 45]
     grid: [15, 15, 70, 25]
@@ -99,6 +101,7 @@ direct_room_ui:
     panel_background: "#101112CC"
     text: "#AABBCC"
     text_size: 18
+    button_radius_ratio: 0.4
 )yaml");
 
     CHECK(config.design_size == sf::Vector2f(100.0f, 80.0f));
@@ -109,9 +112,12 @@ direct_room_ui:
     CHECK(config.inventory.compact_padding == doctest::Approx(7.0f));
     CHECK(config.icons.sheet == "shared/ui/actions.png");
     CHECK(config.icons.bag == 3);
+    CHECK(config.bag_label == "inventory");
+    CHECK(config.menu_label == "options");
     CHECK(config.style.panel_background == sf::Color(16, 17, 18, 204));
     CHECK(config.style.text == sf::Color(170, 187, 204, 255));
     CHECK(config.style.text_size == 18);
+    CHECK(config.style.button_radius_ratio == doctest::Approx(0.4f));
 }
 
 TEST_CASE("direct inventory is hidden by default and bag and menu remain actionable") {

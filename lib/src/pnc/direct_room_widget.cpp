@@ -33,6 +33,27 @@ void center_text(sf::Text& text, sf::FloatRect rect) {
     text.setPosition(rect.left + rect.width / 2.0f, rect.top + rect.height / 2.0f);
 }
 
+sf::Color mix_color(sf::Color from, sf::Color to, float amount) {
+    amount = std::clamp(amount, 0.0f, 1.0f);
+    const auto channel = [amount](sf::Uint8 a, sf::Uint8 b) {
+        return static_cast<sf::Uint8>(std::lround(
+            static_cast<float>(a) + (static_cast<float>(b) - static_cast<float>(a)) * amount));
+    };
+    return {channel(from.r, to.r),
+            channel(from.g, to.g),
+            channel(from.b, to.b),
+            channel(from.a, to.a)};
+}
+
+sf::FloatRect scale_from_center(sf::FloatRect rect, float factor) {
+    const float width = rect.width * factor;
+    const float height = rect.height * factor;
+    return {rect.left + (rect.width - width) / 2.0f,
+            rect.top + (rect.height - height) / 2.0f,
+            width,
+            height};
+}
+
 } // namespace
 
 DirectRoomWidget::DirectRoomWidget(DirectRoomUiConfig config,
@@ -193,6 +214,7 @@ InputResult DirectRoomWidget::handle(const RoutedInput& input) {
         return InputResult::PASS;
     }
     if (!available) {
+        pressed_control_ = PressedControl::NONE;
         return InputResult::PASS;
     }
 
@@ -223,6 +245,16 @@ InputResult DirectRoomWidget::handle(const RoutedInput& input) {
             press_position_ = input.position;
             return InputResult::CONSUMED;
         }
+        const sf::FloatRect bag = scale(config_.bag_button);
+        const sf::FloatRect menu = scale(config_.menu_button);
+        if (menu.contains(input.position)) {
+            pressed_control_ = PressedControl::MENU;
+            return InputResult::CONSUMED;
+        }
+        if (bag.contains(input.position)) {
+            pressed_control_ = PressedControl::BAG;
+            return InputResult::CONSUMED;
+        }
         return captures(input.position) ? InputResult::CONSUMED : InputResult::PASS;
     }
 
@@ -247,6 +279,7 @@ InputResult DirectRoomWidget::handle(const RoutedInput& input) {
         return dragged_item_ || captures(input.position) ? InputResult::CONSUMED
                                                          : InputResult::PASS;
     }
+    pressed_control_ = PressedControl::NONE;
 
     if (dragged_item_) {
         RoomUiIntent intent;
@@ -262,6 +295,8 @@ InputResult DirectRoomWidget::handle(const RoutedInput& input) {
     const sf::FloatRect menu = scale(config_.menu_button);
     if (menu.contains(input.position)) {
         pressed_item_.reset();
+        pressed_control_ = PressedControl::NONE;
+        cursor_ = {-1.0f, -1.0f};
         RoomUiIntent intent;
         intent.kind = RoomUiIntent::Kind::OPEN_MENU;
         emit(std::move(intent));
@@ -269,6 +304,8 @@ InputResult DirectRoomWidget::handle(const RoutedInput& input) {
     }
     if (bag.contains(input.position)) {
         pressed_item_.reset();
+        pressed_control_ = PressedControl::NONE;
+        cursor_ = {-1.0f, -1.0f};
         if (state_.speech_active) {
             RoomUiIntent intent;
             intent.kind = RoomUiIntent::Kind::DISMISS_SPEECH;
@@ -283,6 +320,7 @@ InputResult DirectRoomWidget::handle(const RoutedInput& input) {
 
     if (!state_.inventory_open) {
         pressed_item_.reset();
+        pressed_control_ = PressedControl::NONE;
         return InputResult::PASS;
     }
     if (state_.speech_active) {
@@ -325,6 +363,7 @@ InputResult DirectRoomWidget::handle(const RoutedInput& input) {
         return InputResult::CONSUMED;
     }
     pressed_item_.reset();
+    pressed_control_ = PressedControl::NONE;
     return inventory_panel_bounds().contains(input.position) ? InputResult::CONSUMED
                                                              : InputResult::PASS;
 }
@@ -336,7 +375,20 @@ void DirectRoomWidget::activate_item(const std::string& item_id) {
     emit(std::move(intent));
 }
 
-void DirectRoomWidget::update(float /*dt*/) {}
+void DirectRoomWidget::update(float dt) {
+    // A short ease makes pointer entry feel intentional while remaining quick
+    // enough for mouse use. It also gives touch a visible down-state through
+    // `pressed_control_` without adding ornamental animation.
+    const float amount = std::clamp(dt * 12.0f, 0.0f, 1.0f);
+    const auto approach = [amount](float current, bool active) {
+        const float target = active ? 1.0f : 0.0f;
+        return current + (target - current) * amount;
+    };
+    const sf::FloatRect bag = scale(config_.bag_button);
+    const sf::FloatRect menu = scale(config_.menu_button);
+    bag_hover_ = approach(bag_hover_, bag.contains(cursor_));
+    menu_hover_ = approach(menu_hover_, menu.contains(cursor_));
+}
 
 sf::FloatRect DirectRoomWidget::context_menu_bounds() const {
     if (!state_.context_menu.open()) {
@@ -441,6 +493,7 @@ bool DirectRoomWidget::contains_ui(sf::Vector2f point) const {
 void DirectRoomWidget::cancel_gesture() {
     pressed_item_.reset();
     dragged_item_.reset();
+    pressed_control_ = PressedControl::NONE;
 }
 
 void DirectRoomWidget::emit(RoomUiIntent intent) const {
@@ -451,12 +504,17 @@ void DirectRoomWidget::emit(RoomUiIntent intent) const {
 
 void DirectRoomWidget::draw_button(sf::RenderTarget& target,
                                    sf::FloatRect rect,
-                                   bool hovered) const {
-    const float radius = std::min(rect.width, rect.height) * 0.46f;
+                                   float hover_amount,
+                                   bool pressed) const {
+    const float radius =
+        std::min(rect.width, rect.height) * config_.style.button_radius_ratio;
     sf::CircleShape shape(radius, 48);
     shape.setOrigin(radius, radius);
     shape.setPosition(rect.left + rect.width / 2.0f, rect.top + rect.height / 2.0f);
-    shape.setFillColor(hovered ? config_.style.button_hover : config_.style.button_background);
+    const float visual_scale = pressed ? 0.93f : 1.0f + 0.025f * hover_amount;
+    shape.setScale(visual_scale, visual_scale);
+    shape.setFillColor(
+        mix_color(config_.style.button_background, config_.style.button_hover, hover_amount));
     shape.setOutlineColor(config_.style.button_border);
     shape.setOutlineThickness(
         config_.style.button_border.a == 0 ? 0.0f : scale_distance(config_.style.border_thickness));
@@ -500,6 +558,47 @@ void DirectRoomWidget::draw_menu_icon(sf::RenderTarget& target, sf::FloatRect re
         line.setFillColor(config_.style.text);
         target.draw(line);
     }
+}
+
+void DirectRoomWidget::draw_control_label(sf::RenderTarget& target,
+                                          sf::FloatRect rect,
+                                          const std::string& key,
+                                          float opacity) const {
+    if (opacity <= 0.01f || key.empty() || !font_ || !model_.strings) {
+        return;
+    }
+    const std::string label = model_.strings->ui_label(key);
+    if (label.empty() || label.front() == '?') {
+        return;
+    }
+    const auto alpha = [opacity](sf::Uint8 value) {
+        return static_cast<sf::Uint8>(std::lround(
+            static_cast<float>(value) * std::clamp(opacity, 0.0f, 1.0f)));
+    };
+    const unsigned size = std::max(14u, config_.style.text_size * 3u / 4u);
+    sf::Text text(pac::core::utf8(label), *font_, size);
+    text.setFillColor({config_.style.text.r,
+                       config_.style.text.g,
+                       config_.style.text.b,
+                       alpha(config_.style.text.a)});
+    text.setOutlineColor({0, 0, 0, alpha(225)});
+    text.setOutlineThickness(scale_distance(1.0f));
+    const sf::FloatRect bounds = text.getLocalBounds();
+    const float padding_x = scale_distance(8.0f);
+    const float padding_y = scale_distance(4.0f);
+    const float width = bounds.width + padding_x * 2.0f;
+    const float height = bounds.height + padding_y * 2.0f;
+    const float left = std::clamp(rect.left + rect.width / 2.0f - width / 2.0f,
+                                  0.0f,
+                                  std::max(0.0f,
+                                           static_cast<float>(virtual_resolution_.x) - width));
+    const float top = std::max(0.0f, rect.top - height - scale_distance(8.0f));
+    sf::RectangleShape plate({width, height});
+    plate.setPosition(left, top);
+    plate.setFillColor({9, 14, 17, alpha(205)});
+    target.draw(plate);
+    text.setPosition(left + padding_x - bounds.left, top + padding_y - bounds.top);
+    target.draw(text);
 }
 
 bool DirectRoomWidget::draw_item_icon(sf::RenderTarget& target,
@@ -639,7 +738,7 @@ void DirectRoomWidget::draw_inventory(sf::RenderTarget& target) const {
     const bool has_next = current_page() + 1 < page_count();
     const auto arrow = [&](sf::FloatRect design_rect, int cell, const char* label, bool enabled) {
         const sf::FloatRect rect = scale(design_rect);
-        draw_button(target, rect, enabled && rect.contains(cursor_));
+        draw_button(target, rect, enabled && rect.contains(cursor_) ? 1.0f : 0.0f, false);
         if (draw_atlas_icon(target, cell, rect, enabled ? 255 : 105)) {
             return;
         }
@@ -869,10 +968,17 @@ void DirectRoomWidget::draw(sf::RenderTarget& target) const {
 
     const sf::FloatRect bag = scale(config_.bag_button);
     const sf::FloatRect menu = scale(config_.menu_button);
-    draw_button(target, bag, bag.contains(cursor_));
-    draw_bag_icon(target, bag);
-    draw_button(target, menu, menu.contains(cursor_));
-    draw_menu_icon(target, menu);
+    const bool bag_pressed = pressed_control_ == PressedControl::BAG;
+    const bool menu_pressed = pressed_control_ == PressedControl::MENU;
+    draw_button(target, bag, bag_hover_, bag_pressed);
+    draw_bag_icon(target, scale_from_center(bag, bag_pressed ? 0.93f : 1.0f));
+    draw_button(target, menu, menu_hover_, menu_pressed);
+    draw_menu_icon(target, scale_from_center(menu, menu_pressed ? 0.93f : 1.0f));
+    if (bag_hover_ >= menu_hover_) {
+        draw_control_label(target, bag, config_.bag_label, bag_hover_);
+    } else {
+        draw_control_label(target, menu, config_.menu_label, menu_hover_);
+    }
     draw_action_text(target);
     draw_context_menu(target);
 

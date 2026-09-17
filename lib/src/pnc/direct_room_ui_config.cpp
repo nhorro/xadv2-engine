@@ -175,6 +175,9 @@ DirectRoomUiConfig parse_direct_room_ui_config(const std::string& yaml_text) {
     config.action_follows_cursor = boolean(root["action_follows_cursor"],
                                            "action_follows_cursor",
                                            config.action_follows_cursor);
+    config.bag_label = root["bag_label"] ? root["bag_label"].as<std::string>() : std::string();
+    config.menu_label =
+        root["menu_label"] ? root["menu_label"].as<std::string>() : std::string();
 
     if (const YAML::Node context = root["context_menu"]) {
         config.context_menu.cell_size =
@@ -288,6 +291,9 @@ DirectRoomUiConfig parse_direct_room_ui_config(const std::string& yaml_text) {
             color(style["action_outline"], "style.action_outline", config.style.action_outline);
         config.style.notification =
             color(style["notification"], "style.notification", config.style.notification);
+        config.style.button_radius_ratio = positive(style["button_radius_ratio"],
+                                                    "style.button_radius_ratio",
+                                                    config.style.button_radius_ratio);
         config.style.border_thickness = positive(style["border_thickness"],
                                                  "style.border_thickness",
                                                  config.style.border_thickness);
@@ -299,6 +305,11 @@ DirectRoomUiConfig parse_direct_room_ui_config(const std::string& yaml_text) {
         config.style.action_outline_thickness = positive(style["action_outline_thickness"],
                                                          "style.action_outline_thickness",
                                                          config.style.action_outline_thickness);
+        if (config.style.button_radius_ratio > 0.5f) {
+            fail("direct-room-ui.button-radius-invalid",
+                 "style.button_radius_ratio must not exceed 0.5",
+                 style["button_radius_ratio"]);
+        }
         if (config.style.text_size == 0 || config.style.action_text_size == 0) {
             fail("direct-room-ui.text-size-invalid", "text sizes must be positive", style);
         }

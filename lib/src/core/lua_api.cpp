@@ -4,11 +4,14 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/engine_context.hpp"
 #include "engine/core/facts.hpp"
+#include "engine/core/localization.hpp"
 #include "engine/core/manifest.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
 #include "engine/core/scripting.hpp"
 #include "engine/core/state_store.hpp"
+#include "engine/core/text_id.hpp"
+#include "engine/geom/geometry.hpp"
 
 #include <sol/sol.hpp>
 
@@ -16,6 +19,7 @@
 #include <functional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace pac::core {
 
@@ -126,6 +130,36 @@ void bind_core_api(EngineContext& ctx, const std::string& facts_path) {
             ctx.log.warn("set_ambience_layer_volume: unknown layer '" + id + "'");
         }
         return found;
+    });
+
+    // --- localization (any genre; not P&C-only) ---
+    lua.set_function("tr", [&ctx](const std::string& id, const std::string& source) {
+        return ctx.localization.text(id, source);
+    });
+    lua.set_function("set_language", [&ctx](const std::string& id) {
+        return ctx.localization.set_language(id);
+    });
+    lua.set_function("language", [&ctx]() { return ctx.localization.active(); });
+    lua.set_function("_translate_text",
+                     [&ctx](const std::string& source, sol::optional<std::string> explicit_id) {
+                         const std::string id =
+                             text_id(explicit_id.value_or(std::string()), source);
+                         return ctx.localization.text(id, source);
+                     });
+
+    // --- geometry (headless primitives; pathfinding stays kit-policy) ---
+    lua.set_function("distance", [](float x1, float y1, float x2, float y2) {
+        return pac::geom::distance({x1, y1}, {x2, y2});
+    });
+    lua.set_function("point_in_polygon", [](float x, float y, const sol::table& points) {
+        pac::geom::Polygon poly;
+        const std::size_t n = points.size();
+        poly.reserve(n);
+        for (std::size_t i = 1; i <= n; ++i) {
+            const sol::table p = points[i];
+            poly.push_back({p.get<float>("x"), p.get<float>("y")});
+        }
+        return pac::geom::point_in_polygon({x, y}, poly);
     });
 
     // --- global state (scalars only) ---

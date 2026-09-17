@@ -67,6 +67,7 @@ struct DirectRoomUiStyle {
     sf::Color action_background{21, 22, 23, 205};
     sf::Color action_outline{0, 0, 0, 235};
     sf::Color notification{245, 193, 72, 255};
+    float button_radius_ratio = 0.46f;
     float border_thickness = 2.0f;
     unsigned text_size = 22;
     unsigned action_text_size = 23;
@@ -83,6 +84,8 @@ struct DirectRoomUiConfig {
     sf::FloatRect action_text{300.0f, 566.0f, 680.0f, 42.0f};
     sf::Vector2f action_text_offset{18.0f, 24.0f};
     bool action_follows_cursor = false;
+    std::string bag_label;
+    std::string menu_label;
     DirectRoomUiInventoryConfig inventory;
     DirectRoomUiContextMenuConfig context_menu;
     DirectRoomUiIconsConfig icons;

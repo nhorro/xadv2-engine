@@ -32,6 +32,9 @@ The available standard libraries are `base`, `coroutine`, `string`, `math`, and
 `table`. Use `include(path)` for another game script; `require`, `dofile`, `io`,
 and `os` are not part of the authoring environment.
 
+`tr`, `set_language`, `language`, `distance`, and `point_in_polygon` are core
+globals (any scene). Verb-grid strings remain a P&C catalog.
+
 ## Where yielding is allowed
 
 The engine creates a coroutine automatically for:
@@ -74,7 +77,11 @@ not cross a room or scene boundary.
 |---|---|---|
 | `include(path)` | script return value or `nil` | Read and execute a logical resource path. It runs on every call and is not cached. |
 | `resource_path(path)` | path or `nil` | Validate and return a logical path; this never exposes an OS path. |
-| `tr(id, source)` | localized string | Resolve stable content id `id`, falling back to `source`. Available while a room is active. |
+| `tr(id, source)` | localized string | Resolve stable content id `id`, falling back to `source`. Core — any scene. |
+| `set_language(id)` | bool | Switch the active language catalog. |
+| `language()` | string | Active language id. |
+| `distance(x1,y1,x2,y2)` | number | Euclidean distance. |
+| `point_in_polygon(x,y,points)` | bool | `points` is `{ {x=,y=}, ... }`. |
 
 ### Persistent state
 
