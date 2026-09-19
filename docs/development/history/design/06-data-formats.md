@@ -127,9 +127,9 @@ id.
   (req path to the cutscene YAML — see [cutscene file](#cutscene--cutscenesidyaml)),
   `on_finish` (outcome scene id), `font` (opt path — fallback when a slide's
   `text_style.font` is empty). Three advancement modes (`auto`, `manual`,
-  `timed`); `Esc` always skips. The localized manual continue/skip hint comes
-  from `strings.ui.manual_continue_hint`. Use for declarative, scrollable
-  slide shows; pick `StoryText` instead when the cutscene needs scripted
+  `timed`). Desktop shows localized keyboard hints and `Esc` always skips;
+  Android shows a localized Skip button and touch-only continuation hint. Use
+  for declarative, scrollable slide shows; pick `StoryText` instead when the cutscene needs scripted
   yields or branching.
 - `CaseResolution` — deduction template. Parameters: `data` (template YAML),
   `terms` (shared term-bank YAML), `logic` (optional Lua sidecar), `font`,
@@ -439,7 +439,7 @@ The active language is persisted in the player settings file (see below).
 | `verbs` | req | map verb id → string | — | Display label per verb. Keys are the verb ids: `look_at`, `talk_to`, `pick_up`, `use`, `give`, `open`, `close`, `push`, `pull`. Used in the command bar. |
 | `verb_panel` | opt | map verb id → string | falls back to `verbs` | Short SCUMM-panel button labels (e.g. `talk_to: "Hablar"` while `verbs.talk_to` stays `"Hablar con"` for the command bar). |
 | `connectors` | req | map verb id → string | — | Two-operand connector per verb: `use` (e.g. `con`), `give` (e.g. `a`). |
-| `ui` | req | map key → string | — | Built-in UI labels. Title menu (`new_game`, `continue`, `settings`, `settings_button`, `quit_to_os`); confirmation (`confirm_quit_message`, `confirm_title_message`, `confirm_yes`, `confirm_no`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `settings`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `speech`, `on`, `off`); cutscene hints (`manual_continue_hint`, and `cutscene_skip_hint` when a timed/auto scene opts in); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
+| `ui` | req | map key → string | — | Built-in UI labels. Title menu (`new_game`, `continue`, `settings`, `settings_button`, `quit_to_os`); confirmation (`confirm_quit_message`, `confirm_title_message`, `confirm_yes`, `confirm_no`); save/load picker (`save_game`, `load_game`, `save_button`, `load_button`, `autosave`, `slot`, `slot_empty`, `description_hint`, `thumbnail_placeholder`); in-game pause (`pause`, `resume`, `settings`, `quit_to_title`); settings (`back`, `apply`, `resolution`, `fullscreen`, `language`, `music`, `sfx`, `speech`, `on`, `off`); desktop cutscene hints (`manual_continue_hint`, `cutscene_skip_hint`); Android cutscene controls (`manual_continue_touch_hint`, `cutscene_skip_button`); and the top-bar walk label `walk_to` (shown when hovering walkable floor). |
 | `defaults` | req | map key → string | — | Engine last-resort captions, spoken when no game handler produced text for a verb. The loader requires the exact key set below — no missing keys, and (in dev) no unknown keys. |
 
 The two exit labels are intentionally distinct: `quit_to_os` closes the
@@ -892,7 +892,7 @@ Top level:
 | `audio_persist` | opt | bool | `false` | Keep `audio` playing past the cutscene so the next scene owns it (e.g. a room script calls `stop_music()` on entry). Otherwise the track stops when the cutscene ends. |
 | `backdrop` | opt | map | — | Persistent image below every slide. Supports `image`, normalized `position`/`size`, `fit`, `tint`, audio-clock `motion`, and a subtle luminance `pulse`; see below. |
 | `timed_crossfade` | opt | float | `0` | In `timed` mode, crossfade from the previous slide for this many seconds after each `at` cue. The blend uses the audio clock and cannot drift. |
-| `show_skip_hint` | opt | bool | `false` | Draw the localized `strings.ui.cutscene_skip_hint` label in non-manual modes. |
+| `show_skip_hint` | opt | bool | `false` | In non-manual modes, draw the localized `strings.ui.cutscene_skip_hint` on desktop or clickable `strings.ui.cutscene_skip_button` on Android. |
 | `fade` | opt | float \| map | `0` | Default dip-to-black between slides (and fade-in at the start / fade-out at the end). A number sets both halves; a map is `{in, out, color}` — seconds, plus the fade `color` (default black). Composes through `defaults.fade` and per-slide `fade`; `null` resets an inherited fade to a hard cut. Applies to `auto` / `manual`; timed presentations use `timed_crossfade`. |
 | `defaults` | opt | map | — | Style / layout defaults applied to every slide. Per-slide fields override these. |
 | `slides` | req | `[slide]` | — | Non-empty list of slides. |
@@ -902,7 +902,7 @@ Top level:
 | Mode | Behavior | Input |
 |------|----------|-------|
 | `auto` | Each slide stays on screen for `duration` seconds, then advances. Equivalent to the old text-only cutscene. | `Esc` skips. |
-| `manual` | Player advances slides themselves. A localized hint is drawn at the bottom-right (`strings.ui.manual_continue_hint`). | `Enter` / `Space` / left-click advance; `Esc` skips. |
+| `manual` | Player advances slides themselves. Desktop draws the localized `manual_continue_hint`; Android draws `manual_continue_touch_hint` beside `cutscene_skip_button`. | Desktop: `Enter` / `Space` / left-click advance and `Esc` skips. Android: tap advances and the Skip button skips. |
 | `timed` | Slides become active at their `at` timestamp. When `audio` is set, its playback offset drives the clock; an `audio_delay` pre-roll uses negative cue times. Otherwise the scene's wall-clock is used. | `Esc` skips. |
 
 **`defaults`** — any subset of:

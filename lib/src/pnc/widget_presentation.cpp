@@ -1,5 +1,7 @@
 #include "engine/pnc/widget_presentation.hpp"
 
+#include "gfx/gles2_compat.hpp"
+
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/RenderTexture.hpp>
@@ -117,6 +119,11 @@ void WidgetSurface::draw(sf::RenderTarget& target,
     if (!texture_ || texture_->getSize() != sf::Vector2u{width, height}) {
         auto next = std::make_unique<sf::RenderTexture>();
         if (!next->create(width, height)) return;
+        // RenderTextures are independent RenderTargets. On Android they need
+        // the engine's GLES default shader just like the main window; otherwise
+        // the first unshaded widget primitive dereferences a null shader in
+        // sf::RenderTarget::setupDraw().
+        pac::gfx::configure_gles2_target(*next);
         texture_ = std::move(next);
     }
     texture_->setView(sf::View(content_bounds));

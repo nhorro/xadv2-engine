@@ -35,9 +35,24 @@ namespace pac::pnc {
 
 namespace {
 
-constexpr float kHintMargin = 18.0f;   // virtual-px padding for the manual continue/skip hint
-constexpr unsigned kHintTextSize = 13; // tiny continue/skip hint (e.g. "[ENTER]")
+constexpr float kHintMargin = 18.0f; // virtual-px padding for the continue/skip hint or controls
+constexpr unsigned kHintTextSize = 13;
+#if defined(SFML_SYSTEM_ANDROID)
+constexpr float kSkipButtonWidth = 112.0f;
+constexpr float kSkipButtonHeight = 40.0f;
+constexpr float kHintButtonGap = 14.0f;
+constexpr unsigned kSkipTextSize = 15;
+#endif
 constexpr float kTau = 6.28318530717958647692f;
+
+#if defined(SFML_SYSTEM_ANDROID)
+sf::FloatRect skip_button_bounds(float virtual_width, float virtual_height) {
+    return {virtual_width - kHintMargin - kSkipButtonWidth,
+            virtual_height - kHintMargin - kSkipButtonHeight,
+            kSkipButtonWidth,
+            kSkipButtonHeight};
+}
+#endif
 
 float smoothstep(float value) {
     const float t = std::clamp(value, 0.0f, 1.0f);
@@ -249,6 +264,20 @@ void CutsceneScene::handle_event(const sf::Event& event) {
         finish();
         return;
     }
+#if defined(SFML_SYSTEM_ANDROID)
+    const bool skip_visible = data_.mode == CutsceneAdvanceMode::Manual || data_.show_skip_hint;
+    if (skip_visible && event.type == sf::Event::MouseButtonReleased &&
+        event.mouseButton.button == sf::Mouse::Left) {
+        const auto resolution = ctx_.display.virtual_resolution();
+        const sf::FloatRect button =
+            skip_button_bounds(static_cast<float>(resolution.x), static_cast<float>(resolution.y));
+        if (button.contains(static_cast<float>(event.mouseButton.x),
+                            static_cast<float>(event.mouseButton.y))) {
+            finish();
+            return;
+        }
+    }
+#endif
     if (data_.mode != CutsceneAdvanceMode::Manual) {
         return;
     }
@@ -558,24 +587,8 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
     }
     draw_slide(data_.slides[current_], current_, blend);
 
-    // Manual mode: a quiet hint at the bottom-right so the player knows what
-    // to do. The string lives in the strings file so it picks up the active
-    // localization — never hardcoded (R3).
-    if (data_.mode == CutsceneAdvanceMode::Manual || data_.show_skip_hint) {
-        if (const sf::Font* font = fallback_font_) {
-            const std::string label = ctx_.strings.ui_label(
-                data_.mode == CutsceneAdvanceMode::Manual ? "manual_continue_hint"
-                                                          : "cutscene_skip_hint");
-            sf::Text hint(pac::core::utf8(label), *font, kHintTextSize);
-            hint.setFillColor(sf::Color(200, 200, 210, 220));
-            const sf::FloatRect b = hint.getLocalBounds();
-            hint.setPosition(vw - b.width - kHintMargin - b.left,
-                             vh - b.height - kHintMargin - b.top);
-            target.draw(hint);
-        }
-    }
-
-    // Dip-to-black fade overlay covers everything (image, band, text, hint).
+    // Dip-to-black covers the authored slide. Navigation controls are drawn
+    // afterward so they remain visible and usable during a transition.
     const float fa = fade_overlay_alpha();
     if (fa > 0.0f) {
         sf::RectangleShape overlay(sf::Vector2f(vw, vh));
@@ -583,6 +596,56 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
         c.a = static_cast<sf::Uint8>(std::clamp(fa, 0.0f, 1.0f) * 255.0f);
         overlay.setFillColor(c);
         target.draw(overlay);
+    }
+
+    // Android has no Escape key, so it gets a visible touch target and no
+    // keyboard wording. Desktop retains the quiet keyboard hint; its cursor is
+    // intentionally hidden throughout cutscenes.
+    if (data_.mode == CutsceneAdvanceMode::Manual || data_.show_skip_hint) {
+        if (const sf::Font* font = fallback_font_) {
+#if defined(SFML_SYSTEM_ANDROID)
+            const sf::FloatRect button = skip_button_bounds(vw, vh);
+            sf::RectangleShape background({button.width, button.height});
+            background.setPosition(button.left, button.top);
+            background.setFillColor(sf::Color(12, 12, 16, 210));
+            background.setOutlineColor(sf::Color(200, 200, 210, 230));
+            background.setOutlineThickness(1.0f);
+            target.draw(background);
+
+            sf::Text skip(pac::core::utf8(ctx_.strings.ui_label("cutscene_skip_button")),
+                          *font,
+                          kSkipTextSize);
+            skip.setFillColor(sf::Color(235, 235, 242));
+            const sf::FloatRect skip_bounds = skip.getLocalBounds();
+            skip.setPosition(
+                button.left + (button.width - skip_bounds.width) * 0.5f - skip_bounds.left,
+                button.top + (button.height - skip_bounds.height) * 0.5f - skip_bounds.top - 1.0f);
+            target.draw(skip);
+
+            if (data_.mode == CutsceneAdvanceMode::Manual) {
+                sf::Text hint(pac::core::utf8(ctx_.strings.ui_label("manual_continue_touch_hint")),
+                              *font,
+                              kHintTextSize);
+                hint.setFillColor(sf::Color(200, 200, 210, 220));
+                const sf::FloatRect hint_bounds = hint.getLocalBounds();
+                hint.setPosition(button.left - kHintButtonGap - hint_bounds.width -
+                                     hint_bounds.left,
+                                 button.top + (button.height - hint_bounds.height) * 0.5f -
+                                     hint_bounds.top - 1.0f);
+                target.draw(hint);
+            }
+#else
+            const std::string label = ctx_.strings.ui_label(
+                data_.mode == CutsceneAdvanceMode::Manual ? "manual_continue_hint"
+                                                          : "cutscene_skip_hint");
+            sf::Text hint(pac::core::utf8(label), *font, kHintTextSize);
+            hint.setFillColor(sf::Color(200, 200, 210, 220));
+            const sf::FloatRect bounds = hint.getLocalBounds();
+            hint.setPosition(vw - bounds.width - kHintMargin - bounds.left,
+                             vh - bounds.height - kHintMargin - bounds.top);
+            target.draw(hint);
+#endif
+        }
     }
 }
 

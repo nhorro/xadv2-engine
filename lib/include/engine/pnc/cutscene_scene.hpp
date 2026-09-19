@@ -22,7 +22,8 @@ namespace pac::pnc {
 /// solid-black background; each slide may carry text, an image, or both, with
 /// per-slide positioning and styling. Advancement is one of:
 ///   - `auto`   — each slide stays on screen for `duration` seconds.
-///   - `manual` — the player advances with click/Enter/Space; Esc skips.
+///   - `manual` — the player advances with click/Enter/Space; Esc skips on
+///                desktop, while Android provides an on-screen Skip button.
 ///   - `timed`  — slides become active at their `at` timestamp, optionally
 ///                driven by an audio file (so a stuttering engine doesn't
 ///                desync from a narrated track).

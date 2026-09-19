@@ -34,11 +34,36 @@ const sf::Color kText(225, 209, 171), kHover(43, 183, 214), kGold(201, 152, 46);
 const sf::Color kDisabled(176, 165, 138);
 constexpr std::size_t kPerPage = 12;
 constexpr float kHeader = 28.0f;
-constexpr float kCheckWidth = 142.0f;
+constexpr float kControlWidth = 142.0f;
 constexpr float kDragThreshold = 5.0f;
+
+struct ControlRect {
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+};
+
+struct CaseControls {
+    ControlRect check;
+    ControlRect exit;
+};
+
+CaseControls case_controls(float virtual_width, float virtual_height, float panel_y) {
+    const float height = std::max(0.0f, virtual_height - panel_y - kHeader);
+    const float check_height = height * 0.5f;
+    const float x = virtual_width - kControlWidth;
+    const float y = panel_y + kHeader;
+    return {{x, y, kControlWidth, check_height},
+            {x, y + check_height, kControlWidth, height - check_height}};
+}
 
 bool inside(geom::Point p, float x, float y, float w, float h) {
     return p.x >= x && p.x < x + w && p.y >= y && p.y < y + h;
+}
+
+bool inside(geom::Point p, const ControlRect& rect) {
+    return inside(p, rect.x, rect.y, rect.width, rect.height);
 }
 
 void centered(sf::RenderTarget& target,
@@ -198,7 +223,7 @@ std::optional<std::size_t> CaseResolutionScene::term_index_at(geom::Point p) con
     const float vw = static_cast<float>(ctx_.display.virtual_resolution().x);
     const float vh = static_cast<float>(ctx_.display.virtual_resolution().y);
     const float panel_y = data_.canvas_height;
-    const float usable = vw - kCheckWidth;
+    const float usable = vw - kControlWidth;
     if (p.x < 0.0f || p.x >= usable || p.y < panel_y + kHeader || p.y >= vh)
         return std::nullopt;
     const float cell_w = usable / 6.0f;
@@ -277,7 +302,12 @@ void CaseResolutionScene::activate_control(geom::Point p) {
     const float vw = static_cast<float>(ctx_.display.virtual_resolution().x);
     const float vh = static_cast<float>(ctx_.display.virtual_resolution().y);
     const float panel_y = data_.canvas_height;
-    if (inside(p, vw - kCheckWidth, panel_y + kHeader, kCheckWidth, vh - panel_y - kHeader)) {
+    const CaseControls controls = case_controls(vw, vh, panel_y);
+    if (inside(p, controls.exit)) {
+        exit();
+        return;
+    }
+    if (inside(p, controls.check)) {
         if (!assignments_.complete(data_))
             return;
         const std::size_t invalid = assignments_.invalid_count(data_);
@@ -305,6 +335,7 @@ bool CaseResolutionScene::pointer_is_actionable(geom::Point p) const {
     const float vw = static_cast<float>(ctx_.display.virtual_resolution().x);
     const float vh = static_cast<float>(ctx_.display.virtual_resolution().y);
     const float panel_y = data_.canvas_height;
+    const CaseControls controls = case_controls(vw, vh, panel_y);
     if (!held_term_.empty()) {
         const CaseSlot* slot = p.y < panel_y ? data_.slot_at(p) : nullptr;
         const CaseTerm* term = bank_.find(held_term_);
@@ -316,8 +347,9 @@ bool CaseResolutionScene::pointer_is_actionable(geom::Point p) const {
     }
     if (term_index_at(p))
         return true;
-    if (assignments_.complete(data_) &&
-        inside(p, vw - kCheckWidth, panel_y + kHeader, kCheckWidth, vh - panel_y - kHeader))
+    if (inside(p, controls.exit))
+        return true;
+    if (assignments_.complete(data_) && inside(p, controls.check))
         return true;
     if (page_ > 0 && inside(p, vw - 132.0f, panel_y, 36.0f, kHeader))
         return true;
@@ -368,6 +400,7 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
     };
     const auto res = ctx_.display.virtual_resolution();
     const float vw = float(res.x), vh = float(res.y), py = data_.canvas_height;
+    const CaseControls controls = case_controls(vw, vh, py);
     sf::RectangleShape fill({vw, vh});
     fill.setFillColor(data_.background_color);
     target.draw(fill);
@@ -440,7 +473,7 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
              py,
              36,
              kHeader);
-    const float usable = vw - kCheckWidth, cw = usable / 6, ch = (vh - py - kHeader) / 2;
+    const float usable = vw - kControlWidth, cw = usable / 6, ch = (vh - py - kHeader) / 2;
     for (std::size_t local = 0; local < kPerPage; ++local) {
         const std::size_t index = page_ * kPerPage + local;
         if (index >= bank_.terms.size())
@@ -465,10 +498,9 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
                  ch);
     }
     const bool complete = assignments_.complete(data_);
-    const bool check_hover =
-        complete && inside(mouse_, vw - kCheckWidth, py + kHeader, kCheckWidth, vh - py - kHeader);
-    sf::RectangleShape check({kCheckWidth, vh - py - kHeader});
-    check.setPosition(vw - kCheckWidth, py + kHeader);
+    const bool check_hover = complete && inside(mouse_, controls.check);
+    sf::RectangleShape check({controls.check.width, controls.check.height});
+    check.setPosition(controls.check.x, controls.check.y);
     check.setFillColor(complete ? kCell : kPanel);
     check.setOutlineColor(feedback_left_ > 0 ? (feedback_success_ ? kGold : sf::Color(190, 70, 60))
                                              : (check_hover ? kHover : kBorder));
@@ -485,10 +517,27 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
                                 : ctx_.strings.ui_label("case_check"),
              17,
              check_text,
-             vw - kCheckWidth,
-             py + kHeader,
-             kCheckWidth,
-             vh - py - kHeader);
+             controls.check.x,
+             controls.check.y,
+             controls.check.width,
+             controls.check.height);
+
+    const bool exit_hover = inside(mouse_, controls.exit);
+    sf::RectangleShape exit_button({controls.exit.width, controls.exit.height});
+    exit_button.setPosition(controls.exit.x, controls.exit.y);
+    exit_button.setFillColor(exit_hover ? kCell : kPanel);
+    exit_button.setOutlineColor(exit_hover ? kHover : kBorder);
+    exit_button.setOutlineThickness(-2);
+    target.draw(exit_button);
+    centered(target,
+             *font_,
+             ctx_.strings.ui_label("case_exit"),
+             17,
+             exit_hover ? kHover : kText,
+             controls.exit.x,
+             controls.exit.y,
+             controls.exit.width,
+             controls.exit.height);
 
     if (!held_term_.empty()) {
         if (const CaseTerm* term = bank_.find(held_term_)) {

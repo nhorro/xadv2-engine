@@ -43,6 +43,9 @@ ui:
   notes:    "Field notes"   # pause-menu label for the custom scene in 06_cpp_scene
   apply:    "Apply"
   manual_continue_hint: "click or [enter] to continue, [esc] to skip"
+  manual_continue_touch_hint: "tap to continue"
+  cutscene_skip_hint: "[esc] to skip"
+  cutscene_skip_button: "Skip"
   resolution: "Resolution"
   fullscreen: "Fullscreen"
   language: "Language"
