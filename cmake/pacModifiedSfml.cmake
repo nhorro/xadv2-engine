@@ -80,6 +80,12 @@ elseif(WIN32)
     # The fork carries the matching MSVC dependency binaries. Keeping those
     # avoids reintroducing vcpkg's independent SFML port or version selection.
     set(SFML_USE_SYSTEM_DEPS OFF CACHE BOOL "" FORCE)
+    find_package(Freetype REQUIRED)
+    if(FREETYPE_LIBRARY_DEBUG AND FREETYPE_LIBRARY_RELEASE)
+        set(FREETYPE_LIBRARY
+            "$<$<CONFIG:Debug>:${FREETYPE_LIBRARY_DEBUG}>$<$<NOT:$<CONFIG:Debug>>:${FREETYPE_LIBRARY_RELEASE}>"
+            CACHE STRING "Configuration-aware Freetype library for modified SFML" FORCE)
+    endif()
 else()
     # Keep codec/window dependencies native to the host while pinning the SFML
     # implementation itself. This avoids shipping stale fork-bundled desktop
@@ -94,6 +100,15 @@ FetchContent_Declare(
     GIT_SHALLOW ON)
 FetchContent_MakeAvailable(pac_modified_sfml)
 FetchContent_GetProperties(pac_modified_sfml SOURCE_DIR sfml_android_source_dir)
+
+if(WIN32 AND TARGET Freetype AND FREETYPE_LIBRARY_DEBUG AND FREETYPE_LIBRARY_RELEASE)
+    # The fork's old sfml_find_package helper stores CMake's
+    # optimized;release.lib;debug;debug.lib keyword list as literal link items
+    # under Visual Studio, which becomes optimized.lib/debug.lib at link time.
+    # Keep the interface as one generator-expression item instead.
+    set_property(TARGET Freetype PROPERTY INTERFACE_LINK_LIBRARIES
+        "$<$<CONFIG:Debug>:${FREETYPE_LIBRARY_DEBUG}>$<$<NOT:$<CONFIG:Debug>>:${FREETYPE_LIBRARY_RELEASE}>")
+endif()
 
 # Source-tree builds keep the patches under android/cmake. Installed engine
 # packages place them beside this module.
