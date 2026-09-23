@@ -6,6 +6,50 @@ if(NOT DEFINED sfml_android_source_dir)
     message(FATAL_ERROR "sfml_android_source_dir was not provided")
 endif()
 
+# The modified fork predates SFML's Xcursor-backed ARGB cursor support and
+# reduces every Unix custom cursor to a one-bit black/white bitmap. Backport the
+# pinned official SFML 2.6.2 implementation on X11 desktops so authored RGBA
+# cursor colours and antialiasing survive. The public Cursor::Type enum in the
+# older fork does not contain the eight one-sided resize cursors added later, so
+# omit only those switch cases from the otherwise unmodified reference source.
+if(CMAKE_SYSTEM_NAME MATCHES "Linux|FreeBSD|OpenBSD")
+    if(NOT DEFINED sfml_reference_source_dir)
+        message(FATAL_ERROR "sfml_reference_source_dir was not provided")
+    endif()
+
+    set(sfml_unix_cursor_reference_dir
+        "${sfml_reference_source_dir}/src/SFML/Window/Unix")
+    set(sfml_unix_cursor_target_dir
+        "${sfml_android_source_dir}/src/SFML/Window/Unix")
+    configure_file(
+        "${sfml_unix_cursor_reference_dir}/CursorImpl.hpp"
+        "${sfml_unix_cursor_target_dir}/CursorImpl.hpp"
+        COPYONLY)
+    configure_file(
+        "${sfml_unix_cursor_reference_dir}/CursorImpl.cpp"
+        "${sfml_unix_cursor_target_dir}/CursorImpl.cpp"
+        COPYONLY)
+
+    set(sfml_unix_cursor_cpp
+        "${sfml_unix_cursor_target_dir}/CursorImpl.cpp")
+    file(READ "${sfml_unix_cursor_cpp}" sfml_unix_cursor_source)
+    foreach(sfml_unsupported_cursor_case IN ITEMS
+            SizeLeft SizeRight SizeTop SizeBottom
+            SizeTopLeft SizeBottomRight SizeBottomLeft SizeTopRight)
+        string(REGEX REPLACE
+            "[ \t]*case Cursor::${sfml_unsupported_cursor_case}:[^\n]*\n"
+            ""
+            sfml_unix_cursor_source
+            "${sfml_unix_cursor_source}")
+    endforeach()
+    string(FIND "${sfml_unix_cursor_source}" "XcursorImageLoadCursor"
+           sfml_xcursor_load_location)
+    if(sfml_xcursor_load_location EQUAL -1)
+        message(FATAL_ERROR "SFML reference source no longer provides ARGB Xcursor support")
+    endif()
+    file(WRITE "${sfml_unix_cursor_cpp}" "${sfml_unix_cursor_source}")
+endif()
+
 set(sfml_egl "${sfml_android_source_dir}/src/SFML/Window/EglContext.cpp")
 file(READ "${sfml_egl}" sfml_egl_source)
 set(sfml_egl_old "EGL_RENDERABLE_TYPE, EGL_OPENGL_ES_BIT,")

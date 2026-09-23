@@ -59,6 +59,17 @@ TEST_CASE("standard command line accepts gameplay recording output") {
     CHECK(options.screenshot_path == "frame.png");
 }
 
+TEST_CASE("standard command line accepts a development control port") {
+    char exe[] = "game";
+    char control[] = "--control-port=0";
+    char manifest[] = "custom.yaml";
+    char* argv[] = {exe, control, manifest};
+    pac::core::RunOptions options;
+
+    CHECK(pac::core::parse_run_options(3, argv, options, "game.yaml") == "custom.yaml");
+    CHECK(options.control_port == 0);
+}
+
 TEST_CASE(
     "application configure hook runs after core Lua bindings and setup failure aborts startup") {
 #if defined(_WIN32)
@@ -115,6 +126,9 @@ TEST_CASE(
         CHECK(manifest.id == "application_hook_test");
         CHECK(ctx.scripting.run_string("assert(type(get_state) == 'function')"));
         CHECK(ctx.scripting.run_string("assert(type(stop_sound) == 'function')"));
+        CHECK(ctx.scripting.run_string("assert(type(show_information) == 'function')"));
+        CHECK(ctx.scripting.run_string("assert(type(show_indicator) == 'function')"));
+        CHECK(ctx.scripting.run_string("assert(type(hide_indicator) == 'function')"));
         throw std::runtime_error("expected setup failure");
     };
 

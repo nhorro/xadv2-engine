@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/cursor.hpp"
+#include "engine/core/control.hpp"
 #include "engine/core/game_state.hpp"
 #include "engine/core/scene.hpp"
 #include "engine/core/screen_fade.hpp"
@@ -51,6 +52,7 @@ class SceneParams;
 namespace pac::pnc {
 
 class RoomLightingRenderer;
+class RoomControlService;
 class RoomTuningOverlay;
 
 /// SCUMM-style room gameplay (M4): rooms (YAML + Lua) + cast + inventory, a
@@ -234,6 +236,7 @@ public:
     bool restore(const pac::core::GameState& state);
 
 private:
+    friend class RoomControlService;
     [[nodiscard]] bool tuning_overlay_active() const;
     void load_room(const std::string& id, const std::string& entry_point);
     void unload_room();
@@ -474,6 +477,8 @@ private:
     mutable gfx::ShaderChain post_process_chain_;
     mutable std::unique_ptr<RoomLightingRenderer> lighting_renderer_;
     std::unique_ptr<RoomTuningOverlay> tuning_overlay_;
+    std::unique_ptr<RoomControlService> control_service_;
+    pac::core::ControlRegistration control_registration_;
     mutable std::size_t post_process_rt_bytes_ = 0;
     DebugOverlay debug_overlay_;
     // Dev overlay layer toggles (#37). Seeded from ctx_.dev in enter(); flipped by

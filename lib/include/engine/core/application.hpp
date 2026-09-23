@@ -29,6 +29,9 @@ struct RunOptions {
     /// Explicit override of the pak location (`--pak`); when set, takes
     /// precedence over the exe/CWD lookup. Empty = auto-discover.
     std::string pak_path;
+    /// -1 disables remote control (default); 0 asks Linux for an ephemeral port;
+    /// 1..65535 selects a fixed loopback TCP port. Development-only.
+    int control_port = -1;
 };
 
 /// Optional compiled-game setup called after core Lua bindings are installed and
@@ -50,6 +53,7 @@ struct ApplicationHooks {
 ///     --shot PATH  write the final frame to PATH
 ///     --pak PATH   load resources from this pak instead of auto-discovering one
 ///     --record PATH  write semantic gameplay events to a CSV file
+///     --control-port PORT  enable Linux loopback JSON-RPC control (0 = automatic)
 ///
 /// `argv[0]` is recorded in `opts.argv0` for the pak-next-to-exe lookup. Every
 /// game's `main` needs exactly this, so the engine owns it rather than having

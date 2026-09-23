@@ -43,6 +43,7 @@ speech:
   voice_directory: speech/es
 development:
   allow_room_reload: true
+  pause_on_focus_loss: false
   warn_missing_translations: true
 entry: title
 scenes:
@@ -75,6 +76,7 @@ TEST_CASE("valid manifest parses with expected fields") {
     CHECK(m.speech.font_size == 30u);
     CHECK(m.speech.voice_directory == "speech/es");
     CHECK(m.development.allow_room_reload == true);
+    CHECK_FALSE(m.development.pause_on_focus_loss);
     CHECK(m.development.warn_missing_translations);
     CHECK(m.entry == "title");
     REQUIRE(m.scenes.size() == 2);
@@ -94,6 +96,7 @@ TEST_CASE("facts path defaults to the resource root and rejects an empty overrid
                        "scenes: [{id: a, type: B}]\n");
     CHECK(defaults.facts_path == "facts.yaml");
     CHECK(defaults.title == "g");
+    CHECK(defaults.development.pause_on_focus_loss);
 
     CHECK(error_code([] {
               parse_manifest("id: g\nresolution: { width: 1, height: 1 }\nwindow: {}\n"
@@ -311,6 +314,42 @@ TEST_CASE("cursor block is optional — defaults to no custom cursor") {
     CHECK(m.cursor.hotspot.y == 0u);
     CHECK(m.cursor.action_hotspot == sf::Vector2u(0u, 0u));
     CHECK_FALSE(m.cursor.blink.enabled());
+}
+
+TEST_CASE("information overlay skin is parsed and remains optional") {
+    const Manifest defaults = parse_manifest(kValid);
+    CHECK(defaults.information_overlay.font.empty());
+    CHECK(defaults.information_overlay.text_size == 30u);
+    CHECK(defaults.information_overlay.indicator_image.empty());
+
+    const Manifest m =
+        parse_manifest("id: g\nresolution: { width: 1280, height: 720 }\nwindow: {}\n"
+                       "resources: { src: . }\nstrings: s\nentry: a\n"
+                       "scenes: [{id: a, type: B}]\n"
+                       "information_overlay:\n"
+                       "  font: fonts/guide.ttf\n"
+                       "  text_size: 34\n"
+                       "  panel_width: 900\n"
+                       "  panel_padding: 36\n"
+                       "  image_max_height: 280\n"
+                       "  backdrop_color: { r: 1, g: 2, b: 3, a: 144 }\n"
+                       "  panel_color: { r: 10, g: 11, b: 12, a: 240 }\n"
+                       "  indicator_color: { r: 210, g: 160, b: 60 }\n"
+                       "  indicator:\n"
+                       "    image: ui/arrow.png\n"
+                       "    hotspot: { x: 15, y: 31 }\n"
+                       "    scale: 1.25\n");
+    CHECK(m.information_overlay.font == "fonts/guide.ttf");
+    CHECK(m.information_overlay.text_size == 34u);
+    CHECK(m.information_overlay.panel_width == doctest::Approx(900.0f));
+    CHECK(m.information_overlay.panel_padding == doctest::Approx(36.0f));
+    CHECK(m.information_overlay.image_max_height == doctest::Approx(280.0f));
+    CHECK(m.information_overlay.backdrop_color == sf::Color(1, 2, 3, 144));
+    CHECK(m.information_overlay.panel_color == sf::Color(10, 11, 12, 240));
+    CHECK(m.information_overlay.indicator_color == sf::Color(210, 160, 60, 255));
+    CHECK(m.information_overlay.indicator_image == "ui/arrow.png");
+    CHECK(m.information_overlay.indicator_hotspot == sf::Vector2f(15.0f, 31.0f));
+    CHECK(m.information_overlay.indicator_scale == doctest::Approx(1.25f));
 }
 
 TEST_CASE("single-language shorthand yields one language entry") {

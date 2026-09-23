@@ -2,10 +2,12 @@
 
 #include "engine/core/audio.hpp"
 #include "engine/core/cursor.hpp"
+#include "engine/core/control.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
 #include "engine/core/gameplay_recorder.hpp"
+#include "engine/core/information_overlay.hpp"
 #include "engine/core/localization.hpp"
 #include "engine/core/lua_api.hpp"
 #include "engine/core/manifest.hpp"
@@ -21,6 +23,7 @@
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/screenshot.hpp"
 #include "engine/core/scripting.hpp"
+#include "engine/core/socket_control_server.hpp"
 #include "engine/core/settings.hpp"
 #include "engine/core/settings_store.hpp"
 #include "engine/core/state_store.hpp"
@@ -30,6 +33,7 @@
 #include "engine/core/thumbnail.hpp"
 #include "engine/core/user_data.hpp"
 #include "gfx/gles2_compat.hpp"
+#include "control_services.hpp"
 
 #include <SFML/Graphics/Image.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
@@ -355,6 +359,12 @@ parse_run_options(int argc, char** argv, RunOptions& opts, const std::string& de
             opts.recording_path = std::move(v);
         } else if (std::string v = value_of(arg, "--pak", i); !v.empty()) {
             opts.pak_path = std::move(v);
+        } else if (std::string v = value_of(arg, "--control-port", i); !v.empty()) {
+            char* end = nullptr;
+            const long port = std::strtol(v.c_str(), &end, 10);
+            opts.control_port = end && *end == '\0' && port >= 0 && port <= 65535
+                                    ? static_cast<int>(port)
+                                    : -2;
         } else if (!arg.empty() && arg[0] != '-') {
             manifest = arg;
         }
@@ -475,11 +485,23 @@ static int run_impl(const std::string& manifest_path,
     Display display(manifest.resolution,
                     {settings.window_width, settings.window_height},
                     settings.fullscreen);
+    ControlRouter control;
+    // Scenes may own scoped control registrations. Declare the router first so
+    // reverse destruction tears scenes down before their registration target.
     SceneManager scenes;
     SaveService saves(save_data_dir(manifest.id, executable_dir(opts.argv0)), log);
     CursorState cursor_state;
     Thumbnail thumbnail;
     GameplayRecorder recorder;
+    InformationOverlayConfig information_config = manifest.information_overlay;
+    if (information_config.font.empty()) {
+        information_config.font = manifest.speech.font;
+    }
+    InformationOverlay information(display,
+                                   resources,
+                                   scripting,
+                                   log,
+                                   std::move(information_config));
     if (!opts.recording_path.empty()) {
         if (!recorder.start_csv(opts.recording_path)) {
             log.error("could not open gameplay recording '" + opts.recording_path + "'");
@@ -507,7 +529,9 @@ static int run_impl(const std::string& manifest_path,
                       thumbnail,
                       recorder,
                       manifest.speech,
-                      {}};
+                      {},
+                      &information,
+                      &control};
     bind_core_api(ctx, manifest.facts_path);
     if (hooks.configure) {
         try {
@@ -519,6 +543,20 @@ static int run_impl(const std::string& manifest_path,
             log.error("application setup failed: unknown exception");
             return 1;
         }
+    }
+
+    EngineControlService engine_control(control, scenes);
+    LuaControlService lua_control(scripting);
+    auto engine_control_registration = control.register_service("engine", engine_control);
+    auto lua_control_registration = control.register_service("lua", lua_control);
+    SocketControlServer control_server;
+    if (opts.control_port < -1 || opts.control_port > 65535) {
+        log.error("--control-port must be an integer from 0 to 65535");
+        return 1;
+    }
+    if (opts.control_port >= 0 &&
+        !control_server.start(static_cast<std::uint16_t>(opts.control_port), log)) {
+        return 1;
     }
 
     // Session-only chapter identity survives intervening cutscenes/credits. It
@@ -763,7 +801,13 @@ static int run_impl(const std::string& manifest_path,
                 scenes.request_quit();
             } else if (event.type == sf::Event::LostFocus) {
                 space_down = false;
+#if defined(SFML_SYSTEM_ANDROID)
                 begin_pause();
+#else
+                if (manifest.development.pause_on_focus_loss) {
+                    begin_pause();
+                }
+#endif
             } else if (event.type == sf::Event::GainedFocus) {
                 // Android recreates its EGL surface while delivering this event.
                 // Keep the application paused until the player explicitly resumes.
@@ -774,6 +818,16 @@ static int run_impl(const std::string& manifest_path,
             } else {
                 for (const sf::Event& pointer_event : pointer_input.translate(event)) {
                     const sf::Event virtual_event = to_virtual_event(pointer_event, display);
+#ifndef NDEBUG
+                    if (virtual_event.type == sf::Event::KeyPressed &&
+                        virtual_event.key.code == sf::Keyboard::F12) {
+                        screenshot_requested = true;
+                        continue;
+                    }
+#endif
+                    if (information.handle_event(virtual_event)) {
+                        continue;
+                    }
                     if (virtual_event.type == sf::Event::KeyReleased &&
                         virtual_event.key.code == sf::Keyboard::Space) {
                         space_down = false;
@@ -791,13 +845,6 @@ static int run_impl(const std::string& manifest_path,
                         }
                         continue;
                     }
-#ifndef NDEBUG
-                    if (virtual_event.type == sf::Event::KeyPressed &&
-                        virtual_event.key.code == sf::Keyboard::F12) {
-                        screenshot_requested = true;
-                        continue;
-                    }
-#endif
                     if (paused && generic_pause_overlay) {
                         if (resumes_generic_pause(virtual_event)) {
                             finish_pause(false);
@@ -813,6 +860,7 @@ static int run_impl(const std::string& manifest_path,
                 }
             }
         }
+        control_server.poll(control, log);
         // SFML queues GainedFocus before its Android processEvents() call creates
         // the replacement EGL surface. The final poll above performs that work;
         // only now can the context be made current again.
@@ -857,10 +905,15 @@ static int run_impl(const std::string& manifest_path,
             accumulator += frame_seconds;
             while (accumulator >= kFixedDt && steps < kMaxStepsPerFrame) {
                 audio.update(kFixedDt);
-                scripting.update(kFixedDt);
-                scenes.update(kFixedDt);
-                if (hooks.update) {
-                    hooks.update(kFixedDt);
+                information.update(kFixedDt);
+                if (!information.modal_active()) {
+                    scripting.update(kFixedDt);
+                    if (!information.modal_active()) {
+                        scenes.update(kFixedDt);
+                    }
+                    if (!information.modal_active() && hooks.update) {
+                        hooks.update(kFixedDt);
+                    }
                 }
                 scenes.apply_pending();
                 accumulator -= kFixedDt;
@@ -959,6 +1012,14 @@ static int run_impl(const std::string& manifest_path,
                                    ? cursor_default_inverted.get()
                                    : cursor_default.get();
         }
+        // A modal information page may be opened while gameplay is hiding the
+        // cursor for an inventory drag. It owns input now, so always restore a
+        // neutral visible pointer until the page is dismissed.
+        if (information.modal_active()) {
+            active_cursor_hidden = false;
+            requested_cursor = cursor_blinks ? cursor_blink_frames[blink_frame].get()
+                                              : cursor_default.get();
+        }
         // Some OS backends make a hardware cursor visible again when its image is
         // replaced. Freeze animated/tinted cursor swaps while hidden; on return,
         // apply the current frame before restoring visibility.
@@ -979,6 +1040,7 @@ static int run_impl(const std::string& manifest_path,
         if (hooks.draw) {
             hooks.draw(window);
         }
+        information.draw(window);
         if (paused && generic_pause_overlay) {
             window.setView(display.view());
             draw_generic_pause(window,
@@ -1023,7 +1085,8 @@ static int run_impl(const std::string& manifest_path,
         // keeps the per-frame GPU readback off the hot path.
         constexpr int kThumbnailEveryFrames = 30;
         const Scene* top = scenes.top();
-        if (!paused && top && top->wants_thumbnail() && (frames % kThumbnailEveryFrames) == 0) {
+        if (!paused && !information.modal_active() && top && top->wants_thumbnail() &&
+            (frames % kThumbnailEveryFrames) == 0) {
             thumbnail.capture(window, display.viewport());
         }
 

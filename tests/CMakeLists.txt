@@ -20,6 +20,7 @@ endif()
 
 add_executable(pac_core_tests
     test_main.cpp
+    control_test.cpp
     load_error_test.cpp
     manifest_test.cpp
     strings_test.cpp
@@ -36,6 +37,7 @@ add_executable(pac_core_tests
     display_test.cpp
     audio_test.cpp
     cursor_test.cpp
+    information_overlay_test.cpp
     geometry_test.cpp
     spritesheet_test.cpp
     animation_test.cpp

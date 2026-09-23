@@ -155,9 +155,11 @@ struct ProjectedShadow {
 
     bool enabled = true;
     geom::Point light{0.0f, 0.0f};
-    // Optional dynamic-light id. When set, the live light position drives the
-    // shadow and a disabled/missing attachment suppresses it for that frame.
+    // Optional dynamic-light ids. `source` preserves the original single-light
+    // form; `sources` combines several live contributions into one painterly
+    // resultant. A fixed `light` point leaves both fields empty.
     std::string source;
+    std::vector<std::string> sources;
     Casters casters = Casters::PLAYER;
     float length = 0.45f;
     float width = 0.75f;
@@ -291,6 +293,14 @@ struct RoomConfigs {
     std::vector<std::string> managed_obstacles;
 
     const RoomConfig* find(const std::string& id) const;
+};
+
+/// Session-scoped rendering controls seeded from the authored RoomData. Runtime
+/// Lua, development controls, and the F9 adapter all address this single copy.
+struct RoomRenderState {
+    std::optional<RoomPostProcess> post_process;
+    std::optional<RoomLighting> lighting;
+    std::optional<ProjectedShadow> projected_shadow;
 };
 
 /// Parsed static room definition (`rooms/<id>.yaml`). Headless and testable; the

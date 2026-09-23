@@ -15,6 +15,10 @@ struct DevFlags {
     bool show_anchors = false;   // avatar anchors + z values (F3)
     bool show_state = false;     // command-builder + room/world state HUD (F4)
     bool allow_room_reload = false;
+    // Desktop authoring tools may need the simulation to keep running while an
+    // external editor or notebook has focus. Existing games keep auto-pausing.
+    // Android ignores this override because losing focus also loses its surface.
+    bool pause_on_focus_loss = true;
     // Log each missing content translation id once while a non-default language
     // is active. Kept separate from edit_mode so CI/playtest builds can audit a
     // catalog without enabling in-room editing overlays.

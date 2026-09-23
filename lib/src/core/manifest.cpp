@@ -95,6 +95,31 @@ sf::Color parse_cursor_color(const YAML::Node& node, const std::string& field, s
     return {static_cast<sf::Uint8>(r), static_cast<sf::Uint8>(g), static_cast<sf::Uint8>(b)};
 }
 
+sf::Color
+parse_information_color(const YAML::Node& node, const std::string& field, sf::Color fallback) {
+    if (!node) {
+        return fallback;
+    }
+    if (!node.IsMap() || !node["r"] || !node["g"] || !node["b"]) {
+        manifest_fail("manifest.information-overlay-color-invalid",
+                      "'information_overlay." + field + "' must contain r, g, and b",
+                      node);
+    }
+    const int r = node["r"].as<int>();
+    const int g = node["g"].as<int>();
+    const int b = node["b"].as<int>();
+    const int a = node["a"] ? node["a"].as<int>() : 255;
+    if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 255) {
+        manifest_fail("manifest.information-overlay-color-invalid",
+                      "'information_overlay." + field + "' channels must be between 0 and 255",
+                      node);
+    }
+    return {static_cast<sf::Uint8>(r),
+            static_cast<sf::Uint8>(g),
+            static_cast<sf::Uint8>(b),
+            static_cast<sf::Uint8>(a)};
+}
+
 // Parse the UI-strings language declaration (issue #72). Two accepted forms:
 //
 //   strings: strings/es.yaml            # single-language shorthand
@@ -642,6 +667,71 @@ Manifest parse_manifest(const std::string& yaml_text) {
         }
     }
 
+    if (const YAML::Node overlay = root["information_overlay"]) {
+        if (!overlay.IsMap()) {
+            manifest_fail("manifest.information-overlay-invalid",
+                          "'information_overlay' must be a mapping",
+                          overlay);
+        }
+        auto& config = m.information_overlay;
+        config.font = overlay["font"] ? overlay["font"].as<std::string>() : std::string();
+        if (overlay["text_size"]) {
+            config.text_size =
+                require_dimension(overlay["text_size"], "information_overlay.text_size");
+        }
+        const auto positive = [&](const char* name, float& value) {
+            if (!overlay[name]) {
+                return;
+            }
+            value = overlay[name].as<float>();
+            if (!std::isfinite(value) || value <= 0.0f) {
+                manifest_fail("manifest.information-overlay-dimension-invalid",
+                              std::string("'information_overlay.") + name +
+                                  "' must be greater than zero",
+                              overlay[name]);
+            }
+        };
+        positive("panel_width", config.panel_width);
+        positive("panel_padding", config.panel_padding);
+        positive("image_max_height", config.image_max_height);
+        config.backdrop_color = parse_information_color(overlay["backdrop_color"],
+                                                        "backdrop_color",
+                                                        config.backdrop_color);
+        config.panel_color =
+            parse_information_color(overlay["panel_color"], "panel_color", config.panel_color);
+        config.panel_outline_color = parse_information_color(overlay["panel_outline_color"],
+                                                             "panel_outline_color",
+                                                             config.panel_outline_color);
+        config.text_color =
+            parse_information_color(overlay["text_color"], "text_color", config.text_color);
+        config.hint_color =
+            parse_information_color(overlay["hint_color"], "hint_color", config.hint_color);
+        config.indicator_color = parse_information_color(overlay["indicator_color"],
+                                                         "indicator_color",
+                                                         config.indicator_color);
+        if (const YAML::Node indicator = overlay["indicator"]) {
+            if (!indicator.IsMap()) {
+                manifest_fail("manifest.information-overlay-indicator-invalid",
+                              "'information_overlay.indicator' must be a mapping",
+                              indicator);
+            }
+            config.indicator_image =
+                indicator["image"] ? indicator["image"].as<std::string>() : std::string();
+            if (const YAML::Node hot = indicator["hotspot"]) {
+                config.indicator_hotspot = {hot["x"] ? hot["x"].as<float>() : 0.0f,
+                                            hot["y"] ? hot["y"].as<float>() : 0.0f};
+            }
+            if (indicator["scale"]) {
+                config.indicator_scale = indicator["scale"].as<float>();
+                if (!std::isfinite(config.indicator_scale) || config.indicator_scale <= 0.0f) {
+                    manifest_fail("manifest.information-overlay-indicator-scale-invalid",
+                                  "'information_overlay.indicator.scale' must be greater than zero",
+                                  indicator["scale"]);
+                }
+            }
+        }
+    }
+
     if (const YAML::Node speech = root["speech"]) {
         if (!speech.IsMap()) {
             manifest_fail("manifest.speech-invalid", "'speech' must be a mapping", speech);
@@ -669,6 +759,8 @@ Manifest parse_manifest(const std::string& yaml_text) {
         m.development.show_state = dev["show_state"] ? dev["show_state"].as<bool>() : false;
         m.development.allow_room_reload =
             dev["allow_room_reload"] ? dev["allow_room_reload"].as<bool>() : false;
+        m.development.pause_on_focus_loss =
+            dev["pause_on_focus_loss"] ? dev["pause_on_focus_loss"].as<bool>() : true;
         m.development.warn_missing_translations =
             dev["warn_missing_translations"] ? dev["warn_missing_translations"].as<bool>() : false;
         m.development.profiling = dev["profiling"] ? dev["profiling"].as<bool>() : false;

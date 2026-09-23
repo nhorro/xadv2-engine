@@ -550,11 +550,14 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
             }
             const bool has_light_point = static_cast<bool>(projected["light"]);
             const bool has_source = static_cast<bool>(projected["source"]);
-            if (has_light_point == has_source) {
+            const bool has_sources = static_cast<bool>(projected["sources"]);
+            const int source_forms = static_cast<int>(has_light_point) +
+                                     static_cast<int>(has_source) + static_cast<int>(has_sources);
+            if (source_forms != 1) {
                 room_fail("room.projected-shadows-light-missing",
                           "room '" + room.id +
-                              "': projected shadows need exactly one of 'light: {x, y}' or "
-                              "'source: <dynamic-light-id>'",
+                              "': projected shadows need exactly one of 'light: {x, y}', "
+                              "'source: <dynamic-light-id>', or 'sources: [<id>, ...]'",
                           projected);
             }
 
@@ -562,7 +565,7 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
             shadow.enabled = projected["enabled"] ? projected["enabled"].as<bool>() : true;
             if (has_light_point) {
                 shadow.light = parse_point(projected["light"]);
-            } else {
+            } else if (has_source) {
                 shadow.source = projected["source"].as<std::string>();
                 const bool known =
                     room.dynamic_lighting && std::any_of(room.dynamic_lighting->lights.begin(),
@@ -575,6 +578,31 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                               "room '" + room.id + "': projected shadow source '" + shadow.source +
                                   "' is not a declared dynamic light",
                               projected["source"]);
+                }
+            } else {
+                const YAML::Node sources = projected["sources"];
+                if (!sources.IsSequence() || sources.size() == 0) {
+                    room_fail("room.projected-shadows-sources-invalid",
+                              "room '" + room.id +
+                                  "': projected shadow 'sources' must be a non-empty sequence",
+                              sources);
+                }
+                std::set<std::string> seen;
+                for (const YAML::Node& source : sources) {
+                    const std::string id = source.as<std::string>();
+                    const bool known =
+                        room.dynamic_lighting &&
+                        std::any_of(room.dynamic_lighting->lights.begin(),
+                                    room.dynamic_lighting->lights.end(),
+                                    [&id](const RoomLight& light) { return light.id == id; });
+                    if (id.empty() || !known || !seen.insert(id).second) {
+                        room_fail("room.projected-shadows-sources-invalid",
+                                  "room '" + room.id +
+                                      "': projected shadow sources must be unique declared "
+                                      "dynamic-light ids",
+                                  source);
+                    }
+                    shadow.sources.push_back(id);
                 }
             }
             shadow.length = projected["length"] ? projected["length"].as<float>() : 0.45f;

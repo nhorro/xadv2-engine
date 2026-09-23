@@ -36,6 +36,10 @@ public:
     RoomRuntime& operator=(RoomRuntime&&) noexcept;
 
     const RoomData& data() const { return data_; }
+    [[nodiscard]] const RoomRenderState& authored_render_state() const { return authored_render_; }
+    [[nodiscard]] const RoomRenderState& render_state() const { return render_; }
+    [[nodiscard]] RoomRenderState& render_state() { return render_; }
+    void reset_render_state();
 
     /// First enabled hotspot that hits `world`, by the design 04 hit-test rule:
     /// per hotspot, in priority order — (1) explicit `area` polygon, (2)
@@ -158,16 +162,15 @@ private:
     std::map<std::string, bool> object_visible_;
     std::map<std::string, bool> layer_visible_;
     std::map<std::string, bool> hotspot_enabled_;
-    std::map<std::string, bool> light_enabled_;
-    struct LightRuntime {
-        float intensity = 1.0f;
+    struct LightTransition {
         float start = 1.0f;
         float target = 1.0f;
         float elapsed = 0.0f;
         float duration = 0.0f;
     };
-    std::map<std::string, LightRuntime> light_rt_;
-    std::map<std::string, bool> light_occluder_enabled_;
+    std::map<std::string, LightTransition> light_transitions_;
+    RoomRenderState authored_render_;
+    RoomRenderState render_;
     std::map<std::string, Avatar> npcs_;
 
     // Transient per-object runtime pose (#142), seeded from each RoomObject def.

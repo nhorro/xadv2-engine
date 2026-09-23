@@ -87,6 +87,26 @@ struct CursorConfig {
     CursorBlinkConfig blink;
 };
 
+/// Game-wide skin for the reusable information overlay. Scripts provide each
+/// page's text, optional illustration, and optional target indicator; the
+/// manifest owns presentation so the same Lua calls can fit different games.
+struct InformationOverlayConfig {
+    std::string font;
+    unsigned text_size = 30;
+    float panel_width = 820.0f;
+    float panel_padding = 30.0f;
+    float image_max_height = 250.0f;
+    sf::Color backdrop_color{7, 8, 10, 185};
+    sf::Color panel_color{29, 25, 20, 245};
+    sf::Color panel_outline_color{181, 139, 64, 230};
+    sf::Color text_color{245, 224, 177, 255};
+    sf::Color hint_color{194, 174, 138, 230};
+    sf::Color indicator_color{222, 174, 73, 255};
+    std::string indicator_image;
+    sf::Vector2f indicator_hotspot{16.0f, 32.0f};
+    float indicator_scale = 1.0f;
+};
+
 struct SceneDesc {
     std::string id;
     std::string type;
@@ -134,6 +154,7 @@ struct Manifest {
     std::string default_language;
     SettingsDefaults settings;
     CursorConfig cursor;
+    InformationOverlayConfig information_overlay;
     SpeechConfig speech;
     DevFlags development;
     std::string entry;

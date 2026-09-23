@@ -91,6 +91,9 @@ endif()
 
 add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/core/diagnostics.cpp
+    src/core/control.cpp
+    src/core/control_services.cpp
+    src/core/socket_control_server.cpp
     src/core/load_error.cpp
     src/core/settings.cpp
     src/core/settings_store.cpp
@@ -107,6 +110,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/core/translation_catalog.cpp
     src/core/text_id.cpp
     src/core/text_layout.cpp
+    src/core/information_overlay.cpp
     src/core/manifest.cpp
     src/core/display.cpp
     src/core/audio.cpp
@@ -156,6 +160,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/pnc/room_runtime.cpp
     src/pnc/room_renderer.cpp
     src/pnc/room_lighting.cpp
+    src/pnc/room_control_service.cpp
     src/pnc/room_tuning_overlay.cpp
     src/pnc/debug_overlay.cpp
     src/pnc/dev_actions.cpp

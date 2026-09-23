@@ -22,6 +22,7 @@ class RoomRuntime;
 class Avatar;
 struct RoomData;
 struct ProjectedShadow;
+struct ResolvedRoomLight;
 
 /// Per-frame inputs the renderer feeds to a shader's reserved uniforms (design 03
 /// §Shaders). `time` (seconds since the scene began) drives `u_time`;
@@ -65,7 +66,8 @@ public:
               const std::vector<const Avatar*>& npcs,
               pac::core::Diagnostics& log,
               const ShaderEnv& shaders = {},
-              const ProjectedShadow* projected_shadow_override = nullptr) const;
+              const ProjectedShadow* projected_shadow_override = nullptr,
+              const std::vector<ResolvedRoomLight>* shadow_lights = nullptr) const;
 
 private:
     // Pooled across draws so a steady scene reaches a steady allocation; the

@@ -1,5 +1,7 @@
 # Development
 
+- [Development control endpoint](control-endpoint.md)
+
 Documentation for **engine developers** — people extending `xadv2-engine` in C++.
 
 !!! abstract "The as-built tour is the source of truth"

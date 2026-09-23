@@ -10,6 +10,7 @@
 #include "engine/pnc/avatar.hpp"
 #include "engine/pnc/room.hpp"
 #include "engine/pnc/room_runtime.hpp"
+#include "pnc/room_lighting.hpp"
 
 #include <SFML/Graphics/Glsl.hpp>
 #include <SFML/Graphics/Rect.hpp>
@@ -146,7 +147,8 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                         const std::vector<const Avatar*>& npcs,
                         pac::core::Diagnostics& log,
                         const ShaderEnv& shaders,
-                        const ProjectedShadow* projected_shadow_override) const {
+                        const ProjectedShadow* projected_shadow_override,
+                        const std::vector<ResolvedRoomLight>* shadow_lights) const {
     const RoomData& data = room.data();
     const float shader_time = shaders.time;
 
@@ -388,40 +390,46 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                            });
     }
 
-    const ProjectedShadow* player_shadow = nullptr;
-    if (data.projected_shadow && data.projected_shadow->enabled) {
-        player_shadow = data.projected_shadow->source.empty() ? &*data.projected_shadow
-                                                              : projected_shadow_override;
-    }
-    const ProjectedShadow* npc_shadow =
-        player_shadow && player_shadow->casters == ProjectedShadow::Casters::ALL ? player_shadow
-                                                                                 : nullptr;
+    const ProjectedShadow* shadow_config =
+        projected_shadow_override
+            ? projected_shadow_override
+            : (data.projected_shadow ? &*data.projected_shadow : nullptr);
 
-    const auto add_avatar = [&](const Avatar* avatar, const ProjectedShadow* shadow) {
+    const auto add_avatar = [&](const Avatar* avatar, bool casts_projected_shadow) {
         if (!avatar) {
             return;
         }
+        std::optional<ProjectedShadow> shadow;
+        if (casts_projected_shadow && shadow_config && shadow_config->enabled) {
+            const bool dynamic = !shadow_config->source.empty() || !shadow_config->sources.empty();
+            shadow = dynamic && shadow_lights ? resolve_projected_shadow(*shadow_config,
+                                                                         *shadow_lights,
+                                                                         avatar->position(),
+                                                                         shader_time)
+                                              : *shadow_config;
+        }
         if (shadow && shadow->z) {
-            items.emplace_back(
-                *shadow->z,
-                [avatar, shadow](sf::RenderTarget& t) { avatar->draw_shadows(t, shadow); });
-            items.emplace_back(
-                avatar->z(),
-                [avatar, &resources, shader_time, this](sf::RenderTarget& t) {
-                    avatar->draw_sprite(t, resources, shader_time, &chain_);
-                });
+            items.emplace_back(*shadow->z, [avatar, shadow](sf::RenderTarget& t) {
+                avatar->draw_shadows(t, &*shadow);
+            });
+            items.emplace_back(avatar->z(),
+                               [avatar, &resources, shader_time, this](sf::RenderTarget& t) {
+                                   avatar->draw_sprite(t, resources, shader_time, &chain_);
+                               });
             return;
         }
         items.emplace_back(
             avatar->z(),
             [avatar, shadow, &resources, shader_time, this](sf::RenderTarget& t) {
-                avatar->draw(t, resources, shader_time, &chain_, shadow);
+                avatar->draw(t, resources, shader_time, &chain_, shadow ? &*shadow : nullptr);
             });
     };
 
-    add_avatar(player, player_shadow);
+    const bool player_casts = shadow_config && shadow_config->enabled;
+    const bool npcs_cast = player_casts && shadow_config->casters == ProjectedShadow::Casters::ALL;
+    add_avatar(player, player_casts);
     for (const Avatar* npc : npcs) {
-        add_avatar(npc, npc_shadow);
+        add_avatar(npc, npcs_cast);
     }
 
     std::stable_sort(items.begin(), items.end(), [](const auto& a, const auto& b) {

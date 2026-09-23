@@ -189,6 +189,21 @@ float value_noise(float value) {
     return a + (b - a) * smooth;
 }
 
+float smoothstep(float edge0, float edge1, float value) {
+    if (std::abs(edge1 - edge0) <= 0.000001f) {
+        return value >= edge1 ? 1.0f : 0.0f;
+    }
+    const float t = std::clamp((value - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
+bool shadow_uses_light(const ProjectedShadow& shadow, const std::string& id) {
+    if (!shadow.source.empty()) {
+        return shadow.source == id;
+    }
+    return std::find(shadow.sources.begin(), shadow.sources.end(), id) != shadow.sources.end();
+}
+
 } // namespace
 
 float evaluate_light_modulation(const LightModulation& modulation, float time) {
@@ -224,6 +239,87 @@ float evaluate_light_modulation(const LightModulation& modulation, float time) {
     }
     }
     return std::max(0.0f, scale);
+}
+
+ProjectedShadow resolve_projected_shadow(const ProjectedShadow& authored,
+                                         const std::vector<ResolvedRoomLight>& lights,
+                                         geom::Point caster,
+                                         float time) {
+    ProjectedShadow resolved = authored;
+    resolved.opacity = 0.0f;
+
+    sf::Vector2f resultant;
+    sf::Vector2f strongest_direction(0.0f, 1.0f);
+    float strongest_weight = 0.0f;
+    float total_weight = 0.0f;
+
+    for (const ResolvedRoomLight& item : lights) {
+        if (!item.light || !shadow_uses_light(authored, item.light->id) || !item.enabled ||
+            item.intensity <= 0.0f) {
+            continue;
+        }
+
+        const RoomLight& light = *item.light;
+        sf::Vector2f away(caster.x - item.position.x, caster.y - item.position.y);
+        const float distance_sq = away.x * away.x + away.y * away.y;
+        const float distance = std::sqrt(distance_sq);
+        if (distance > 0.001f) {
+            away /= distance;
+        } else {
+            away = {0.0f, 1.0f};
+        }
+
+        const float radius_sq = std::max(light.radius * light.radius, 0.0001f);
+        const float attenuation = 1.0f - smoothstep(0.0f, 1.0f, distance_sq / radius_sq);
+        if (attenuation <= 0.0f) {
+            continue;
+        }
+
+        float cone = 1.0f;
+        if (light.type == RoomLight::Type::SPOT) {
+            const float direction_radians = item.direction * kPi / 180.0f;
+            const sf::Vector2f axis(std::cos(direction_radians), std::sin(direction_radians));
+            const float alignment = away.x * axis.x + away.y * axis.y;
+            const float outer = light.angle * 0.5f * kPi / 180.0f;
+            const float inner = (light.angle * 0.5f - light.softness) * kPi / 180.0f;
+            cone = smoothstep(std::cos(outer), std::cos(inner), alignment);
+        }
+        if (cone <= 0.0f) {
+            continue;
+        }
+
+        const float luminance = std::max(0.0f,
+                                         light.color[0] * 0.2126f + light.color[1] * 0.7152f +
+                                             light.color[2] * 0.0722f);
+        const float effective =
+            std::max(0.0f, item.intensity * evaluate_light_modulation(light.modulation, time));
+        const float weight = effective * luminance * attenuation * cone;
+        if (weight <= 0.0f) {
+            continue;
+        }
+
+        resultant += away * weight;
+        total_weight += weight;
+        if (weight > strongest_weight) {
+            strongest_weight = weight;
+            strongest_direction = away;
+        }
+    }
+
+    if (total_weight <= 0.0f) {
+        return resolved;
+    }
+
+    const float resultant_length = std::hypot(resultant.x, resultant.y);
+    const sf::Vector2f direction = resultant_length > total_weight * 0.001f
+                                       ? resultant / resultant_length
+                                       : strongest_direction;
+    // Avatar projection only needs a direction: seat a virtual source one unit
+    // toward the resultant lights. Keeping opacity separate avoids cancelling a
+    // shadow merely because equally strong lights oppose each other laterally.
+    resolved.light = {caster.x - direction.x, caster.y - direction.y};
+    resolved.opacity = authored.opacity * std::clamp(total_weight, 0.0f, 1.0f);
+    return resolved;
 }
 
 void draw_compat_lighting(sf::RenderTarget& target,

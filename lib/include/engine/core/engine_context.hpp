@@ -8,9 +8,11 @@
 namespace pac::core {
 
 class Diagnostics;
+class ControlRouter;
 class Display;
 class Localization;
 class GameplayRecorder;
+class InformationOverlay;
 class ResourceCache;
 class SaveService;
 class SceneManager;
@@ -74,6 +76,13 @@ struct EngineContext {
     /// (build identifiers, channel names, etc.). Deliberately excluded from
     /// GameState, so clearing or restoring a game never loses executable info.
     std::map<std::string, std::string> runtime_info;
+    /// Optional application-level modal information panel and target indicator.
+    /// Present in the standard harness; nullable keeps manually assembled test
+    /// contexts and specialized hosts source-compatible.
+    InformationOverlay* information = nullptr;
+    /// Transport-neutral development control router. The standard harness always
+    /// provides it; nullable preserves manually assembled test contexts.
+    ControlRouter* control = nullptr;
 };
 
 } // namespace pac::core

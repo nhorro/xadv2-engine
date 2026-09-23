@@ -135,6 +135,42 @@ strings, and dynamically constructed keys on the explicit state functions.
 whether they changed/found ownership. `clear_case_terms()` removes all owned
 terms and returns the count. Ownership is persistent.
 
+### Information overlays and target indicators
+
+These core functions are available in every scene type, including rooms,
+close-ups, game-owned notebook/case scenes, and generic script scenes:
+
+| Call | Behavior |
+|---|---|
+| `show_information(options)` | Show a modal page and yield until the player dismisses it with click/tap, Enter, Space, or Escape. |
+| `hide_information()` | Programmatically dismiss the active page and resume its waiting task. |
+| `information_visible()` | Return whether a modal page is active. |
+| `show_indicator(options)` | Show or move a non-modal pulsing target indicator. |
+| `hide_indicator()` | Remove the standalone indicator. |
+
+`show_information` must run in a yieldable task (a hotspot handler or a
+`spawn(function() ... end)` body). Its options are:
+
+```lua
+show_information {
+  text = tr("tutorial.walk", "Move by clicking a reachable destination."),
+  image = "shared/tutorial/walk.png",       -- optional illustration
+  dismiss_text = tr("tutorial.continue", "click / tap to continue"),
+  indicator = { x = 760, y = 430, direction = "down" } -- optional
+}
+```
+
+Indicator coordinates use the manifest's virtual resolution. `direction` is
+`down` (the default), `up`, `left`, or `right`, and describes the direction in
+which the arrow points. An indicator attached to a modal page is removed when
+that page closes; a standalone `show_indicator` remains until replaced or
+hidden. While a modal page is visible, the active scene and its scripts are
+frozen and input cannot leak through to gameplay.
+
+The game manifest's optional `information_overlay` block skins the shared
+component (font, dimensions, colors, and an optional arrow texture). If no arrow
+texture is supplied, the engine draws a pulsing vector arrow and target ring.
+
 ## Point-and-click room API
 
 These globals exist while the manifest's `RoomScene` is active.

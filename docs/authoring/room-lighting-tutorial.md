@@ -364,12 +364,30 @@ lighting:
 Use `source` whenever the shadow belongs to a dynamic light. Its live position,
 enabled state, runtime intensity, and modulation are respected. Use
 `light: {x, y}` instead only for an independent fixed shadow direction. Exactly
-one of `source` or `light` is required.
+one of `source`, `sources`, or `light` is required.
+
+For a rig where several lights illuminate the same character, list them under
+`sources`. The engine weights their live contribution at each character and
+projects one resultant silhouette, avoiding both duplicate shadows and abrupt
+source switching:
+
+```yaml
+projected_shadows:
+  sources: [stage_left, stage_center, stage_right]
+  contact_shadow: 0
+```
+
+Range attenuation, spotlight cone coverage, colour luminance, transitions, and
+modulation affect the result. The directions blend continuously; total light
+contribution controls opacity. If every listed source stops contributing, the
+projected silhouette fades out while `contact_shadow` still controls whether the
+ordinary appearance ellipse is drawn.
 
 | Parameter | Meaning |
 |-----------|---------|
 | `enabled` | Bypasses projected shadows when false. |
 | `source` | Id of a light in `lighting.lights`. |
+| `sources` | Light ids combined into one contribution-weighted resultant shadow. |
 | `light` | Alternative fixed room-space origin. |
 | `casters` | `player` or `all` present avatars. |
 | `length` | Projected length as a fraction of the live sprite height. |

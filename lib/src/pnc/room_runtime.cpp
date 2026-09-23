@@ -22,6 +22,8 @@ struct RoomRuntime::Behavior {
 };
 
 RoomRuntime::RoomRuntime(RoomData data) : data_(std::move(data)) {
+    authored_render_ = {data_.post_process, data_.dynamic_lighting, data_.projected_shadow};
+    render_ = authored_render_;
     seed_runtime_state();
 }
 RoomRuntime::~RoomRuntime() = default;
@@ -48,15 +50,11 @@ void RoomRuntime::seed_runtime_state() {
     for (const auto& [id, hs] : data_.hotspots) {
         hotspot_enabled_[id] = hs.enabled;
     }
-    if (data_.dynamic_lighting) {
-        for (const RoomLight& light : data_.dynamic_lighting->lights) {
-            light_enabled_[light.id] = light.enabled;
-            light_rt_[light.id] = {light.intensity, light.intensity, light.intensity, 0.0f, 0.0f};
-        }
-        for (const LightOccluder& occluder : data_.dynamic_lighting->occluders) {
-            light_occluder_enabled_[occluder.id] = occluder.enabled;
-        }
-    }
+}
+
+void RoomRuntime::reset_render_state() {
+    render_ = authored_render_;
+    light_transitions_.clear();
 }
 
 const RoomHotspot* RoomRuntime::hotspot_at(geom::Point world) const {
@@ -271,82 +269,97 @@ bool RoomRuntime::hotspot_enabled(const std::string& hotspot_id) const {
 }
 
 bool RoomRuntime::has_light(const std::string& light_id) const {
-    return light_enabled_.count(light_id) > 0;
+    if (!render_.lighting) return false;
+    return std::any_of(render_.lighting->lights.begin(),
+                       render_.lighting->lights.end(),
+                       [&](const RoomLight& light) { return light.id == light_id; });
 }
 
 void RoomRuntime::set_light_enabled(const std::string& light_id, bool enabled) {
-    const auto it = light_enabled_.find(light_id);
-    if (it != light_enabled_.end()) {
-        it->second = enabled;
+    if (!render_.lighting) return;
+    for (RoomLight& light : render_.lighting->lights) {
+        if (light.id == light_id) light.enabled = enabled;
     }
 }
 
 bool RoomRuntime::light_enabled(const std::string& light_id) const {
-    const auto it = light_enabled_.find(light_id);
-    return it != light_enabled_.end() && it->second;
+    if (!render_.lighting) return false;
+    for (const RoomLight& light : render_.lighting->lights) {
+        if (light.id == light_id) return light.enabled;
+    }
+    return false;
 }
 
 void RoomRuntime::set_light_intensity(const std::string& light_id,
                                       float intensity,
                                       float transition_seconds) {
-    const auto it = light_rt_.find(light_id);
-    if (it == light_rt_.end() || !std::isfinite(intensity) || !std::isfinite(transition_seconds)) {
-        return;
-    }
-    LightRuntime& rt = it->second;
+    if (!render_.lighting || !std::isfinite(intensity) || !std::isfinite(transition_seconds)) return;
+    auto light = std::find_if(render_.lighting->lights.begin(),
+                              render_.lighting->lights.end(),
+                              [&](const RoomLight& item) { return item.id == light_id; });
+    if (light == render_.lighting->lights.end()) return;
     const float target = std::clamp(intensity, 0.0f, 4.0f);
     const float duration = std::max(transition_seconds, 0.0f);
-    if (duration <= 0.0f || target == rt.intensity) {
-        rt.intensity = target;
-        rt.start = target;
-        rt.target = target;
-        rt.elapsed = 0.0f;
-        rt.duration = 0.0f;
+    if (duration <= 0.0f || target == light->intensity) {
+        light->intensity = target;
+        light_transitions_.erase(light_id);
         return;
     }
-    rt.start = rt.intensity;
-    rt.target = target;
-    rt.elapsed = 0.0f;
-    rt.duration = duration;
+    light_transitions_[light_id] = {light->intensity, target, 0.0f, duration};
 }
 
 float RoomRuntime::light_intensity(const std::string& light_id) const {
-    const auto it = light_rt_.find(light_id);
-    return it != light_rt_.end() ? it->second.intensity : 0.0f;
+    if (!render_.lighting) return 0.0f;
+    for (const RoomLight& light : render_.lighting->lights) {
+        if (light.id == light_id) return light.intensity;
+    }
+    return 0.0f;
 }
 
 void RoomRuntime::update_lights(float dt) {
-    for (auto& [id, rt] : light_rt_) {
-        if (rt.duration <= 0.0f) {
-            continue;
-        }
+    if (!render_.lighting) return;
+    for (auto it = light_transitions_.begin(); it != light_transitions_.end();) {
+        LightTransition& rt = it->second;
         rt.elapsed += std::max(dt, 0.0f);
         const float progress = std::clamp(rt.elapsed / rt.duration, 0.0f, 1.0f);
         // Smoothstep avoids a visibly mechanical start/stop while preserving
         // deterministic duration and exact endpoints.
         const float eased = progress * progress * (3.0f - 2.0f * progress);
-        rt.intensity = rt.start + (rt.target - rt.start) * eased;
+        const float intensity = rt.start + (rt.target - rt.start) * eased;
+        for (RoomLight& light : render_.lighting->lights) {
+            if (light.id == it->first) light.intensity = intensity;
+        }
         if (progress >= 1.0f) {
-            rt.intensity = rt.target;
-            rt.duration = 0.0f;
+            for (RoomLight& light : render_.lighting->lights) {
+                if (light.id == it->first) light.intensity = rt.target;
+            }
+            it = light_transitions_.erase(it);
+        } else {
+            ++it;
         }
     }
 }
 
 bool RoomRuntime::has_light_occluder(const std::string& occluder_id) const {
-    return light_occluder_enabled_.count(occluder_id) > 0;
+    if (!render_.lighting) return false;
+    return std::any_of(render_.lighting->occluders.begin(),
+                       render_.lighting->occluders.end(),
+                       [&](const LightOccluder& item) { return item.id == occluder_id; });
 }
 
 void RoomRuntime::set_light_occluder_enabled(const std::string& occluder_id, bool enabled) {
-    const auto it = light_occluder_enabled_.find(occluder_id);
-    if (it != light_occluder_enabled_.end()) {
-        it->second = enabled;
+    if (!render_.lighting) return;
+    for (LightOccluder& item : render_.lighting->occluders) {
+        if (item.id == occluder_id) item.enabled = enabled;
     }
 }
 
 bool RoomRuntime::light_occluder_enabled(const std::string& occluder_id) const {
-    const auto it = light_occluder_enabled_.find(occluder_id);
-    return it != light_occluder_enabled_.end() && it->second;
+    if (!render_.lighting) return false;
+    for (const LightOccluder& item : render_.lighting->occluders) {
+        if (item.id == occluder_id) return item.enabled;
+    }
+    return false;
 }
 
 void RoomRuntime::set_obstacle_enabled(const std::string& obstacle_id, bool enabled) {

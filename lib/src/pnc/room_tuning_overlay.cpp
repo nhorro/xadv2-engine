@@ -236,17 +236,20 @@ YAML::Node shader_node(const gfx::ShaderEffect& effect) {
 
 } // namespace
 
-void RoomTuningOverlay::open(const RoomData& room,
+void RoomTuningOverlay::open(RoomRenderState& live,
+                             const RoomRenderState& authored,
                              sf::FloatRect panel_region,
                              const sf::Font* font) {
     active_ = true;
     compare_original_ = false;
-    had_original_lighting_ = room.dynamic_lighting.has_value();
-    original_lighting_ = room.dynamic_lighting.value_or(RoomLighting{});
-    working_lighting_ = original_lighting_;
-    original_post_process_ = room.post_process;
-    working_post_process_ = room.post_process;
-    projected_shadow_ = room.projected_shadow;
+    live_ = &live;
+    had_original_lighting_ = authored.lighting.has_value();
+    original_lighting_ = authored.lighting.value_or(RoomLighting{});
+    working_lighting_ = live.lighting.value_or(RoomLighting{});
+    original_post_process_ = authored.post_process;
+    working_post_process_ = live.post_process;
+    original_projected_shadow_ = authored.projected_shadow;
+    projected_shadow_ = live.projected_shadow;
     region_ = panel_region;
     font_ = font;
     tab_ = Tab::AMBIENT;
@@ -261,27 +264,39 @@ void RoomTuningOverlay::open(const RoomData& room,
 }
 
 void RoomTuningOverlay::close() {
+    if (live_ && active_ && !compare_original_) {
+        live_->lighting = working_lighting_;
+        live_->post_process = working_post_process_;
+        live_->projected_shadow = projected_shadow_;
+    }
     active_ = false;
+    live_ = nullptr;
     dragged_control_.reset();
     controls_.clear();
 }
 
-const RoomLighting* RoomTuningOverlay::effective_lighting(const RoomData& room) const {
-    if (!active_) {
-        return room.dynamic_lighting ? &*room.dynamic_lighting : nullptr;
-    }
+const RoomLighting* RoomTuningOverlay::effective_lighting() {
+    if (!active_ || !live_) return nullptr;
     if (compare_original_) {
         return had_original_lighting_ ? &original_lighting_ : nullptr;
     }
-    return &working_lighting_;
+    live_->lighting = working_lighting_;
+    return live_->lighting ? &*live_->lighting : nullptr;
 }
 
-const RoomPostProcess* RoomTuningOverlay::effective_post_process(const RoomData& room) const {
-    if (!active_) {
-        return room.post_process ? &*room.post_process : nullptr;
-    }
-    const auto& selected = compare_original_ ? original_post_process_ : working_post_process_;
-    return selected ? &*selected : nullptr;
+const RoomPostProcess* RoomTuningOverlay::effective_post_process() {
+    if (!active_ || !live_) return nullptr;
+    if (compare_original_) return original_post_process_ ? &*original_post_process_ : nullptr;
+    live_->post_process = working_post_process_;
+    return live_->post_process ? &*live_->post_process : nullptr;
+}
+
+const ProjectedShadow* RoomTuningOverlay::effective_projected_shadow() {
+    if (!active_ || !live_) return nullptr;
+    if (compare_original_)
+        return original_projected_shadow_ ? &*original_projected_shadow_ : nullptr;
+    live_->projected_shadow = projected_shadow_;
+    return live_->projected_shadow ? &*live_->projected_shadow : nullptr;
 }
 
 void RoomTuningOverlay::reset() {
@@ -825,7 +840,13 @@ std::string RoomTuningOverlay::yaml() const {
         if (!shadow.enabled) {
             node["enabled"] = false;
         }
-        if (shadow.source.empty()) {
+        if (!shadow.sources.empty()) {
+            YAML::Node sources(YAML::NodeType::Sequence);
+            for (const std::string& source : shadow.sources) {
+                sources.push_back(source);
+            }
+            node["sources"] = sources;
+        } else if (shadow.source.empty()) {
             node["light"] = point_node(shadow.light);
         } else {
             node["source"] = shadow.source;

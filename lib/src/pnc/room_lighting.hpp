@@ -33,6 +33,17 @@ struct ResolvedRoomLight {
 /// pure/headless so flicker and faulty-lamp behavior can be regression-tested.
 float evaluate_light_modulation(const LightModulation& modulation, float time);
 
+/// Resolve a dynamic projected shadow at one caster's feet. Each selected light
+/// is weighted by its live intensity, luminance, radial attenuation, and spot
+/// cone coverage. Multiple sources produce one direction and one silhouette;
+/// their total contribution controls opacity. With no contributing source the
+/// returned shadow remains present with zero opacity so its contact-shadow policy
+/// is still respected.
+ProjectedShadow resolve_projected_shadow(const ProjectedShadow& authored,
+                                         const std::vector<ResolvedRoomLight>& lights,
+                                         geom::Point caster,
+                                         float time);
+
 /// Fixed-function fallback used by SFML's Android GLES1 backend. It preserves
 /// authored ambient colour and animated omni/spot lights without render
 /// textures or GLSL. Occluders and normal maps remain shader-only.

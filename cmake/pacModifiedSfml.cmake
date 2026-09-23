@@ -43,37 +43,37 @@ FetchContent_Declare(
     GIT_SHALLOW ON
     SOURCE_SUBDIR _source_only)
 FetchContent_MakeAvailable(pac_sfml_reference)
-FetchContent_GetProperties(pac_sfml_reference SOURCE_DIR sfml_mp3_source_dir)
+FetchContent_GetProperties(pac_sfml_reference SOURCE_DIR sfml_reference_source_dir)
 
 if(ANDROID)
     set(FREETYPE_INCLUDE_DIR_ft2build
-        "${sfml_mp3_source_dir}/extlibs/headers/freetype2" CACHE PATH "" FORCE)
+        "${sfml_reference_source_dir}/extlibs/headers/freetype2" CACHE PATH "" FORCE)
     set(FREETYPE_INCLUDE_DIR_freetype2
-        "${sfml_mp3_source_dir}/extlibs/headers/freetype2" CACHE PATH "" FORCE)
+        "${sfml_reference_source_dir}/extlibs/headers/freetype2" CACHE PATH "" FORCE)
     set(FREETYPE_LIBRARY
-        "${sfml_mp3_source_dir}/extlibs/libs-android/${ANDROID_ABI}/libfreetype.a"
+        "${sfml_reference_source_dir}/extlibs/libs-android/${ANDROID_ABI}/libfreetype.a"
         CACHE FILEPATH "" FORCE)
     set(OPENAL_INCLUDE_DIR
-        "${sfml_mp3_source_dir}/extlibs/headers/AL" CACHE PATH "" FORCE)
+        "${sfml_reference_source_dir}/extlibs/headers/AL" CACHE PATH "" FORCE)
     set(OPENAL_LIBRARY
-        "${sfml_mp3_source_dir}/extlibs/libs-android/${ANDROID_ABI}/libopenal.so"
+        "${sfml_reference_source_dir}/extlibs/libs-android/${ANDROID_ABI}/libopenal.so"
         CACHE FILEPATH "" FORCE)
     set(FLAC_INCLUDE_DIR
-        "${sfml_mp3_source_dir}/extlibs/headers" CACHE PATH "" FORCE)
+        "${sfml_reference_source_dir}/extlibs/headers" CACHE PATH "" FORCE)
     set(FLAC_LIBRARY
-        "${sfml_mp3_source_dir}/extlibs/libs-android/${ANDROID_ABI}/libFLAC.a"
+        "${sfml_reference_source_dir}/extlibs/libs-android/${ANDROID_ABI}/libFLAC.a"
         CACHE FILEPATH "" FORCE)
     set(OGG_INCLUDE_DIR
-        "${sfml_mp3_source_dir}/extlibs/headers" CACHE PATH "" FORCE)
+        "${sfml_reference_source_dir}/extlibs/headers" CACHE PATH "" FORCE)
     set(OGG_LIBRARY
-        "${sfml_mp3_source_dir}/extlibs/libs-android/${ANDROID_ABI}/libogg.a"
+        "${sfml_reference_source_dir}/extlibs/libs-android/${ANDROID_ABI}/libogg.a"
         CACHE FILEPATH "" FORCE)
     set(VORBIS_INCLUDE_DIR
-        "${sfml_mp3_source_dir}/extlibs/headers" CACHE PATH "" FORCE)
+        "${sfml_reference_source_dir}/extlibs/headers" CACHE PATH "" FORCE)
     foreach(vorbis_component IN ITEMS VORBIS VORBISENC VORBISFILE)
         string(TOLOWER "${vorbis_component}" vorbis_library_name)
         set(${vorbis_component}_LIBRARY
-            "${sfml_mp3_source_dir}/extlibs/libs-android/${ANDROID_ABI}/lib${vorbis_library_name}.a"
+            "${sfml_reference_source_dir}/extlibs/libs-android/${ANDROID_ABI}/lib${vorbis_library_name}.a"
             CACHE FILEPATH "" FORCE)
     endforeach()
 elseif(WIN32)
@@ -120,13 +120,28 @@ else()
 endif()
 include("${pac_sfml_patch_dir}/patch-sfml-gles2.cmake")
 
+# The pinned official Unix cursor backport uses Xcursor for full-colour ARGB
+# hardware cursors. Keep the dependency explicit so Linux/BSD configuration
+# fails with an actionable package requirement instead of silently reverting to
+# the fork's monochrome implementation.
+if(CMAKE_SYSTEM_NAME MATCHES "Linux|FreeBSD|OpenBSD")
+    find_package(X11 REQUIRED)
+    if(NOT X11_Xcursor_INCLUDE_PATH OR NOT X11_Xcursor_LIB)
+        message(FATAL_ERROR
+            "Xcursor development files are required for colour hardware cursors "
+            "(install libxcursor-dev on Debian/Ubuntu)")
+    endif()
+    target_include_directories(sfml-window PRIVATE "${X11_Xcursor_INCLUDE_PATH}")
+    target_link_libraries(sfml-window PRIVATE "${X11_Xcursor_LIB}")
+endif()
+
 # Import the official 2.6 MP3 reader into the single modified SFML audio target.
 target_sources(sfml-audio PRIVATE
-    "${sfml_mp3_source_dir}/src/SFML/Audio/SoundFileReaderMp3.cpp"
-    "${sfml_mp3_source_dir}/src/SFML/Audio/SoundFileReaderMp3.hpp")
+    "${sfml_reference_source_dir}/src/SFML/Audio/SoundFileReaderMp3.cpp"
+    "${sfml_reference_source_dir}/src/SFML/Audio/SoundFileReaderMp3.hpp")
 target_include_directories(sfml-audio PRIVATE
-    "${sfml_mp3_source_dir}/src"
-    "${sfml_mp3_source_dir}/extlibs/headers/minimp3")
+    "${sfml_reference_source_dir}/src"
+    "${sfml_reference_source_dir}/extlibs/headers/minimp3")
 
 message(STATUS
     "pac_engine: modified SFML ${PAC_SFML_FORK_REVISION} (${CMAKE_SYSTEM_NAME})")

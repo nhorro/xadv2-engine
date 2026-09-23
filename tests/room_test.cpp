@@ -621,6 +621,16 @@ lighting:
     room.update_lights(1.0f);
     CHECK(room.light_intensity("lamp") == doctest::Approx(2.0f));
 
+    // The live render state is shared by Lua/control/F9 and reset from the
+    // immutable authored snapshot without rebuilding the rest of the room.
+    REQUIRE(room.render_state().lighting);
+    room.render_state().lighting->ambient_intensity = 0.9f;
+    room.reset_render_state();
+    CHECK(room.render_state().lighting->ambient_intensity == doctest::Approx(0.35f));
+    CHECK(room.light_enabled("lamp"));
+    CHECK(room.light_intensity("lamp") == doctest::Approx(0.75f));
+    CHECK(room.light_occluder_enabled("door"));
+
     room.set_light_enabled("missing", true);
     room.set_light_intensity("missing", 1.0f);
     CHECK_FALSE(room.has_light("missing"));
@@ -669,6 +679,21 @@ lighting:
 )YAML");
     REQUIRE(r.projected_shadow.has_value());
     CHECK(r.projected_shadow->source == "lamp");
+}
+
+TEST_CASE("parse_room connects a resultant projected shadow to several lights") {
+    const RoomData r = parse_room(R"YAML(
+id: r
+lighting:
+  lights:
+    - {id: left, type: omni, at: {x: 10, y: 20}, radius: 100}
+    - {id: right, type: omni, at: {x: 30, y: 20}, radius: 100}
+  projected_shadows:
+    sources: [left, right]
+)YAML");
+    REQUIRE(r.projected_shadow.has_value());
+    CHECK(r.projected_shadow->source.empty());
+    CHECK(r.projected_shadow->sources == std::vector<std::string>{"left", "right"});
 }
 
 TEST_CASE("parse_room reads projected avatar shadows from room lighting") {
@@ -743,6 +768,18 @@ TEST_CASE("parse_room validates projected avatar shadow parameters") {
                          "    - {id: lamp, type: omni, at: {x: 0, y: 0}, radius: 10}\n"
                          "  projected_shadows: {source: lamp, light: {x: 0, y: 0}}\n");
           }) == "room.projected-shadows-light-missing");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n"
+                         "  lights:\n"
+                         "    - {id: lamp, type: omni, at: {x: 0, y: 0}, radius: 10}\n"
+                         "  projected_shadows: {sources: [lamp, lamp]}\n");
+          }) == "room.projected-shadows-sources-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n"
+                         "  lights:\n"
+                         "    - {id: lamp, type: omni, at: {x: 0, y: 0}, radius: 10}\n"
+                         "  projected_shadows: {sources: [missing]}\n");
+          }) == "room.projected-shadows-sources-invalid");
 }
 
 TEST_CASE("parse_room reads the optional object baseline (perspective sort line)") {

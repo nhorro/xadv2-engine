@@ -30,6 +30,7 @@
 #include "gfx/gles2_compat.hpp"
 #include "pnc/dialog_internal.hpp"
 #include "pnc/room_lighting.hpp"
+#include "pnc/room_control_service.hpp"
 #include "pnc/room_tuning_overlay.hpp"
 
 #include <SFML/Graphics/Font.hpp>
@@ -295,6 +296,10 @@ bool RoomScene::tuning_overlay_active() const {
 }
 
 void RoomScene::enter() {
+    if (ctx_.control) {
+        control_service_ = std::make_unique<RoomControlService>(*this);
+        control_registration_ = ctx_.control->register_service("room", *control_service_);
+    }
     if (!chapter_facts_path_.empty()) {
         pac::core::bind_facts_resource(ctx_, chapter_facts_path_);
     }
@@ -1121,6 +1126,8 @@ end
 }
 
 void RoomScene::leave() {
+    control_registration_.reset();
+    control_service_.reset();
     unload_room();
     if (chapter_transition_pending_) {
         // Run after on_unload: a departing room hook may mutate state, and none
@@ -1628,9 +1635,23 @@ void RoomScene::handle_event(const sf::Event& event) {
             if (!tuning_overlay_) {
                 tuning_overlay_ = std::make_unique<RoomTuningOverlay>();
             }
-            const sf::FloatRect controls = scumm_widget_ ? scumm_widget_->input_bounds()
-                                                         : direct_room_widget_->controls_bounds();
-            tuning_overlay_->open(room_->data(), controls, font_);
+            sf::FloatRect controls;
+            if (scumm_widget_) {
+                controls = scumm_widget_->input_bounds();
+            } else {
+                // The direct UI's controls_bounds() is only the tiny bag/menu
+                // cluster. The tuner is a full-width development surface.
+                const sf::Vector2u resolution = ctx_.display.virtual_resolution();
+                constexpr float kTunerHeight = 108.0f;
+                controls = {0.0f,
+                            std::max(0.0f, static_cast<float>(resolution.y) - kTunerHeight),
+                            static_cast<float>(resolution.x),
+                            kTunerHeight};
+            }
+            tuning_overlay_->open(room_->render_state(),
+                                  room_->authored_render_state(),
+                                  controls,
+                                  font_);
         }
         return;
     }
@@ -2972,8 +2993,9 @@ void RoomScene::draw(sf::RenderTarget& target) const {
 
         const RoomPostProcess* post =
             tuning_overlay_active()
-                ? tuning_overlay_->effective_post_process(room_->data())
-                : (room_->data().post_process ? &*room_->data().post_process : nullptr);
+                ? tuning_overlay_->effective_post_process()
+                : (room_->render_state().post_process ? &*room_->render_state().post_process
+                                                      : nullptr);
         const bool post_active =
             post && post->enabled &&
             std::any_of(post->shaders.begin(), post->shaders.end(), [](const auto& fx) {
@@ -2981,8 +3003,8 @@ void RoomScene::draw(sf::RenderTarget& target) const {
             });
         const RoomLighting* lighting =
             tuning_overlay_active()
-                ? tuning_overlay_->effective_lighting(room_->data())
-                : (room_->data().dynamic_lighting ? &*room_->data().dynamic_lighting : nullptr);
+                ? tuning_overlay_->effective_lighting()
+                : (room_->render_state().lighting ? &*room_->render_state().lighting : nullptr);
         std::vector<ResolvedRoomLight> resolved_lights;
         if (lighting) {
             resolved_lights.reserve(lighting->lights.size());
@@ -3023,46 +3045,30 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                         direction += 270.0f;
                     }
                 }
-                const bool tuning_values =
-                    tuning_overlay_active() && tuning_overlay_->using_working_values();
                 resolved_lights.push_back(
                     {&light,
                      position,
                      direction,
-                     tuning_values ? light.enabled : room_->light_enabled(light.id),
-                     tuning_values ? light.intensity : room_->light_intensity(light.id)});
+                     light.enabled,
+                     light.intensity});
             }
         }
         std::vector<const LightOccluder*> resolved_occluders;
         if (lighting) {
             resolved_occluders.reserve(lighting->occluders.size());
             for (const LightOccluder& occluder : lighting->occluders) {
-                if (room_->light_occluder_enabled(occluder.id)) {
+                if (occluder.enabled) {
                     resolved_occluders.push_back(&occluder);
                 }
             }
         }
 
-        std::optional<ProjectedShadow> resolved_projected_shadow;
-        if (room_->data().projected_shadow && !room_->data().projected_shadow->source.empty()) {
-            const ProjectedShadow& authored = *room_->data().projected_shadow;
-            const auto source =
-                std::find_if(resolved_lights.begin(),
-                             resolved_lights.end(),
-                             [&authored](const ResolvedRoomLight& light) {
-                                 return light.light && light.light->id == authored.source;
-                             });
-            if (source != resolved_lights.end() && source->enabled && source->intensity > 0.0f) {
-                resolved_projected_shadow = authored;
-                resolved_projected_shadow->light = source->position;
-                const float effective =
-                    source->intensity *
-                    evaluate_light_modulation(source->light->modulation, shader_time_);
-                resolved_projected_shadow->opacity *= std::clamp(effective, 0.0f, 1.0f);
-            }
-        }
-        const ProjectedShadow* projected_shadow_override =
-            resolved_projected_shadow ? &*resolved_projected_shadow : nullptr;
+        const ProjectedShadow* live_shadow =
+            tuning_overlay_active()
+                ? tuning_overlay_->effective_projected_shadow()
+                : (room_->render_state().projected_shadow
+                       ? &*room_->render_state().projected_shadow
+                       : nullptr);
         // GLES-only SFML builds can create a RenderTexture even though shaders
         // are unavailable.  Routing the room through that texture in this case
         // produces a black frame on Android, while every individual shader
@@ -3113,7 +3119,8 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                                room_->npcs(),
                                ctx_.log,
                                ShaderEnv{shader_time_},
-                               projected_shadow_override);
+                               live_shadow,
+                               &resolved_lights);
                 post_process_target_->display();
 
                 const sf::IntRect full(0,
@@ -3167,7 +3174,8 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                            room_->npcs(),
                            ctx_.log,
                            ShaderEnv{shader_time_},
-                           projected_shadow_override);
+                           live_shadow,
+                           &resolved_lights);
             if (!sf::Shader::isAvailable()) {
                 if (lighting) {
                     draw_compat_lighting(target,

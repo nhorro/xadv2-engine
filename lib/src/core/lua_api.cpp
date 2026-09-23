@@ -4,6 +4,7 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/engine_context.hpp"
 #include "engine/core/facts.hpp"
+#include "engine/core/information_overlay.hpp"
 #include "engine/core/localization.hpp"
 #include "engine/core/manifest.hpp"
 #include "engine/core/resource_cache.hpp"
@@ -161,6 +162,60 @@ void bind_core_api(EngineContext& ctx, const std::string& facts_path) {
         }
         return pac::geom::point_in_polygon({x, y}, poly);
     });
+
+    // --- reusable cross-scene information / target guidance ----------------
+    if (ctx.information) {
+        lua.set_function("_show_information", [&ctx](const sol::table& options) {
+            InformationPage page;
+            page.text = options.get_or("text", std::string());
+            page.image = options.get_or("image", std::string());
+            page.dismiss_text = options.get_or("dismiss_text", std::string());
+            const sol::object indicator_object = options["indicator"];
+            if (indicator_object.is<sol::table>()) {
+                const sol::table indicator = indicator_object.as<sol::table>();
+                InformationIndicator target;
+                target.position = {indicator.get_or("x", 0.0f), indicator.get_or("y", 0.0f)};
+                const std::string direction = indicator.get_or("direction", std::string("down"));
+                if (direction == "up") {
+                    target.direction = IndicatorDirection::Up;
+                } else if (direction == "left") {
+                    target.direction = IndicatorDirection::Left;
+                } else if (direction == "right") {
+                    target.direction = IndicatorDirection::Right;
+                } else {
+                    target.direction = IndicatorDirection::Down;
+                }
+                page.indicator = target;
+            }
+            return ctx.information->show(std::move(page), ctx.scripting.current_scope());
+        });
+        lua.set_function("hide_information", [&ctx]() { ctx.information->dismiss(); });
+        lua.set_function("information_visible",
+                         [&ctx]() { return ctx.information->modal_active(); });
+        lua.set_function("show_indicator", [&ctx](const sol::table& options) {
+            InformationIndicator indicator;
+            indicator.position = {options.get_or("x", 0.0f), options.get_or("y", 0.0f)};
+            const std::string direction = options.get_or("direction", std::string("down"));
+            if (direction == "up") {
+                indicator.direction = IndicatorDirection::Up;
+            } else if (direction == "left") {
+                indicator.direction = IndicatorDirection::Left;
+            } else if (direction == "right") {
+                indicator.direction = IndicatorDirection::Right;
+            }
+            ctx.information->show_indicator(indicator);
+        });
+        lua.set_function("hide_indicator", [&ctx]() { ctx.information->hide_indicator(); });
+        ctx.scripting.run_string(R"LUA(
+function show_information(options)
+  local dismissed = _show_information(options or {})
+  if dismissed ~= nil then
+    wait_event(dismissed)
+  end
+end
+)LUA",
+                                 "=information-overlay-api");
+    }
 
     // --- global state (scalars only) ---
     lua.set_function("get_state", [&ctx](const std::string& key) -> sol::object {

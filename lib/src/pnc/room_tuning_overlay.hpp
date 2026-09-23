@@ -20,13 +20,16 @@ class RenderTarget;
 namespace pac::pnc {
 
 /// Development-only, in-engine lighting/post-process tuning panel. The panel
-/// owns working copies of authored render data; RoomScene asks for the effective
-/// copies while it is open, so scripts/game state remain untouched.
+/// edits the room's live render state while retaining the authored snapshot for
+/// reset/A-B comparison.
 class RoomTuningOverlay {
 public:
     enum class Tab { AMBIENT, LIGHTS, GRADING };
 
-    void open(const RoomData& room, sf::FloatRect panel_region, const sf::Font* font);
+    void open(RoomRenderState& live,
+              const RoomRenderState& authored,
+              sf::FloatRect panel_region,
+              const sf::Font* font);
     void close();
     [[nodiscard]] bool active() const { return active_; }
 
@@ -36,9 +39,9 @@ public:
     bool handle_event(const sf::Event& event);
     void draw(sf::RenderTarget& target);
 
-    [[nodiscard]] const RoomLighting* effective_lighting(const RoomData& room) const;
-    [[nodiscard]] const RoomPostProcess* effective_post_process(const RoomData& room) const;
-    [[nodiscard]] bool using_working_values() const { return active_ && !compare_original_; }
+    [[nodiscard]] const RoomLighting* effective_lighting();
+    [[nodiscard]] const RoomPostProcess* effective_post_process();
+    [[nodiscard]] const ProjectedShadow* effective_projected_shadow();
 
     void reset();
     [[nodiscard]] std::string yaml() const;
@@ -88,7 +91,9 @@ private:
     RoomLighting working_lighting_;
     std::optional<RoomPostProcess> original_post_process_;
     std::optional<RoomPostProcess> working_post_process_;
+    std::optional<ProjectedShadow> original_projected_shadow_;
     std::optional<ProjectedShadow> projected_shadow_;
+    RoomRenderState* live_ = nullptr;
 
     sf::FloatRect region_;
     const sf::Font* font_ = nullptr;
