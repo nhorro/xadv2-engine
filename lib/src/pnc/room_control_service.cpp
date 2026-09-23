@@ -64,6 +64,13 @@ ControlValue array_value(const std::array<float, 3>& values) {
     return ControlValue::Array{values[0], values[1], values[2]};
 }
 
+ControlValue color_value(sf::Color color) {
+    constexpr double byte_scale = 1.0 / 255.0;
+    return ControlValue::Array{color.r * byte_scale,
+                               color.g * byte_scale,
+                               color.b * byte_scale};
+}
+
 ControlValue point_value(geom::Point point) {
     return ControlValue::Object{{"x", point.x}, {"y", point.y}};
 }
@@ -157,7 +164,9 @@ ControlValue state_value(const RoomRuntime& room) {
             {"width", shadow.width},
             {"opacity", shadow.opacity},
             {"softness", shadow.softness},
-            {"contact_shadow", shadow.contact_shadow}};
+            {"contact_shadow", shadow.contact_shadow},
+            {"color", color_value(shadow.color)},
+            {"z", shadow.z ? ControlValue(*shadow.z) : ControlValue(nullptr)}};
         if (!shadow.sources.empty()) {
             ControlValue::Array sources;
             for (const std::string& source : shadow.sources) {
@@ -184,6 +193,7 @@ std::vector<pac::core::ControlMethod> RoomControlService::methods() const {
             {"render.set_light", "Set fields on one live room light."},
             {"render.set_shadow", "Set live projected-shadow fields."},
             {"render.set_grade", "Set grading enablement or shader parameters."},
+            {"render.set_scene", "Set a complete live lighting-scene snapshot."},
             {"render.reset", "Restore rendering values authored in room YAML."},
             {"render.export_yaml", "Return the current lighting/post-process YAML."}};
 }
@@ -207,6 +217,68 @@ ControlResult RoomControlService::invoke(std::string_view method, const ControlV
 
     const auto* object = params.object();
     if (!object) return invalid("params must be an object");
+
+    if (method == "render.set_scene") {
+        const RoomRenderState before = room.render_state();
+        const auto apply = [&](std::string_view nested_method,
+                               const ControlValue& nested_params) -> std::optional<ControlError> {
+            ControlResult result = invoke(nested_method, nested_params);
+            if (const auto* error = std::get_if<ControlError>(&result)) return *error;
+            return std::nullopt;
+        };
+        const auto rollback = [&](ControlError error) -> ControlResult {
+            room.render_state() = before;
+            return error;
+        };
+        const auto malformed = [&](std::string message) -> ControlResult {
+            return rollback(invalid(std::move(message)));
+        };
+
+        if (const ControlValue* ambient = field(*object, "ambient")) {
+            if (!ambient->is_object()) return malformed("scene ambient must be an object");
+            if (const auto error = apply("render.set_ambient", *ambient)) return rollback(*error);
+        }
+        if (const ControlValue* raw_lights = field(*object, "lights")) {
+            const auto* lights = raw_lights->array();
+            if (!lights) return malformed("scene lights must be an array");
+            for (const ControlValue& light : *lights) {
+                if (!light.is_object()) return malformed("each scene light must be an object");
+                if (const auto error = apply("render.set_light", light)) return rollback(*error);
+            }
+        }
+        if (const ControlValue* shadow = field(*object, "projected_shadow")) {
+            if (!shadow->is_object()) return malformed("scene projected_shadow must be an object");
+            if (const auto error = apply("render.set_shadow", *shadow)) return rollback(*error);
+        }
+        if (const ControlValue* raw_post = field(*object, "post_process")) {
+            const auto* post = raw_post->object();
+            if (!post) return malformed("scene post_process must be an object");
+            ControlValue::Object top_level;
+            if (const ControlValue* enabled = field(*post, "enabled")) {
+                top_level["enabled"] = *enabled;
+            }
+            if (!top_level.empty()) {
+                if (const auto error = apply("render.set_grade", top_level)) return rollback(*error);
+            }
+            if (const ControlValue* raw_effects = field(*post, "effects")) {
+                const auto* effects = raw_effects->array();
+                if (!effects) return malformed("scene post-process effects must be an array");
+                for (std::size_t index = 0; index < effects->size(); ++index) {
+                    const auto* effect = (*effects)[index].object();
+                    if (!effect) return malformed("each scene post-process effect must be an object");
+                    ControlValue::Object update{{"effect", static_cast<std::int64_t>(index)}};
+                    if (const ControlValue* enabled = field(*effect, "enabled")) {
+                        update["effect_enabled"] = *enabled;
+                    }
+                    if (const ControlValue* values = field(*effect, "params")) {
+                        update["params"] = *values;
+                    }
+                    if (const auto error = apply("render.set_grade", update)) return rollback(*error);
+                }
+            }
+        }
+        return state_value(room);
+    }
 
     if (method == "render.set_ambient") {
         if (!room.render_state().lighting) return unavailable();
@@ -266,8 +338,37 @@ ControlResult RoomControlService::invoke(std::string_view method, const ControlV
             return ControlError{-32022, "room has no projected shadow", std::nullopt};
         ProjectedShadow& shadow = *room.render_state().projected_shadow;
         if (const bool* enabled = bool_field(*object, "enabled")) shadow.enabled = *enabled;
+        if (const std::string* casters = string_field(*object, "casters")) {
+            if (*casters == "player") {
+                shadow.casters = ProjectedShadow::Casters::PLAYER;
+            } else if (*casters == "all") {
+                shadow.casters = ProjectedShadow::Casters::ALL;
+            } else {
+                return invalid("shadow casters must be 'player' or 'all'");
+            }
+        }
         if (const std::string* source = string_field(*object, "source")) {
+            const bool known =
+                room.render_state().lighting &&
+                std::any_of(room.render_state().lighting->lights.begin(),
+                            room.render_state().lighting->lights.end(),
+                            [&](const RoomLight& light) { return light.id == *source; });
+            if (source->empty() || !known) {
+                return invalid("shadow source must be a declared light id");
+            }
             shadow.source = *source;
+            shadow.sources.clear();
+        }
+        if (const ControlValue* raw_light = field(*object, "light")) {
+            const auto* light = raw_light->object();
+            if (!light) return invalid("shadow light must be an object with x and y");
+            const auto x = number_field(*light, "x");
+            const auto y = number_field(*light, "y");
+            if (!x || !y || !std::isfinite(*x) || !std::isfinite(*y)) {
+                return invalid("shadow light requires finite numeric x and y");
+            }
+            shadow.light = {static_cast<float>(*x), static_cast<float>(*y)};
+            shadow.source.clear();
             shadow.sources.clear();
         }
         if (const ControlValue* raw_sources = field(*object, "sources")) {
@@ -300,7 +401,29 @@ ControlResult RoomControlService::invoke(std::string_view method, const ControlV
         set_number("width", shadow.width, 0.0f, 10.0f);
         set_number("opacity", shadow.opacity, 0.0f, 1.0f);
         set_number("softness", shadow.softness, 0.0f, 100.0f);
-        set_number("contact_shadow", shadow.contact_shadow, 0.0f, 4.0f);
+        set_number("contact_shadow", shadow.contact_shadow, 0.0f, 1.0f);
+        if (const ControlValue* color = field(*object, "color")) {
+            const auto value = float_array<3>(*color);
+            if (!value) return invalid("shadow color must be a three-number array");
+            const auto channel = [](float component) {
+                return static_cast<std::uint8_t>(
+                    std::lround(std::clamp(component, 0.0f, 1.0f) * 255.0f));
+            };
+            shadow.color = sf::Color(channel((*value)[0]),
+                                     channel((*value)[1]),
+                                     channel((*value)[2]));
+        }
+        if (const ControlValue* z = field(*object, "z")) {
+            if (std::holds_alternative<std::nullptr_t>(z->value)) {
+                shadow.z.reset();
+            } else {
+                const auto value = number(*z);
+                if (!value || !std::isfinite(*value)) {
+                    return invalid("shadow z must be a finite number or null");
+                }
+                shadow.z = static_cast<float>(*value);
+            }
+        }
         return state_value(room);
     }
 

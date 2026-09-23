@@ -40,6 +40,7 @@ A live `RoomScene` additionally registers:
 - `room.render.set_light`;
 - `room.render.set_shadow`;
 - `room.render.set_grade`;
+- `room.render.set_scene`;
 - `room.render.reset`;
 - `room.render.export_yaml`.
 
@@ -70,6 +71,12 @@ The panel exposes each light's enabled state, colour, intensity, position,
 range, virtual height, and—where applicable—spot direction, cone angle, and edge
 softness. Attached lights report their attachment and keep the static-position
 controls disabled; placement of their offset remains an editor/YAML operation.
+It also exposes projected-shadow enablement, caster scope, length, width,
+opacity, softness, contact-shadow amount, colour, and optional fixed depth.
+Lighting scenes are notebook-side dictionaries containing ambient, lights,
+projected shadows, and the post-process chain. `room.render.set_scene` applies a
+complete snapshot in one request, which keeps recalled scenes and scripted
+crossfades coherent.
 
 ```python
 from control_client import ControlClient
@@ -78,6 +85,27 @@ client = ControlClient(port=8765).connect()
 client.call("room.render.set_light", {"id": "spot4", "intensity": 0.5})
 client.lua_eval("return current_room()")
 ```
+
+The panel keeps named scenes in an ordinary Python dictionary. Pass one in if
+you want to inspect, edit, serialize, or reuse the collection elsewhere in the
+notebook:
+
+```python
+scenes = {}
+panel = RoomLightingPanel(client, scenes)
+
+snapshot = panel.capture_scene()       # independent dictionary
+panel.save_scene("rehearsal")          # capture into scenes
+panel.save_scene("blackout", snapshot) # add an edited dictionary
+panel.apply_scene("rehearsal")
+panel.blend_to_scene("blackout", seconds=3, frames_per_second=20)
+```
+
+Crossfades use smoothstep easing. Numeric values and colours interpolate;
+spotlight directions take the shortest angular path. Lights entering or leaving
+a scene fade through zero intensity. Structural values such as caster scope or
+shader enablement switch at the scene boundary because they have no meaningful
+numeric interpolation.
 
 The endpoint permits arbitrary calls into the game's Lua API. Enable it only for
 trusted local development sessions.
