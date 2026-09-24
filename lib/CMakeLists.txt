@@ -160,6 +160,7 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/pnc/room_runtime.cpp
     src/pnc/room_renderer.cpp
     src/pnc/room_lighting.cpp
+    src/pnc/room_smoke.cpp
     src/pnc/room_control_service.cpp
     src/pnc/room_tuning_overlay.cpp
     src/pnc/debug_overlay.cpp

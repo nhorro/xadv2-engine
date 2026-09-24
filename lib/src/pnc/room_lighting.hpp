@@ -29,6 +29,14 @@ struct ResolvedRoomLight {
     float intensity = 1.0f;
 };
 
+/// Resolve the live screen-space direction of a spotlight. `facing_offset` is
+/// used only by follow-facing avatar lights; `resolved_aim_at`, when present,
+/// always wins and is recomputed from the light's current resolved position.
+float resolve_room_light_direction(const RoomLight& light,
+                                   geom::Point resolved_position,
+                                   float facing_offset = 0.0f,
+                                   std::optional<geom::Point> resolved_aim_at = std::nullopt);
+
 /// Deterministic modulation multiplier for an authored light intensity. Kept
 /// pure/headless so flicker and faulty-lamp behavior can be regression-tested.
 float evaluate_light_modulation(const LightModulation& modulation, float time);
@@ -73,6 +81,8 @@ public:
     bool make_pass(const RoomLighting& lighting,
                    const std::vector<ResolvedRoomLight>& resolved,
                    const std::vector<const LightOccluder*>& occluders,
+                   const RoomSmoke* smoke,
+                   const sf::Texture* smoke_density,
                    sf::FloatRect camera_view,
                    float time,
                    const std::string& room_dir,

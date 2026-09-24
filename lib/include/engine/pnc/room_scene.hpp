@@ -36,6 +36,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -52,6 +53,7 @@ class SceneParams;
 namespace pac::pnc {
 
 class RoomLightingRenderer;
+class RoomSmokeSystem;
 class RoomControlService;
 class RoomTuningOverlay;
 
@@ -256,6 +258,11 @@ private:
     /// every scripted avatar call so a stale id fails safely instead of dangling.
     [[nodiscard]] Avatar* resolve_avatar(const std::string& id);
     [[nodiscard]] const Avatar* resolve_avatar(const std::string& id) const;
+    /// Resolve a stable room target against the current frame. Missing or hidden
+    /// live targets return nullopt; named-anchor failures fall back to the pivot
+    /// and are warned once per room load.
+    [[nodiscard]] std::optional<ResolvedRoomTarget>
+    resolve_room_target(const RoomTargetRef& target) const;
     // The point a speech balloon floats above: the speaker's "head_pivot" sprite
     // anchor when the rig defines one, else an estimate (top-centre of the frame).
     [[nodiscard]] geom::Point speech_anchor(const Avatar& a) const;
@@ -459,6 +466,7 @@ private:
     Cast cast_;
     InventoryModel inventory_;
     std::optional<RoomRuntime> room_;
+    mutable std::set<std::string> target_warning_keys_;
     std::string current_room_id_;
     std::string room_dir_;
     std::optional<Avatar> player_;
@@ -476,6 +484,7 @@ private:
     mutable std::unique_ptr<sf::RenderTexture> post_process_target_;
     mutable gfx::ShaderChain post_process_chain_;
     mutable std::unique_ptr<RoomLightingRenderer> lighting_renderer_;
+    mutable std::unique_ptr<RoomSmokeSystem> smoke_system_;
     std::unique_ptr<RoomTuningOverlay> tuning_overlay_;
     std::unique_ptr<RoomControlService> control_service_;
     pac::core::ControlRegistration control_registration_;

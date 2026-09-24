@@ -40,12 +40,19 @@ uniform int light_count;
 uniform vec4 light_position_radius[8];
 uniform vec4 light_color_intensity[8];
 uniform vec4 light_direction_cone[8];
+uniform float light_beam_width[8];
+uniform sampler2D smoke_texture;
+uniform int use_smoke;
+uniform vec3 smoke_color;
+uniform float smoke_extinction;
+uniform float smoke_scattering;
 
 void main() {
     vec2 uv = gl_TexCoord[0].xy;
     vec4 px = texture2D(texture, uv);
     vec2 fragpx = vec2(uv.x * u_resolution.x, (1.0 - uv.y) * u_resolution.y);
-    vec3 illumination = ambient_color * ambient_intensity;
+    vec3 ambient = ambient_color * ambient_intensity;
+    vec3 direct_light = vec3(0.0);
     for (int i = 0; i < 8; ++i) {
         if (i >= light_count) break;
         vec4 position_radius = light_position_radius[i];
@@ -56,13 +63,29 @@ void main() {
         vec4 cone = light_direction_cone[i];
         float cone_factor = 1.0;
         if (cone.z > -1.5) {
-            vec2 ray = delta * inversesqrt(max(distance_sq, 0.0001));
-            cone_factor = smoothstep(cone.z, cone.w, dot(ray, cone.xy));
+            float forward = dot(delta, cone.xy);
+            float lateral = abs(dot(delta, vec2(-cone.y, cone.x)));
+            float outer_width = light_beam_width[i] * 0.5 + forward * cone.z;
+            float inner_width = light_beam_width[i] * 0.5 + forward * cone.w;
+            cone_factor = 1.0 - smoothstep(inner_width,
+                                           max(outer_width, inner_width + 0.0001),
+                                           lateral);
+            attenuation = forward < 0.0
+                ? 0.0
+                : 1.0 - smoothstep(0.0, 1.0, forward * forward / radius_sq);
         }
         vec4 color_intensity = light_color_intensity[i];
-        illumination += color_intensity.rgb * color_intensity.a * attenuation * cone_factor;
+        direct_light += color_intensity.rgb * color_intensity.a * attenuation * cone_factor;
     }
-    gl_FragColor = vec4(px.rgb * clamp(illumination, 0.0, 1.0), px.a) * gl_Color;
+    vec3 lit = px.rgb * clamp(ambient + direct_light, 0.0, 1.0);
+    if (use_smoke != 0) {
+        float density = clamp(texture2D(smoke_texture, uv).a, 0.0, 1.0);
+        float transmittance = exp(-density * smoke_extinction);
+        vec3 scattered = smoke_color *
+                         clamp(ambient + direct_light * smoke_scattering, 0.0, 1.0);
+        lit = lit * transmittance + scattered * (1.0 - transmittance);
+    }
+    gl_FragColor = vec4(lit, px.a) * gl_Color;
 }
 )GLSL";
 
@@ -78,6 +101,7 @@ uniform int light_count;
 uniform vec4 light_position_radius[8];
 uniform vec4 light_color_intensity[8];
 uniform vec4 light_direction_cone[8];
+uniform float light_beam_width[8];
 uniform int occluder_count;
 uniform vec4 occluder_segments[32];
 uniform sampler2D normal_texture;
@@ -86,6 +110,11 @@ uniform vec2 camera_origin;
 uniform vec2 normal_origin;
 uniform vec2 normal_size;
 uniform float normal_strength;
+uniform sampler2D smoke_texture;
+uniform int use_smoke;
+uniform vec3 smoke_color;
+uniform float smoke_extinction;
+uniform float smoke_scattering;
 
 float cross2(vec2 a, vec2 b) {
     return a.x * b.y - a.y * b.x;
@@ -125,7 +154,9 @@ void main() {
     // positions use top-left screen coordinates, so flip only the coordinate
     // used for lighting math—not the texture sample itself.
     vec2 fragpx = vec2(uv.x * u_resolution.x, (1.0 - uv.y) * u_resolution.y);
-    vec3 illumination = ambient_color * ambient_intensity;
+    vec3 ambient = ambient_color * ambient_intensity;
+    vec3 surface_light = vec3(0.0);
+    vec3 volume_light = vec3(0.0);
 
     for (int i = 0; i < 8; ++i) {
         if (i >= light_count) {
@@ -140,9 +171,16 @@ void main() {
         vec4 cone = light_direction_cone[i];
         float cone_factor = 1.0;
         if (cone.z > -1.5) {
-            vec2 ray = delta * inversesqrt(max(distance_sq, 0.0001));
-            float alignment = dot(ray, cone.xy);
-            cone_factor = smoothstep(cone.z, cone.w, alignment);
+            float forward = dot(delta, cone.xy);
+            float lateral = abs(dot(delta, vec2(-cone.y, cone.x)));
+            float outer_width = light_beam_width[i] * 0.5 + forward * cone.z;
+            float inner_width = light_beam_width[i] * 0.5 + forward * cone.w;
+            cone_factor = 1.0 - smoothstep(inner_width,
+                                           max(outer_width, inner_width + 0.0001),
+                                           lateral);
+            attenuation = forward < 0.0
+                ? 0.0
+                : 1.0 - smoothstep(0.0, 1.0, forward * forward / radius_sq);
         }
 
         vec4 color_intensity = light_color_intensity[i];
@@ -163,14 +201,23 @@ void main() {
                 normal_factor = max(dot(normal, to_light), 0.0);
             }
         }
-        illumination += color_intensity.rgb * color_intensity.a * attenuation * cone_factor *
-                        visibility * normal_factor;
+        vec3 contribution = color_intensity.rgb * color_intensity.a * attenuation * cone_factor *
+                            visibility;
+        volume_light += contribution;
+        surface_light += contribution * normal_factor;
     }
 
     // This is an LDR painterly pipeline: a light restores/tints the neutral art
     // from ambient darkness but does not create HDR values that would clamp in
     // the RGBA8 ping-pong target before the grading pass.
-    vec3 lit = px.rgb * clamp(illumination, 0.0, 1.0);
+    vec3 lit = px.rgb * clamp(ambient + surface_light, 0.0, 1.0);
+    if (use_smoke != 0) {
+        float density = clamp(texture2D(smoke_texture, uv).a, 0.0, 1.0);
+        float transmittance = exp(-density * smoke_extinction);
+        vec3 scattered = smoke_color *
+                         clamp(ambient + volume_light * smoke_scattering, 0.0, 1.0);
+        lit = lit * transmittance + scattered * (1.0 - transmittance);
+    }
     gl_FragColor = vec4(lit, px.a) * gl_Color;
 }
 )GLSL";
@@ -241,6 +288,20 @@ float evaluate_light_modulation(const LightModulation& modulation, float time) {
     return std::max(0.0f, scale);
 }
 
+float resolve_room_light_direction(const RoomLight& light,
+                                   geom::Point resolved_position,
+                                   float facing_offset,
+                                   std::optional<geom::Point> resolved_aim_at) {
+    if (resolved_aim_at) {
+        const float dx = resolved_aim_at->x - resolved_position.x;
+        const float dy = resolved_aim_at->y - resolved_position.y;
+        if (std::hypot(dx, dy) > 0.001f) {
+            return std::atan2(dy, dx) * 180.0f / kPi;
+        }
+    }
+    return light.direction + (light.follow_facing ? facing_offset : 0.0f);
+}
+
 ProjectedShadow resolve_projected_shadow(const ProjectedShadow& authored,
                                          const std::vector<ResolvedRoomLight>& lights,
                                          geom::Point caster,
@@ -270,21 +331,29 @@ ProjectedShadow resolve_projected_shadow(const ProjectedShadow& authored,
         }
 
         const float radius_sq = std::max(light.radius * light.radius, 0.0001f);
-        const float attenuation = 1.0f - smoothstep(0.0f, 1.0f, distance_sq / radius_sq);
-        if (attenuation <= 0.0f) {
-            continue;
-        }
+        float attenuation = 1.0f - smoothstep(0.0f, 1.0f, distance_sq / radius_sq);
 
         float cone = 1.0f;
         if (light.type == RoomLight::Type::SPOT) {
             const float direction_radians = item.direction * kPi / 180.0f;
             const sf::Vector2f axis(std::cos(direction_radians), std::sin(direction_radians));
-            const float alignment = away.x * axis.x + away.y * axis.y;
+            const sf::Vector2f delta(caster.x - item.position.x, caster.y - item.position.y);
+            const float forward = delta.x * axis.x + delta.y * axis.y;
+            const float lateral = std::abs(delta.x * -axis.y + delta.y * axis.x);
             const float outer = light.angle * 0.5f * kPi / 180.0f;
             const float inner = (light.angle * 0.5f - light.softness) * kPi / 180.0f;
-            cone = smoothstep(std::cos(outer), std::cos(inner), alignment);
+            const float outer_width = light.beam_width * 0.5f + forward * std::tan(outer);
+            const float inner_width = light.beam_width * 0.5f + forward * std::tan(inner);
+            cone = forward < 0.0f
+                       ? 0.0f
+                       : 1.0f - smoothstep(inner_width,
+                                           std::max(outer_width, inner_width + 0.0001f),
+                                           lateral);
+            attenuation = forward < 0.0f
+                              ? 0.0f
+                              : 1.0f - smoothstep(0.0f, 1.0f, forward * forward / radius_sq);
         }
-        if (cone <= 0.0f) {
+        if (cone <= 0.0f || attenuation <= 0.0f) {
             continue;
         }
 
@@ -355,9 +424,29 @@ void draw_compat_lighting(sf::RenderTarget& target,
         const sf::Color center(channel(light.color[0] * intensity),
                                channel(light.color[1] * intensity),
                                channel(light.color[2] * intensity));
+        const bool spot = light.type == RoomLight::Type::SPOT;
+        if (spot) {
+            const float direction = item.direction * kDegrees;
+            const sf::Vector2f axis(std::cos(direction), std::sin(direction));
+            const sf::Vector2f side(-axis.y, axis.x);
+            const float near_half = light.beam_width * 0.5f;
+            const float far_half = near_half +
+                                   light.radius * std::tan(light.angle * 0.5f * kDegrees);
+            const sf::Vector2f near_center(item.position.x, item.position.y);
+            const sf::Vector2f far_center = near_center + axis * light.radius;
+            sf::VertexArray beam(sf::TriangleStrip);
+            beam.append(sf::Vertex(near_center - side * near_half, center));
+            beam.append(sf::Vertex(near_center + side * near_half, center));
+            beam.append(sf::Vertex(far_center - side * far_half, sf::Color::Black));
+            beam.append(sf::Vertex(far_center + side * far_half, sf::Color::Black));
+            sf::RenderStates states;
+            states.blendMode = add_to_destination;
+            target.draw(beam, states);
+            continue;
+        }
+
         sf::VertexArray fan(sf::TriangleFan);
         fan.append(sf::Vertex({item.position.x, item.position.y}, center));
-        const bool spot = light.type == RoomLight::Type::SPOT;
         const float start = spot ? item.direction - light.angle * 0.5f : 0.0f;
         const float sweep = spot ? light.angle : 360.0f;
         const int segments = spot ? std::max(8, static_cast<int>(std::ceil(kSegments * sweep / 360.0f)))
@@ -481,6 +570,8 @@ bool RoomLightingRenderer::ensure_shader(bool advanced, pac::core::Diagnostics& 
 bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
                                      const std::vector<ResolvedRoomLight>& resolved,
                                      const std::vector<const LightOccluder*>& occluders,
+                                     const RoomSmoke* smoke,
+                                     const sf::Texture* smoke_density,
                                      sf::FloatRect camera_view,
                                      float time,
                                      const std::string& room_dir,
@@ -495,6 +586,7 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
     std::array<sf::Glsl::Vec4, kMaxLights> positions{};
     std::array<sf::Glsl::Vec4, kMaxLights> colors{};
     std::array<sf::Glsl::Vec4, kMaxLights> cones{};
+    std::array<float, kMaxLights> beam_widths{};
     std::array<sf::Glsl::Vec4, kMaxOccluderSegments> segments{};
     std::size_t count = 0;
     std::size_t visible_count = 0;
@@ -505,8 +597,14 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
         const RoomLight& light = *resolved_light.light;
         const float x = resolved_light.position.x - camera_view.left;
         const float y = resolved_light.position.y - camera_view.top;
-        if (x + light.radius < 0.0f || y + light.radius < 0.0f ||
-            x - light.radius > camera_view.width || y - light.radius > camera_view.height) {
+        const float extent =
+            light.type == RoomLight::Type::SPOT
+                ? std::hypot(light.radius,
+                             light.beam_width * 0.5f +
+                                 light.radius * std::tan(light.angle * 0.5f * kPi / 180.0f))
+                : light.radius;
+        if (x + extent < 0.0f || y + extent < 0.0f ||
+            x - extent > camera_view.width || y - extent > camera_view.height) {
             continue;
         }
         ++visible_count;
@@ -527,8 +625,9 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
             const float inner = (light.angle * 0.5f - light.softness) * kPi / 180.0f;
             cones[count] = sf::Glsl::Vec4(std::cos(direction_radians),
                                           std::sin(direction_radians),
-                                          std::cos(outer),
-                                          std::cos(inner));
+                                          std::tan(outer),
+                                          std::tan(inner));
+            beam_widths[count] = light.beam_width;
         } else {
             cones[count] = sf::Glsl::Vec4(0.0f, 0.0f, -2.0f, -2.0f);
         }
@@ -586,6 +685,9 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
     const sf::Glsl::Vec3 ambient(lighting.ambient_color[0],
                                  lighting.ambient_color[1],
                                  lighting.ambient_color[2]);
+    const sf::Glsl::Vec3 smoke_color(smoke ? smoke->color[0] : 1.0f,
+                                    smoke ? smoke->color[1] : 1.0f,
+                                    smoke ? smoke->color[2] : 1.0f);
     const sf::Glsl::Vec2 resolution(camera_view.width, camera_view.height);
     const sf::Glsl::Vec2 camera_origin(camera_view.left, camera_view.top);
     const sf::Glsl::Vec2 normal_origin(lighting.normal_origin.x, lighting.normal_origin.y);
@@ -600,6 +702,7 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
                 positions,
                 colors,
                 cones,
+                beam_widths,
                 segments,
                 segment_count,
                 camera_origin,
@@ -607,6 +710,10 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
                 normal_size,
                 normal_strength = lighting.normal_strength,
                 normal_texture,
+                smoke_density,
+                smoke_color,
+                smoke_extinction = smoke ? smoke->extinction : 0.0f,
+                smoke_scattering = smoke ? smoke->scattering : 0.0f,
                 advanced,
                 count](sf::Shader& shader) {
         shader.setUniform("texture", sf::Shader::CurrentTexture);
@@ -614,6 +721,13 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
         shader.setUniform("ambient_color", ambient);
         shader.setUniform("ambient_intensity", intensity);
         shader.setUniform("light_count", static_cast<int>(count));
+        shader.setUniform("use_smoke", smoke_density ? 1 : 0);
+        shader.setUniform("smoke_color", smoke_color);
+        shader.setUniform("smoke_extinction", smoke_extinction);
+        shader.setUniform("smoke_scattering", smoke_scattering);
+        if (smoke_density) {
+            shader.setUniform("smoke_texture", *smoke_density);
+        }
         if (advanced) {
             shader.setUniform("occluder_count", static_cast<int>(segment_count));
             shader.setUniform("use_normal_map", normal_texture ? 1 : 0);
@@ -629,6 +743,7 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
             shader.setUniformArray("light_position_radius", positions.data(), count);
             shader.setUniformArray("light_color_intensity", colors.data(), count);
             shader.setUniformArray("light_direction_cone", cones.data(), count);
+            shader.setUniformArray("light_beam_width", beam_widths.data(), count);
         }
         if (advanced && segment_count > 0) {
             shader.setUniformArray("occluder_segments", segments.data(), segment_count);

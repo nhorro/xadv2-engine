@@ -122,6 +122,57 @@ TEST_CASE("room tuning YAML preserves resultant projected-shadow sources") {
     CHECK(exported.projected_shadow->sources == std::vector<std::string>{"lamp"});
 }
 
+TEST_CASE("room tuning YAML preserves spotlight aim and trapezoidal beam") {
+    RoomData room = tuning_room();
+    REQUIRE(room.dynamic_lighting);
+    RoomLight& light = room.dynamic_lighting->lights.front();
+    light.type = RoomLight::Type::SPOT;
+    RoomTargetRef aim;
+    aim.kind = RoomTargetRef::Kind::FIXED_POINT;
+    aim.point = {420.0f, 560.0f};
+    light.aim_at = aim;
+    light.angle = 48.0f;
+    light.softness = 9.0f;
+    light.beam_width = 36.0f;
+    RoomRenderState live = render_state(room);
+    RoomTuningOverlay overlay;
+    overlay.open(live, render_state(room), {0.0f, 612.0f, 1280.0f, 108.0f}, nullptr);
+
+    const RoomData exported = parse_room("id: adjusted\n" + overlay.yaml());
+    REQUIRE(exported.dynamic_lighting);
+    const RoomLight& result = exported.dynamic_lighting->lights.front();
+    REQUIRE(result.aim_at);
+    CHECK(result.aim_at->kind == RoomTargetRef::Kind::FIXED_POINT);
+    CHECK(result.aim_at->point.x == doctest::Approx(420.0f));
+    CHECK(result.aim_at->point.y == doctest::Approx(560.0f));
+    CHECK(result.beam_width == doctest::Approx(36.0f));
+}
+
+TEST_CASE("room tuning YAML preserves tracked spotlight targets") {
+    RoomData room = tuning_room();
+    REQUIRE(room.dynamic_lighting);
+    RoomLight& light = room.dynamic_lighting->lights.front();
+    light.type = RoomLight::Type::SPOT;
+    RoomTargetRef aim;
+    aim.kind = RoomTargetRef::Kind::AVATAR;
+    aim.id = "actor";
+    aim.anchor = "head_pivot";
+    aim.offset = {2.0f, 3.0f};
+    light.aim_at = aim;
+    RoomRenderState live = render_state(room);
+    RoomTuningOverlay overlay;
+    overlay.open(live, render_state(room), {0.0f, 612.0f, 1280.0f, 108.0f}, nullptr);
+
+    const RoomData exported = parse_room("id: adjusted\n" + overlay.yaml());
+    REQUIRE(exported.dynamic_lighting);
+    const RoomTargetRef& result = *exported.dynamic_lighting->lights.front().aim_at;
+    CHECK(result.kind == RoomTargetRef::Kind::AVATAR);
+    CHECK(result.id == "actor");
+    CHECK(result.anchor == "head_pivot");
+    CHECK(result.offset.x == doctest::Approx(2.0f));
+    CHECK(result.offset.y == doctest::Approx(3.0f));
+}
+
 TEST_CASE("unlit room tuning can preview and export a default ambient pass") {
     RoomData room;
     room.id = "plain";

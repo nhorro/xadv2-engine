@@ -35,6 +35,7 @@ z-sorted room composition
 dynamic lighting (one full-scene pass, optional)
         │  ambient darkness + omni/spot lights
         │  + optional light occluders and normal map
+        │  + optional smoke extinction and scattering
         ▼
 room post-processing (optional ordered shader stack)
         │  colour grading normally belongs here
@@ -82,6 +83,41 @@ it cannot make a source pixel brighter than it was in the original artwork.
 This multiplication also makes the system friendly to modest GPUs: all visible
 lights, their modulation, normal response, and simple occlusion are evaluated in
 one full-scene lighting pass.
+
+## Add atmospheric haze
+
+Room smoke is a deliberately focused atmospheric effect, not a general-purpose
+particle framework. The engine keeps a fixed CPU pool of soft particles, draws
+them together into one reduced-resolution density texture, and lets the existing
+lighting pass apply extinction and scattering. Spotlights therefore reveal the
+haze in their own colours instead of smoke being painted as an unrelated overlay.
+
+```yaml
+smoke:
+  resolution_scale: 0.5  # 0.125..1; half resolution is normally enough
+  color: [0.78, 0.80, 0.84]
+  extinction: 1.6        # how strongly dense haze veils the scenery
+  scattering: 1.15       # how strongly direct lights illuminate the haze
+  emitters:
+    - id: stage_haze
+      area: [{x: 300, y: 430}, {x: 980, y: 430},
+             {x: 980, y: 590}, {x: 300, y: 590}]
+      max_particles: 160
+      emission_rate: 8   # particles per second
+      lifetime: {min: 12, max: 20}
+      size: {start: 120, end: 340}
+      velocity: {x: 3, y: -5}
+      turbulence: 10
+      density: 0.08
+      seed: 17
+      prewarm: true
+```
+
+`area` is a room-space emission polygon. `prewarm` starts the room near its
+steady-state density instead of making the player wait for haze to accumulate.
+The sum of `max_particles` across emitters is capped at 8192; practical room haze
+usually needs only 80–200. Prefer large, faint particles and a low-resolution
+density buffer. Small opaque puffs read as steam or dust rather than ambient smoke.
 
 ## Start from a working room
 
@@ -221,12 +257,13 @@ The editor represents each light with simple room-space primitives:
 | Centre marker | Static `at` position, or the previewed attachment plus `offset`. | Drag the centre; attached lights update their offset. |
 | Diamond range handle | `radius` for an omni or `range` for a spotlight. | Drag away from/toward the centre. |
 | Omni circle | Maximum radial reach. It fades smoothly before the boundary. | Change the range handle or inspector value. |
-| Spotlight wedge | Direction and full outer cone. | Drag the direction handle and either cone-edge handle. |
+| Spotlight trapezoid | Aim/direction, source beam width, forward range, and full outer cone. | Drag the blue aim/direction handle and either cone-edge handle; edit beam width in the inspector. |
 | Cone-edge handles | `angle`, with the two arms kept symmetric. | Widen for broad window/sunlight; narrow for a torch. |
 
 The inspector edits id, type, static/attached placement, range, virtual height,
-direction, angle, softness, colour, intensity, and initial enabled state. For an
-attachment, use `player`, `avatar:<id>`, or `object:<id>`.
+direction or `aim_at`, angle, softness, beam width, colour, intensity, and
+initial enabled state. For an attachment, use `player`, `avatar:<id>`, or
+`object:<id>`.
 
 !!! note "Editor primitive versus final light"
     The web editor shows placement and geometry, not the exact GPU-composited
@@ -272,9 +309,10 @@ A spotlight adds cone controls:
       at: {x: 90, y: 210}
       range: 1050
       height: 600
-      direction: 24
+      aim_at: {x: 850, y: 560}
       angle: 72
       softness: 18
+      beam_width: 64
       color: [0.84, 0.92, 1.0]
       intensity: 0.68
 ```
@@ -292,13 +330,37 @@ A spotlight adds cone controls:
 | `intensity` | both | Peak contribution `0..4` before modulation. Values around `0.3–1.0` are usually sufficient in an LDR scene. |
 | `enabled` | both | Initial state, default `true`. Lua may change it while the room is loaded. |
 | `direction` | spot | Screen-space degrees: `0` right, `90` down, `180` left, `270` up. |
+| `aim_at` | spot | Alternative fixed or tracked room-space target. Use `{x, y}`, `player`, `avatar:<id>`, `object:<id>`, `point:<id>`, or the expanded form below. The direction is recomputed every frame. Do not combine it with `direction` or `follow_facing`. |
 | `angle` | spot | Full outer cone angle, greater than 0 and less than 180. |
 | `softness` | spot | Penumbra width at each cone edge. It must be less than half the angle. |
+| `beam_width` | spot | Width in room pixels at the light origin. `0` gives a triangular beam; positive values create a trapezoid. |
 | `follow_facing` | attached spot | Rotates the cone with a player/avatar. The authored direction becomes an offset from the cardinal facing. |
 
-The falloff is smooth from the origin to the range boundary. Avoid placing a
-boundary across a frequently visited face or hotspot; extend the range and lower
-the intensity instead.
+Spotlight `range` is measured forward along its axis, giving the beam a flat far
+edge. Its side width grows from `beam_width` according to `angle`, forming a
+trapezoid; both side penumbrae use `softness`. The falloff is smooth from the
+origin to the range boundary. Avoid placing a boundary across a frequently
+visited face or hotspot; extend the range and lower the intensity instead.
+
+A tracked aim follows a live room target without coupling the light to its
+sprite instance:
+
+```yaml
+aim_at: player
+
+# Or select a visual/named anchor and add a room-space offset.
+aim_at:
+  target: avatar:stagehand
+  anchor: head_pivot   # pivot (default), center, or a sprite anchor
+  offset: {x: 0, y: 20}
+```
+
+`player` follows the current PC; `avatar:<id>` follows either a live NPC or the
+player by cast id; `object:<id>` follows a visible room object; and `point:<id>`
+refers to an authored room point. A missing, despawned, or hidden live target
+suppresses the spotlight until it becomes available again. If a named sprite
+anchor is absent in the current visual, the engine warns once and uses the
+target's pivot.
 
 ## Step 4: add motion only when the source calls for it
 
@@ -657,7 +719,7 @@ fields.
 |---------|--------------|-----|
 | Everything became uniformly dark | Ambient is too low, or no direct light reaches the camera. | Raise ambient first; then inspect light range and enabled state. |
 | A light seems to do nothing | Source art is already black, the light is off-camera/out of range, its attachment is missing, or illumination already clamps at 1. | Compare with F9, verify `at`/`attach`, lower ambient to expose the contribution, and inspect logs. |
-| A spotlight has a visible hard triangle | Cone too narrow or `softness` too small. | Widen `angle`, increase softness, extend range, and lower intensity. |
+| A spotlight has visibly hard beam sides | Cone too narrow or `softness` too small. | Widen `angle`, increase softness, add a modest `beam_width`, extend range, and lower intensity. |
 | A circular bright patch is obvious | Omni radius is too small/intense for the intended fill. | Increase radius and reduce intensity, or move that contribution into ambient. |
 | Character enters a dark band | Light boundary crosses the walkable area. | Test the full path; increase range or add restrained fill. |
 | Projected shadow points the wrong way | Its source disagrees with the painted key light. | Move the source or reference the correct dynamic-light id. |

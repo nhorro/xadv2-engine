@@ -10,6 +10,7 @@
 #include <cmath>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -61,6 +62,22 @@ float RoomData::avatar_scale_at(float y, float fallback) const {
     return p.top_scale + t * (p.bottom_scale - p.top_scale);
 }
 
+std::string room_target_name(const RoomTargetRef& target) {
+    switch (target.kind) {
+    case RoomTargetRef::Kind::FIXED_POINT:
+        return {};
+    case RoomTargetRef::Kind::NAMED_POINT:
+        return "point:" + target.id;
+    case RoomTargetRef::Kind::PLAYER:
+        return "player";
+    case RoomTargetRef::Kind::AVATAR:
+        return "avatar:" + target.id;
+    case RoomTargetRef::Kind::OBJECT:
+        return "object:" + target.id;
+    }
+    return {};
+}
+
 namespace {
 
 constexpr const char* kSource = "room-loader";
@@ -72,6 +89,104 @@ room_fail(const std::string& code, const std::string& msg, const YAML::Node& at 
 
 geom::Point parse_point(const YAML::Node& node) {
     return {node["x"].as<float>(), node["y"].as<float>()};
+}
+
+RoomTargetRef parse_target_name(const std::string& value,
+                                const YAML::Node& node,
+                                const std::string& room_id,
+                                const std::string& light_id) {
+    RoomTargetRef target;
+    if (value == "player") {
+        target.kind = RoomTargetRef::Kind::PLAYER;
+        return target;
+    }
+    const auto prefixed = [&](std::string_view prefix, RoomTargetRef::Kind kind) {
+        if (!value.starts_with(prefix) || value.size() == prefix.size()) {
+            return false;
+        }
+        target.kind = kind;
+        target.id = value.substr(prefix.size());
+        return true;
+    };
+    if (prefixed("avatar:", RoomTargetRef::Kind::AVATAR) ||
+        prefixed("npc:", RoomTargetRef::Kind::AVATAR) ||
+        prefixed("object:", RoomTargetRef::Kind::OBJECT) ||
+        prefixed("point:", RoomTargetRef::Kind::NAMED_POINT)) {
+        return target;
+    }
+    room_fail("room.spotlight-aim-invalid",
+              "room '" + room_id + "': spotlight '" + light_id +
+                  "' aim target must be player, avatar:<id>, object:<id>, or point:<id>",
+              node);
+}
+
+RoomTargetRef parse_room_target(const YAML::Node& node,
+                                const std::string& room_id,
+                                const std::string& light_id) {
+    RoomTargetRef target;
+    if (node.IsScalar()) {
+        return parse_target_name(node.as<std::string>(), node, room_id, light_id);
+    }
+    if (!node.IsMap()) {
+        room_fail("room.spotlight-aim-invalid",
+                  "room '" + room_id + "': spotlight '" + light_id +
+                      "' aim_at must be {x, y}, a target reference, or a target mapping",
+                  node);
+    }
+    if (node["x"] || node["y"]) {
+        if (!node["x"] || !node["y"] || node["target"] || node["anchor"] ||
+            node["offset"]) {
+            room_fail("room.spotlight-aim-invalid",
+                      "room '" + room_id + "': spotlight '" + light_id +
+                          "' fixed aim_at needs exactly x and y",
+                      node);
+        }
+        target.kind = RoomTargetRef::Kind::FIXED_POINT;
+        target.point = parse_point(node);
+        if (!std::isfinite(target.point.x) || !std::isfinite(target.point.y)) {
+            room_fail("room.spotlight-aim-invalid",
+                      "room '" + room_id + "': spotlight '" + light_id +
+                          "' aim_at needs finite x and y",
+                      node);
+        }
+        return target;
+    }
+    if (!node["target"] || !node["target"].IsScalar()) {
+        room_fail("room.spotlight-aim-invalid",
+                  "room '" + room_id + "': spotlight '" + light_id +
+                      "' tracked aim_at needs a target",
+                  node);
+    }
+    target = parse_target_name(node["target"].as<std::string>(),
+                               node["target"],
+                               room_id,
+                               light_id);
+    if (node["anchor"]) {
+        target.anchor = node["anchor"].as<std::string>();
+        if (target.anchor.empty() || target.kind == RoomTargetRef::Kind::NAMED_POINT) {
+            room_fail("room.spotlight-aim-invalid",
+                      "room '" + room_id + "': spotlight '" + light_id +
+                          "' aim anchor must be non-empty and target the player, an avatar, or "
+                          "an object",
+                      node["anchor"]);
+        }
+    }
+    if (node["offset"]) {
+        if (!node["offset"].IsMap() || !node["offset"]["x"] || !node["offset"]["y"]) {
+            room_fail("room.spotlight-aim-invalid",
+                      "room '" + room_id + "': spotlight '" + light_id +
+                          "' aim offset must be {x, y}",
+                      node["offset"]);
+        }
+        target.offset = parse_point(node["offset"]);
+        if (!std::isfinite(target.offset.x) || !std::isfinite(target.offset.y)) {
+            room_fail("room.spotlight-aim-invalid",
+                      "room '" + room_id + "': spotlight '" + light_id +
+                          "' aim offset needs finite x and y",
+                      node["offset"]);
+        }
+    }
+    return target;
 }
 
 geom::Polygon parse_polygon(const YAML::Node& node) {
@@ -285,6 +400,138 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
         room.post_process = std::move(config);
     }
 
+    if (const YAML::Node smoke = root["smoke"]) {
+        if (!smoke.IsMap()) {
+            room_fail("room.smoke-not-map",
+                      "room '" + room.id + "': 'smoke' must be a mapping",
+                      smoke);
+        }
+        RoomSmoke config;
+        config.enabled = smoke["enabled"] ? smoke["enabled"].as<bool>() : true;
+        config.resolution_scale =
+            smoke["resolution_scale"] ? smoke["resolution_scale"].as<float>() : 0.5f;
+        config.extinction = smoke["extinction"] ? smoke["extinction"].as<float>() : 1.35f;
+        config.scattering = smoke["scattering"] ? smoke["scattering"].as<float>() : 0.9f;
+        if (smoke["color"]) {
+            config.color = parse_light_color(smoke["color"], "smoke.color", room.id);
+        }
+        if (!std::isfinite(config.resolution_scale) || config.resolution_scale < 0.125f ||
+            config.resolution_scale > 1.0f || !std::isfinite(config.extinction) ||
+            config.extinction < 0.0f || config.extinction > 10.0f ||
+            !std::isfinite(config.scattering) || config.scattering < 0.0f ||
+            config.scattering > 4.0f) {
+            room_fail("room.smoke-params-invalid",
+                      "room '" + room.id +
+                          "': smoke needs resolution_scale 0.125..1, extinction 0..10, and "
+                          "scattering 0..4",
+                      smoke);
+        }
+
+        const YAML::Node emitters = smoke["emitters"];
+        if (!emitters || !emitters.IsSequence() || emitters.size() == 0) {
+            room_fail("room.smoke-emitters-invalid",
+                      "room '" + room.id + "': smoke 'emitters' must be a non-empty sequence",
+                      emitters ? emitters : smoke);
+        }
+        std::set<std::string> ids;
+        std::size_t total_capacity = 0;
+        for (const YAML::Node& node : emitters) {
+            if (!node.IsMap() || !node["id"] || !node["area"]) {
+                room_fail("room.smoke-emitter-invalid",
+                          "room '" + room.id +
+                              "': every smoke emitter needs an id and polygon area",
+                          node);
+            }
+            RoomSmokeEmitter emitter;
+            emitter.id = node["id"].as<std::string>();
+            if (emitter.id.empty() || !ids.insert(emitter.id).second) {
+                room_fail("room.smoke-emitter-id-invalid",
+                          "room '" + room.id + "': smoke emitter ids must be non-empty and unique",
+                          node["id"]);
+            }
+            if (!node["area"].IsSequence()) {
+                room_fail("room.smoke-emitter-area-invalid",
+                          "room '" + room.id + "': smoke emitter '" + emitter.id +
+                              "' area must be a polygon",
+                          node["area"]);
+            }
+            for (const YAML::Node& point : node["area"]) {
+                emitter.area.push_back(parse_point(point));
+            }
+            if (emitter.area.size() < 3) {
+                room_fail("room.smoke-emitter-area-invalid",
+                          "room '" + room.id + "': smoke emitter '" + emitter.id +
+                              "' area needs at least three points",
+                          node["area"]);
+            }
+
+            const int max_particles = node["max_particles"] ? node["max_particles"].as<int>() : 96;
+            if (max_particles < 1 || max_particles > 4096) {
+                room_fail("room.smoke-emitter-capacity-invalid",
+                          "room '" + room.id + "': smoke emitter '" + emitter.id +
+                              "' max_particles must be between 1 and 4096",
+                          node["max_particles"]);
+            }
+            emitter.max_particles = static_cast<std::size_t>(max_particles);
+            total_capacity += emitter.max_particles;
+
+            emitter.emission_rate =
+                node["emission_rate"] ? node["emission_rate"].as<float>() : 8.0f;
+            emitter.turbulence = node["turbulence"] ? node["turbulence"].as<float>() : 8.0f;
+            emitter.density = node["density"] ? node["density"].as<float>() : 0.16f;
+            emitter.seed = node["seed"] ? node["seed"].as<unsigned>() : 1u;
+            emitter.prewarm = node["prewarm"] ? node["prewarm"].as<bool>() : true;
+            if (node["velocity"]) {
+                emitter.velocity = parse_point(node["velocity"]);
+            }
+
+            if (const YAML::Node lifetime = node["lifetime"]) {
+                if (!lifetime.IsMap() || !lifetime["min"] || !lifetime["max"]) {
+                    room_fail("room.smoke-emitter-lifetime-invalid",
+                              "room '" + room.id + "': smoke emitter '" + emitter.id +
+                                  "' lifetime needs min and max",
+                              lifetime);
+                }
+                emitter.lifetime_min = lifetime["min"].as<float>();
+                emitter.lifetime_max = lifetime["max"].as<float>();
+            }
+            if (const YAML::Node size = node["size"]) {
+                if (!size.IsMap() || !size["start"] || !size["end"]) {
+                    room_fail("room.smoke-emitter-size-invalid",
+                              "room '" + room.id + "': smoke emitter '" + emitter.id +
+                                  "' size needs start and end",
+                              size);
+                }
+                emitter.size_start = size["start"].as<float>();
+                emitter.size_end = size["end"].as<float>();
+            }
+            if (!std::isfinite(emitter.emission_rate) || emitter.emission_rate < 0.0f ||
+                emitter.emission_rate > 1000.0f || !std::isfinite(emitter.lifetime_min) ||
+                !std::isfinite(emitter.lifetime_max) || emitter.lifetime_min <= 0.0f ||
+                emitter.lifetime_max < emitter.lifetime_min || !std::isfinite(emitter.size_start) ||
+                !std::isfinite(emitter.size_end) || emitter.size_start <= 0.0f ||
+                emitter.size_end <= 0.0f || !std::isfinite(emitter.velocity.x) ||
+                !std::isfinite(emitter.velocity.y) || !std::isfinite(emitter.turbulence) ||
+                emitter.turbulence < 0.0f || emitter.turbulence > 1000.0f ||
+                !std::isfinite(emitter.density) || emitter.density < 0.0f ||
+                emitter.density > 1.0f) {
+                room_fail("room.smoke-emitter-params-invalid",
+                          "room '" + room.id + "': smoke emitter '" + emitter.id +
+                              "' has invalid rate, lifetime, size, velocity, turbulence, or "
+                              "density",
+                          node);
+            }
+            config.emitters.push_back(std::move(emitter));
+        }
+        if (total_capacity > 8192) {
+            room_fail("room.smoke-capacity-invalid",
+                      "room '" + room.id +
+                          "': smoke emitters may reserve at most 8192 particles in total",
+                      emitters);
+        }
+        room.smoke = std::move(config);
+    }
+
     if (const YAML::Node lighting = root["lighting"]) {
         if (!lighting.IsMap()) {
             room_fail("room.lighting-not-map",
@@ -436,24 +683,41 @@ RoomData parse_room(const std::string& yaml_text, const std::string& expected_id
                     if (light.type == RoomLight::Type::SPOT) {
                         const bool follows_facing =
                             node["follow_facing"] && node["follow_facing"].as<bool>();
-                        if (!node["direction"] && !follows_facing) {
+                        const bool has_direction = static_cast<bool>(node["direction"]);
+                        const bool has_aim = static_cast<bool>(node["aim_at"]);
+                        if (!has_direction && !has_aim && !follows_facing) {
                             room_fail("room.spotlight-direction-missing",
                                       "room '" + room.id + "': spotlight '" + light.id +
-                                          "' needs 'direction' or 'follow_facing: true'",
+                                          "' needs 'direction', 'aim_at', or 'follow_facing: true'",
+                                      node);
+                        }
+                        if (has_aim && (has_direction || follows_facing)) {
+                            room_fail("room.spotlight-aim-invalid",
+                                      "room '" + room.id + "': spotlight '" + light.id +
+                                          "' aim_at cannot be combined with direction or "
+                                          "follow_facing",
                                       node);
                         }
                         light.direction = node["direction"] ? node["direction"].as<float>() : 0.0f;
+                        if (has_aim) {
+                            light.aim_at =
+                                parse_room_target(node["aim_at"], room.id, light.id);
+                        }
                         light.angle = node["angle"] ? node["angle"].as<float>() : 45.0f;
                         light.softness = node["softness"] ? node["softness"].as<float>() : 8.0f;
+                        light.beam_width =
+                            node["beam_width"] ? node["beam_width"].as<float>() : 0.0f;
                         light.follow_facing =
                             node["follow_facing"] ? node["follow_facing"].as<bool>() : false;
                         if (!std::isfinite(light.direction) || !std::isfinite(light.angle) ||
-                            !std::isfinite(light.softness) || light.angle <= 0.0f ||
+                            !std::isfinite(light.softness) ||
+                            !std::isfinite(light.beam_width) || light.angle <= 0.0f ||
                             light.angle >= 180.0f || light.softness < 0.0f ||
-                            light.softness >= light.angle * 0.5f) {
+                            light.softness >= light.angle * 0.5f || light.beam_width < 0.0f) {
                             room_fail("room.spotlight-cone-invalid",
                                       "room '" + room.id + "': spotlight '" + light.id +
-                                          "' needs 0 < angle < 180 and 0 <= softness < angle/2",
+                                          "' needs 0 < angle < 180, 0 <= softness < angle/2, "
+                                          "and beam_width >= 0",
                                       node);
                         }
                         const bool avatar_attached =

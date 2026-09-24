@@ -573,6 +573,59 @@ lighting:
     CHECK(r.projected_shadow.has_value());
 }
 
+TEST_CASE("parse_room reads a fixed spotlight aim and trapezoidal beam width") {
+    const RoomData room = parse_room(R"YAML(
+id: aimed
+lighting:
+  lights:
+    - id: follow_spot
+      type: spot
+      at: {x: 100, y: 80}
+      aim_at: {x: 420, y: 560}
+      range: 700
+      angle: 48
+      softness: 9
+      beam_width: 36
+)YAML");
+    REQUIRE(room.dynamic_lighting);
+    REQUIRE(room.dynamic_lighting->lights.size() == 1);
+    const RoomLight& light = room.dynamic_lighting->lights.front();
+    REQUIRE(light.aim_at);
+    CHECK(light.aim_at->kind == RoomTargetRef::Kind::FIXED_POINT);
+    CHECK(light.aim_at->point.x == doctest::Approx(420.0f));
+    CHECK(light.aim_at->point.y == doctest::Approx(560.0f));
+    CHECK(light.beam_width == doctest::Approx(36.0f));
+}
+
+TEST_CASE("parse_room reads live spotlight target references") {
+    const RoomData room = parse_room(R"YAML(
+id: tracked
+lighting:
+  lights:
+    - {id: player_spot, type: spot, at: {x: 100, y: 80}, aim_at: player, range: 700}
+    - id: actor_spot
+      type: spot
+      at: {x: 200, y: 80}
+      aim_at:
+        target: npc:actor
+        anchor: head_pivot
+        offset: {x: 2, y: 3}
+      range: 700
+)YAML");
+    REQUIRE(room.dynamic_lighting);
+    REQUIRE(room.dynamic_lighting->lights.size() == 2);
+    const RoomTargetRef& player = *room.dynamic_lighting->lights[0].aim_at;
+    CHECK(player.kind == RoomTargetRef::Kind::PLAYER);
+    CHECK(room_target_name(player) == "player");
+    const RoomTargetRef& actor = *room.dynamic_lighting->lights[1].aim_at;
+    CHECK(actor.kind == RoomTargetRef::Kind::AVATAR);
+    CHECK(actor.id == "actor");
+    CHECK(actor.anchor == "head_pivot");
+    CHECK(actor.offset.x == doctest::Approx(2.0f));
+    CHECK(actor.offset.y == doctest::Approx(3.0f));
+    CHECK(room_target_name(actor) == "avatar:actor");
+}
+
 TEST_CASE("RoomRuntime seeds and controls transient dynamic-light state") {
     RoomRuntime room(parse_room(R"YAML(
 id: r
@@ -654,6 +707,26 @@ TEST_CASE("parse_room validates dynamic lights") {
               parse_room("id: r\nlighting:\n  lights:\n"
                          "    - {id: a, type: spot, at: {x: 0, y: 0}, range: 10}\n");
           }) == "room.spotlight-direction-missing");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  lights:\n"
+                         "    - {id: a, type: spot, at: {x: 0, y: 0}, aim_at: {x: 1, y: 1}, "
+                         "direction: 45, range: 10}\n");
+          }) == "room.spotlight-aim-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  lights:\n"
+                         "    - {id: a, type: spot, at: {x: 0, y: 0}, "
+                         "aim_at: camera:nope, range: 10}\n");
+          }) == "room.spotlight-aim-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  lights:\n"
+                         "    - {id: a, type: spot, at: {x: 0, y: 0}, "
+                         "aim_at: {target: 'point:mark', anchor: center}, range: 10}\n");
+          }) == "room.spotlight-aim-invalid");
+    CHECK(error_code([] {
+              parse_room("id: r\nlighting:\n  lights:\n"
+                         "    - {id: a, type: spot, at: {x: 0, y: 0}, direction: 45, "
+                         "range: 10, beam_width: -1}\n");
+          }) == "room.spotlight-cone-invalid");
     CHECK(error_code([] {
               parse_room("id: r\nlighting:\n  lights:\n"
                          "    - id: a\n      type: omni\n      at: {x: 0, y: 0}\n"

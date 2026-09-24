@@ -30,6 +30,7 @@
 #include "gfx/gles2_compat.hpp"
 #include "pnc/dialog_internal.hpp"
 #include "pnc/room_lighting.hpp"
+#include "pnc/room_smoke.hpp"
 #include "pnc/room_control_service.hpp"
 #include "pnc/room_tuning_overlay.hpp"
 
@@ -1142,6 +1143,7 @@ void RoomScene::prepare_for_application_exit() {
 }
 
 void RoomScene::load_room(const std::string& id, const std::string& entry_point) {
+    target_warning_keys_.clear();
     if (tuning_overlay_) {
         tuning_overlay_->close();
     }
@@ -1161,6 +1163,14 @@ void RoomScene::load_room(const std::string& id, const std::string& entry_point)
     }
 
     room_.emplace(std::move(data));
+    if (room_->data().smoke) {
+        if (!smoke_system_) {
+            smoke_system_ = std::make_unique<RoomSmokeSystem>();
+        }
+        smoke_system_->configure(*room_->data().smoke);
+    } else if (smoke_system_) {
+        smoke_system_->reset();
+    }
     current_room_id_ = id;
     ctx_.recorder.record("room_enter",
                          id,
@@ -1413,6 +1423,9 @@ void RoomScene::unload_room() {
     active_action_text_.clear();
     active_action_remaining_ = 0.0f;
     active_action_in_progress_ = false;
+    if (smoke_system_) {
+        smoke_system_->reset();
+    }
     if (tuning_overlay_) {
         tuning_overlay_->close();
     }
@@ -2658,6 +2671,9 @@ void RoomScene::update(float dt) {
     if (room_) {
         room_->update_lights(dt);
     }
+    if (smoke_system_) {
+        smoke_system_->update(dt);
+    }
     if (player_ && room_) {
         player_->update(dt, room_->data());
         if (player_->moving() && !footstep_sounds_.empty()) {
@@ -3005,6 +3021,10 @@ void RoomScene::draw(sf::RenderTarget& target) const {
             tuning_overlay_active()
                 ? tuning_overlay_->effective_lighting()
                 : (room_->render_state().lighting ? &*room_->render_state().lighting : nullptr);
+        const RoomSmoke* smoke = room_->data().smoke && room_->data().smoke->enabled
+                                     ? &*room_->data().smoke
+                                     : nullptr;
+        const bool smoke_active = smoke && smoke_system_ && smoke_system_->active();
         std::vector<ResolvedRoomLight> resolved_lights;
         if (lighting) {
             resolved_lights.reserve(lighting->lights.size());
@@ -3034,17 +3054,30 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                 }
                 position = position + light.offset;
 
-                float direction = light.direction;
+                float facing_offset = 0.0f;
                 if (light.follow_facing && attached_avatar) {
                     const std::string facing = attached_avatar->facing();
                     if (facing == "down") {
-                        direction += 90.0f;
+                        facing_offset = 90.0f;
                     } else if (facing == "left") {
-                        direction += 180.0f;
+                        facing_offset = 180.0f;
                     } else if (facing == "up") {
-                        direction += 270.0f;
+                        facing_offset = 270.0f;
                     }
                 }
+                std::optional<geom::Point> aim_position;
+                if (light.aim_at) {
+                    const auto target = resolve_room_target(*light.aim_at);
+                    if (!target || geom::distance_squared(position, target->position) < 0.000001f) {
+                        // A tracked target participates in the light's lifecycle:
+                        // hidden/despawned/missing targets (or a zero-length aim)
+                        // suppress it instead of snapping the beam to an arbitrary direction.
+                        continue;
+                    }
+                    aim_position = target->position;
+                }
+                const float direction = resolve_room_light_direction(
+                    light, position, facing_offset, aim_position);
                 resolved_lights.push_back(
                     {&light,
                      position,
@@ -3074,7 +3107,8 @@ void RoomScene::draw(sf::RenderTarget& target) const {
         // produces a black frame on Android, while every individual shader
         // already has an unshaded fallback.  Keep the whole scenery pipeline on
         // its direct path unless it can actually apply an effect.
-        const bool scenery_effects_active = sf::Shader::isAvailable() && (post_active || lighting);
+        const bool scenery_effects_active =
+            sf::Shader::isAvailable() && (post_active || lighting || smoke_active);
         bool scenery_composited = false;
 
         if (scenery_effects_active) {
@@ -3123,19 +3157,32 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                                &resolved_lights);
                 post_process_target_->display();
 
+                const sf::Texture* smoke_density =
+                    smoke_active
+                        ? smoke_system_->render_density(camera_->view_rect(), post_size)
+                        : nullptr;
+
                 const sf::IntRect full(0,
                                        0,
                                        static_cast<int>(post_size.x),
                                        static_cast<int>(post_size.y));
                 gfx::RuntimeShaderPass lighting_pass;
                 const gfx::RuntimeShaderPass* lighting_prefix = nullptr;
-                if (lighting) {
+                RoomLighting neutral_lighting;
+                neutral_lighting.ambient_intensity = 1.0f;
+                const RoomLighting* pass_lighting = lighting;
+                if (!pass_lighting && smoke_active) {
+                    pass_lighting = &neutral_lighting;
+                }
+                if (pass_lighting) {
                     if (!lighting_renderer_) {
                         lighting_renderer_ = std::make_unique<RoomLightingRenderer>();
                     }
-                    if (lighting_renderer_->make_pass(*lighting,
+                    if (lighting_renderer_->make_pass(*pass_lighting,
                                                       resolved_lights,
                                                       resolved_occluders,
+                                                      smoke,
+                                                      smoke_density,
                                                       camera_->view_rect(),
                                                       shader_time_,
                                                       room_dir_,
@@ -3473,6 +3520,89 @@ const Avatar* RoomScene::resolve_avatar(const std::string& id) const {
         return &*player_;
     }
     return room_ ? room_->npc(id) : nullptr;
+}
+
+std::optional<ResolvedRoomTarget>
+RoomScene::resolve_room_target(const RoomTargetRef& target) const {
+    const auto with_offset = [&](ResolvedRoomTarget resolved) {
+        resolved.position = resolved.position + target.offset;
+        return std::optional<ResolvedRoomTarget>(std::move(resolved));
+    };
+    const auto warn_anchor = [&]() {
+        const std::string key = room_target_name(target) + "#" + target.anchor;
+        if (target_warning_keys_.insert(key).second) {
+            ctx_.log.warn("room target '" + room_target_name(target) + "' has no anchor '" +
+                          target.anchor + "'; using its pivot");
+        }
+    };
+    const auto avatar_target = [&](const Avatar* avatar)
+        -> std::optional<ResolvedRoomTarget> {
+        if (!avatar || !avatar->visible()) {
+            return std::nullopt;
+        }
+        ResolvedRoomTarget resolved;
+        resolved.position = avatar->position();
+        resolved.bounds = avatar->bounds();
+        resolved.facing = avatar->facing();
+        if (target.anchor == "center") {
+            const sf::FloatRect& bounds = *resolved.bounds;
+            resolved.position =
+                {bounds.left + bounds.width * 0.5f, bounds.top + bounds.height * 0.5f};
+        } else if (!target.anchor.empty() && target.anchor != "pivot") {
+            if (const auto anchor = avatar->anchor(target.anchor)) {
+                resolved.position = *anchor;
+            } else {
+                warn_anchor();
+            }
+        }
+        return with_offset(std::move(resolved));
+    };
+
+    switch (target.kind) {
+    case RoomTargetRef::Kind::FIXED_POINT:
+        return with_offset({target.point, std::nullopt, std::nullopt});
+    case RoomTargetRef::Kind::NAMED_POINT:
+        if (room_) {
+            if (const geom::Point* point = room_->data().point(target.id)) {
+                return with_offset({*point, std::nullopt, std::nullopt});
+            }
+        }
+        return std::nullopt;
+    case RoomTargetRef::Kind::PLAYER:
+        return avatar_target(player_ ? &*player_ : nullptr);
+    case RoomTargetRef::Kind::AVATAR:
+        return avatar_target(resolve_avatar(target.id));
+    case RoomTargetRef::Kind::OBJECT:
+        break;
+    }
+
+    if (!room_ || room_->data().objects.count(target.id) == 0 ||
+        !room_->object_visible(target.id)) {
+        return std::nullopt;
+    }
+    ResolvedRoomTarget resolved;
+    resolved.position = room_->object_position(target.id);
+    resolved.bounds = object_frame_bounds(target.id);
+    if (target.anchor == "center") {
+        if (resolved.bounds) {
+            resolved.position = {resolved.bounds->left + resolved.bounds->width * 0.5f,
+                                 resolved.bounds->top + resolved.bounds->height * 0.5f};
+        } else {
+            warn_anchor();
+        }
+    } else if (!target.anchor.empty() && target.anchor != "pivot") {
+        const gfx::VisualSprite* sprite = room_->object_sprite(target.id);
+        if (sprite) {
+            if (const auto anchor = sprite->anchor_world(target.anchor)) {
+                resolved.position = *anchor;
+            } else {
+                warn_anchor();
+            }
+        } else {
+            warn_anchor();
+        }
+    }
+    return with_offset(std::move(resolved));
 }
 
 std::string RoomScene::api_avatar_move_to(const std::string& id, geom::Point target) {

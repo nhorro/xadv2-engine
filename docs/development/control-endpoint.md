@@ -69,8 +69,11 @@ jupyter lab room_lighting_control.ipynb
 
 The panel exposes each light's enabled state, colour, intensity, position,
 range, virtual height, and—where applicable—spot direction, cone angle, and edge
-softness. Attached lights report their attachment and keep the static-position
-controls disabled; placement of their offset remains an editor/YAML operation.
+softness, fixed or tracked aim target, and trapezoidal beam width. Tracked aims
+use `{ "target": "player|avatar:<id>|object:<id>|point:<id>", "anchor": "...",
+"offset": {"x": 0, "y": 0} }`; fixed aims remain `{ "x": ..., "y": ... }`. Attached lights report
+their attachment and keep the static-position controls disabled; placement of
+their offset remains an editor/YAML operation.
 It also exposes projected-shadow enablement, caster scope, length, width,
 opacity, softness, contact-shadow amount, colour, and optional fixed depth.
 Lighting scenes are notebook-side dictionaries containing ambient, lights,

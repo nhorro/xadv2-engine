@@ -186,6 +186,24 @@ YAML::Node point_node(geom::Point point) {
     return node;
 }
 
+YAML::Node target_node(const RoomTargetRef& target) {
+    if (target.kind == RoomTargetRef::Kind::FIXED_POINT) {
+        return point_node(target.point);
+    }
+    if (target.anchor.empty() && target.offset.x == 0.0f && target.offset.y == 0.0f) {
+        return YAML::Node(room_target_name(target));
+    }
+    YAML::Node node;
+    node["target"] = room_target_name(target);
+    if (!target.anchor.empty()) {
+        node["anchor"] = target.anchor;
+    }
+    if (target.offset.x != 0.0f || target.offset.y != 0.0f) {
+        node["offset"] = point_node(target.offset);
+    }
+    return node;
+}
+
 template <std::size_t N>
 YAML::Node array_node(const std::array<float, N>& values) {
     YAML::Node node(YAML::NodeType::Sequence);
@@ -798,10 +816,17 @@ std::string RoomTuningOverlay::yaml() const {
                 node["enabled"] = false;
             }
             if (light.type == RoomLight::Type::SPOT) {
-                node["direction"] = light.direction;
-                node["follow_facing"] = light.follow_facing;
+                if (light.aim_at) {
+                    node["aim_at"] = target_node(*light.aim_at);
+                } else {
+                    node["direction"] = light.direction;
+                    node["follow_facing"] = light.follow_facing;
+                }
                 node["angle"] = light.angle;
                 node["softness"] = light.softness;
+                if (light.beam_width > 0.0f) {
+                    node["beam_width"] = light.beam_width;
+                }
             }
             if (light.modulation.type != LightModulation::Type::NONE) {
                 YAML::Node modulation;

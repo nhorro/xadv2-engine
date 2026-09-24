@@ -43,6 +43,13 @@ def _scene_payload(scene: dict[str, Any]) -> dict[str, Any]:
 def _lerp(start: Any, target: Any, progress: float, field: str = "") -> Any:
     if progress >= 1:
         return copy.deepcopy(target)
+    if field == "aim_at" and isinstance(start, dict) and isinstance(target, dict):
+        start_fixed = "x" in start and "y" in start
+        target_fixed = "x" in target and "y" in target
+        if start_fixed != target_fixed:
+            # A fixed coordinate and a symbolic target have different schemas;
+            # keep the source reference valid until the final scene frame.
+            return copy.deepcopy(start)
     if isinstance(start, bool) or isinstance(target, bool):
         return start
     if isinstance(start, (int, float)) and isinstance(target, (int, float)):
@@ -126,6 +133,28 @@ class RoomLightingPanel:
         self.light_direction = widgets.FloatSlider(
             description="Direction", min=-180, max=360, step=0.5, continuous_update=False
         )
+        self.light_aim_mode = widgets.Dropdown(
+            description="Aim mode",
+            options=[("Direction", "direction"), ("Fixed point", "point"), ("Track target", "target")],
+        )
+        self.light_aim_x = widgets.FloatSlider(
+            description="Aim X", min=-2000, max=4000, step=1, continuous_update=False
+        )
+        self.light_aim_y = widgets.FloatSlider(
+            description="Aim Y", min=-2000, max=4000, step=1, continuous_update=False
+        )
+        self.light_aim_target = widgets.Text(
+            description="Target", placeholder="player / avatar:id / object:id", continuous_update=False
+        )
+        self.light_aim_anchor = widgets.Text(
+            description="Anchor", placeholder="pivot / center / named anchor", continuous_update=False
+        )
+        self.light_aim_offset_x = widgets.FloatSlider(
+            description="Aim off X", min=-1000, max=1000, step=1, continuous_update=False
+        )
+        self.light_aim_offset_y = widgets.FloatSlider(
+            description="Aim off Y", min=-1000, max=1000, step=1, continuous_update=False
+        )
         self.light_range = widgets.FloatSlider(
             description="Range", min=1, max=3000, step=1, continuous_update=False
         )
@@ -143,6 +172,9 @@ class RoomLightingPanel:
         )
         self.light_softness = widgets.FloatSlider(
             description="Edge soft", min=0, max=89, step=0.5, continuous_update=False
+        )
+        self.light_beam_width = widgets.FloatSlider(
+            description="Beam width", min=0, max=500, step=1, continuous_update=False
         )
         self.light_color = widgets.ColorPicker(description="Color")
         self.ambient_intensity = widgets.FloatSlider(
@@ -235,6 +267,21 @@ class RoomLightingPanel:
         self.light_direction.observe(
             lambda change: self._set_light("direction", change["new"]), names="value"
         )
+        self.light_aim_mode.observe(self._set_light_aim_mode, names="value")
+        self.light_aim_x.observe(
+            lambda change: self._set_light_aim_position("x", change["new"]), names="value"
+        )
+        self.light_aim_y.observe(
+            lambda change: self._set_light_aim_position("y", change["new"]), names="value"
+        )
+        self.light_aim_target.observe(lambda _change: self._set_light_aim_target(), names="value")
+        self.light_aim_anchor.observe(lambda _change: self._set_light_aim_target(), names="value")
+        self.light_aim_offset_x.observe(
+            lambda _change: self._set_light_aim_target(), names="value"
+        )
+        self.light_aim_offset_y.observe(
+            lambda _change: self._set_light_aim_target(), names="value"
+        )
         self.light_range.observe(
             lambda change: self._set_light("radius", change["new"]), names="value"
         )
@@ -252,6 +299,9 @@ class RoomLightingPanel:
         )
         self.light_softness.observe(
             lambda change: self._set_light("softness", change["new"]), names="value"
+        )
+        self.light_beam_width.observe(
+            lambda change: self._set_light("beam_width", change["new"]), names="value"
         )
         self.light_color.observe(
             lambda change: self._set_light("color", _float_color(change["new"])), names="value"
@@ -309,8 +359,16 @@ class RoomLightingPanel:
                 self.light_range,
                 self.light_height,
                 self.light_direction,
+                self.light_aim_mode,
+                self.light_aim_x,
+                self.light_aim_y,
+                self.light_aim_target,
+                self.light_aim_anchor,
+                self.light_aim_offset_x,
+                self.light_aim_offset_y,
                 self.light_angle,
                 self.light_softness,
+                self.light_beam_width,
                 widgets.HTML("<h4>Projected shadow</h4>"),
                 self.shadow_controls,
                 widgets.HTML("<h4>Final grade</h4>"),
@@ -391,14 +449,68 @@ class RoomLightingPanel:
         attached = bool(selected.get("attach"))
         self.light_x.disabled = attached
         self.light_y.disabled = attached
-        self.light_direction.value = selected.get("direction", 0)
         spot = selected.get("type") == "spot"
+        aim = selected.get("aim_at")
+        fixed_aim = aim if isinstance(aim, dict) and "x" in aim and "y" in aim else None
+        tracked_aim = aim if isinstance(aim, dict) and "target" in aim else None
+        if isinstance(aim, str):
+            tracked_aim = {"target": aim}
+        direction = selected.get("direction", 0)
+        if fixed_aim and not selected.get("attach"):
+            direction = math.degrees(
+                math.atan2(fixed_aim["y"] - y, fixed_aim["x"] - x)
+            )
+        self.light_direction.value = direction
+        self.light_aim_mode.value = (
+            "target" if tracked_aim else "point" if fixed_aim else "direction"
+        )
+        if fixed_aim:
+            aim_x = fixed_aim.get("x", 0)
+            aim_y = fixed_aim.get("y", 0)
+            self.light_aim_x.min = min(-2000, aim_x - 1000)
+            self.light_aim_x.max = max(4000, aim_x + 1000)
+            self.light_aim_y.min = min(-2000, aim_y - 1000)
+            self.light_aim_y.max = max(4000, aim_y + 1000)
+            self.light_aim_x.value = aim_x
+            self.light_aim_y.value = aim_y
+        self.light_aim_target.value = tracked_aim.get("target", "player") if tracked_aim else "player"
+        self.light_aim_anchor.value = tracked_aim.get("anchor", "") if tracked_aim else ""
+        offset = tracked_aim.get("offset", {}) if tracked_aim else {}
+        self.light_aim_offset_x.value = offset.get("x", 0)
+        self.light_aim_offset_y.value = offset.get("y", 0)
+        self.light_direction.disabled = aim is not None
+        self.light_aim_x.disabled = fixed_aim is None
+        self.light_aim_y.disabled = fixed_aim is None
         angle = selected.get("angle", 45)
         self.light_angle.value = angle
         self.light_softness.max = max(0.1, angle / 2 - 0.1)
         self.light_softness.value = min(selected.get("softness", 0), self.light_softness.max)
-        for control in (self.light_direction, self.light_angle, self.light_softness):
+        beam_width = selected.get("beam_width", 0)
+        self.light_beam_width.max = max(500, beam_width * 1.25)
+        self.light_beam_width.value = beam_width
+        for control in (
+            self.light_direction,
+            self.light_aim_mode,
+            self.light_aim_x,
+            self.light_aim_y,
+            self.light_aim_target,
+            self.light_aim_anchor,
+            self.light_aim_offset_x,
+            self.light_aim_offset_y,
+            self.light_angle,
+            self.light_softness,
+            self.light_beam_width,
+        ):
             control.layout.display = "" if spot else "none"
+        self.light_aim_x.layout.display = "" if spot and fixed_aim else "none"
+        self.light_aim_y.layout.display = "" if spot and fixed_aim else "none"
+        for control in (
+            self.light_aim_target,
+            self.light_aim_anchor,
+            self.light_aim_offset_x,
+            self.light_aim_offset_y,
+        ):
+            control.layout.display = "" if spot and tracked_aim else "none"
         self.light_color.value = _hex_color(selected["color"])
 
     def _sync_shadow(self) -> None:
@@ -449,6 +561,70 @@ class RoomLightingPanel:
         position = dict(selected.get("at", {"x": 0, "y": 0}))
         position[axis] = value
         self._call("room.render.set_light", {"id": self.light.value, "at": position})
+
+    def _set_light_aim_mode(self, change: dict[str, Any]) -> None:
+        if self._syncing or not self.light.value:
+            return
+        selected = self._selected()
+        if not selected or selected.get("type") != "spot":
+            return
+        position = selected.get("at", {"x": 0, "y": 0})
+        if change["new"] == "point":
+            radians = math.radians(selected.get("direction", 0))
+            distance = selected.get("radius", 100)
+            target = {
+                "x": position.get("x", 0) + math.cos(radians) * distance,
+                "y": position.get("y", 0) + math.sin(radians) * distance,
+            }
+            self._call("room.render.set_light", {"id": self.light.value, "aim_at": target})
+        elif change["new"] == "target":
+            self._set_light_aim_target(force=True)
+        else:
+            target = selected.get("aim_at")
+            if isinstance(target, dict) and "x" in target and "y" in target:
+                direction = math.degrees(
+                    math.atan2(
+                        target.get("y", 0) - position.get("y", 0),
+                        target.get("x", 0) - position.get("x", 0),
+                    )
+                )
+                self._call(
+                    "room.render.set_light", {"id": self.light.value, "direction": direction}
+                )
+            else:
+                self._call(
+                    "room.render.set_light",
+                    {"id": self.light.value, "direction": self.light_direction.value},
+                )
+
+    def _set_light_aim_position(self, axis: str, value: float) -> None:
+        if self._syncing or not self.light.value:
+            return
+        selected = self._selected()
+        target = selected.get("aim_at") if selected else None
+        if not isinstance(target, dict) or "x" not in target or "y" not in target:
+            return
+        target = dict(target)
+        target[axis] = value
+        self._call("room.render.set_light", {"id": self.light.value, "aim_at": target})
+
+    def _set_light_aim_target(self, force: bool = False) -> None:
+        if self._syncing or not self.light.value:
+            return
+        if not force and self.light_aim_mode.value != "target":
+            return
+        target = self.light_aim_target.value.strip()
+        if not target:
+            return
+        aim: dict[str, Any] = {"target": target}
+        anchor = self.light_aim_anchor.value.strip()
+        if anchor:
+            aim["anchor"] = anchor
+        offset_x = self.light_aim_offset_x.value
+        offset_y = self.light_aim_offset_y.value
+        if offset_x != 0 or offset_y != 0:
+            aim["offset"] = {"x": offset_x, "y": offset_y}
+        self._call("room.render.set_light", {"id": self.light.value, "aim_at": aim})
 
     def _set_ambient(self, field: str, value: Any) -> None:
         if not self._syncing:

@@ -75,6 +75,89 @@ ControlValue point_value(geom::Point point) {
     return ControlValue::Object{{"x", point.x}, {"y", point.y}};
 }
 
+ControlValue target_value(const RoomTargetRef& target) {
+    if (target.kind == RoomTargetRef::Kind::FIXED_POINT) {
+        return point_value(target.point);
+    }
+    ControlValue::Object value{{"target", room_target_name(target)}};
+    if (!target.anchor.empty()) value["anchor"] = target.anchor;
+    if (target.offset.x != 0.0f || target.offset.y != 0.0f) {
+        value["offset"] = point_value(target.offset);
+    }
+    return value;
+}
+
+std::optional<RoomTargetRef> named_target(std::string_view name) {
+    RoomTargetRef target;
+    if (name == "player") {
+        target.kind = RoomTargetRef::Kind::PLAYER;
+        return target;
+    }
+    const auto prefixed = [&](std::string_view prefix, RoomTargetRef::Kind kind) {
+        if (!name.starts_with(prefix) || name.size() == prefix.size()) return false;
+        target.kind = kind;
+        target.id = std::string(name.substr(prefix.size()));
+        return true;
+    };
+    if (prefixed("avatar:", RoomTargetRef::Kind::AVATAR) ||
+        prefixed("npc:", RoomTargetRef::Kind::AVATAR) ||
+        prefixed("object:", RoomTargetRef::Kind::OBJECT) ||
+        prefixed("point:", RoomTargetRef::Kind::NAMED_POINT)) {
+        return target;
+    }
+    return std::nullopt;
+}
+
+std::optional<RoomTargetRef> control_target(const ControlValue& value, std::string& error) {
+    if (const auto* name = std::get_if<std::string>(&value.value)) {
+        auto target = named_target(*name);
+        if (!target) error = "unknown aim target reference: " + *name;
+        return target;
+    }
+    const auto* object = value.object();
+    if (!object) {
+        error = "light aim_at must be {x, y}, a target string, or a target object";
+        return std::nullopt;
+    }
+    if (field(*object, "x") || field(*object, "y")) {
+        const auto x = number_field(*object, "x");
+        const auto y = number_field(*object, "y");
+        if (!x || !y || !std::isfinite(*x) || !std::isfinite(*y)) {
+            error = "light aim_at requires finite numeric x and y";
+            return std::nullopt;
+        }
+        RoomTargetRef target;
+        target.kind = RoomTargetRef::Kind::FIXED_POINT;
+        target.point = {static_cast<float>(*x), static_cast<float>(*y)};
+        return target;
+    }
+    const std::string* name = string_field(*object, "target");
+    auto target = name ? named_target(*name) : std::nullopt;
+    if (!target) {
+        error = "tracked light aim_at needs player, avatar:<id>, object:<id>, or point:<id>";
+        return std::nullopt;
+    }
+    if (const ControlValue* anchor_value = field(*object, "anchor")) {
+        const auto* anchor = std::get_if<std::string>(&anchor_value->value);
+        if (!anchor || anchor->empty() || target->kind == RoomTargetRef::Kind::NAMED_POINT) {
+            error = "light aim anchor must target the player, an avatar, or an object";
+            return std::nullopt;
+        }
+        target->anchor = *anchor;
+    }
+    if (const ControlValue* offset_value = field(*object, "offset")) {
+        const auto* offset = offset_value->object();
+        const auto x = offset ? number_field(*offset, "x") : std::nullopt;
+        const auto y = offset ? number_field(*offset, "y") : std::nullopt;
+        if (!x || !y || !std::isfinite(*x) || !std::isfinite(*y)) {
+            error = "light aim offset requires finite numeric x and y";
+            return std::nullopt;
+        }
+        target->offset = {static_cast<float>(*x), static_cast<float>(*y)};
+    }
+    return target;
+}
+
 ControlValue shader_value(const gfx::ShaderValue& value) {
     return std::visit(
         [](const auto& item) -> ControlValue {
@@ -136,7 +219,9 @@ ControlValue state_value(const RoomRuntime& room) {
                 {"intensity", light.intensity},
                 {"direction", light.direction},
                 {"angle", light.angle},
-                {"softness", light.softness}});
+                {"softness", light.softness},
+                {"beam_width", light.beam_width},
+                {"aim_at", light.aim_at ? target_value(*light.aim_at) : ControlValue(nullptr)}});
         }
         result["ambient"] = ControlValue::Object{
             {"color", array_value(state.lighting->ambient_color)},
@@ -314,9 +399,13 @@ ControlResult RoomControlService::invoke(std::string_view method, const ControlV
         };
         set_number("radius", found->radius, 1.0f, 100000.0f);
         set_number("height", found->height, 0.0f, 100000.0f);
-        set_number("direction", found->direction, -3600.0f, 3600.0f);
+        if (const auto direction = number_field(*object, "direction")) {
+            found->direction = std::clamp(static_cast<float>(*direction), -3600.0f, 3600.0f);
+            found->aim_at.reset();
+        }
         set_number("angle", found->angle, 0.1f, 360.0f);
         set_number("softness", found->softness, 0.0f, 180.0f);
+        set_number("beam_width", found->beam_width, 0.0f, 100000.0f);
         if (const ControlValue* color = field(*object, "color")) {
             const auto value = float_array<3>(*color);
             if (!value) return invalid("light color must be a three-number array");
@@ -329,6 +418,19 @@ ControlResult RoomControlService::invoke(std::string_view method, const ControlV
             const auto y = number_field(*position, "y");
             if (!x || !y) return invalid("light at requires numeric x and y");
             found->at = {static_cast<float>(*x), static_cast<float>(*y)};
+        }
+        if (const ControlValue* aim_at = field(*object, "aim_at")) {
+            if (std::holds_alternative<std::nullptr_t>(aim_at->value)) {
+                found->aim_at.reset();
+            } else {
+                if (found->type != RoomLight::Type::SPOT) {
+                    return invalid("only spotlights can use aim_at");
+                }
+                std::string error;
+                const auto target = control_target(*aim_at, error);
+                if (!target) return invalid(error);
+                found->aim_at = *target;
+            }
         }
         return state_value(room);
     }

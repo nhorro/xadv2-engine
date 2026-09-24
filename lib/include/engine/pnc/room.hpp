@@ -8,6 +8,7 @@
 #include <SFML/System/Vector2.hpp>
 
 #include <array>
+#include <cstddef>
 #include <map>
 #include <optional>
 #include <string>
@@ -97,9 +98,36 @@ struct LightModulation {
     float seed = 0.0f;   // deterministic phase/noise variation
 };
 
+/// A stable, room-local reference to something with a live world-space position.
+/// Consumers retain this value and resolve it each frame rather than holding a
+/// pointer to an avatar/object that may be hidden, despawned, or replaced.
+struct RoomTargetRef {
+    enum class Kind { FIXED_POINT, NAMED_POINT, PLAYER, AVATAR, OBJECT };
+
+    Kind kind = Kind::FIXED_POINT;
+    geom::Point point{0.0f, 0.0f}; // FIXED_POINT only
+    std::string id;                // named point, avatar, or object id
+    // Empty and "pivot" select the target's authored pivot. "center" selects
+    // its live visual bounds; any other value is a named sprite anchor.
+    std::string anchor;
+    geom::Point offset{0.0f, 0.0f}; // room-space offset applied after the anchor
+};
+
+/// One frame's capabilities for a RoomTargetRef. Position is always present;
+/// bounds and facing are supplied when the target kind supports them.
+struct ResolvedRoomTarget {
+    geom::Point position{0.0f, 0.0f};
+    std::optional<sf::FloatRect> bounds;
+    std::optional<std::string> facing;
+};
+
+/// Canonical scalar spelling for a non-fixed target (for YAML/control output).
+/// Returns an empty string for FIXED_POINT.
+std::string room_target_name(const RoomTargetRef& target);
+
 /// One world-space dynamic light. Omnilights use radial falloff; spotlights add
-/// a directional cone with an angular penumbra. `attach` may be `player`,
-/// `avatar:<id>`, or `object:<id>`; attached positions use `offset` in world
+/// a directional trapezoidal beam with an angular penumbra. `attach` may be
+/// `player`, `avatar:<id>`, or `object:<id>`; attached positions use `offset` in world
 /// pixels, while an unattached light uses `at`.
 struct RoomLight {
     enum class Type { OMNI, SPOT };
@@ -116,8 +144,14 @@ struct RoomLight {
     float intensity = 1.0f;
     // Screen-space degrees: 0 points right, 90 down. Spotlights only.
     float direction = 0.0f;
+    // Optional fixed or live room-space target. When present it replaces
+    // `direction`; both the source and target are resolved every frame.
+    std::optional<RoomTargetRef> aim_at;
     float angle = 45.0f;   // full outer cone angle in degrees
     float softness = 8.0f; // angular fade width at each cone edge
+    // Width of the beam at its origin. Zero preserves a triangular cone;
+    // positive values produce a true trapezoidal screen-space beam.
+    float beam_width = 0.0f;
     bool follow_facing = false;
     LightModulation modulation;
 };
@@ -142,6 +176,37 @@ struct RoomLighting {
     float normal_strength = 1.0f;
     std::vector<RoomLight> lights;
     std::vector<LightOccluder> occluders;
+};
+
+/// A bounded, pooled source of soft atmospheric particles. The particles are
+/// rendered together into a low-resolution density field; the room-lighting
+/// pass then handles extinction and light scattering.
+struct RoomSmokeEmitter {
+    std::string id;
+    geom::Polygon area;
+    std::size_t max_particles = 96;
+    float emission_rate = 8.0f;
+    float lifetime_min = 8.0f;
+    float lifetime_max = 14.0f;
+    float size_start = 80.0f;
+    float size_end = 220.0f;
+    geom::Point velocity{4.0f, -3.0f};
+    float turbulence = 8.0f;
+    float density = 0.16f;
+    unsigned seed = 1;
+    bool prewarm = true;
+};
+
+/// Room-wide atmospheric rendering controls plus one or more pooled emitters.
+/// `resolution_scale` deliberately keeps the density buffer small: smoke has
+/// soft detail and benefits from bilinear upsampling.
+struct RoomSmoke {
+    bool enabled = true;
+    float resolution_scale = 0.5f;
+    std::array<float, 3> color{0.72f, 0.76f, 0.82f};
+    float extinction = 1.35f;
+    float scattering = 0.9f;
+    std::vector<RoomSmokeEmitter> emitters;
 };
 
 /// A live avatar silhouette projected onto the room plane away from a 2D light
@@ -310,6 +375,7 @@ struct RoomData {
     std::string id;
     std::optional<RoomPostProcess> post_process;
     std::optional<RoomLighting> dynamic_lighting;
+    std::optional<RoomSmoke> smoke;
     std::optional<ProjectedShadow> projected_shadow;
     std::optional<core::AmbienceDefinition> ambience;
     sf::Color background_color = sf::Color::Black;
