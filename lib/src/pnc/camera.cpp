@@ -8,7 +8,7 @@ namespace pac::pnc {
 Camera::Camera(sf::Vector2f viewport_size, sf::Vector2u room_size)
     : viewport_(viewport_size),
       room_(static_cast<float>(room_size.x), static_cast<float>(room_size.y)),
-      follow_bounds_(0.0f, 0.0f, room_.x, room_.y) {
+      follow_bounds_({0.0f, 0.0f}, {room_.x, room_.y}) {
     center_ = clamp_center({room_.x / 2.0f, room_.y / 2.0f});
 }
 
@@ -19,7 +19,7 @@ void Camera::set_viewport_size(sf::Vector2f size) {
 
 void Camera::set_room_size(sf::Vector2u size) {
     room_ = {static_cast<float>(size.x), static_cast<float>(size.y)};
-    follow_bounds_ = {0.0f, 0.0f, room_.x, room_.y};
+    follow_bounds_ = {{0.0f, 0.0f}, {room_.x, room_.y}};
     center_ = clamp_center(center_);
 }
 
@@ -80,13 +80,13 @@ float Camera::scroll_axis(float target,
 
 sf::Vector2f Camera::scroll_center(sf::Vector2f target) const {
     return {scroll_axis(target.x,
-                        follow_bounds_.left,
-                        follow_bounds_.left + follow_bounds_.width,
+                        follow_bounds_.position.x,
+                        follow_bounds_.position.x + follow_bounds_.size.x,
                         room_.x,
                         viewport_.x),
             scroll_axis(target.y,
-                        follow_bounds_.top,
-                        follow_bounds_.top + follow_bounds_.height,
+                        follow_bounds_.position.y,
+                        follow_bounds_.position.y + follow_bounds_.size.y,
                         room_.y,
                         viewport_.y)};
 }
@@ -145,10 +145,8 @@ void Camera::update(float dt) {
 }
 
 sf::FloatRect Camera::view_rect() const {
-    return {center_.x - viewport_.x / 2.0f,
-            center_.y - viewport_.y / 2.0f,
-            viewport_.x,
-            viewport_.y};
+    return {{center_.x - viewport_.x / 2.0f, center_.y - viewport_.y / 2.0f},
+            {viewport_.x, viewport_.y}};
 }
 
 sf::Vector2f Camera::top_left() const {

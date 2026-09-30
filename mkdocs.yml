@@ -91,6 +91,7 @@ nav:
           - Core abstractions: development/tour/01-core-abstractions.md
           - Point & click kit: development/tour/02-point-and-click.md
       - Plans and technical debt:
+          - SFML 3.1 migration: development/sfml3-migration.md
           - Target and debt: development/plans/target-and-debt.md
           - Proposed code layout and Doxygen: development/plans/code-layout.md
       - Coding guides:

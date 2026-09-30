@@ -1,7 +1,7 @@
 # Build and run the C++ SFML engine + sample games on Linux (issue #125).
 #
 # Mirrors the CI / dev environment: Ubuntu 24.04 with the native dependencies
-# needed to compile the engine's pinned modified SFML, plus Lua 5.4 and yaml-cpp
+# needed to compile the engine's pinned upstream SFML 3.1, plus Lua 5.4 and yaml-cpp
 # from apt. The header-only deps (sol2, doctest) are vendored in-tree.
 #
 # The project is compiled at image-build time and the non-GUI doctest/CTest suite
@@ -9,7 +9,7 @@
 # textures and need a GL context. The default command launches the sample game, which
 # opens a window (X11) and plays audio; both the display and a PulseAudio/PipeWire
 # socket are shared from the host by the compose `engine` service — see
-# docker/README.md. `libpulse0` lets OpenAL's PulseAudio backend load at runtime
+# docker/README.md. `libpulse0` lets miniaudio's PulseAudio backend load at runtime
 # (it dlopens libpulse). The test suite (engine-test service) is fully headless.
 FROM ubuntu:24.04
 
@@ -22,11 +22,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         libx11-dev \
         libxrandr-dev \
+        libxi-dev \
         libxcursor-dev \
         libudev-dev \
         libgl1-mesa-dev \
         libfreetype-dev \
-        libopenal-dev \
+        libharfbuzz-dev \
         libflac-dev \
         libvorbis-dev \
         liblua5.4-dev \

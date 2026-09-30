@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <map>
 #include <set>
 #include <type_traits>
@@ -93,7 +94,7 @@ sf::Color parse_color(const YAML::Node& node, const std::string& field, sf::Colo
                           "'" + field + "' must contain r, g, and b",
                           node);
     }
-    const auto channel = [&](const char* name, sf::Uint8 default_value) {
+    const auto channel = [&](const char* name, std::uint8_t default_value) {
         int value = default_value;
         try {
             value = node[name] ? node[name].as<int>() : default_value;
@@ -107,7 +108,7 @@ sf::Color parse_color(const YAML::Node& node, const std::string& field, sf::Colo
                               "'" + field + "." + name + "' must be between 0 and 255",
                               node[name]);
         }
-        return static_cast<sf::Uint8>(value);
+        return static_cast<std::uint8_t>(value);
     };
     return {channel("r", fallback.r),
             channel("g", fallback.g),
@@ -137,98 +138,104 @@ resolve_asset(const std::string& raw, const std::string& logical_path, const YAM
 }
 
 std::string key_name(sf::Keyboard::Key key) {
-    if (key >= sf::Keyboard::A && key <= sf::Keyboard::Z) {
-        return std::string(1, static_cast<char>('a' + (key - sf::Keyboard::A)));
+    if (key >= sf::Keyboard::Key::A && key <= sf::Keyboard::Key::Z) {
+        return std::string(1,
+                           static_cast<char>('a' + (static_cast<int>(key) -
+                                                    static_cast<int>(sf::Keyboard::Key::A))));
     }
-    if (key >= sf::Keyboard::Num0 && key <= sf::Keyboard::Num9) {
-        return std::string(1, static_cast<char>('0' + (key - sf::Keyboard::Num0)));
+    if (key >= sf::Keyboard::Key::Num0 && key <= sf::Keyboard::Key::Num9) {
+        return std::string(1,
+                           static_cast<char>('0' + (static_cast<int>(key) -
+                                                    static_cast<int>(sf::Keyboard::Key::Num0))));
     }
-    if (key >= sf::Keyboard::Numpad0 && key <= sf::Keyboard::Numpad9) {
-        return "numpad_" + std::to_string(key - sf::Keyboard::Numpad0);
+    if (key >= sf::Keyboard::Key::Numpad0 && key <= sf::Keyboard::Key::Numpad9) {
+        return "numpad_" +
+               std::to_string(static_cast<int>(key) - static_cast<int>(sf::Keyboard::Key::Numpad0));
     }
-    if (key >= sf::Keyboard::F1 && key <= sf::Keyboard::F15) {
-        return "f" + std::to_string(1 + key - sf::Keyboard::F1);
+    if (key >= sf::Keyboard::Key::F1 && key <= sf::Keyboard::Key::F15) {
+        return "f" +
+               std::to_string(1 + static_cast<int>(key) - static_cast<int>(sf::Keyboard::Key::F1));
     }
     switch (key) {
-    case sf::Keyboard::Escape:
+    case sf::Keyboard::Key::Escape:
         return "escape";
-    case sf::Keyboard::LControl:
+    case sf::Keyboard::Key::LControl:
         return "left_control";
-    case sf::Keyboard::LShift:
+    case sf::Keyboard::Key::LShift:
         return "left_shift";
-    case sf::Keyboard::LAlt:
+    case sf::Keyboard::Key::LAlt:
         return "left_alt";
-    case sf::Keyboard::LSystem:
+    case sf::Keyboard::Key::LSystem:
         return "left_system";
-    case sf::Keyboard::RControl:
+    case sf::Keyboard::Key::RControl:
         return "right_control";
-    case sf::Keyboard::RShift:
+    case sf::Keyboard::Key::RShift:
         return "right_shift";
-    case sf::Keyboard::RAlt:
+    case sf::Keyboard::Key::RAlt:
         return "right_alt";
-    case sf::Keyboard::RSystem:
+    case sf::Keyboard::Key::RSystem:
         return "right_system";
-    case sf::Keyboard::Menu:
+    case sf::Keyboard::Key::Menu:
         return "menu";
-    case sf::Keyboard::LBracket:
+    case sf::Keyboard::Key::LBracket:
         return "left_bracket";
-    case sf::Keyboard::RBracket:
+    case sf::Keyboard::Key::RBracket:
         return "right_bracket";
-    case sf::Keyboard::Semicolon:
+    case sf::Keyboard::Key::Semicolon:
         return "semicolon";
-    case sf::Keyboard::Comma:
+    case sf::Keyboard::Key::Comma:
         return "comma";
-    case sf::Keyboard::Period:
+    case sf::Keyboard::Key::Period:
         return "period";
-    case sf::Keyboard::Quote:
+    case sf::Keyboard::Key::Apostrophe:
         return "quote";
-    case sf::Keyboard::Slash:
+    case sf::Keyboard::Key::Slash:
         return "slash";
-    case sf::Keyboard::Backslash:
+    case sf::Keyboard::Key::Backslash:
         return "backslash";
-    case sf::Keyboard::Tilde:
+    case sf::Keyboard::Key::Grave:
         return "tilde";
-    case sf::Keyboard::Equal:
+    case sf::Keyboard::Key::Equal:
         return "equal";
-    case sf::Keyboard::Dash:
+    case sf::Keyboard::Key::Hyphen:
         return "dash";
-    case sf::Keyboard::Space:
+    case sf::Keyboard::Key::Space:
         return "space";
-    case sf::Keyboard::Enter:
+    case sf::Keyboard::Key::Enter:
         return "enter";
-    case sf::Keyboard::BackSpace:
+    case sf::Keyboard::Key::Backspace:
         return "backspace";
-    case sf::Keyboard::Tab:
+    case sf::Keyboard::Key::Tab:
         return "tab";
-    case sf::Keyboard::PageUp:
+    case sf::Keyboard::Key::PageUp:
         return "page_up";
-    case sf::Keyboard::PageDown:
+    case sf::Keyboard::Key::PageDown:
         return "page_down";
-    case sf::Keyboard::End:
+    case sf::Keyboard::Key::End:
         return "end";
-    case sf::Keyboard::Home:
+    case sf::Keyboard::Key::Home:
         return "home";
-    case sf::Keyboard::Insert:
+    case sf::Keyboard::Key::Insert:
         return "insert";
-    case sf::Keyboard::Delete:
+    case sf::Keyboard::Key::Delete:
         return "delete";
-    case sf::Keyboard::Add:
+    case sf::Keyboard::Key::Add:
         return "add";
-    case sf::Keyboard::Subtract:
+    case sf::Keyboard::Key::Subtract:
         return "subtract";
-    case sf::Keyboard::Multiply:
+    case sf::Keyboard::Key::Multiply:
         return "multiply";
-    case sf::Keyboard::Divide:
+    case sf::Keyboard::Key::Divide:
         return "divide";
-    case sf::Keyboard::Left:
+    case sf::Keyboard::Key::Left:
         return "left";
-    case sf::Keyboard::Right:
+    case sf::Keyboard::Key::Right:
         return "right";
-    case sf::Keyboard::Up:
+    case sf::Keyboard::Key::Up:
         return "up";
-    case sf::Keyboard::Down:
+    case sf::Keyboard::Key::Down:
         return "down";
-    case sf::Keyboard::Pause:
+    case sf::Keyboard::Key::Pause:
         return "pause";
     default:
         return "unknown";
@@ -237,15 +244,15 @@ std::string key_name(sf::Keyboard::Key key) {
 
 std::string button_name(sf::Mouse::Button button) {
     switch (button) {
-    case sf::Mouse::Left:
+    case sf::Mouse::Button::Left:
         return "left";
-    case sf::Mouse::Right:
+    case sf::Mouse::Button::Right:
         return "right";
-    case sf::Mouse::Middle:
+    case sf::Mouse::Button::Middle:
         return "middle";
-    case sf::Mouse::XButton1:
+    case sf::Mouse::Button::Extra1:
         return "x1";
-    case sf::Mouse::XButton2:
+    case sf::Mouse::Button::Extra2:
         return "x2";
     default:
         return "unknown";
@@ -270,13 +277,13 @@ sol::object bounds_object(sol::state& lua, const std::optional<sf::FloatRect>& v
     }
     return sol::make_object(lua,
                             lua.create_table_with("x",
-                                                  value->left,
+                                                  value->position.x,
                                                   "y",
-                                                  value->top,
+                                                  value->position.y,
                                                   "width",
-                                                  value->width,
+                                                  value->size.x,
                                                   "height",
-                                                  value->height));
+                                                  value->size.y));
 }
 
 } // namespace
@@ -653,9 +660,13 @@ struct ScriptScene::Impl {
     static void apply_transform(Entity& entity) {
         std::visit(
             [&](auto& visual) {
-                visual.setPosition(entity.transform.position.x, entity.transform.position.y);
-                visual.setScale(entity.transform.scale.x, entity.transform.scale.y);
-                visual.setRotation(entity.transform.rotation);
+                visual.setPosition({entity.transform.position.x, entity.transform.position.y});
+                visual.setScale({entity.transform.scale.x, entity.transform.scale.y});
+                if constexpr (std::is_same_v<std::decay_t<decltype(visual)>, sf::Sprite>) {
+                    visual.setRotation(sf::degrees(entity.transform.rotation));
+                } else {
+                    visual.setRotation(entity.transform.rotation);
+                }
             },
             entity.visual);
     }
@@ -728,28 +739,30 @@ void ScriptScene::enter() {
         }
         impl_->entities.reserve(impl_->data.entities.size());
         for (const ScriptSceneEntityData& source : impl_->data.entities) {
-            Impl::Entity entity;
-            entity.id = source.id;
-            entity.transform = source.transform;
-            entity.z = source.z;
-            entity.visible = source.visible;
-            if (source.sprite) {
-                sf::Sprite sprite(ctx_.resources.texture(source.sprite->image));
-                sprite.setOrigin(source.sprite->origin);
-                sprite.setColor(source.sprite->tint);
-                entity.visual = std::move(sprite);
-            } else {
-                VisualSprite visual = load_visual_sprite(ctx_.resources, source.animation->source);
-                if (!visual.has(source.animation->sequence)) {
+            auto visual = [&]() -> std::variant<sf::Sprite, VisualSprite> {
+                if (source.sprite) {
+                    sf::Sprite sprite(ctx_.resources.texture(source.sprite->image));
+                    sprite.setOrigin(source.sprite->origin);
+                    sprite.setColor(source.sprite->tint);
+                    return sprite;
+                }
+                VisualSprite animation =
+                    load_visual_sprite(ctx_.resources, source.animation->source);
+                if (!animation.has(source.animation->sequence)) {
                     throw AssetError("script-scene-runtime",
                                      "script-scene.animation-sequence-unknown",
                                      "entity '" + source.id + "' has no animation sequence '" +
                                          source.animation->sequence + "'");
                 }
-                visual.play(source.animation->sequence);
-                entity.visual = std::move(visual);
-                entity.animated = true;
-            }
+                animation.play(source.animation->sequence);
+                return animation;
+            }();
+            Impl::Entity entity{source.id,
+                                source.transform,
+                                source.z,
+                                source.visible,
+                                std::move(visual),
+                                !source.sprite.has_value()};
             Impl::apply_transform(entity);
             impl_->by_id.emplace(entity.id, impl_->entities.size());
             impl_->entities.push_back(std::move(entity));
@@ -811,69 +824,56 @@ void ScriptScene::handle_event(const sf::Event& event) {
     sol::state& lua = ctx_.scripting.lua();
     sol::table input = lua.create_table();
     bool recognized = true;
-    switch (event.type) {
-    case sf::Event::KeyPressed: {
-        const std::string key = key_name(event.key.code);
+    if (const auto* input_event = event.getIf<sf::Event::KeyPressed>()) {
+        const std::string key = key_name(input_event->code);
         if (key != "unknown")
             impl_->keys_down.insert(key);
         input["type"] = "key_down";
         input["key"] = key;
-        input["alt"] = event.key.alt;
-        input["control"] = event.key.control;
-        input["shift"] = event.key.shift;
-        input["system"] = event.key.system;
-        break;
-    }
-    case sf::Event::KeyReleased: {
-        const std::string key = key_name(event.key.code);
+        input["alt"] = input_event->alt;
+        input["control"] = input_event->control;
+        input["shift"] = input_event->shift;
+        input["system"] = input_event->system;
+    } else if (const auto* input_event = event.getIf<sf::Event::KeyReleased>()) {
+        const std::string key = key_name(input_event->code);
         impl_->keys_down.erase(key);
         input["type"] = "key_up";
         input["key"] = key;
-        input["alt"] = event.key.alt;
-        input["control"] = event.key.control;
-        input["shift"] = event.key.shift;
-        input["system"] = event.key.system;
-        break;
-    }
-    case sf::Event::MouseMoved:
-        impl_->pointer = {static_cast<float>(event.mouseMove.x),
-                          static_cast<float>(event.mouseMove.y)};
+        input["alt"] = input_event->alt;
+        input["control"] = input_event->control;
+        input["shift"] = input_event->shift;
+        input["system"] = input_event->system;
+    } else if (const auto* input_event = event.getIf<sf::Event::MouseMoved>()) {
+        impl_->pointer = {static_cast<float>(input_event->position.x),
+                          static_cast<float>(input_event->position.y)};
         input["type"] = "pointer_move";
         input["x"] = impl_->pointer.x;
         input["y"] = impl_->pointer.y;
-        break;
-    case sf::Event::MouseButtonPressed: {
-        impl_->pointer = {static_cast<float>(event.mouseButton.x),
-                          static_cast<float>(event.mouseButton.y)};
-        const std::string button = button_name(event.mouseButton.button);
+    } else if (const auto* input_event = event.getIf<sf::Event::MouseButtonPressed>()) {
+        impl_->pointer = {static_cast<float>(input_event->position.x),
+                          static_cast<float>(input_event->position.y)};
+        const std::string button = button_name(input_event->button);
         impl_->pointer_buttons_down.insert(button);
         input["type"] = "pointer_down";
         input["button"] = button;
         input["x"] = impl_->pointer.x;
         input["y"] = impl_->pointer.y;
-        break;
-    }
-    case sf::Event::MouseButtonReleased: {
-        impl_->pointer = {static_cast<float>(event.mouseButton.x),
-                          static_cast<float>(event.mouseButton.y)};
-        const std::string button = button_name(event.mouseButton.button);
+    } else if (const auto* input_event = event.getIf<sf::Event::MouseButtonReleased>()) {
+        impl_->pointer = {static_cast<float>(input_event->position.x),
+                          static_cast<float>(input_event->position.y)};
+        const std::string button = button_name(input_event->button);
         impl_->pointer_buttons_down.erase(button);
         input["type"] = "pointer_up";
         input["button"] = button;
         input["x"] = impl_->pointer.x;
         input["y"] = impl_->pointer.y;
-        break;
-    }
-    case sf::Event::TextEntered: {
-        const sf::String text(event.text.unicode);
+    } else if (const auto* input_event = event.getIf<sf::Event::TextEntered>()) {
+        const sf::String text(input_event->unicode);
         const auto bytes = text.toUtf8();
         input["type"] = "text_input";
         input["text"] = std::string(bytes.begin(), bytes.end());
-        break;
-    }
-    default:
+    } else {
         recognized = false;
-        break;
     }
     if (recognized) {
         impl_->call(ctx_, "on_input", ScriptSceneContext{api_state_}, input);

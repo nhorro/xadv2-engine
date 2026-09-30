@@ -15,6 +15,7 @@
 #                    objects is unsafe, so this is not optional)
 
 include(CMakeFindDependencyMacro)
+find_dependency(SFML 3.1 CONFIG COMPONENTS Graphics Window Audio System)
 
 # Re-run the engine's dependency discovery. This must happen BEFORE the targets
 # file is loaded: the exported engine names imported targets (SFML's, yaml-cpp's

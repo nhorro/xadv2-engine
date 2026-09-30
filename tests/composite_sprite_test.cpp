@@ -103,16 +103,16 @@ TEST_CASE("composite child stays attached while its local rotation advances") {
 
     std::vector<AnimatedSprite> sprites;
     sprites.push_back(part_sprite(texture,
-                                  {0, 0, 100, 50},
+                                  {{0, 0}, {100, 50}},
                                   {{"pivot", {0.0f, 0.0f}}, {"mount", {10.0f, 20.0f}}},
                                   "pivot"));
     sprites.push_back(part_sprite(texture,
-                                  {0, 0, 10, 10},
+                                  {{0, 0}, {10, 10}},
                                   {{"center", {5.0f, 5.0f}}, {"marker", {10.0f, 5.0f}}},
                                   "center"));
 
     CompositeSprite composite(std::move(definition), std::move(sprites));
-    composite.setPosition(100.0f, 200.0f);
+    composite.setPosition({100.0f, 200.0f});
     composite.play("moving");
     REQUIRE(composite.anchor_world("wheel.marker").has_value());
     CHECK(composite.anchor_world("wheel.marker")->x == doctest::Approx(115.0f));

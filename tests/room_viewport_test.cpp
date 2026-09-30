@@ -10,10 +10,10 @@ TEST_CASE("room viewport uses the complete runtime resolution") {
     CHECK(viewport.valid());
     CHECK(viewport.size.x == doctest::Approx(1280.0f));
     CHECK(viewport.size.y == doctest::Approx(720.0f));
-    CHECK(viewport.virtual_rect().left == doctest::Approx(0.0f));
-    CHECK(viewport.virtual_rect().top == doctest::Approx(0.0f));
-    CHECK(viewport.virtual_rect().width == doctest::Approx(1280.0f));
-    CHECK(viewport.virtual_rect().height == doctest::Approx(720.0f));
+    CHECK(viewport.virtual_rect().position.x == doctest::Approx(0.0f));
+    CHECK(viewport.virtual_rect().position.y == doctest::Approx(0.0f));
+    CHECK(viewport.virtual_rect().size.x == doctest::Approx(1280.0f));
+    CHECK(viewport.virtual_rect().size.y == doctest::Approx(720.0f));
 }
 
 TEST_CASE("room viewport accepts arbitrary runtime dimensions") {
@@ -21,11 +21,11 @@ TEST_CASE("room viewport accepts arbitrary runtime dimensions") {
     const RoomViewport wide = RoomViewport::from_runtime({1915u, 821u});
 
     CHECK(portrait.valid());
-    CHECK(portrait.virtual_rect().width == doctest::Approx(900.0f));
-    CHECK(portrait.virtual_rect().height == doctest::Approx(1200.0f));
+    CHECK(portrait.virtual_rect().size.x == doctest::Approx(900.0f));
+    CHECK(portrait.virtual_rect().size.y == doctest::Approx(1200.0f));
     CHECK(wide.valid());
-    CHECK(wide.virtual_rect().width == doctest::Approx(1915.0f));
-    CHECK(wide.virtual_rect().height == doctest::Approx(821.0f));
+    CHECK(wide.virtual_rect().size.x == doctest::Approx(1915.0f));
+    CHECK(wide.virtual_rect().size.y == doctest::Approx(821.0f));
 }
 
 TEST_CASE("empty room viewport is invalid") {

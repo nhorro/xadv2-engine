@@ -13,13 +13,13 @@ namespace {
 DirectRoomUiConfig test_config() {
     DirectRoomUiConfig config;
     config.design_size = {100.0f, 100.0f};
-    config.bag_button = {80.0f, 80.0f, 10.0f, 10.0f};
-    config.menu_button = {90.0f, 80.0f, 10.0f, 10.0f};
-    config.action_text = {20.0f, 90.0f, 60.0f, 8.0f};
-    config.inventory.panel = {5.0f, 5.0f, 90.0f, 70.0f};
-    config.inventory.grid = {10.0f, 10.0f, 80.0f, 40.0f};
-    config.inventory.previous = {10.0f, 55.0f, 20.0f, 10.0f};
-    config.inventory.next = {70.0f, 55.0f, 20.0f, 10.0f};
+    config.bag_button = {{80.0f, 80.0f}, {10.0f, 10.0f}};
+    config.menu_button = {{90.0f, 80.0f}, {10.0f, 10.0f}};
+    config.action_text = {{20.0f, 90.0f}, {60.0f, 8.0f}};
+    config.inventory.panel = {{5.0f, 5.0f}, {90.0f, 70.0f}};
+    config.inventory.grid = {{10.0f, 10.0f}, {80.0f, 40.0f}};
+    config.inventory.previous = {{10.0f, 55.0f}, {20.0f, 10.0f}};
+    config.inventory.next = {{70.0f, 55.0f}, {20.0f, 10.0f}};
     config.inventory.rows = 1;
     config.inventory.columns = 2;
     config.inventory.cell_gap = {4.0f, 4.0f};
@@ -252,12 +252,13 @@ TEST_CASE("context menu captures the room and emits the selected secondary actio
 
     CHECK(fixture.widget.captures({1.0f, 1.0f}));
     const sf::FloatRect bounds = fixture.widget.context_menu_bounds();
-    CHECK(bounds.width == doctest::Approx(46.0f));
-    const auto first = fixture.widget.context_action_at({bounds.left + 5.0f, bounds.top + 5.0f});
+    CHECK(bounds.size.x == doctest::Approx(46.0f));
+    const auto first =
+        fixture.widget.context_action_at({bounds.position.x + 5.0f, bounds.position.y + 5.0f});
     REQUIRE(first);
     CHECK(*first == Verb::LOOK_AT);
 
-    fixture.release(bounds.left + 27.0f, bounds.top + 5.0f);
+    fixture.release(bounds.position.x + 27.0f, bounds.position.y + 5.0f);
     REQUIRE(fixture.intents.size() == 1);
     CHECK(fixture.intents.back().kind == RoomUiIntent::Kind::CHOOSE_CONTEXT_ACTION);
     CHECK(fixture.intents.back().verb == Verb::OPEN);

@@ -328,7 +328,7 @@ TEST_CASE("save writes a thumbnail sidecar PNG when one is supplied (issue #119)
     // / loadFromFile decode through stb_image and may renormalize, but the path
     // shape is what we're verifying — not pixel exactness).
     sf::Image img;
-    img.create(4u, 3u, sf::Color(120, 80, 40, 255));
+    img.resize({4u, 3u}, sf::Color(120, 80, 40, 255));
 
     const GameState in = make_rich_state();
     REQUIRE(svc.save(1, in, &img));
@@ -346,7 +346,7 @@ TEST_CASE("save without a thumbnail leaves the slot's sidecar untouched") {
     SaveService svc(td.path, log);
 
     sf::Image img;
-    img.create(2u, 2u, sf::Color::Red);
+    img.resize({2u, 2u}, sf::Color::Red);
     const GameState in = make_rich_state();
     REQUIRE(svc.save(1, in, &img));
     REQUIRE(svc.slot_has_thumbnail(1));
@@ -364,7 +364,7 @@ TEST_CASE("stage_pending_thumbnail drains exactly once") {
     SaveService svc(td.path, log);
 
     sf::Image img;
-    img.create(8u, 8u, sf::Color::Blue);
+    img.resize({8u, 8u}, sf::Color::Blue);
     svc.stage_pending_thumbnail(img);
     CHECK(svc.take_pending_thumbnail().getSize() == sf::Vector2u(8u, 8u));
     // Drained — the next take returns an empty image.
@@ -377,7 +377,7 @@ TEST_CASE("clear_staged clears restore snapshot and thumbnail hand-offs") {
     SaveService svc(td.path, log);
 
     sf::Image img;
-    img.create(8u, 8u, sf::Color::Blue);
+    img.resize({8u, 8u}, sf::Color::Blue);
     svc.stage_restore(make_rich_state());
     svc.stage_pending_snap(make_rich_state());
     svc.stage_pending_thumbnail(img);

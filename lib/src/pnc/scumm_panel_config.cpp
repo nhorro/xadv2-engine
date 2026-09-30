@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdint>
 #include <sstream>
 
 namespace pac::pnc {
@@ -44,11 +45,9 @@ sf::FloatRect rect_from(const YAML::Node& node, const std::string& field) {
     if (!node || !node.IsSequence() || node.size() != 4) {
         panel_fail("scumm-panel.rect-invalid", field + " must be [x, y, width, height]", node);
     }
-    sf::FloatRect rect{number_at(node, 0, field),
-                       number_at(node, 1, field),
-                       number_at(node, 2, field),
-                       number_at(node, 3, field)};
-    if (rect.width <= 0.0f || rect.height <= 0.0f) {
+    sf::FloatRect rect{{number_at(node, 0, field), number_at(node, 1, field)},
+                       {number_at(node, 2, field), number_at(node, 3, field)}};
+    if (rect.size.x <= 0.0f || rect.size.y <= 0.0f) {
         panel_fail("scumm-panel.rect-size-invalid",
                    field + " width and height must be positive",
                    node);
@@ -172,11 +171,11 @@ sf::Color parse_color(const std::string& text, const YAML::Node& at) {
             panel_fail("scumm-panel.color-invalid", "color must use #RRGGBB or #RRGGBBAA form", at);
         }
     }
-    return sf::Color(static_cast<sf::Uint8>(n[0] * 16 + n[1]),
-                     static_cast<sf::Uint8>(n[2] * 16 + n[3]),
-                     static_cast<sf::Uint8>(n[4] * 16 + n[5]),
-                     has_alpha ? static_cast<sf::Uint8>(n[6] * 16 + n[7])
-                               : static_cast<sf::Uint8>(255));
+    return sf::Color(static_cast<std::uint8_t>(n[0] * 16 + n[1]),
+                     static_cast<std::uint8_t>(n[2] * 16 + n[3]),
+                     static_cast<std::uint8_t>(n[4] * 16 + n[5]),
+                     has_alpha ? static_cast<std::uint8_t>(n[6] * 16 + n[7])
+                               : static_cast<std::uint8_t>(255));
 }
 
 std::string
@@ -812,27 +811,22 @@ void validate_config(const ScummPanelConfig& cfg, const YAML::Node& root) {
 
 ScummPanelConfig default_scumm_panel_config(sf::FloatRect panel_rect) {
     ScummPanelConfig cfg;
-    cfg.layout.design_size = {panel_rect.left + panel_rect.width,
-                              panel_rect.top + panel_rect.height};
+    cfg.layout.design_size = {panel_rect.position.x + panel_rect.size.x,
+                              panel_rect.position.y + panel_rect.size.y};
     cfg.layout.panel_rect = panel_rect;
-    cfg.layout.command_bar_rect = {0.0f, 0.0f, panel_rect.width, 32.0f};
-    cfg.layout.body_rect = {10.0f, 42.0f, panel_rect.width - 20.0f, panel_rect.height - 52.0f};
-    cfg.layout.verb_panel.rect = {0.0f,
-                                  0.0f,
-                                  panel_rect.width * 0.46f - 20.0f,
-                                  cfg.layout.body_rect.height};
-    cfg.layout.inventory_panel.rect = {panel_rect.width * 0.46f,
-                                       0.0f,
-                                       panel_rect.width * 0.54f - 10.0f,
-                                       cfg.layout.body_rect.height};
-    cfg.layout.inventory_arrows.previous_hitbox = {cfg.layout.inventory_panel.rect.width - 52.0f,
-                                                   0.0f,
-                                                   24.0f,
-                                                   cfg.layout.inventory_panel.rect.height};
-    cfg.layout.inventory_arrows.next_hitbox = {cfg.layout.inventory_panel.rect.width - 26.0f,
-                                               0.0f,
-                                               24.0f,
-                                               cfg.layout.inventory_panel.rect.height};
+    cfg.layout.command_bar_rect = {{0.0f, 0.0f}, {panel_rect.size.x, 32.0f}};
+    cfg.layout.body_rect = {{10.0f, 42.0f}, {panel_rect.size.x - 20.0f, panel_rect.size.y - 52.0f}};
+    cfg.layout.verb_panel.rect = {{0.0f, 0.0f},
+                                  {panel_rect.size.x * 0.46f - 20.0f, cfg.layout.body_rect.size.y}};
+    cfg.layout.inventory_panel.rect = {
+        {panel_rect.size.x * 0.46f, 0.0f},
+        {panel_rect.size.x * 0.54f - 10.0f, cfg.layout.body_rect.size.y}};
+    cfg.layout.inventory_arrows.previous_hitbox = {
+        {cfg.layout.inventory_panel.rect.size.x - 52.0f, 0.0f},
+        {24.0f, cfg.layout.inventory_panel.rect.size.y}};
+    cfg.layout.inventory_arrows.next_hitbox = {
+        {cfg.layout.inventory_panel.rect.size.x - 26.0f, 0.0f},
+        {24.0f, cfg.layout.inventory_panel.rect.size.y}};
     cfg.content.verbs.assign(kDefaultVerbGrid.begin(), kDefaultVerbGrid.end());
     cfg.skin.command_text.size = 20;
     cfg.skin.command_text.color = sf::Color(242, 224, 176);

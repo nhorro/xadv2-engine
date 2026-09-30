@@ -73,7 +73,7 @@ void draw_text_block(sf::RenderTarget& target,
                      HAlign h_align,
                      VAnchor v_anchor) {
     const auto measure = [&](const std::string& s) {
-        return sf::Text(utf8(s), font, style.size).getLocalBounds().width;
+        return sf::Text(font, utf8(s), style.size).getLocalBounds().size.x;
     };
     const float line_h = font.getLineSpacing(style.size);
     const TextLayout lay = layout_text(text, max_width, line_h, measure);
@@ -89,7 +89,7 @@ void draw_text_block(sf::RenderTarget& target,
     float center_y = block_top + line_h / 2.0f;
 
     for (const std::string& line : lay.lines) {
-        sf::Text t(utf8(line), font, style.size);
+        sf::Text t(font, utf8(line), style.size);
         t.setFillColor(style.color);
         if (style.outline_thickness > 0.0f) {
             t.setOutlineColor(style.outline_color);
@@ -99,14 +99,14 @@ void draw_text_block(sf::RenderTarget& target,
         // (and the line's center y) lands the line where h_align/v_anchor ask,
         // independent of the glyph bearing carried in getLocalBounds().
         const sf::FloatRect b = t.getLocalBounds();
-        float origin_x = b.left;
+        float origin_x = b.position.x;
         if (h_align == HAlign::Center) {
-            origin_x = b.left + b.width / 2.0f;
+            origin_x = b.position.x + b.size.x / 2.0f;
         } else if (h_align == HAlign::Right) {
-            origin_x = b.left + b.width;
+            origin_x = b.position.x + b.size.x;
         }
-        t.setOrigin(origin_x, b.top + b.height / 2.0f);
-        t.setPosition(anchor.x, center_y);
+        t.setOrigin({origin_x, b.position.y + b.size.y / 2.0f});
+        t.setPosition({anchor.x, center_y});
         target.draw(t);
         center_y += line_h;
     }

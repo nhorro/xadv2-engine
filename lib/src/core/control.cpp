@@ -2,6 +2,7 @@
 
 #include <charconv>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <stdexcept>

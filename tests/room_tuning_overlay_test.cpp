@@ -47,13 +47,13 @@ RoomRenderState render_state(const RoomData& room) {
 }
 
 void click(RoomTuningOverlay& overlay, int x, int y) {
-    sf::Event event{};
-    event.type = sf::Event::MouseButtonPressed;
-    event.mouseButton.button = sf::Mouse::Left;
-    event.mouseButton.x = x;
-    event.mouseButton.y = y;
+    sf::Event event{sf::Event::Closed{}};
+    event = sf::Event::MouseButtonPressed{};
+    event.getIf<sf::Event::MouseButtonPressed>()->button = sf::Mouse::Button::Left;
+    event.getIf<sf::Event::MouseButtonPressed>()->position.x = x;
+    event.getIf<sf::Event::MouseButtonPressed>()->position.y = y;
     CHECK(overlay.handle_event(event));
-    event.type = sf::Event::MouseButtonReleased;
+    event = sf::Event::MouseButtonReleased{sf::Mouse::Button::Left, {x, y}};
     CHECK(overlay.handle_event(event));
 }
 
@@ -63,7 +63,7 @@ TEST_CASE("room tuning overlay uses working render values and can compare/reset"
     const RoomData room = tuning_room();
     RoomRenderState live = render_state(room);
     RoomTuningOverlay overlay;
-    overlay.open(live, render_state(room), {0.0f, 612.0f, 1280.0f, 108.0f}, nullptr);
+    overlay.open(live, render_state(room), {{0.0f, 612.0f}, {1280.0f, 108.0f}}, nullptr);
 
     CHECK(overlay.active());
     REQUIRE(overlay.effective_lighting() != nullptr);
@@ -82,7 +82,7 @@ TEST_CASE("room tuning YAML round-trips adjusted lighting and grading") {
     const RoomData room = tuning_room();
     RoomRenderState live = render_state(room);
     RoomTuningOverlay overlay;
-    overlay.open(live, render_state(room), {0.0f, 612.0f, 1280.0f, 108.0f}, nullptr);
+    overlay.open(live, render_state(room), {{0.0f, 612.0f}, {1280.0f, 108.0f}}, nullptr);
     overlay.working_lighting().ambient_intensity = 0.63f;
     overlay.working_lighting().lights[0].radius = 315.0f;
     overlay.working_lighting().lights[0].modulation.speed = 7.5f;
@@ -115,7 +115,7 @@ TEST_CASE("room tuning YAML preserves resultant projected-shadow sources") {
     room.projected_shadow->sources = {"lamp"};
     RoomRenderState live = render_state(room);
     RoomTuningOverlay overlay;
-    overlay.open(live, render_state(room), {0.0f, 612.0f, 1280.0f, 108.0f}, nullptr);
+    overlay.open(live, render_state(room), {{0.0f, 612.0f}, {1280.0f, 108.0f}}, nullptr);
 
     const RoomData exported = parse_room("id: adjusted\n" + overlay.yaml());
     REQUIRE(exported.projected_shadow);
@@ -136,7 +136,7 @@ TEST_CASE("room tuning YAML preserves spotlight aim and trapezoidal beam") {
     light.beam_width = 36.0f;
     RoomRenderState live = render_state(room);
     RoomTuningOverlay overlay;
-    overlay.open(live, render_state(room), {0.0f, 612.0f, 1280.0f, 108.0f}, nullptr);
+    overlay.open(live, render_state(room), {{0.0f, 612.0f}, {1280.0f, 108.0f}}, nullptr);
 
     const RoomData exported = parse_room("id: adjusted\n" + overlay.yaml());
     REQUIRE(exported.dynamic_lighting);
@@ -161,7 +161,7 @@ TEST_CASE("room tuning YAML preserves tracked spotlight targets") {
     light.aim_at = aim;
     RoomRenderState live = render_state(room);
     RoomTuningOverlay overlay;
-    overlay.open(live, render_state(room), {0.0f, 612.0f, 1280.0f, 108.0f}, nullptr);
+    overlay.open(live, render_state(room), {{0.0f, 612.0f}, {1280.0f, 108.0f}}, nullptr);
 
     const RoomData exported = parse_room("id: adjusted\n" + overlay.yaml());
     REQUIRE(exported.dynamic_lighting);
@@ -178,7 +178,7 @@ TEST_CASE("unlit room tuning can preview and export a default ambient pass") {
     room.id = "plain";
     RoomRenderState live = render_state(room);
     RoomTuningOverlay overlay;
-    overlay.open(live, render_state(room), {0.0f, 612.0f, 1280.0f, 108.0f}, nullptr);
+    overlay.open(live, render_state(room), {{0.0f, 612.0f}, {1280.0f, 108.0f}}, nullptr);
 
     REQUIRE(overlay.effective_lighting() != nullptr);
     CHECK(overlay.effective_lighting()->ambient_intensity == doctest::Approx(0.35f));
@@ -190,7 +190,7 @@ TEST_CASE("room tuning controls consume input and adjust live values") {
     const RoomData room = tuning_room();
     RoomRenderState live = render_state(room);
     RoomTuningOverlay overlay;
-    overlay.open(live, render_state(room), {0.0f, 612.0f, 1280.0f, 108.0f}, nullptr);
+    overlay.open(live, render_state(room), {{0.0f, 612.0f}, {1280.0f, 108.0f}}, nullptr);
 
     // Lights tab, then the center of its intensity slider (0..4 -> 2).
     click(overlay, 145, 628);
@@ -203,13 +203,13 @@ TEST_CASE("room tuning controls consume input and adjust live values") {
     CHECK(overlay.effective_lighting()->lights[0].intensity == doctest::Approx(0.9f));
 
     // Any otherwise unrelated event is still consumed while the overlay owns input.
-    sf::Event event{};
-    event.type = sf::Event::KeyPressed;
-    event.key.code = sf::Keyboard::A;
+    sf::Event event{sf::Event::Closed{}};
+    event = sf::Event::KeyPressed{};
+    event.getIf<sf::Event::KeyPressed>()->code = sf::Keyboard::Key::A;
     CHECK(overlay.handle_event(event));
     CHECK(overlay.active());
 
-    event.key.code = sf::Keyboard::Escape;
+    event.getIf<sf::Event::KeyPressed>()->code = sf::Keyboard::Key::Escape;
     CHECK(overlay.handle_event(event));
     CHECK_FALSE(overlay.active());
 }
@@ -218,7 +218,7 @@ TEST_CASE("grading controls edit generic shader parameters") {
     const RoomData room = tuning_room();
     RoomRenderState live = render_state(room);
     RoomTuningOverlay overlay;
-    overlay.open(live, render_state(room), {0.0f, 612.0f, 1280.0f, 108.0f}, nullptr);
+    overlay.open(live, render_state(room), {{0.0f, 612.0f}, {1280.0f, 108.0f}}, nullptr);
 
     click(overlay, 240, 628); // Grading tab.
     click(overlay, 260, 682); // Next param: brightness.

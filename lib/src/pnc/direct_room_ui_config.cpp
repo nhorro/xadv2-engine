@@ -41,11 +41,9 @@ sf::FloatRect rect(const YAML::Node& node, const std::string& field, sf::FloatRe
     if (!node.IsSequence() || node.size() != 4) {
         fail("direct-room-ui.rect-invalid", field + " must be [x, y, width, height]", node);
     }
-    sf::FloatRect value{number(node, 0, field),
-                        number(node, 1, field),
-                        number(node, 2, field),
-                        number(node, 3, field)};
-    if (value.width <= 0.0f || value.height <= 0.0f) {
+    sf::FloatRect value{{number(node, 0, field), number(node, 1, field)},
+                        {number(node, 2, field), number(node, 3, field)}};
+    if (value.size.x <= 0.0f || value.size.y <= 0.0f) {
         fail("direct-room-ui.rect-size-invalid",
              field + " width and height must be positive",
              node);

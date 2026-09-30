@@ -1000,7 +1000,7 @@ hotspots:
     RoomRuntime room(parse_room(yaml));
     const auto bounds = [](const std::string& id) -> std::optional<sf::FloatRect> {
         if (id == "vase") {
-            return sf::FloatRect(300.0f, 300.0f, 50.0f, 80.0f);
+            return sf::FloatRect({300.0f, 300.0f}, {50.0f, 80.0f});
         }
         return std::nullopt;
     };
@@ -1025,7 +1025,7 @@ hotspots:
     RoomRuntime room(parse_room(yaml));
     const auto bounds = [](const std::string& id) -> std::optional<sf::FloatRect> {
         if (id == "clerk")
-            return sf::FloatRect(0.0f, 0.0f, 100.0f, 100.0f);
+            return sf::FloatRect({0.0f, 0.0f}, {100.0f, 100.0f});
         return std::nullopt;
     };
     const RoomHotspot* hit = room.hotspot_at({50, 40}, bounds);

@@ -6,6 +6,7 @@
 #include <sol/sol.hpp>
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <string>
 #include <utility>

@@ -88,7 +88,7 @@ private:
 
     // Click routing.
     void on_click(float vx, float vy);
-    void on_text(sf::Uint32 codepoint);
+    void on_text(std::uint32_t codepoint);
     void on_key(sf::Keyboard::Key key);
 
     // Actions.

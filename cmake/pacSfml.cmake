@@ -1,0 +1,26 @@
+# One pinned upstream SFML implementation for desktop and Android.
+include_guard(GLOBAL)
+if(TARGET SFML::Graphics)
+    return()
+endif()
+include(FetchContent)
+function(pac_acquire_sfml)
+    set(PAC_SFML_REVISION "8835b6b955c96fa1ad1278a8dae6f05c4143effc"
+        CACHE STRING "Pinned upstream SFML 3.1.0 revision")
+    set(SFML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(SFML_BUILD_TEST_SUITE OFF CACHE BOOL "" FORCE)
+    set(SFML_BUILD_NETWORK OFF CACHE BOOL "" FORCE)
+    set(SFML_BUILD_AUDIO ON CACHE BOOL "" FORCE)
+    set(SFML_BUILD_GRAPHICS ON CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS ON)
+    if(ANDROID OR WIN32)
+        set(SFML_USE_SYSTEM_DEPS OFF CACHE BOOL "" FORCE)
+    else()
+        set(SFML_USE_SYSTEM_DEPS ON CACHE BOOL "" FORCE)
+    endif()
+    FetchContent_Declare(pac_sfml
+        GIT_REPOSITORY https://github.com/SFML/SFML.git
+        GIT_TAG ${PAC_SFML_REVISION})
+    FetchContent_MakeAvailable(pac_sfml)
+endfunction()
+pac_acquire_sfml()

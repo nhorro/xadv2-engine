@@ -20,10 +20,10 @@ struct DirectRoomUiContextMenuConfig {
 };
 
 struct DirectRoomUiInventoryConfig {
-    sf::FloatRect panel{522.0f, 616.0f, 590.0f, 88.0f};
-    sf::FloatRect grid{586.0f, 624.0f, 462.0f, 72.0f};
-    sf::FloatRect previous{534.0f, 636.0f, 40.0f, 48.0f};
-    sf::FloatRect next{1060.0f, 636.0f, 40.0f, 48.0f};
+    sf::FloatRect panel{{522.0f, 616.0f}, {590.0f, 88.0f}};
+    sf::FloatRect grid{{586.0f, 624.0f}, {462.0f, 72.0f}};
+    sf::FloatRect previous{{534.0f, 636.0f}, {40.0f, 48.0f}};
+    sf::FloatRect next{{1060.0f, 636.0f}, {40.0f, 48.0f}};
     int rows = 1;
     int columns = 6;
     sf::Vector2f cell_gap{6.0f, 0.0f};
@@ -79,9 +79,9 @@ struct DirectRoomUiStyle {
 struct DirectRoomUiConfig {
     sf::Vector2f design_size{1280.0f, 720.0f};
     DirectRoomUiInteractionConfig interaction;
-    sf::FloatRect bag_button{1136.0f, 632.0f, 64.0f, 64.0f};
-    sf::FloatRect menu_button{1208.0f, 632.0f, 48.0f, 64.0f};
-    sf::FloatRect action_text{300.0f, 566.0f, 680.0f, 42.0f};
+    sf::FloatRect bag_button{{1136.0f, 632.0f}, {64.0f, 64.0f}};
+    sf::FloatRect menu_button{{1208.0f, 632.0f}, {48.0f, 64.0f}};
+    sf::FloatRect action_text{{300.0f, 566.0f}, {680.0f, 42.0f}};
     sf::Vector2f action_text_offset{18.0f, 24.0f};
     bool action_follows_cursor = false;
     std::string bag_label;

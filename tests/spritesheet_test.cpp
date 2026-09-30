@@ -33,10 +33,10 @@ TEST_CASE("parse_spritesheet reads image, size, frames, and anchors") {
     REQUIRE(d.has("a"));
     const Frame* a = d.frame("a");
     REQUIRE(a != nullptr);
-    CHECK(a->rect.left == 0);
-    CHECK(a->rect.top == 0);
-    CHECK(a->rect.width == 32);
-    CHECK(a->rect.height == 64);
+    CHECK(a->rect.position.x == 0);
+    CHECK(a->rect.position.y == 0);
+    CHECK(a->rect.size.x == 32);
+    CHECK(a->rect.size.y == 64);
 
     const sf::Vector2f* foot = a->anchor("foot");
     REQUIRE(foot != nullptr);
@@ -46,7 +46,7 @@ TEST_CASE("parse_spritesheet reads image, size, frames, and anchors") {
 
     const Frame* b = d.frame("b");
     REQUIRE(b != nullptr);
-    CHECK(b->rect.width == 30);
+    CHECK(b->rect.size.x == 30);
     CHECK(b->anchor("foot") == nullptr); // b declares no anchors
 
     CHECK(d.frame("nope") == nullptr);

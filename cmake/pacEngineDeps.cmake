@@ -10,8 +10,8 @@
 # re-creates it first — which is exactly what including this file does.
 include_guard(GLOBAL)
 
-if(NOT TARGET sfml-graphics)
-    include("${CMAKE_CURRENT_LIST_DIR}/pacModifiedSfml.cmake")
+if(NOT TARGET SFML::Graphics)
+    include("${CMAKE_CURRENT_LIST_DIR}/pacSfml.cmake")
 endif()
 
 if(NOT TARGET yaml-cpp::yaml-cpp AND NOT TARGET yaml-cpp)

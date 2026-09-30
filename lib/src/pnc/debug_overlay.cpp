@@ -19,16 +19,16 @@ namespace pac::pnc {
 
 bool DebugOverlayFlags::toggle(sf::Keyboard::Key key) {
     switch (key) {
-    case sf::Keyboard::F1:
+    case sf::Keyboard::Key::F1:
         walkboxes = !walkboxes;
         return true;
-    case sf::Keyboard::F2:
+    case sf::Keyboard::Key::F2:
         hotspots = !hotspots;
         return true;
-    case sf::Keyboard::F3:
+    case sf::Keyboard::Key::F3:
         anchors = !anchors;
         return true;
-    case sf::Keyboard::F4:
+    case sf::Keyboard::Key::F4:
         hud = !hud;
         return true;
     default:
@@ -48,7 +48,7 @@ void outline_polygon(sf::RenderTarget& target, const geom::Polygon& poly, sf::Co
     if (poly.size() < 2) {
         return;
     }
-    sf::VertexArray strip(sf::LineStrip, poly.size() + 1);
+    sf::VertexArray strip(sf::PrimitiveType::LineStrip, poly.size() + 1);
     for (std::size_t i = 0; i < poly.size(); ++i) {
         strip[i].position = poly[i];
         strip[i].color = color;
@@ -63,19 +63,19 @@ void world_label(sf::RenderTarget& target,
                  const std::string& s,
                  geom::Point at,
                  sf::Color color) {
-    sf::Text text(s, font, 11);
+    sf::Text text(font, s, 11);
     text.setFillColor(color);
-    text.setPosition(std::round(at.x), std::round(at.y));
+    text.setPosition({std::round(at.x), std::round(at.y)});
     target.draw(text);
 }
 
 void anchor_marker(sf::RenderTarget& target, geom::Point p, sf::Color color) {
     constexpr float kArm = 6.0f; // cross half-length in world units
-    sf::VertexArray cross(sf::Lines, 4);
-    cross[0] = sf::Vertex({p.x - kArm, p.y}, color);
-    cross[1] = sf::Vertex({p.x + kArm, p.y}, color);
-    cross[2] = sf::Vertex({p.x, p.y - kArm}, color);
-    cross[3] = sf::Vertex({p.x, p.y + kArm}, color);
+    sf::VertexArray cross(sf::PrimitiveType::Lines, 4);
+    cross[0] = sf::Vertex{{p.x - kArm, p.y}, color};
+    cross[1] = sf::Vertex{{p.x + kArm, p.y}, color};
+    cross[2] = sf::Vertex{{p.x, p.y - kArm}, color};
+    cross[3] = sf::Vertex{{p.x, p.y + kArm}, color};
     target.draw(cross);
 }
 
@@ -117,13 +117,13 @@ void DebugOverlay::draw_world(sf::RenderTarget& target,
                     world_label(target,
                                 *font,
                                 hs.name.empty() ? id : hs.name,
-                                {b.left + 2.0f, b.top + 2.0f},
+                                {b.position.x + 2.0f, b.position.y + 2.0f},
                                 kHotspot);
                 }
             }
             if (hs.approach) {
                 sf::CircleShape dot(5.0f);
-                dot.setOrigin(5.0f, 5.0f);
+                dot.setOrigin({5.0f, 5.0f});
                 dot.setPosition(*hs.approach);
                 dot.setFillColor(sf::Color(kApproach.r, kApproach.g, kApproach.b, 150));
                 dot.setOutlineThickness(1.0f);
@@ -162,12 +162,12 @@ void DebugOverlay::draw_hud(sf::RenderTarget& target,
     if (font == nullptr || text.empty()) {
         return;
     }
-    sf::Text t(text, *font, 12);
+    sf::Text t(*font, text, 12);
     t.setFillColor(sf::Color(235, 235, 235));
-    t.setPosition(10.0f, 10.0f);
+    t.setPosition({10.0f, 10.0f});
     const sf::FloatRect b = t.getLocalBounds();
-    sf::RectangleShape bg({b.width + 14.0f, b.height + 14.0f});
-    bg.setPosition(6.0f, 6.0f);
+    sf::RectangleShape bg({b.size.x + 14.0f, b.size.y + 14.0f});
+    bg.setPosition({6.0f, 6.0f});
     bg.setFillColor(sf::Color(0, 0, 0, 175));
     target.draw(bg);
     target.draw(t);

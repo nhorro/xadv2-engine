@@ -35,15 +35,15 @@ const std::string& VisualSprite::current_sequence() const {
 }
 
 void VisualSprite::setPosition(float x, float y) {
-    std::visit([&](auto& sprite) { sprite.setPosition(x, y); }, value_);
+    std::visit([&](auto& sprite) { sprite.setPosition({x, y}); }, value_);
 }
 
 void VisualSprite::setScale(float x, float y) {
-    std::visit([&](auto& sprite) { sprite.setScale(x, y); }, value_);
+    std::visit([&](auto& sprite) { sprite.setScale({x, y}); }, value_);
 }
 
 void VisualSprite::setRotation(float degrees) {
-    std::visit([&](auto& sprite) { sprite.setRotation(degrees); }, value_);
+    std::visit([&](auto& sprite) { sprite.setRotation(sf::degrees(degrees)); }, value_);
 }
 
 void VisualSprite::set_shaders(std::vector<ShaderEffect> shaders) {

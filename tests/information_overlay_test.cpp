@@ -48,14 +48,14 @@ TEST_CASE("information pages are modal and restore a previous standalone indicat
     CHECK_FALSE(event.empty());
     CHECK(overlay.modal_active());
 
-    sf::Event move{};
-    move.type = sf::Event::MouseMoved;
+    sf::Event move{sf::Event::Closed{}};
+    move = sf::Event::MouseMoved{};
     CHECK(overlay.handle_event(move));
     CHECK(overlay.modal_active());
 
-    sf::Event dismiss{};
-    dismiss.type = sf::Event::KeyReleased;
-    dismiss.key.code = sf::Keyboard::Enter;
+    sf::Event dismiss{sf::Event::Closed{}};
+    dismiss = sf::Event::KeyReleased{};
+    dismiss.getIf<sf::Event::KeyReleased>()->code = sf::Keyboard::Key::Enter;
     CHECK(overlay.handle_event(dismiss));
     CHECK_FALSE(overlay.modal_active());
     CHECK(overlay.indicator_active());

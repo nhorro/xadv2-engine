@@ -76,7 +76,7 @@ SettingsScene::SettingsScene(pac::core::EngineContext& ctx, const pac::core::Sce
     }
 
     const sf::VideoMode desktop = sf::VideoMode::getDesktopMode();
-    sizes_ = pac::core::windowed_size_options({desktop.width, desktop.height},
+    sizes_ = pac::core::windowed_size_options({desktop.size.x, desktop.size.y},
                                               ctx_.display.virtual_resolution());
     for (std::size_t i = 0; i < sizes_.size(); ++i) {
         if (sizes_[i].x == working_.window_width && sizes_[i].y == working_.window_height) {
@@ -279,18 +279,18 @@ float SettingsScene::chooser_value_center_x(int row) const {
     const std::string through_value = prefix + view.value;
     const std::string full = through_value + " >";
     const auto width = [this](const std::string& text) {
-        return sf::Text(pac::core::utf8(text), *font_, font_size_).getLocalBounds().width;
+        return sf::Text(*font_, pac::core::utf8(text), font_size_).getLocalBounds().size.x;
     };
     const float left = center - width(full) / 2.0f;
     return left + (width(prefix) + width(through_value)) / 2.0f;
 }
 
 void SettingsScene::handle_event(const sf::Event& event) {
-    if (event.type == sf::Event::MouseMoved) {
+    if (event.is<sf::Event::MouseMoved>()) {
         const int previous = row_;
         const bool was_hovered = hovered_;
-        const int r =
-            row_at(static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y));
+        const int r = row_at(static_cast<float>(event.getIf<sf::Event::MouseMoved>()->position.x),
+                             static_cast<float>(event.getIf<sf::Event::MouseMoved>()->position.y));
         hovered_ = (r >= 0);
         if (r >= 0) {
             row_ = r; // hover selects the row, mirroring keyboard navigation
@@ -300,10 +300,13 @@ void SettingsScene::handle_event(const sf::Event& event) {
         }
         return;
     }
-    if (event.type == sf::Event::MouseButtonReleased &&
-        event.mouseButton.button == sf::Mouse::Left) {
-        const auto x = static_cast<float>(event.mouseButton.x);
-        const int r = row_at(x, static_cast<float>(event.mouseButton.y));
+    if (event.is<sf::Event::MouseButtonReleased>() &&
+        event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Left) {
+        const auto x =
+            static_cast<float>(event.getIf<sf::Event::MouseButtonReleased>()->position.x);
+        const int r =
+            row_at(x,
+                   static_cast<float>(event.getIf<sf::Event::MouseButtonReleased>()->position.y));
         if (r < 0) {
             return;
         }
@@ -316,30 +319,30 @@ void SettingsScene::handle_event(const sf::Event& event) {
         }
         return;
     }
-    if (event.type != sf::Event::KeyPressed) {
+    if (!event.is<sf::Event::KeyPressed>()) {
         return;
     }
-    switch (event.key.code) {
-    case sf::Keyboard::Escape:
+    switch (event.getIf<sf::Event::KeyPressed>()->code) {
+    case sf::Keyboard::Key::Escape:
         ui_sounds_.activate(ctx_);
         cancel();
         break;
-    case sf::Keyboard::Up:
+    case sf::Keyboard::Key::Up:
         row_ = (row_ + ROW_COUNT - 1) % ROW_COUNT;
         ui_sounds_.selection(ctx_);
         break;
-    case sf::Keyboard::Down:
+    case sf::Keyboard::Key::Down:
         row_ = (row_ + 1) % ROW_COUNT;
         ui_sounds_.selection(ctx_);
         break;
-    case sf::Keyboard::Left:
+    case sf::Keyboard::Key::Left:
         adjust(-1);
         break;
-    case sf::Keyboard::Right:
+    case sf::Keyboard::Key::Right:
         adjust(+1);
         break;
-    case sf::Keyboard::Return:
-    case sf::Keyboard::Space:
+    case sf::Keyboard::Key::Enter:
+    case sf::Keyboard::Key::Space:
         ui_sounds_.activate(ctx_);
         activate();
         break;
@@ -368,7 +371,7 @@ void SettingsScene::draw(sf::RenderTarget& target) const {
             sf::Sprite sprite(tex);
             const sf::Vector2u ts = tex.getSize();
             if (ts.x > 0 && ts.y > 0) {
-                sprite.setScale(vw / static_cast<float>(ts.x), vh / static_cast<float>(ts.y));
+                sprite.setScale({vw / static_cast<float>(ts.x), vh / static_cast<float>(ts.y)});
             }
             target.draw(sprite);
         } catch (const std::exception& e) {
@@ -384,12 +387,12 @@ void SettingsScene::draw(sf::RenderTarget& target) const {
     const float cx = static_cast<float>(vres.x) / 2.0f;
 
     auto centered = [&](const std::string& s, float y, unsigned size, sf::Color color) {
-        sf::Text text(pac::core::utf8(s), *font_, size);
+        sf::Text text(*font_, pac::core::utf8(s), size);
         text.setFillColor(color);
         text.setOutlineColor(sf::Color(0, 0, 0, 200)); // legible over a background image
         text.setOutlineThickness(2.0f);
         const sf::FloatRect b = text.getLocalBounds();
-        text.setPosition(cx - b.width / 2.0f - b.left, y);
+        text.setPosition({cx - b.size.x / 2.0f - b.position.x, y});
         target.draw(text);
     };
 

@@ -44,7 +44,7 @@ TEST_CASE("follow bounds map the reachable span onto the whole background") {
     // not engage, so the extremes of reach still show the extremes of the
     // background and the whole image is covered (issue #28).
     Camera cam({1280.0f, 612.0f}, {3000u, 1000u});
-    cam.set_follow_bounds({500.0f, 400.0f, 2000.0f, 200.0f}); // [500,2500] x [400,600]
+    cam.set_follow_bounds({{500.0f, 400.0f}, {2000.0f, 200.0f}}); // [500,2500] x [400,600]
 
     cam.snap_to({500.0f, 400.0f});                    // leftmost/topmost reachable point
     CHECK(cam.top_left().x == doctest::Approx(0.0f)); // shows the left edge
@@ -67,7 +67,7 @@ TEST_CASE("the on-screen clamp keeps the player visible in a thin-slice room") {
     // of the 612px viewport. The clamp must keep the pivot on screen, within the
     // default 15% margin band [91.8, 520.2].
     Camera cam({1280.0f, 612.0f}, {3000u, 1000u});
-    cam.set_follow_bounds({500.0f, 700.0f, 2000.0f, 60.0f}); // [500,2500] x [700,760]
+    cam.set_follow_bounds({{500.0f, 700.0f}, {2000.0f, 60.0f}}); // [500,2500] x [700,760]
 
     const float margin = 0.15f * 612.0f;   // 91.8
     const float lo_band = margin;          // nearest the top edge
@@ -89,7 +89,7 @@ TEST_CASE("follow margin 0 keeps the player just on screen, edge allowed") {
     // With margin 0 the player may reach the very viewport edge but never beyond:
     // at the top of the thin slice the pivot lands exactly on the bottom edge.
     Camera cam({1280.0f, 612.0f}, {3000u, 1000u});
-    cam.set_follow_bounds({500.0f, 700.0f, 2000.0f, 60.0f});
+    cam.set_follow_bounds({{500.0f, 700.0f}, {2000.0f, 60.0f}});
     cam.set_follow_margin(0.0f);
 
     cam.snap_to({1500.0f, 700.0f});
@@ -101,10 +101,10 @@ TEST_CASE("view_rect reflects center and viewport") {
     Camera cam({1280.0f, 612.0f}, {3000u, 1000u});
     cam.snap_to({1500.0f, 500.0f});
     const sf::FloatRect r = cam.view_rect();
-    CHECK(r.left == doctest::Approx(1500.0f - 640.0f));
-    CHECK(r.top == doctest::Approx(500.0f - 306.0f));
-    CHECK(r.width == doctest::Approx(1280.0f));
-    CHECK(r.height == doctest::Approx(612.0f));
+    CHECK(r.position.x == doctest::Approx(1500.0f - 640.0f));
+    CHECK(r.position.y == doctest::Approx(500.0f - 306.0f));
+    CHECK(r.size.x == doctest::Approx(1280.0f));
+    CHECK(r.size.y == doctest::Approx(612.0f));
 }
 
 TEST_CASE("a full-height viewport scrolls a larger room on both axes") {
@@ -113,8 +113,8 @@ TEST_CASE("a full-height viewport scrolls a larger room on both axes") {
     cam.snap_to({0.0f, 0.0f});
     CHECK(cam.top_left().x == doctest::Approx(0.0f));
     CHECK(cam.top_left().y == doctest::Approx(0.0f));
-    CHECK(cam.view_rect().width == doctest::Approx(1280.0f));
-    CHECK(cam.view_rect().height == doctest::Approx(720.0f));
+    CHECK(cam.view_rect().size.x == doctest::Approx(1280.0f));
+    CHECK(cam.view_rect().size.y == doctest::Approx(720.0f));
 
     cam.snap_to({1915.0f, 821.0f});
     CHECK(cam.top_left().x == doctest::Approx(635.0f));
@@ -126,10 +126,10 @@ TEST_CASE("camera accepts a non-widescreen runtime viewport") {
 
     cam.snap_to({1600.0f, 1800.0f});
     const sf::FloatRect view = cam.view_rect();
-    CHECK(view.left == doctest::Approx(700.0f));
-    CHECK(view.top == doctest::Approx(600.0f));
-    CHECK(view.width == doctest::Approx(900.0f));
-    CHECK(view.height == doctest::Approx(1200.0f));
+    CHECK(view.position.x == doctest::Approx(700.0f));
+    CHECK(view.position.y == doctest::Approx(600.0f));
+    CHECK(view.size.x == doctest::Approx(900.0f));
+    CHECK(view.size.y == doctest::Approx(1200.0f));
 }
 
 TEST_CASE("camera_look_at snaps the center (clamped) and suspends follow") {

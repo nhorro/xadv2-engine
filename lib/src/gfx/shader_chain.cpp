@@ -2,7 +2,6 @@
 
 #include "engine/core/render_stats.hpp"
 #include "engine/core/resource_cache.hpp"
-#include "gfx/gles2_compat.hpp"
 
 #include <SFML/Graphics/Glsl.hpp>
 #include <SFML/Graphics/Rect.hpp>
@@ -35,11 +34,11 @@ void ShaderChain::ensure_size(unsigned width, unsigned height) {
     rt_height_ = std::max(rt_height_, height);
     for (auto& rt : rt_) {
         rt = std::make_unique<sf::RenderTexture>();
-        if (!rt->create(rt_width_, rt_height_)) {
+        if (!rt->resize({rt_width_, rt_height_})) {
             rt.reset();
             continue;
         }
-        configure_gles2_target(*rt);
+
         rt->setSmooth(false);
     }
     // Mirror the new pool size into the profiling counter (#112): two RGBA8 RTs.
@@ -55,13 +54,13 @@ const sf::Texture* ShaderChain::apply(pac::core::ResourceCache& resources,
                                       const std::vector<ShaderEffect>& effects,
                                       float time,
                                       const RuntimeShaderPass* prefix) {
-    if ((effects.empty() && (!prefix || !prefix->shader)) || source_rect.width <= 0 ||
-        source_rect.height <= 0) {
+    if ((effects.empty() && (!prefix || !prefix->shader)) || source_rect.size.x <= 0 ||
+        source_rect.size.y <= 0) {
         return nullptr;
     }
 
-    const unsigned w = static_cast<unsigned>(source_rect.width);
-    const unsigned h = static_cast<unsigned>(source_rect.height);
+    const unsigned w = static_cast<unsigned>(source_rect.size.x);
+    const unsigned h = static_cast<unsigned>(source_rect.size.y);
     ensure_size(w, h);
     if (!rt_[0] || !rt_[1]) {
         return nullptr;
@@ -76,11 +75,10 @@ const sf::Texture* ShaderChain::apply(pac::core::ResourceCache& resources,
     // Blit `source_rect` of `source` into RT0 at (0,0)..(w,h). The RT is sized to
     // the largest source seen, so we constrain the view to the current sub-rect
     // so a smaller drawable doesn't pick up stale pixels around it.
-    sf::View view(sf::FloatRect(0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h)));
-    view.setViewport(sf::FloatRect(0.0f,
-                                   0.0f,
-                                   static_cast<float>(w) / static_cast<float>(rt_width_),
-                                   static_cast<float>(h) / static_cast<float>(rt_height_)));
+    sf::View view(sf::FloatRect({0.0f, 0.0f}, {static_cast<float>(w), static_cast<float>(h)}));
+    view.setViewport(sf::FloatRect({0.0f, 0.0f},
+                                   {static_cast<float>(w) / static_cast<float>(rt_width_),
+                                    static_cast<float>(h) / static_cast<float>(rt_height_)}));
 
     sf::RenderTexture* src = rt_[0].get();
     sf::RenderTexture* dst = rt_[1].get();
@@ -101,7 +99,7 @@ const sf::Texture* ShaderChain::apply(pac::core::ResourceCache& resources,
         dst->setView(view);
         dst->clear(sf::Color::Transparent);
         sf::Sprite blit(src->getTexture(),
-                        sf::IntRect(0, 0, static_cast<int>(w), static_cast<int>(h)));
+                        sf::IntRect({0, 0}, {static_cast<int>(w), static_cast<int>(h)}));
         sf::RenderStates states;
         states.shader = prefix->shader;
         dst->draw(blit, states);
@@ -137,7 +135,7 @@ const sf::Texture* ShaderChain::apply(pac::core::ResourceCache& resources,
         dst->setView(view);
         dst->clear(sf::Color::Transparent);
         sf::Sprite blit(src->getTexture(),
-                        sf::IntRect(0, 0, static_cast<int>(w), static_cast<int>(h)));
+                        sf::IntRect({0, 0}, {static_cast<int>(w), static_cast<int>(h)}));
         sf::RenderStates states;
         states.shader = &shader;
         dst->draw(blit, states);

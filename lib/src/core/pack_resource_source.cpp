@@ -1,6 +1,7 @@
 #include "engine/core/pack_resource_source.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <utility>
 

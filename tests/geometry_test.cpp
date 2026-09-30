@@ -31,10 +31,10 @@ TEST_CASE("point_in_any_polygon (walkable obstacle check)") {
 TEST_CASE("polygon_bounds") {
     const Polygon p = {{1, 2}, {5, 2}, {5, 8}, {1, 8}};
     const sf::FloatRect b = polygon_bounds(p);
-    CHECK(b.left == doctest::Approx(1.0f));
-    CHECK(b.top == doctest::Approx(2.0f));
-    CHECK(b.width == doctest::Approx(4.0f));
-    CHECK(b.height == doctest::Approx(6.0f));
+    CHECK(b.position.x == doctest::Approx(1.0f));
+    CHECK(b.position.y == doctest::Approx(2.0f));
+    CHECK(b.size.x == doctest::Approx(4.0f));
+    CHECK(b.size.y == doctest::Approx(6.0f));
 }
 
 TEST_CASE("closest_point_on_segment") {

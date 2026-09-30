@@ -52,7 +52,7 @@ struct DialogWidgetConfig {
     WidgetPlacement placement{{0.5f, 1.0f}, WidgetAnchor::BOTTOM_CENTER, {0.0f, -24.0f}};
     WidgetTransition transition;
     float opacity = 1.0f;
-    sf::FloatRect padding{20.0f, 14.0f, 20.0f, 14.0f}; // l, t, r, b
+    sf::FloatRect padding{{20.0f, 14.0f}, {20.0f, 14.0f}}; // l, t, r, b
     float option_gap = 8.0f;
     std::string font;
     unsigned font_size = 19;

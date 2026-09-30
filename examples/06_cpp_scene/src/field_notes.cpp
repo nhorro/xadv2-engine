@@ -60,9 +60,9 @@ bool FieldNotesScene::found(const Note& note) const {
 }
 
 void FieldNotesScene::handle_event(const sf::Event& event) {
-    const bool escape =
-        event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape;
-    const bool click = event.type == sf::Event::MouseButtonPressed;
+    const bool escape = event.is<sf::Event::KeyPressed>() &&
+                        event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Escape;
+    const bool click = event.is<sf::Event::MouseButtonPressed>();
     if (escape || click) {
         // Pop ourselves off the stack; the scene beneath (the room, or the pause
         // menu that opened us) becomes the top again, untouched.
@@ -83,8 +83,8 @@ void FieldNotesScene::draw(sf::RenderTarget& target) const {
         return; // no font: an empty page beats a crash (fonts are optional)
     }
 
-    sf::Text heading("FIELD NOTES", *font_, 34);
-    heading.setPosition(90.f, 60.f);
+    sf::Text heading(*font_, "FIELD NOTES", 34);
+    heading.setPosition({90.f, 60.f});
     heading.setFillColor(sf::Color(240, 216, 122));
     target.draw(heading);
 
@@ -96,25 +96,25 @@ void FieldNotesScene::draw(sf::RenderTarget& target) const {
             ++discovered;
         }
 
-        sf::Text title(have ? note.title : std::string("? ? ?"), *font_, 22);
-        title.setPosition(90.f, y);
+        sf::Text title(*font_, have ? note.title : std::string("? ? ?"), 22);
+        title.setPosition({90.f, y});
         title.setFillColor(have ? sf::Color(231, 231, 233) : sf::Color(90, 92, 104));
         target.draw(title);
 
         if (have) {
-            sf::Text body(note.body, *font_, 17);
-            body.setPosition(110.f, y + 30.f);
+            sf::Text body(*font_, note.body, 17);
+            body.setPosition({110.f, y + 30.f});
             body.setFillColor(sf::Color(170, 178, 196));
             target.draw(body);
         }
         y += have ? 84.f : 44.f;
     }
 
-    sf::Text footer(std::to_string(discovered) + "/" + std::to_string(notes_.size()) +
+    sf::Text footer(*font_,
+                    std::to_string(discovered) + "/" + std::to_string(notes_.size()) +
                         " found  —  [esc] or click to go back",
-                    *font_,
                     16);
-    footer.setPosition(90.f, h - 70.f);
+    footer.setPosition({90.f, h - 70.f});
     footer.setFillColor(sf::Color(120, 126, 142));
     target.draw(footer);
 }

@@ -20,10 +20,10 @@ constexpr float kBalloonTail = 14.0f;  // gap left above the head when floating 
 
 geom::Point
 contain_block(geom::Point anchor, sf::Vector2f size, const sf::FloatRect& bounds, float margin) {
-    const float lo_x = bounds.left + margin;
-    const float hi_x = bounds.left + bounds.width - margin - size.x;
-    const float lo_y = bounds.top + margin;
-    const float hi_y = bounds.top + bounds.height - margin - size.y;
+    const float lo_x = bounds.position.x + margin;
+    const float hi_x = bounds.position.x + bounds.size.x - margin - size.x;
+    const float lo_y = bounds.position.y + margin;
+    const float hi_y = bounds.position.y + bounds.size.y - margin - size.y;
     float x = anchor.x - (size.x / 2.0f);
     float y = anchor.y - (size.y / 2.0f);
     // When the block is wider/taller than the available span (hi < lo), pin to the
@@ -39,10 +39,10 @@ geom::Point place_speech(geom::Point anchor,
                          float margin,
                          float side_gap,
                          float tail) {
-    const float lo_x = bounds.left + margin;
-    const float hi_x = bounds.left + bounds.width - margin - size.x;
-    const float lo_y = bounds.top + margin;
-    const float hi_y = bounds.top + bounds.height - margin - size.y;
+    const float lo_x = bounds.position.x + margin;
+    const float hi_x = bounds.position.x + bounds.size.x - margin - size.x;
+    const float lo_y = bounds.position.y + margin;
+    const float hi_y = bounds.position.y + bounds.size.y - margin - size.y;
 
     const auto clamp_x = [&](float v) { return (hi_x < lo_x) ? lo_x : std::clamp(v, lo_x, hi_x); };
     const auto clamp_y = [&](float v) { return (hi_y < lo_y) ? lo_y : std::clamp(v, lo_y, hi_y); };
@@ -104,7 +104,7 @@ void SpeechManager::draw(sf::RenderTarget& target, const sf::Font* font) const {
         return;
     }
     const auto measure = [&](const std::string& s) {
-        return sf::Text(pac::core::utf8(s), *font, font_size_).getLocalBounds().width;
+        return sf::Text(*font, pac::core::utf8(s), font_size_).getLocalBounds().size.x;
     };
     const std::vector<std::string> lines = pac::core::wrap_text(text_, kWrapWidth, measure);
     const float line_h = font->getLineSpacing(font_size_);
@@ -127,19 +127,19 @@ void SpeechManager::draw(sf::RenderTarget& target, const sf::Font* font) const {
     const sf::View& view = target.getView();
     const sf::Vector2f vc = view.getCenter();
     const sf::Vector2f vs = view.getSize();
-    const sf::FloatRect bounds(vc.x - (vs.x / 2.0f), vc.y - (vs.y / 2.0f), vs.x, vs.y);
+    const sf::FloatRect bounds({vc.x - (vs.x / 2.0f), vc.y - (vs.y / 2.0f)}, {vs.x, vs.y});
     const geom::Point top_left =
         place_speech(pos_, {block_w, block_h}, bounds, kScreenMargin, side_gap_, kBalloonTail);
 
     float y = top_left.y;
     for (std::size_t i = 0; i < lines.size(); ++i) {
-        sf::Text text(pac::core::utf8(lines[i]), *font, font_size_);
+        sf::Text text(*font, pac::core::utf8(lines[i]), font_size_);
         text.setFillColor(color_);
         text.setOutlineColor(sf::Color(0, 0, 0, 200));
         text.setOutlineThickness(2.0f);
         const sf::FloatRect b = text.getLocalBounds();
         const float line_x = top_left.x + ((block_w - widths[i]) / 2.0f);
-        text.setPosition(line_x - b.left, y - b.top);
+        text.setPosition({line_x - b.position.x, y - b.position.y});
         target.draw(text);
         y += line_h;
     }

@@ -1,5 +1,7 @@
 #include "engine/core/pack_format.hpp"
 
+#include <cstdint>
+
 namespace pac::core::pack {
 
 std::uint32_t fnv1a_32(const std::string& s) {

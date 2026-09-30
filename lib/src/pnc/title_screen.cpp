@@ -144,8 +144,8 @@ void TitleScreen::rebuild_entries() {
 
     if (font_ != nullptr) {
         for (Entry& e : entries_) {
-            sf::Text text(pac::core::utf8(e.label), *font_, font_size_);
-            e.width = text.getLocalBounds().width;
+            sf::Text text(*font_, pac::core::utf8(e.label), font_size_);
+            e.width = text.getLocalBounds().size.x;
         }
     }
 }
@@ -228,22 +228,24 @@ void TitleScreen::trigger(Action action) {
 }
 
 void TitleScreen::handle_event(const sf::Event& event) {
-    if (event.type == sf::Event::MouseMoved) {
+    if (event.is<sf::Event::MouseMoved>()) {
         const int previous = hovered_;
-        hovered_ =
-            entry_at(static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y));
+        hovered_ = entry_at(static_cast<float>(event.getIf<sf::Event::MouseMoved>()->position.x),
+                            static_cast<float>(event.getIf<sf::Event::MouseMoved>()->position.y));
         if (hovered_ >= 0 && hovered_ != previous) {
             ui_sounds_.selection(ctx_);
         }
-    } else if (event.type == sf::Event::MouseButtonReleased &&
-               event.mouseButton.button == sf::Mouse::Left) {
-        const int idx = entry_at(static_cast<float>(event.mouseButton.x),
-                                 static_cast<float>(event.mouseButton.y));
+    } else if (event.is<sf::Event::MouseButtonReleased>() &&
+               event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Left) {
+        const int idx =
+            entry_at(static_cast<float>(event.getIf<sf::Event::MouseButtonReleased>()->position.x),
+                     static_cast<float>(event.getIf<sf::Event::MouseButtonReleased>()->position.y));
         if (idx >= 0) {
             ui_sounds_.activate(ctx_);
             trigger(entries_[static_cast<std::size_t>(idx)].action);
         }
-    } else if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+    } else if (event.is<sf::Event::KeyPressed>() &&
+               event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Escape) {
         ui_sounds_.activate(ctx_);
         trigger(Action::EXIT);
     }
@@ -275,7 +277,7 @@ void TitleScreen::draw(sf::RenderTarget& target) const {
             sf::Sprite sprite(tex);
             const sf::Vector2u ts = tex.getSize();
             if (ts.x > 0 && ts.y > 0) {
-                sprite.setScale(vw / static_cast<float>(ts.x), vh / static_cast<float>(ts.y));
+                sprite.setScale({vw / static_cast<float>(ts.x), vh / static_cast<float>(ts.y)});
             }
             target.draw(sprite);
         } catch (const std::exception& e) {
@@ -292,29 +294,31 @@ void TitleScreen::draw(sf::RenderTarget& target) const {
         const bool hot = (i == hovered_);
         const sf::Vector2f c = entry_center(i, count);
 
-        sf::Text text(pac::core::utf8(entries_[static_cast<std::size_t>(i)].label),
-                      *font_,
+        sf::Text text(*font_,
+                      pac::core::utf8(entries_[static_cast<std::size_t>(i)].label),
                       font_size_);
         text.setFillColor(hot ? sf::Color::White : sf::Color(200, 205, 220));
         text.setOutlineColor(sf::Color(0, 0, 0, 200));
         text.setOutlineThickness(2.0f);
         const sf::FloatRect b = text.getLocalBounds();
-        text.setPosition(c.x - b.width / 2.0f - b.left, c.y - b.height / 2.0f - b.top);
+        text.setPosition(
+            {c.x - b.size.x / 2.0f - b.position.x, c.y - b.size.y / 2.0f - b.position.y});
         target.draw(text);
     }
 
     if (!build_info_key_.empty()) {
         const auto it = ctx_.runtime_info.find(build_info_key_);
         if (it != ctx_.runtime_info.end() && !it->second.empty()) {
-            sf::Text build_info(pac::core::utf8(build_info_prefix_ + it->second),
-                                *font_,
+            sf::Text build_info(*font_,
+                                pac::core::utf8(build_info_prefix_ + it->second),
                                 build_info_font_size_);
             build_info.setFillColor(sf::Color(190, 194, 202, 210));
             build_info.setOutlineColor(sf::Color(0, 0, 0, 180));
             build_info.setOutlineThickness(1.0f);
             const sf::FloatRect b = build_info.getLocalBounds();
             constexpr float kMargin = 12.0f;
-            build_info.setPosition(kMargin - b.left, vh - kMargin - b.height - b.top);
+            build_info.setPosition(
+                {kMargin - b.position.x, vh - kMargin - b.size.y - b.position.y});
             target.draw(build_info);
         }
     }

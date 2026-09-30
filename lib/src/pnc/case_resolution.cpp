@@ -7,6 +7,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <set>
 

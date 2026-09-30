@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <exception>
 #include <variant>
 
@@ -56,8 +57,8 @@ float move_towards(float current, float target, float distance) {
 }
 
 sf::Color with_opacity(sf::Color color, float opacity) {
-    color.a = static_cast<sf::Uint8>(std::lround(
-        static_cast<float>(color.a) * std::clamp(opacity, 0.0f, 1.0f)));
+    color.a = static_cast<std::uint8_t>(
+        std::lround(static_cast<float>(color.a) * std::clamp(opacity, 0.0f, 1.0f)));
     return color;
 }
 } // namespace
@@ -87,10 +88,10 @@ CloseUpScene::CloseUpScene(pac::core::EngineContext& ctx, const pac::core::Scene
         ctx_.log.warn("CloseUp: invalid music_exit_transition; using 0.25 seconds");
         music_exit_transition_ = 0.25f;
     }
-    const auto color_channel = [&params](const std::string& channel, sf::Uint8 fallback) {
+    const auto color_channel = [&params](const std::string& channel, std::uint8_t fallback) {
         try {
             const int value = std::stoi(params.get_or("background_color." + channel, ""));
-            return static_cast<sf::Uint8>(std::clamp(value, 0, 255));
+            return static_cast<std::uint8_t>(std::clamp(value, 0, 255));
         } catch (const std::exception&) {
             return fallback;
         }
@@ -324,15 +325,13 @@ std::string CloseUpScene::display_name(const CloseUpHotspot& hs) const {
 
 sf::FloatRect CloseUpScene::close_button_bounds() const {
     const float height = static_cast<float>(ctx_.display.virtual_resolution().y);
-    return {16.0f, height - 70.0f, 132.0f, 54.0f};
+    return {{16.0f, height - 70.0f}, {132.0f, 54.0f}};
 }
 
 sf::FloatRect CloseUpScene::clues_button_bounds() const {
     const sf::Vector2u resolution = ctx_.display.virtual_resolution();
-    return {static_cast<float>(resolution.x) - 180.0f,
-            static_cast<float>(resolution.y) - 70.0f,
-            164.0f,
-            54.0f};
+    return {{static_cast<float>(resolution.x) - 180.0f, static_cast<float>(resolution.y) - 70.0f},
+            {164.0f, 54.0f}};
 }
 
 bool CloseUpScene::clues_visible() const {
@@ -403,22 +402,25 @@ void CloseUpScene::activate(const CloseUpHotspot& hs) {
 }
 
 void CloseUpScene::handle_event(const sf::Event& event) {
-    if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+    if (event.is<sf::Event::KeyPressed>() &&
+        event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Escape) {
         exit();
         return;
     }
-    if (event.type == sf::Event::MouseMoved) {
-        hover_ = {static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y)};
+    if (event.is<sf::Event::MouseMoved>()) {
+        hover_ = {static_cast<float>(event.getIf<sf::Event::MouseMoved>()->position.x),
+                  static_cast<float>(event.getIf<sf::Event::MouseMoved>()->position.y)};
         return;
     }
-    if (event.type == sf::Event::MouseButtonReleased) {
-        if (event.mouseButton.button == sf::Mouse::Right) {
+    if (event.is<sf::Event::MouseButtonReleased>()) {
+        if (event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Right) {
             exit();
             return;
         }
-        if (event.mouseButton.button == sf::Mouse::Left) {
-            const sf::Vector2f released{static_cast<float>(event.mouseButton.x),
-                                        static_cast<float>(event.mouseButton.y)};
+        if (event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Left) {
+            const sf::Vector2f released{
+                static_cast<float>(event.getIf<sf::Event::MouseButtonReleased>()->position.x),
+                static_cast<float>(event.getIf<sf::Event::MouseButtonReleased>()->position.y)};
             if (close_button_bounds().contains(released)) {
                 exit();
                 return;
@@ -495,7 +497,7 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
             sf::Sprite sprite(tex);
             const sf::Vector2u ts = tex.getSize();
             if (ts.x > 0 && ts.y > 0) {
-                sprite.setScale(vw / static_cast<float>(ts.x), vh / static_cast<float>(ts.y));
+                sprite.setScale({vw / static_cast<float>(ts.x), vh / static_cast<float>(ts.y)});
             }
             target.draw(sprite);
         } catch (const std::exception& e) {
@@ -521,7 +523,7 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
             const bool hovered = hovered_ == &hs;
             const float radius = 22.0f;
             sf::CircleShape plate(radius, 48);
-            plate.setOrigin(radius, radius);
+            plate.setOrigin({radius, radius});
             plate.setPosition(anchor);
             plate.setFillColor(hovered ? sf::Color(17, 39, 46, 220) : sf::Color(9, 14, 17, 150));
             plate.setOutlineThickness(hovered ? 2.0f : 1.0f);
@@ -557,9 +559,10 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
                 const sf::Vector2f delta = to - from;
                 const float length = std::sqrt(delta.x * delta.x + delta.y * delta.y);
                 sf::RectangleShape segment({length, thickness});
-                segment.setOrigin(0.0f, thickness / 2.0f);
+                segment.setOrigin({0.0f, thickness / 2.0f});
                 segment.setPosition(from);
-                segment.setRotation(std::atan2(delta.y, delta.x) * 180.0f / 3.14159265f);
+                segment.setRotation(
+                    sf::degrees(std::atan2(delta.y, delta.x) * 180.0f / 3.14159265f));
                 segment.setFillColor(color);
                 target.draw(segment);
             };
@@ -579,22 +582,24 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
             const bool hovered = hovered_ == &hs;
             const float radius = fresh ? 13.0f + pulse * 2.5f : 10.0f;
             sf::CircleShape halo(radius, 40);
-            halo.setOrigin(radius, radius);
+            halo.setOrigin({radius, radius});
             halo.setPosition(anchor);
-            halo.setFillColor(with_opacity(
-                {9, 14, 17, static_cast<sf::Uint8>(hovered ? 190 : 118)}, clue_opacity));
+            halo.setFillColor(
+                with_opacity({9, 14, 17, static_cast<std::uint8_t>(hovered ? 190 : 118)},
+                             clue_opacity));
             halo.setOutlineThickness(hovered ? 2.5f : 1.5f);
             halo.setOutlineColor(with_opacity(
-                fresh ? sf::Color(43, 183, 214, static_cast<sf::Uint8>(150 + pulse * 90.0f))
+                fresh ? sf::Color(43, 183, 214, static_cast<std::uint8_t>(150 + pulse * 90.0f))
                       : sf::Color(225, 209, 171, 105),
                 clue_opacity));
             target.draw(halo);
             if (fresh) {
-                sf::Text question("?", *font_, 18);
+                sf::Text question(*font_, "?", 18);
                 question.setStyle(sf::Text::Bold);
                 question.setFillColor(with_opacity(sf::Color(244, 234, 210, 235), clue_opacity));
                 const sf::FloatRect q = question.getLocalBounds();
-                question.setOrigin(q.left + q.width / 2.0f, q.top + q.height / 2.0f);
+                question.setOrigin(
+                    {q.position.x + q.size.x / 2.0f, q.position.y + q.size.y / 2.0f});
                 question.setPosition(anchor);
                 target.draw(question);
             } else {
@@ -617,10 +622,10 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
     const sf::FloatRect close_bounds = close_button_bounds();
     const bool close_hovered = close_bounds.contains(hover_);
     const float close_radius = 22.0f;
-    const sf::Vector2f close_center{close_bounds.left + 26.0f,
-                                    close_bounds.top + close_bounds.height / 2.0f};
+    const sf::Vector2f close_center{close_bounds.position.x + 26.0f,
+                                    close_bounds.position.y + close_bounds.size.y / 2.0f};
     sf::CircleShape close_button(close_radius, 48);
-    close_button.setOrigin(close_radius, close_radius);
+    close_button.setOrigin({close_radius, close_radius});
     close_button.setPosition(close_center);
     close_button.setFillColor(close_hovered ? sf::Color(17, 39, 46, 205)
                                             : sf::Color(9, 14, 17, 125));
@@ -640,16 +645,15 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
     // keeps the small checkbox comfortable on touch screens.
     const sf::FloatRect clues_bounds = clues_button_bounds();
     const bool clues_hovered = clues_bounds.contains(hover_);
-    sf::RectangleShape clues_plate({clues_bounds.width, clues_bounds.height});
-    clues_plate.setPosition(clues_bounds.left, clues_bounds.top);
+    sf::RectangleShape clues_plate({clues_bounds.size.x, clues_bounds.size.y});
+    clues_plate.setPosition({clues_bounds.position.x, clues_bounds.position.y});
     clues_plate.setFillColor(clues_hovered ? sf::Color(9, 14, 17, 135) : sf::Color::Transparent);
     target.draw(clues_plate);
-    const sf::FloatRect check_bounds{clues_bounds.left + clues_bounds.width - 30.0f,
-                                     clues_bounds.top + 16.0f,
-                                     22.0f,
-                                     22.0f};
-    sf::RectangleShape checkbox({check_bounds.width, check_bounds.height});
-    checkbox.setPosition(check_bounds.left, check_bounds.top);
+    const sf::FloatRect check_bounds{
+        {clues_bounds.position.x + clues_bounds.size.x - 30.0f, clues_bounds.position.y + 16.0f},
+        {22.0f, 22.0f}};
+    sf::RectangleShape checkbox({check_bounds.size.x, check_bounds.size.y});
+    checkbox.setPosition({check_bounds.position.x, check_bounds.position.y});
     checkbox.setFillColor(sf::Color(9, 14, 17, 145));
     checkbox.setOutlineColor(clues_hovered ? sf::Color(43, 183, 214, 245)
                                            : sf::Color(225, 209, 171, 175));
@@ -661,14 +665,15 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
                 const sf::Vector2f delta = to - from;
                 const float length = std::sqrt(delta.x * delta.x + delta.y * delta.y);
                 sf::RectangleShape segment({length, thickness});
-                segment.setOrigin(0.0f, thickness / 2.0f);
+                segment.setOrigin({0.0f, thickness / 2.0f});
                 segment.setPosition(from);
-                segment.setRotation(std::atan2(delta.y, delta.x) * 180.0f / 3.14159265f);
+                segment.setRotation(
+                    sf::degrees(std::atan2(delta.y, delta.x) * 180.0f / 3.14159265f));
                 segment.setFillColor(color);
                 target.draw(segment);
             };
-        const sf::Vector2f anchor{check_bounds.left + check_bounds.width / 2.0f,
-                                  check_bounds.top + check_bounds.height / 2.0f};
+        const sf::Vector2f anchor{check_bounds.position.x + check_bounds.size.x / 2.0f,
+                                  check_bounds.position.y + check_bounds.size.y / 2.0f};
         const sf::Color tick =
             clues_hovered ? sf::Color(43, 183, 214) : sf::Color(244, 234, 210, 225);
         draw_segment(anchor + sf::Vector2f(-6.0f, 0.0f),
@@ -689,19 +694,19 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
         if (!shout_text_.empty()) {
             const unsigned sz = 30;
             const auto measure = [&](const std::string& s) {
-                return sf::Text(pac::core::utf8(s), *font_, sz).getLocalBounds().width;
+                return sf::Text(*font_, pac::core::utf8(s), sz).getLocalBounds().size.x;
             };
             const std::vector<std::string> lines =
                 pac::core::wrap_text(shout_text_, vw * 0.9f, measure);
             const float line_h = font_->getLineSpacing(sz);
             float y = vh * 0.04f;
             for (const std::string& ln : lines) {
-                sf::Text t(pac::core::utf8(ln), *font_, sz);
+                sf::Text t(*font_, pac::core::utf8(ln), sz);
                 t.setFillColor(sf::Color(235, 70, 60));
                 t.setOutlineColor(sf::Color(0, 0, 0, 220));
                 t.setOutlineThickness(2.5f);
                 const sf::FloatRect b = t.getLocalBounds();
-                t.setPosition((vw - b.width) / 2.0f - b.left, y);
+                t.setPosition({(vw - b.size.x) / 2.0f - b.position.x, y});
                 target.draw(t);
                 y += line_h;
             }
@@ -713,34 +718,36 @@ void CloseUpScene::draw(sf::RenderTarget& target) const {
         const bool handler_active =
             active_handler_ != 0 && ctx_.scripting.is_task_alive(active_handler_);
         if (hovered_ != nullptr && !speech_.active() && !handler_active) {
-            sf::Text label(pac::core::utf8(display_name(*hovered_)), *font_, 24);
+            sf::Text label(*font_, pac::core::utf8(display_name(*hovered_)), 24);
             label.setFillColor(kCaptionColor);
             label.setOutlineColor(sf::Color(0, 0, 0, 200));
             label.setOutlineThickness(2.0f);
             const sf::FloatRect b = label.getLocalBounds();
-            label.setPosition((vw - b.width) / 2.0f - b.left, top_below);
+            label.setPosition({(vw - b.size.x) / 2.0f - b.position.x, top_below});
             target.draw(label);
         }
 
-        sf::Text back_label(pac::core::utf8(ctx_.strings.ui_label("back")), *font_, 18);
+        sf::Text back_label(*font_, pac::core::utf8(ctx_.strings.ui_label("back")), 18);
         back_label.setFillColor(close_hovered ? sf::Color(244, 234, 210)
                                               : sf::Color(225, 209, 171, 205));
         back_label.setOutlineColor(sf::Color(0, 0, 0, 210));
         back_label.setOutlineThickness(1.0f);
         const sf::FloatRect b = back_label.getLocalBounds();
-        back_label.setPosition(close_bounds.left + 55.0f,
-                               close_bounds.top + (close_bounds.height - b.height) / 2.0f - b.top);
+        back_label.setPosition(
+            {close_bounds.position.x + 55.0f,
+             close_bounds.position.y + (close_bounds.size.y - b.size.y) / 2.0f - b.position.y});
         target.draw(back_label);
 
-        sf::Text clues_label(pac::core::utf8(ctx_.strings.ui_label("clues")), *font_, 18);
+        sf::Text clues_label(*font_, pac::core::utf8(ctx_.strings.ui_label("clues")), 18);
         clues_label.setFillColor(clues_hovered ? sf::Color(244, 234, 210)
                                                : sf::Color(225, 209, 171, 205));
         clues_label.setOutlineColor(sf::Color(0, 0, 0, 210));
         clues_label.setOutlineThickness(1.0f);
         const sf::FloatRect clues_text = clues_label.getLocalBounds();
         clues_label.setPosition(
-            check_bounds.left - 8.0f - clues_text.left - clues_text.width,
-            clues_bounds.top + (clues_bounds.height - clues_text.height) / 2.0f - clues_text.top);
+            {check_bounds.position.x - 8.0f - clues_text.position.x - clues_text.size.x,
+             clues_bounds.position.y + (clues_bounds.size.y - clues_text.size.y) / 2.0f -
+                 clues_text.position.y});
         target.draw(clues_label);
     }
 

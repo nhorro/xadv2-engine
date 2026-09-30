@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <initializer_list>
 #include <string>
 #include <utility>
@@ -17,7 +18,7 @@ namespace pac::pnc {
 
 Avatar::Avatar(gfx::AnimatedSprite sprite, float scale, std::optional<Shadow> shadow)
     : sprite_(std::move(sprite)), scale_(scale), draw_scale_(scale), shadow_(shadow) {
-    sprite_.setScale(scale_, scale_);
+    sprite_.setScale({scale_, scale_});
     apply_animation();
 }
 
@@ -82,7 +83,7 @@ void Avatar::apply_animation() {
 
 void Avatar::sync_sprite() {
     const geom::Point p = mover_.position();
-    sprite_.setPosition(p.x, p.y);
+    sprite_.setPosition({p.x, p.y});
     apply_animation(); // play(restart=false) is a no-op while the sequence holds
 }
 
@@ -171,7 +172,7 @@ void Avatar::update(float dt, const RoomData& room) {
     // the base scale. The sprite scales about its pivot (feet), so the avatar
     // stays planted as the scale changes.
     const float s = room.avatar_scale_at(mover_.position().y, scale_);
-    sprite_.setScale(s, s);
+    sprite_.setScale({s, s});
     draw_scale_ = s;
 }
 
@@ -184,14 +185,14 @@ void Avatar::draw_shadow(sf::RenderTarget& target, float opacity_scale) const {
     // cheap ellipse; it shrinks/grows with the avatar's perspective scale so it
     // stays planted under the feet at any depth.
     sf::CircleShape blob(0.5f, 24);
-    blob.setOrigin(0.5f, 0.5f);
+    blob.setOrigin({0.5f, 0.5f});
     sf::Color color = shadow_->color;
-    color.a = static_cast<sf::Uint8>(
+    color.a = static_cast<std::uint8_t>(
         std::lround(static_cast<float>(color.a) * std::clamp(opacity_scale, 0.0f, 1.0f)));
     blob.setFillColor(color);
-    blob.setScale(shadow_->size.x * draw_scale_, shadow_->size.y * draw_scale_);
-    blob.setPosition(feet.x + shadow_->offset.x * draw_scale_,
-                     feet.y + shadow_->offset.y * draw_scale_);
+    blob.setScale({shadow_->size.x * draw_scale_, shadow_->size.y * draw_scale_});
+    blob.setPosition(
+        {feet.x + shadow_->offset.x * draw_scale_, feet.y + shadow_->offset.y * draw_scale_});
     target.draw(blob);
 }
 
@@ -240,7 +241,7 @@ void Avatar::draw_projected_shadow(sf::RenderTarget& target,
     const float sample_alpha =
         1.0f - std::pow(1.0f - total_alpha, 1.0f / static_cast<float>(samples));
     sf::Color tint = shadow.color;
-    tint.a = static_cast<sf::Uint8>(std::clamp(std::lround(sample_alpha * 255.0f), 0l, 255l));
+    tint.a = static_cast<std::uint8_t>(std::clamp(std::lround(sample_alpha * 255.0f), 0l, 255l));
 
     // Frame-local X remains the silhouette's cross-axis. Frame-local Y grows
     // upward from the walking pivot, so mapping it against `away` lays the live

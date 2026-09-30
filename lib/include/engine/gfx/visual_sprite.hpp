@@ -21,8 +21,11 @@ public:
     [[nodiscard]] const std::string& current_sequence() const;
 
     void setPosition(float x, float y);
+    void setPosition(sf::Vector2f position) { setPosition(position.x, position.y); }
     void setScale(float x, float y);
+    void setScale(sf::Vector2f scale) { setScale(scale.x, scale.y); }
     void setRotation(float degrees);
+    void setRotation(sf::Angle angle) { setRotation(angle.asDegrees()); }
     void set_shaders(std::vector<ShaderEffect> shaders);
 
     [[nodiscard]] sf::FloatRect global_bounds() const;

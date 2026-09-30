@@ -2,6 +2,7 @@
 
 #include <SFML/Audio/Music.hpp>
 #include <SFML/Audio/Sound.hpp>
+#include <SFML/Audio/SoundBuffer.hpp>
 
 #include <array>
 #include <cstddef>
@@ -131,6 +132,7 @@ public:
 
 private:
     struct Voice {
+        explicit Voice(const sf::SoundBuffer& buffer) : sound(buffer) {}
         sf::Sound sound;
         std::string logical;
         float gain = 1.0f;
@@ -173,6 +175,7 @@ private:
 
     ResourceCache& resources_;
     Diagnostics& log_;
+    sf::SoundBuffer silent_buffer_;
     sf::Sound sound_;
     float volume_ = 1.0f;
     bool enabled_ = true;

@@ -171,6 +171,7 @@ Overrides remain available as `PAC_ANDROID_DATA_DIR`,
 `PAC_ANDROID_APP_LABEL`, `PAC_ANDROID_APPLICATION_ID`,
 `PAC_ANDROID_VERSION_NAME`, and `PAC_ANDROID_VERSION_CODE`.
 
-Android platform corrections live in the engine and its pinned modified SFML
-dependency. Games must not add Android C++, conditional scenes, alternate YAML
-composition, or platform-specific Lua.
+The engine now uses upstream SFML 3.1 and its native activity entry point.
+The fork-specific GLES2 renderer and configure-time source patches are retired.
+Advanced Android lighting/shadows remain outside this migration iteration;
+see [the patch inventory and migration scope](../docs/development/sfml3-migration.md).

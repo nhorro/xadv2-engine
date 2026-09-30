@@ -1,7 +1,7 @@
 #pragma once
 
-#include "engine/core/cursor.hpp"
 #include "engine/core/control.hpp"
+#include "engine/core/cursor.hpp"
 #include "engine/core/game_state.hpp"
 #include "engine/core/scene.hpp"
 #include "engine/core/screen_fade.hpp"
@@ -32,6 +32,7 @@
 #include "engine/pnc/ui_sound_cues.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>

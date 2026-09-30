@@ -69,8 +69,8 @@ set(PAC_LUA_INCLUDE_DIRS "${LUA_SOURCE_DIR}")
 set(PAC_LUA_LIBRARIES lua-android)
 
 # Android builds the ordinary engine target. Its dependency module selects the
-# same pinned modified SFML source as desktop, with the GLES2 backend confined
-# to SFML and the engine's private rendering compatibility layer.
+# same pinned upstream SFML 3.1 source as desktop. Advanced GLES shader
+# rendering remains a pre-merge validation/design item; see issue #210.
 set(PAC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(PAC_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(PAC_INSTALL OFF CACHE BOOL "" FORCE)
@@ -105,17 +105,13 @@ add_library(pac-android-empty-scene SHARED
 target_include_directories(pac-android-empty-scene PRIVATE "${CMAKE_CURRENT_LIST_DIR}")
 target_link_libraries(pac-android-empty-scene PRIVATE
     pac::engine
-    "$<LINK_LIBRARY:WHOLE_ARCHIVE,sfml-main>"
+    "$<LINK_LIBRARY:WHOLE_ARCHIVE,SFML::Main>"
     android
     EGL
-    GLESv2
     log)
 if(PAC_ANDROID_GAME_CMAKE_DIR)
     target_link_libraries(pac-android-empty-scene PRIVATE pac::game)
 endif()
 
-# SFML 2's bootstrap activity loads every module explicitly.
-add_dependencies(pac-android-empty-scene
-    sfml-activity
-    sfml-audio
-    sfml-network)
+# Android 16 KB page-size support (also enabled by upstream SFML 3.1).
+target_link_options(pac-android-empty-scene PRIVATE "-Wl,-z,max-page-size=16384")

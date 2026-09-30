@@ -18,7 +18,7 @@ public:
     [[nodiscard]] std::span<const sf::Event> translate(const sf::Event& event);
 
 private:
-    std::array<sf::Event, 2> translated_{};
+    std::array<sf::Event, 2> translated_{sf::Event::Closed{}, sf::Event::Closed{}};
     std::optional<unsigned int> primary_touch_;
 };
 

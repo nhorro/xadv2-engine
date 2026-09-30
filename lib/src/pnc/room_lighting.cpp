@@ -3,7 +3,6 @@
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/resource_cache.hpp"
 #include "engine/core/resource_source.hpp"
-#include "gfx/gles2_compat.hpp"
 
 #include <SFML/Config.hpp>
 #include <SFML/Graphics/Glsl.hpp>
@@ -17,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <string>
 #include <variant>
 
@@ -397,10 +397,10 @@ void draw_compat_lighting(sf::RenderTarget& target,
                           sf::FloatRect camera_view,
                           float time) {
     const auto channel = [](float value) {
-        return static_cast<sf::Uint8>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
+        return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
     };
-    sf::RectangleShape ambient({camera_view.width, camera_view.height});
-    ambient.setPosition(camera_view.left, camera_view.top);
+    sf::RectangleShape ambient({camera_view.size.x, camera_view.size.y});
+    ambient.setPosition({camera_view.position.x, camera_view.position.y});
     ambient.setFillColor(sf::Color(channel(lighting.ambient_color[0] *
                                            lighting.ambient_intensity),
                                    channel(lighting.ambient_color[1] *
@@ -409,9 +409,9 @@ void draw_compat_lighting(sf::RenderTarget& target,
                                            lighting.ambient_intensity)));
     target.draw(ambient, sf::RenderStates(sf::BlendMultiply));
 
-    const sf::BlendMode add_to_destination(sf::BlendMode::DstColor,
-                                           sf::BlendMode::One,
-                                           sf::BlendMode::Add);
+    const sf::BlendMode add_to_destination(sf::BlendMode::Factor::DstColor,
+                                           sf::BlendMode::Factor::One,
+                                           sf::BlendMode::Equation::Add);
     constexpr int kSegments = 48;
     constexpr float kDegrees = 3.14159265358979323846f / 180.0f;
     for (const ResolvedRoomLight& item : resolved) {
@@ -434,19 +434,19 @@ void draw_compat_lighting(sf::RenderTarget& target,
                                    light.radius * std::tan(light.angle * 0.5f * kDegrees);
             const sf::Vector2f near_center(item.position.x, item.position.y);
             const sf::Vector2f far_center = near_center + axis * light.radius;
-            sf::VertexArray beam(sf::TriangleStrip);
-            beam.append(sf::Vertex(near_center - side * near_half, center));
-            beam.append(sf::Vertex(near_center + side * near_half, center));
-            beam.append(sf::Vertex(far_center - side * far_half, sf::Color::Black));
-            beam.append(sf::Vertex(far_center + side * far_half, sf::Color::Black));
+            sf::VertexArray beam(sf::PrimitiveType::TriangleStrip);
+            beam.append(sf::Vertex{near_center - side * near_half, center});
+            beam.append(sf::Vertex{near_center + side * near_half, center});
+            beam.append(sf::Vertex{far_center - side * far_half, sf::Color::Black});
+            beam.append(sf::Vertex{far_center + side * far_half, sf::Color::Black});
             sf::RenderStates states;
             states.blendMode = add_to_destination;
             target.draw(beam, states);
             continue;
         }
 
-        sf::VertexArray fan(sf::TriangleFan);
-        fan.append(sf::Vertex({item.position.x, item.position.y}, center));
+        sf::VertexArray fan(sf::PrimitiveType::TriangleFan);
+        fan.append(sf::Vertex{{item.position.x, item.position.y}, center});
         const float start = spot ? item.direction - light.angle * 0.5f : 0.0f;
         const float sweep = spot ? light.angle : 360.0f;
         const int segments = spot ? std::max(8, static_cast<int>(std::ceil(kSegments * sweep / 360.0f)))
@@ -454,9 +454,9 @@ void draw_compat_lighting(sf::RenderTarget& target,
         for (int i = 0; i <= segments; ++i) {
             const float angle = (start + sweep * static_cast<float>(i) /
                                             static_cast<float>(segments)) * kDegrees;
-            fan.append(sf::Vertex({item.position.x + std::cos(angle) * light.radius,
+            fan.append(sf::Vertex{{item.position.x + std::cos(angle) * light.radius,
                                    item.position.y + std::sin(angle) * light.radius},
-                                  sf::Color::Black));
+                                  sf::Color::Black});
         }
         sf::RenderStates states;
         states.blendMode = add_to_destination;
@@ -491,7 +491,7 @@ void draw_compat_color_grade(sf::RenderTarget& target,
         return fallback;
     };
     const auto channel = [](float value) {
-        return static_cast<sf::Uint8>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
+        return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
     };
     for (const gfx::ShaderEffect& effect : post_process->shaders) {
         if (!effect.enabled || !effect.controller.empty() ||
@@ -502,8 +502,8 @@ void draw_compat_color_grade(sf::RenderTarget& target,
         const auto tint = vector3(effect, "tint", {1.0f, 1.0f, 1.0f});
         const float contrast = 1.0f + (scalar(effect, "contrast", 1.0f) - 1.0f) * strength;
         const float brightness = scalar(effect, "brightness", 0.0f) * strength;
-        sf::RectangleShape pass({camera_view.width, camera_view.height});
-        pass.setPosition(camera_view.left, camera_view.top);
+        sf::RectangleShape pass({camera_view.size.x, camera_view.size.y});
+        pass.setPosition({camera_view.position.x, camera_view.position.y});
         pass.setFillColor(sf::Color(channel((1.0f + (tint[0] - 1.0f) * strength) *
                                             std::min(contrast, 1.0f)),
                                     channel((1.0f + (tint[1] - 1.0f) * strength) *
@@ -516,9 +516,9 @@ void draw_compat_color_grade(sf::RenderTarget& target,
                                         channel(contrast - 1.0f),
                                         channel(contrast - 1.0f)));
             sf::RenderStates states;
-            states.blendMode = sf::BlendMode(sf::BlendMode::DstColor,
-                                             sf::BlendMode::One,
-                                             sf::BlendMode::Add);
+            states.blendMode = sf::BlendMode(sf::BlendMode::Factor::DstColor,
+                                             sf::BlendMode::Factor::One,
+                                             sf::BlendMode::Equation::Add);
             target.draw(pass, states);
         }
         if (brightness != 0.0f) {
@@ -552,13 +552,8 @@ bool RoomLightingRenderer::ensure_shader(bool advanced, pac::core::Diagnostics& 
     }
     auto shader = std::make_unique<sf::Shader>();
     const char* source = advanced ? kLightingFragment : kLightingFragmentSimple;
-#if defined(SFML_SYSTEM_ANDROID)
-    const std::string es_source = pac::gfx::make_gles2_fragment_shader(source);
-    const bool loaded =
-        shader->loadFromMemory(pac::gfx::gles2_vertex_shader_source(), es_source);
-#else
-    const bool loaded = shader->loadFromMemory(source, sf::Shader::Fragment);
-#endif
+    const bool loaded = shader->loadFromMemory(source, sf::Shader::Type::Fragment);
+
     if (!loaded) {
         log.error("room lighting: built-in lighting shader failed to compile");
         return false;
@@ -595,16 +590,16 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
             continue;
         }
         const RoomLight& light = *resolved_light.light;
-        const float x = resolved_light.position.x - camera_view.left;
-        const float y = resolved_light.position.y - camera_view.top;
+        const float x = resolved_light.position.x - camera_view.position.x;
+        const float y = resolved_light.position.y - camera_view.position.y;
         const float extent =
             light.type == RoomLight::Type::SPOT
                 ? std::hypot(light.radius,
                              light.beam_width * 0.5f +
                                  light.radius * std::tan(light.angle * 0.5f * kPi / 180.0f))
                 : light.radius;
-        if (x + extent < 0.0f || y + extent < 0.0f ||
-            x - extent > camera_view.width || y - extent > camera_view.height) {
+        if (x + extent < 0.0f || y + extent < 0.0f || x - extent > camera_view.size.x ||
+            y - extent > camera_view.size.y) {
             continue;
         }
         ++visible_count;
@@ -651,10 +646,10 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
         for (std::size_t i = 0; i < edge_count && segment_count < kMaxOccluderSegments; ++i) {
             const geom::Point& a = occluder->area[i];
             const geom::Point& b = occluder->area[(i + 1) % occluder->area.size()];
-            segments[segment_count++] = sf::Glsl::Vec4(a.x - camera_view.left,
-                                                       a.y - camera_view.top,
-                                                       b.x - camera_view.left,
-                                                       b.y - camera_view.top);
+            segments[segment_count++] = sf::Glsl::Vec4(a.x - camera_view.position.x,
+                                                       a.y - camera_view.position.y,
+                                                       b.x - camera_view.position.x,
+                                                       b.y - camera_view.position.y);
         }
     }
     if (authored_segment_count > kMaxOccluderSegments && !occluder_limit_warned_) {
@@ -688,8 +683,8 @@ bool RoomLightingRenderer::make_pass(const RoomLighting& lighting,
     const sf::Glsl::Vec3 smoke_color(smoke ? smoke->color[0] : 1.0f,
                                     smoke ? smoke->color[1] : 1.0f,
                                     smoke ? smoke->color[2] : 1.0f);
-    const sf::Glsl::Vec2 resolution(camera_view.width, camera_view.height);
-    const sf::Glsl::Vec2 camera_origin(camera_view.left, camera_view.top);
+    const sf::Glsl::Vec2 resolution(camera_view.size.x, camera_view.size.y);
+    const sf::Glsl::Vec2 camera_origin(camera_view.position.x, camera_view.position.y);
     const sf::Glsl::Vec2 normal_origin(lighting.normal_origin.x, lighting.normal_origin.y);
     const sf::Vector2u normal_pixels =
         normal_texture ? normal_texture->getSize() : sf::Vector2u(1, 1);

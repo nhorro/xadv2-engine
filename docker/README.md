@@ -61,7 +61,7 @@ The `engine` service **targets a desktop host**. It shares the host's
 `PULSE_COOKIE`) so the game has sound out of the box — no extra flags. The cookie
 is what classic PulseAudio (e.g. Ubuntu 20.04 / 22.04) needs to authenticate;
 PipeWire's pulse-compat server ignores it, so the same config works on both. The
-image ships `libpulse0` so OpenAL's PulseAudio backend loads (it dlopens
+image ships `libpulse0` so miniaudio's PulseAudio backend loads (it dlopens
 libpulse).
 
 > **No pulse on the host?** Compose has no "mount only if it exists", so the bind

@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <exception>
 #include <utility>
 
@@ -29,14 +30,15 @@ float distance(sf::Vector2f a, sf::Vector2f b) {
 
 void center_text(sf::Text& text, sf::FloatRect rect) {
     const sf::FloatRect bounds = text.getLocalBounds();
-    text.setOrigin(bounds.left + bounds.width / 2.0f, bounds.top + bounds.height / 2.0f);
-    text.setPosition(rect.left + rect.width / 2.0f, rect.top + rect.height / 2.0f);
+    text.setOrigin(
+        {bounds.position.x + bounds.size.x / 2.0f, bounds.position.y + bounds.size.y / 2.0f});
+    text.setPosition({rect.position.x + rect.size.x / 2.0f, rect.position.y + rect.size.y / 2.0f});
 }
 
 sf::Color mix_color(sf::Color from, sf::Color to, float amount) {
     amount = std::clamp(amount, 0.0f, 1.0f);
-    const auto channel = [amount](sf::Uint8 a, sf::Uint8 b) {
-        return static_cast<sf::Uint8>(std::lround(
+    const auto channel = [amount](std::uint8_t a, std::uint8_t b) {
+        return static_cast<std::uint8_t>(std::lround(
             static_cast<float>(a) + (static_cast<float>(b) - static_cast<float>(a)) * amount));
     };
     return {channel(from.r, to.r),
@@ -46,12 +48,11 @@ sf::Color mix_color(sf::Color from, sf::Color to, float amount) {
 }
 
 sf::FloatRect scale_from_center(sf::FloatRect rect, float factor) {
-    const float width = rect.width * factor;
-    const float height = rect.height * factor;
-    return {rect.left + (rect.width - width) / 2.0f,
-            rect.top + (rect.height - height) / 2.0f,
-            width,
-            height};
+    const float width = rect.size.x * factor;
+    const float height = rect.size.y * factor;
+    return {{rect.position.x + (rect.size.x - width) / 2.0f,
+             rect.position.y + (rect.size.y - height) / 2.0f},
+            {width, height}};
 }
 
 } // namespace
@@ -78,7 +79,7 @@ void DirectRoomWidget::connect(RoomUiStateStream& stream) {
 sf::FloatRect DirectRoomWidget::scale(sf::FloatRect rect) const {
     const float sx = static_cast<float>(virtual_resolution_.x) / config_.design_size.x;
     const float sy = static_cast<float>(virtual_resolution_.y) / config_.design_size.y;
-    return {rect.left * sx, rect.top * sy, rect.width * sx, rect.height * sy};
+    return {{rect.position.x * sx, rect.position.y * sy}, {rect.size.x * sx, rect.size.y * sy}};
 }
 
 float DirectRoomWidget::scale_distance(float value) const {
@@ -105,17 +106,16 @@ std::vector<sf::FloatRect> DirectRoomWidget::inventory_slots() const {
     const sf::FloatRect grid = scale(config_.inventory.grid);
     const float gap_x = scale_distance(config_.inventory.cell_gap.x);
     const float gap_y = scale_distance(config_.inventory.cell_gap.y);
-    const float width = (grid.width - gap_x * static_cast<float>(config_.inventory.columns - 1)) /
+    const float width = (grid.size.x - gap_x * static_cast<float>(config_.inventory.columns - 1)) /
                         static_cast<float>(config_.inventory.columns);
-    const float height = (grid.height - gap_y * static_cast<float>(config_.inventory.rows - 1)) /
+    const float height = (grid.size.y - gap_y * static_cast<float>(config_.inventory.rows - 1)) /
                          static_cast<float>(config_.inventory.rows);
     result.reserve(static_cast<std::size_t>(inventory_capacity()));
     for (int row = 0; row < config_.inventory.rows; ++row) {
         for (int column = 0; column < config_.inventory.columns; ++column) {
-            result.push_back({grid.left + static_cast<float>(column) * (width + gap_x),
-                              grid.top + static_cast<float>(row) * (height + gap_y),
-                              width,
-                              height});
+            result.push_back({{grid.position.x + static_cast<float>(column) * (width + gap_x),
+                               grid.position.y + static_cast<float>(row) * (height + gap_y)},
+                              {width, height}});
         }
     }
     if (config_.inventory.compact_single_page && page_count() == 1 && config_.inventory.rows == 1) {
@@ -123,7 +123,7 @@ std::vector<sf::FloatRect> DirectRoomWidget::inventory_slots() const {
             std::min(static_cast<int>(state_.inventory.list().size()), inventory_capacity());
         const float shift = static_cast<float>(inventory_capacity() - visible) * (width + gap_x);
         for (sf::FloatRect& slot : result) {
-            slot.left += shift;
+            slot.position.x += shift;
         }
     }
     return result;
@@ -142,10 +142,9 @@ sf::FloatRect DirectRoomWidget::inventory_panel_bounds() const {
     const sf::FloatRect first = slots.front();
     const sf::FloatRect last = slots[static_cast<std::size_t>(visible - 1)];
     const float padding = scale_distance(config_.inventory.compact_padding);
-    return {first.left - padding,
-            first.top - padding,
-            last.left + last.width - first.left + padding * 2.0f,
-            first.height + padding * 2.0f};
+    return {{first.position.x - padding, first.position.y - padding},
+            {last.position.x + last.size.x - first.position.x + padding * 2.0f,
+             first.size.y + padding * 2.0f}};
 }
 
 std::optional<std::string> DirectRoomWidget::inventory_item_at(sf::Vector2f point) const {
@@ -395,12 +394,12 @@ sf::FloatRect DirectRoomWidget::context_menu_bounds() const {
         return {};
     }
     const sf::FloatRect cell =
-        scale({0.0f, 0.0f, config_.context_menu.cell_size.x, config_.context_menu.cell_size.y});
+        scale({{0.0f, 0.0f}, {config_.context_menu.cell_size.x, config_.context_menu.cell_size.y}});
     const float gap = scale_distance(config_.context_menu.gap);
     const float padding = scale_distance(config_.context_menu.padding);
     const float count = static_cast<float>(state_.context_menu.actions.size());
-    const float width = padding * 2.0f + cell.width * count + gap * std::max(0.0f, count - 1.0f);
-    const float height = padding * 2.0f + cell.height;
+    const float width = padding * 2.0f + cell.size.x * count + gap * std::max(0.0f, count - 1.0f);
+    const float height = padding * 2.0f + cell.size.y;
     const float pointer_gap = scale_distance(18.0f);
     float left = state_.context_menu.position.x - width / 2.0f;
     float top = state_.context_menu.position.y - height - pointer_gap;
@@ -410,7 +409,7 @@ sf::FloatRect DirectRoomWidget::context_menu_bounds() const {
     left =
         std::clamp(left, 0.0f, std::max(0.0f, static_cast<float>(virtual_resolution_.x) - width));
     top = std::clamp(top, 0.0f, std::max(0.0f, static_cast<float>(virtual_resolution_.y) - height));
-    return {left, top, width, height};
+    return {{left, top}, {width, height}};
 }
 
 std::optional<Verb> DirectRoomWidget::context_action_at(sf::Vector2f point) const {
@@ -419,14 +418,14 @@ std::optional<Verb> DirectRoomWidget::context_action_at(sf::Vector2f point) cons
         return std::nullopt;
     }
     const sf::FloatRect cell =
-        scale({0.0f, 0.0f, config_.context_menu.cell_size.x, config_.context_menu.cell_size.y});
+        scale({{0.0f, 0.0f}, {config_.context_menu.cell_size.x, config_.context_menu.cell_size.y}});
     const float gap = scale_distance(config_.context_menu.gap);
     const float padding = scale_distance(config_.context_menu.padding);
     for (std::size_t i = 0; i < state_.context_menu.actions.size(); ++i) {
-        const sf::FloatRect rect{bounds.left + padding + static_cast<float>(i) * (cell.width + gap),
-                                 bounds.top + padding,
-                                 cell.width,
-                                 cell.height};
+        const sf::FloatRect rect{
+            {bounds.position.x + padding + static_cast<float>(i) * (cell.size.x + gap),
+             bounds.position.y + padding},
+            {cell.size.x, cell.size.y}};
         if (rect.contains(point)) {
             return state_.context_menu.actions[i];
         }
@@ -437,31 +436,32 @@ std::optional<Verb> DirectRoomWidget::context_action_at(sf::Vector2f point) cons
 sf::FloatRect DirectRoomWidget::controls_bounds() const {
     const sf::FloatRect bag = scale(config_.bag_button);
     const sf::FloatRect menu = scale(config_.menu_button);
-    const float left = std::min(bag.left, menu.left);
-    const float top = std::min(bag.top, menu.top);
-    const float right = std::max(bag.left + bag.width, menu.left + menu.width);
-    const float bottom = std::max(bag.top + bag.height, menu.top + menu.height);
-    return {left, top, right - left, bottom - top};
+    const float left = std::min(bag.position.x, menu.position.x);
+    const float top = std::min(bag.position.y, menu.position.y);
+    const float right = std::max(bag.position.x + bag.size.x, menu.position.x + menu.size.x);
+    const float bottom = std::max(bag.position.y + bag.size.y, menu.position.y + menu.size.y);
+    return {{left, top}, {right - left, bottom - top}};
 }
 
 sf::FloatRect DirectRoomWidget::input_bounds() const {
     if (state_.context_menu.open()) {
-        return {0.0f,
-                0.0f,
-                static_cast<float>(virtual_resolution_.x),
-                static_cast<float>(virtual_resolution_.y)};
+        return {
+            {0.0f, 0.0f},
+            {static_cast<float>(virtual_resolution_.x), static_cast<float>(virtual_resolution_.y)}};
     }
     if (state_.inventory_open) {
         const sf::FloatRect controls = controls_bounds();
         const sf::FloatRect panel = inventory_panel_bounds();
-        if (panel.width <= 0.0f || panel.height <= 0.0f) {
+        if (panel.size.x <= 0.0f || panel.size.y <= 0.0f) {
             return controls;
         }
-        const float left = std::min(controls.left, panel.left);
-        const float top = std::min(controls.top, panel.top);
-        const float right = std::max(controls.left + controls.width, panel.left + panel.width);
-        const float bottom = std::max(controls.top + controls.height, panel.top + panel.height);
-        return {left, top, right - left, bottom - top};
+        const float left = std::min(controls.position.x, panel.position.x);
+        const float top = std::min(controls.position.y, panel.position.y);
+        const float right =
+            std::max(controls.position.x + controls.size.x, panel.position.x + panel.size.x);
+        const float bottom =
+            std::max(controls.position.y + controls.size.y, panel.position.y + panel.size.y);
+        return {{left, top}, {right - left, bottom - top}};
     }
     return controls_bounds();
 }
@@ -506,13 +506,12 @@ void DirectRoomWidget::draw_button(sf::RenderTarget& target,
                                    sf::FloatRect rect,
                                    float hover_amount,
                                    bool pressed) const {
-    const float radius =
-        std::min(rect.width, rect.height) * config_.style.button_radius_ratio;
+    const float radius = std::min(rect.size.x, rect.size.y) * config_.style.button_radius_ratio;
     sf::CircleShape shape(radius, 48);
-    shape.setOrigin(radius, radius);
-    shape.setPosition(rect.left + rect.width / 2.0f, rect.top + rect.height / 2.0f);
+    shape.setOrigin({radius, radius});
+    shape.setPosition({rect.position.x + rect.size.x / 2.0f, rect.position.y + rect.size.y / 2.0f});
     const float visual_scale = pressed ? 0.93f : 1.0f + 0.025f * hover_amount;
-    shape.setScale(visual_scale, visual_scale);
+    shape.setScale({visual_scale, visual_scale});
     shape.setFillColor(
         mix_color(config_.style.button_background, config_.style.button_hover, hover_amount));
     shape.setOutlineColor(config_.style.button_border);
@@ -525,22 +524,29 @@ void DirectRoomWidget::draw_bag_icon(sf::RenderTarget& target, sf::FloatRect rec
     if (draw_atlas_icon(target, config_.icons.bag, rect)) {
         return;
     }
-    sf::CircleShape handle(rect.width * 0.14f, 24);
-    handle.setOrigin(rect.width * 0.14f, rect.width * 0.14f);
-    handle.setScale(1.0f, 0.82f);
-    handle.setPosition(rect.left + rect.width / 2.0f, rect.top + rect.height * 0.42f);
+    sf::CircleShape handle(rect.size.x * 0.14f, 24);
+    handle.setOrigin({rect.size.x * 0.14f, rect.size.x * 0.14f});
+    handle.setScale({1.0f, 0.82f});
+    handle.setPosition(
+        {rect.position.x + rect.size.x / 2.0f, rect.position.y + rect.size.y * 0.42f});
     handle.setFillColor(sf::Color::Transparent);
     handle.setOutlineColor(config_.style.text);
     handle.setOutlineThickness(std::max(1.0f, scale_distance(3.0f)));
     target.draw(handle);
 
     sf::ConvexShape body(6);
-    body.setPoint(0, {rect.left + rect.width * 0.25f, rect.top + rect.height * 0.45f});
-    body.setPoint(1, {rect.left + rect.width * 0.75f, rect.top + rect.height * 0.45f});
-    body.setPoint(2, {rect.left + rect.width * 0.81f, rect.top + rect.height * 0.78f});
-    body.setPoint(3, {rect.left + rect.width * 0.73f, rect.top + rect.height * 0.84f});
-    body.setPoint(4, {rect.left + rect.width * 0.27f, rect.top + rect.height * 0.84f});
-    body.setPoint(5, {rect.left + rect.width * 0.19f, rect.top + rect.height * 0.78f});
+    body.setPoint(0,
+                  {rect.position.x + rect.size.x * 0.25f, rect.position.y + rect.size.y * 0.45f});
+    body.setPoint(1,
+                  {rect.position.x + rect.size.x * 0.75f, rect.position.y + rect.size.y * 0.45f});
+    body.setPoint(2,
+                  {rect.position.x + rect.size.x * 0.81f, rect.position.y + rect.size.y * 0.78f});
+    body.setPoint(3,
+                  {rect.position.x + rect.size.x * 0.73f, rect.position.y + rect.size.y * 0.84f});
+    body.setPoint(4,
+                  {rect.position.x + rect.size.x * 0.27f, rect.position.y + rect.size.y * 0.84f});
+    body.setPoint(5,
+                  {rect.position.x + rect.size.x * 0.19f, rect.position.y + rect.size.y * 0.78f});
     body.setFillColor(config_.style.text);
     target.draw(body);
 }
@@ -549,12 +555,13 @@ void DirectRoomWidget::draw_menu_icon(sf::RenderTarget& target, sf::FloatRect re
     if (draw_atlas_icon(target, config_.icons.menu, rect)) {
         return;
     }
-    const float width = rect.width * 0.48f;
-    const float height = std::max(2.0f, rect.height * 0.045f);
+    const float width = rect.size.x * 0.48f;
+    const float height = std::max(2.0f, rect.size.y * 0.045f);
     for (int row = 0; row < 3; ++row) {
         sf::RectangleShape line({width, height});
-        line.setPosition(rect.left + (rect.width - width) / 2.0f,
-                         rect.top + rect.height * (0.34f + 0.16f * static_cast<float>(row)));
+        line.setPosition(
+            {rect.position.x + (rect.size.x - width) / 2.0f,
+             rect.position.y + rect.size.y * (0.34f + 0.16f * static_cast<float>(row))});
         line.setFillColor(config_.style.text);
         target.draw(line);
     }
@@ -571,12 +578,12 @@ void DirectRoomWidget::draw_control_label(sf::RenderTarget& target,
     if (label.empty() || label.front() == '?') {
         return;
     }
-    const auto alpha = [opacity](sf::Uint8 value) {
-        return static_cast<sf::Uint8>(std::lround(
-            static_cast<float>(value) * std::clamp(opacity, 0.0f, 1.0f)));
+    const auto alpha = [opacity](std::uint8_t value) {
+        return static_cast<std::uint8_t>(
+            std::lround(static_cast<float>(value) * std::clamp(opacity, 0.0f, 1.0f)));
     };
     const unsigned size = std::max(14u, config_.style.text_size * 3u / 4u);
-    sf::Text text(pac::core::utf8(label), *font_, size);
+    sf::Text text(*font_, pac::core::utf8(label), size);
     text.setFillColor({config_.style.text.r,
                        config_.style.text.g,
                        config_.style.text.b,
@@ -586,25 +593,25 @@ void DirectRoomWidget::draw_control_label(sf::RenderTarget& target,
     const sf::FloatRect bounds = text.getLocalBounds();
     const float padding_x = scale_distance(8.0f);
     const float padding_y = scale_distance(4.0f);
-    const float width = bounds.width + padding_x * 2.0f;
-    const float height = bounds.height + padding_y * 2.0f;
-    const float left = std::clamp(rect.left + rect.width / 2.0f - width / 2.0f,
-                                  0.0f,
-                                  std::max(0.0f,
-                                           static_cast<float>(virtual_resolution_.x) - width));
-    const float top = std::max(0.0f, rect.top - height - scale_distance(8.0f));
+    const float width = bounds.size.x + padding_x * 2.0f;
+    const float height = bounds.size.y + padding_y * 2.0f;
+    const float left =
+        std::clamp(rect.position.x + rect.size.x / 2.0f - width / 2.0f,
+                   0.0f,
+                   std::max(0.0f, static_cast<float>(virtual_resolution_.x) - width));
+    const float top = std::max(0.0f, rect.position.y - height - scale_distance(8.0f));
     sf::RectangleShape plate({width, height});
-    plate.setPosition(left, top);
+    plate.setPosition({left, top});
     plate.setFillColor({9, 14, 17, alpha(205)});
     target.draw(plate);
-    text.setPosition(left + padding_x - bounds.left, top + padding_y - bounds.top);
+    text.setPosition({left + padding_x - bounds.position.x, top + padding_y - bounds.position.y});
     target.draw(text);
 }
 
 bool DirectRoomWidget::draw_item_icon(sf::RenderTarget& target,
                                       const std::string& item_id,
                                       sf::FloatRect rect,
-                                      sf::Uint8 opacity) const {
+                                      std::uint8_t opacity) const {
     const InventoryItem* item = state_.inventory.item(item_id);
     if (!item || !model_.resources) {
         return false;
@@ -619,27 +626,24 @@ bool DirectRoomWidget::draw_item_icon(sf::RenderTarget& target,
             const int rows = std::max(1, sheet.rows);
             const int width = static_cast<int>(texture->getSize().x) / columns;
             const int height = static_cast<int>(texture->getSize().y) / rows;
-            source = {item->icon_cell % columns * width,
-                      item->icon_cell / columns * height,
-                      width,
-                      height};
+            source = {{item->icon_cell % columns * width, item->icon_cell / columns * height},
+                      {width, height}};
         } else if (!sheet.production && !item->icon.empty()) {
             texture = &model_.resources->texture(item->icon);
-            source = {0,
-                      0,
-                      static_cast<int>(texture->getSize().x),
-                      static_cast<int>(texture->getSize().y)};
+            source = {
+                {0, 0},
+                {static_cast<int>(texture->getSize().x), static_cast<int>(texture->getSize().y)}};
         }
-        if (!texture || source.width <= 0 || source.height <= 0) {
+        if (!texture || source.size.x <= 0 || source.size.y <= 0) {
             return false;
         }
-        const float fit = std::min(rect.width / static_cast<float>(source.width),
-                                   rect.height / static_cast<float>(source.height));
+        const float fit = std::min(rect.size.x / static_cast<float>(source.size.x),
+                                   rect.size.y / static_cast<float>(source.size.y));
         sf::Sprite sprite(*texture, source);
-        sprite.setScale(fit, fit);
-        sprite.setPosition(rect.left + (rect.width - static_cast<float>(source.width) * fit) / 2.0f,
-                           rect.top +
-                               (rect.height - static_cast<float>(source.height) * fit) / 2.0f);
+        sprite.setScale({fit, fit});
+        sprite.setPosition(
+            {rect.position.x + (rect.size.x - static_cast<float>(source.size.x) * fit) / 2.0f,
+             rect.position.y + (rect.size.y - static_cast<float>(source.size.y) * fit) / 2.0f});
         sprite.setColor({255, 255, 255, opacity});
         target.draw(sprite);
         return true;
@@ -650,15 +654,16 @@ bool DirectRoomWidget::draw_item_icon(sf::RenderTarget& target,
 
 void DirectRoomWidget::draw_inventory(sf::RenderTarget& target) const {
     const sf::FloatRect panel = inventory_panel_bounds();
-    if (panel.width > 0.0f && panel.height > 0.0f) {
-        sf::RectangleShape shadow({panel.width, panel.height});
-        shadow.setPosition(panel.left + scale_distance(3.0f), panel.top + scale_distance(4.0f));
+    if (panel.size.x > 0.0f && panel.size.y > 0.0f) {
+        sf::RectangleShape shadow({panel.size.x, panel.size.y});
+        shadow.setPosition(
+            {panel.position.x + scale_distance(3.0f), panel.position.y + scale_distance(4.0f)});
         shadow.setFillColor(
-            {0, 0, 0, static_cast<sf::Uint8>(config_.style.panel_background.a / 2)});
+            {0, 0, 0, static_cast<std::uint8_t>(config_.style.panel_background.a / 2)});
         target.draw(shadow);
 
-        sf::RectangleShape background({panel.width, panel.height});
-        background.setPosition(panel.left, panel.top);
+        sf::RectangleShape background({panel.size.x, panel.size.y});
+        background.setPosition({panel.position.x, panel.position.y});
         background.setFillColor(config_.style.panel_background);
         background.setOutlineColor(config_.style.panel_border);
         background.setOutlineThickness(config_.style.panel_border.a == 0
@@ -682,16 +687,17 @@ void DirectRoomWidget::draw_inventory(sf::RenderTarget& target) const {
         }
         const bool hovered = occupied && slot.contains(cursor_);
         if (hovered) {
-            const float radius = std::min(slot.width, slot.height) * 0.44f;
+            const float radius = std::min(slot.size.x, slot.size.y) * 0.44f;
             sf::CircleShape halo(radius, 48);
-            halo.setOrigin(radius, radius);
-            halo.setPosition(slot.left + slot.width / 2.0f, slot.top + slot.height / 2.0f);
+            halo.setOrigin({radius, radius});
+            halo.setPosition(
+                {slot.position.x + slot.size.x / 2.0f, slot.position.y + slot.size.y / 2.0f});
             halo.setFillColor(config_.style.button_hover);
             target.draw(halo);
         }
         if (config_.style.slot_background.a > 0 || config_.style.slot_border.a > 0) {
-            sf::RectangleShape box({slot.width, slot.height});
-            box.setPosition(slot.left, slot.top);
+            sf::RectangleShape box({slot.size.x, slot.size.y});
+            box.setPosition({slot.position.x, slot.position.y});
             box.setFillColor(config_.style.slot_background);
             box.setOutlineColor(hovered ? config_.style.hover_border : config_.style.slot_border);
             box.setOutlineThickness(scale_distance(config_.style.border_thickness));
@@ -701,34 +707,33 @@ void DirectRoomWidget::draw_inventory(sf::RenderTarget& target) const {
             continue;
         }
         const std::string& item_id = items[static_cast<std::size_t>(index)];
-        const float inset = std::min(slot.width, slot.height) * 0.10f;
-        const sf::FloatRect art{slot.left + inset,
-                                slot.top + inset,
-                                slot.width - 2.0f * inset,
-                                slot.height - 2.0f * inset};
+        const float inset = std::min(slot.size.x, slot.size.y) * 0.10f;
+        const sf::FloatRect art{{slot.position.x + inset, slot.position.y + inset},
+                                {slot.size.x - 2.0f * inset, slot.size.y - 2.0f * inset}};
         if (!draw_item_icon(target, item_id, art) && font_) {
             const InventoryItem* item = state_.inventory.item(item_id);
             const std::string source = item ? item->name : item_id;
             const std::string name =
                 model_.localized_name ? model_.localized_name(item_id, source) : source;
             const std::string glyph = name.empty() ? "?" : name.substr(0, 1);
-            sf::Text fallback(pac::core::utf8(glyph), *font_, config_.style.text_size);
+            sf::Text fallback(*font_, pac::core::utf8(glyph), config_.style.text_size);
             fallback.setFillColor(config_.style.text);
             center_text(fallback, slot);
             target.draw(fallback);
         }
         if (hovered) {
-            sf::RectangleShape underline({slot.width * 0.46f, scale_distance(2.0f)});
-            underline.setPosition(slot.left + slot.width * 0.27f,
-                                  slot.top + slot.height - scale_distance(2.0f));
+            sf::RectangleShape underline({slot.size.x * 0.46f, scale_distance(2.0f)});
+            underline.setPosition({slot.position.x + slot.size.x * 0.27f,
+                                   slot.position.y + slot.size.y - scale_distance(2.0f)});
             underline.setFillColor(config_.style.hover_border);
             target.draw(underline);
         }
         if (model_.has_notification && model_.has_notification(item_id)) {
-            const float radius = std::clamp(std::min(slot.width, slot.height) * 0.08f, 5.0f, 9.0f);
+            const float radius = std::clamp(std::min(slot.size.x, slot.size.y) * 0.08f, 5.0f, 9.0f);
             sf::CircleShape dot(radius, 24);
-            dot.setOrigin(radius, radius);
-            dot.setPosition(slot.left + slot.width - radius * 1.25f, slot.top + radius * 1.25f);
+            dot.setOrigin({radius, radius});
+            dot.setPosition(
+                {slot.position.x + slot.size.x - radius * 1.25f, slot.position.y + radius * 1.25f});
             dot.setFillColor(config_.style.notification);
             target.draw(dot);
         }
@@ -743,7 +748,7 @@ void DirectRoomWidget::draw_inventory(sf::RenderTarget& target) const {
             return;
         }
         if (font_) {
-            sf::Text text(label, *font_, config_.style.text_size);
+            sf::Text text(*font_, label, config_.style.text_size);
             text.setFillColor(enabled ? config_.style.text : config_.style.disabled_text);
             center_text(text, rect);
             target.draw(text);
@@ -761,7 +766,7 @@ void DirectRoomWidget::draw_action_text(sf::RenderTarget& target) const {
         return;
     }
     sf::FloatRect rect = scale(config_.action_text);
-    sf::Text label(pac::core::utf8(text), *font_, config_.style.action_text_size);
+    sf::Text label(*font_, pac::core::utf8(text), config_.style.action_text_size);
     label.setFillColor(config_.style.text);
     label.setOutlineColor(config_.style.action_outline);
     label.setOutlineThickness(scale_distance(config_.style.action_outline_thickness));
@@ -769,23 +774,24 @@ void DirectRoomWidget::draw_action_text(sf::RenderTarget& target) const {
         const sf::Vector2f offset{scale_distance(config_.action_text_offset.x),
                                   scale_distance(config_.action_text_offset.y)};
         const sf::FloatRect bounds = label.getLocalBounds();
-        rect.left =
+        rect.position.x =
             std::clamp(cursor_.x + offset.x,
                        0.0f,
-                       std::max(0.0f, static_cast<float>(virtual_resolution_.x) - bounds.width));
-        rect.top =
+                       std::max(0.0f, static_cast<float>(virtual_resolution_.x) - bounds.size.x));
+        rect.position.y =
             std::clamp(cursor_.y + offset.y,
                        0.0f,
-                       std::max(0.0f, static_cast<float>(virtual_resolution_.y) - bounds.height));
-        rect.width = bounds.width;
-        rect.height = bounds.height;
-        label.setPosition(rect.left - bounds.left, rect.top - bounds.top);
+                       std::max(0.0f, static_cast<float>(virtual_resolution_.y) - bounds.size.y));
+        rect.size.x = bounds.size.x;
+        rect.size.y = bounds.size.y;
+        label.setPosition(
+            {rect.position.x - bounds.position.x, rect.position.y - bounds.position.y});
     } else {
         center_text(label, rect);
     }
     if (config_.style.action_background.a > 0) {
-        sf::RectangleShape background({rect.width, rect.height});
-        background.setPosition(rect.left, rect.top);
+        sf::RectangleShape background({rect.size.x, rect.size.y});
+        background.setPosition({rect.position.x, rect.position.y});
         background.setFillColor(config_.style.action_background);
         target.draw(background);
     }
@@ -795,7 +801,7 @@ void DirectRoomWidget::draw_action_text(sf::RenderTarget& target) const {
 bool DirectRoomWidget::draw_atlas_icon(sf::RenderTarget& target,
                                        int cell,
                                        sf::FloatRect rect,
-                                       sf::Uint8 opacity) const {
+                                       std::uint8_t opacity) const {
     if (cell < 0 || config_.icons.sheet.empty() || !model_.resources) {
         return false;
     }
@@ -808,13 +814,15 @@ bool DirectRoomWidget::draw_atlas_icon(sf::RenderTarget& target,
         if (width <= 0 || height <= 0 || cell >= columns * rows) {
             return false;
         }
-        const sf::IntRect source{cell % columns * width, cell / columns * height, width, height};
-        const float fit = std::min(rect.width / static_cast<float>(width),
-                                   rect.height / static_cast<float>(height));
+        const sf::IntRect source{{cell % columns * width, cell / columns * height},
+                                 {width, height}};
+        const float fit = std::min(rect.size.x / static_cast<float>(width),
+                                   rect.size.y / static_cast<float>(height));
         sf::Sprite sprite(texture, source);
-        sprite.setScale(fit, fit);
-        sprite.setPosition(rect.left + (rect.width - static_cast<float>(width) * fit) / 2.0f,
-                           rect.top + (rect.height - static_cast<float>(height) * fit) / 2.0f);
+        sprite.setScale({fit, fit});
+        sprite.setPosition(
+            {rect.position.x + (rect.size.x - static_cast<float>(width) * fit) / 2.0f,
+             rect.position.y + (rect.size.y - static_cast<float>(height) * fit) / 2.0f});
         sprite.setColor({255, 255, 255, opacity});
         target.draw(sprite);
         return true;
@@ -856,29 +864,43 @@ void DirectRoomWidget::draw_action_icon(sf::RenderTarget& target,
     }
     const float stroke = std::max(1.0f, scale_distance(2.0f));
     if (verb == Verb::LOOK_AT) {
-        sf::CircleShape eye(rect.width * 0.22f, 32);
-        eye.setOrigin(rect.width * 0.22f, rect.width * 0.22f);
-        eye.setScale(1.65f, 0.82f);
-        eye.setPosition(rect.left + rect.width / 2.0f, rect.top + rect.height * 0.34f);
+        sf::CircleShape eye(rect.size.x * 0.22f, 32);
+        eye.setOrigin({rect.size.x * 0.22f, rect.size.x * 0.22f});
+        eye.setScale({1.65f, 0.82f});
+        eye.setPosition(
+            {rect.position.x + rect.size.x / 2.0f, rect.position.y + rect.size.y * 0.34f});
         eye.setFillColor(sf::Color::Transparent);
         eye.setOutlineColor(color);
         eye.setOutlineThickness(stroke);
         target.draw(eye);
-        sf::CircleShape pupil(rect.width * 0.075f, 24);
-        pupil.setOrigin(rect.width * 0.075f, rect.width * 0.075f);
-        pupil.setPosition(rect.left + rect.width / 2.0f, rect.top + rect.height * 0.34f);
+        sf::CircleShape pupil(rect.size.x * 0.075f, 24);
+        pupil.setOrigin({rect.size.x * 0.075f, rect.size.x * 0.075f});
+        pupil.setPosition(
+            {rect.position.x + rect.size.x / 2.0f, rect.position.y + rect.size.y * 0.34f});
         pupil.setFillColor(color);
         target.draw(pupil);
         return;
     }
     if (verb == Verb::TALK_TO) {
         sf::ConvexShape mouth(6);
-        mouth.setPoint(0, {rect.left + rect.width * 0.23f, rect.top + rect.height * 0.22f});
-        mouth.setPoint(1, {rect.left + rect.width * 0.77f, rect.top + rect.height * 0.22f});
-        mouth.setPoint(2, {rect.left + rect.width * 0.69f, rect.top + rect.height * 0.49f});
-        mouth.setPoint(3, {rect.left + rect.width * 0.50f, rect.top + rect.height * 0.56f});
-        mouth.setPoint(4, {rect.left + rect.width * 0.31f, rect.top + rect.height * 0.49f});
-        mouth.setPoint(5, {rect.left + rect.width * 0.23f, rect.top + rect.height * 0.22f});
+        mouth.setPoint(
+            0,
+            {rect.position.x + rect.size.x * 0.23f, rect.position.y + rect.size.y * 0.22f});
+        mouth.setPoint(
+            1,
+            {rect.position.x + rect.size.x * 0.77f, rect.position.y + rect.size.y * 0.22f});
+        mouth.setPoint(
+            2,
+            {rect.position.x + rect.size.x * 0.69f, rect.position.y + rect.size.y * 0.49f});
+        mouth.setPoint(
+            3,
+            {rect.position.x + rect.size.x * 0.50f, rect.position.y + rect.size.y * 0.56f});
+        mouth.setPoint(
+            4,
+            {rect.position.x + rect.size.x * 0.31f, rect.position.y + rect.size.y * 0.49f});
+        mouth.setPoint(
+            5,
+            {rect.position.x + rect.size.x * 0.23f, rect.position.y + rect.size.y * 0.22f});
         mouth.setFillColor(color);
         target.draw(mouth);
         return;
@@ -886,13 +908,20 @@ void DirectRoomWidget::draw_action_icon(sf::RenderTarget& target,
     // The direct UI deliberately groups open/close/push/pull/pick-up under one
     // hand family. The localized label below disambiguates actions that share it.
     sf::ConvexShape hand(7);
-    hand.setPoint(0, {rect.left + rect.width * 0.34f, rect.top + rect.height * 0.53f});
-    hand.setPoint(1, {rect.left + rect.width * 0.34f, rect.top + rect.height * 0.23f});
-    hand.setPoint(2, {rect.left + rect.width * 0.45f, rect.top + rect.height * 0.23f});
-    hand.setPoint(3, {rect.left + rect.width * 0.48f, rect.top + rect.height * 0.39f});
-    hand.setPoint(4, {rect.left + rect.width * 0.72f, rect.top + rect.height * 0.39f});
-    hand.setPoint(5, {rect.left + rect.width * 0.67f, rect.top + rect.height * 0.62f});
-    hand.setPoint(6, {rect.left + rect.width * 0.43f, rect.top + rect.height * 0.65f});
+    hand.setPoint(0,
+                  {rect.position.x + rect.size.x * 0.34f, rect.position.y + rect.size.y * 0.53f});
+    hand.setPoint(1,
+                  {rect.position.x + rect.size.x * 0.34f, rect.position.y + rect.size.y * 0.23f});
+    hand.setPoint(2,
+                  {rect.position.x + rect.size.x * 0.45f, rect.position.y + rect.size.y * 0.23f});
+    hand.setPoint(3,
+                  {rect.position.x + rect.size.x * 0.48f, rect.position.y + rect.size.y * 0.39f});
+    hand.setPoint(4,
+                  {rect.position.x + rect.size.x * 0.72f, rect.position.y + rect.size.y * 0.39f});
+    hand.setPoint(5,
+                  {rect.position.x + rect.size.x * 0.67f, rect.position.y + rect.size.y * 0.62f});
+    hand.setPoint(6,
+                  {rect.position.x + rect.size.x * 0.43f, rect.position.y + rect.size.y * 0.65f});
     hand.setFillColor(color);
     target.draw(hand);
 }
@@ -903,13 +932,14 @@ void DirectRoomWidget::draw_context_menu(sf::RenderTarget& target) const {
     }
     const sf::FloatRect bounds = context_menu_bounds();
     if (config_.style.panel_background.a > 0 || config_.style.panel_border.a > 0) {
-        sf::RectangleShape shadow({bounds.width, bounds.height});
-        shadow.setPosition(bounds.left + scale_distance(3.0f), bounds.top + scale_distance(4.0f));
+        sf::RectangleShape shadow({bounds.size.x, bounds.size.y});
+        shadow.setPosition(
+            {bounds.position.x + scale_distance(3.0f), bounds.position.y + scale_distance(4.0f)});
         shadow.setFillColor(
-            {0, 0, 0, static_cast<sf::Uint8>(config_.style.panel_background.a / 2)});
+            {0, 0, 0, static_cast<std::uint8_t>(config_.style.panel_background.a / 2)});
         target.draw(shadow);
-        sf::RectangleShape background({bounds.width, bounds.height});
-        background.setPosition(bounds.left, bounds.top);
+        sf::RectangleShape background({bounds.size.x, bounds.size.y});
+        background.setPosition({bounds.position.x, bounds.position.y});
         background.setFillColor(config_.style.panel_background);
         background.setOutlineColor(config_.style.panel_border);
         background.setOutlineThickness(config_.style.panel_border.a == 0
@@ -919,28 +949,27 @@ void DirectRoomWidget::draw_context_menu(sf::RenderTarget& target) const {
     }
 
     const sf::FloatRect cell =
-        scale({0.0f, 0.0f, config_.context_menu.cell_size.x, config_.context_menu.cell_size.y});
+        scale({{0.0f, 0.0f}, {config_.context_menu.cell_size.x, config_.context_menu.cell_size.y}});
     const float gap = scale_distance(config_.context_menu.gap);
     const float padding = scale_distance(config_.context_menu.padding);
     for (std::size_t i = 0; i < state_.context_menu.actions.size(); ++i) {
         const Verb verb = state_.context_menu.actions[i];
-        const sf::FloatRect item{bounds.left + padding + static_cast<float>(i) * (cell.width + gap),
-                                 bounds.top + padding,
-                                 cell.width,
-                                 cell.height};
+        const sf::FloatRect item{
+            {bounds.position.x + padding + static_cast<float>(i) * (cell.size.x + gap),
+             bounds.position.y + padding},
+            {cell.size.x, cell.size.y}};
         const bool hovered = item.contains(cursor_);
         if (hovered) {
-            const float radius = std::min(item.width, item.height) * 0.34f;
+            const float radius = std::min(item.size.x, item.size.y) * 0.34f;
             sf::CircleShape halo(radius, 48);
-            halo.setOrigin(radius, radius);
-            halo.setPosition(item.left + item.width / 2.0f, item.top + item.height * 0.34f);
+            halo.setOrigin({radius, radius});
+            halo.setPosition(
+                {item.position.x + item.size.x / 2.0f, item.position.y + item.size.y * 0.34f});
             halo.setFillColor(config_.style.button_hover);
             target.draw(halo);
         }
-        const sf::FloatRect icon{item.left,
-                                 item.top,
-                                 item.width,
-                                 item.height * (font_ ? 0.68f : 1.0f)};
+        const sf::FloatRect icon{{item.position.x, item.position.y},
+                                 {item.size.x, item.size.y * (font_ ? 0.68f : 1.0f)}};
         draw_action_icon(target,
                          verb,
                          icon,
@@ -948,11 +977,11 @@ void DirectRoomWidget::draw_context_menu(sf::RenderTarget& target) const {
         if (font_ && model_.strings) {
             const std::string label = model_.strings->verb_label(std::string(verb_id(verb)));
             const unsigned size = std::max(10u, config_.style.text_size * 3u / 5u);
-            sf::Text text(pac::core::utf8(label), *font_, size);
+            sf::Text text(*font_, pac::core::utf8(label), size);
             text.setFillColor(hovered ? config_.style.hover_border : config_.style.text);
-            center_text(
-                text,
-                {item.left, item.top + item.height * 0.64f, item.width, item.height * 0.32f});
+            center_text(text,
+                        {{item.position.x, item.position.y + item.size.y * 0.64f},
+                         {item.size.x, item.size.y * 0.32f}});
             target.draw(text);
         }
     }
@@ -984,7 +1013,7 @@ void DirectRoomWidget::draw(sf::RenderTarget& target) const {
 
     if (dragged_item_) {
         const float size = scale_distance(82.0f);
-        const sf::FloatRect ghost{cursor_.x - size / 2.0f, cursor_.y - size / 2.0f, size, size};
+        const sf::FloatRect ghost{{cursor_.x - size / 2.0f, cursor_.y - size / 2.0f}, {size, size}};
         (void) draw_item_icon(target, *dragged_item_, ghost, 220);
     }
 }

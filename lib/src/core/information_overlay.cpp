@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <exception>
 #include <utility>
 
@@ -41,7 +42,7 @@ float direction_rotation(IndicatorDirection direction) {
 }
 
 sf::Color scaled_alpha(sf::Color color, float amount) {
-    color.a = static_cast<sf::Uint8>(
+    color.a = static_cast<std::uint8_t>(
         std::clamp(std::lround(static_cast<float>(color.a) * amount), 0L, 255L));
     return color;
 }
@@ -111,11 +112,12 @@ bool InformationOverlay::handle_event(const sf::Event& event) {
     if (!page_) {
         return false;
     }
-    const bool mouse_release = event.type == sf::Event::MouseButtonReleased;
+    const bool mouse_release = event.is<sf::Event::MouseButtonReleased>();
     const bool key_release =
-        event.type == sf::Event::KeyReleased &&
-        (event.key.code == sf::Keyboard::Enter || event.key.code == sf::Keyboard::Space ||
-         event.key.code == sf::Keyboard::Escape);
+        event.is<sf::Event::KeyReleased>() &&
+        (event.getIf<sf::Event::KeyReleased>()->code == sf::Keyboard::Key::Enter ||
+         event.getIf<sf::Event::KeyReleased>()->code == sf::Keyboard::Key::Space ||
+         event.getIf<sf::Event::KeyReleased>()->code == sf::Keyboard::Key::Escape);
     if (mouse_release || key_release) {
         dismiss();
     }
@@ -156,9 +158,9 @@ void InformationOverlay::draw_indicator(sf::RenderTarget& target) const {
     const float rotation = direction_rotation(indicator_->direction);
 
     sf::CircleShape ring(17.0f, 48);
-    ring.setOrigin(17.0f, 17.0f);
+    ring.setOrigin({17.0f, 17.0f});
     ring.setPosition(indicator_->position);
-    ring.setScale(pulse, pulse);
+    ring.setScale({pulse, pulse});
     ring.setFillColor(sf::Color::Transparent);
     ring.setOutlineThickness(2.0f);
     ring.setOutlineColor(scaled_alpha(config_.indicator_color, 0.55f + wave * 0.4f));
@@ -176,10 +178,10 @@ void InformationOverlay::draw_indicator(sf::RenderTarget& target) const {
     if (indicator_texture_) {
         sf::Sprite sprite(*indicator_texture_);
         sprite.setOrigin(config_.indicator_hotspot);
-        sprite.setPosition(indicator_->position.x, indicator_->position.y - bob);
-        sprite.setRotation(rotation);
+        sprite.setPosition({indicator_->position.x, indicator_->position.y - bob});
+        sprite.setRotation(sf::degrees(rotation));
         const float scale = config_.indicator_scale * pulse;
-        sprite.setScale(scale, scale);
+        sprite.setScale({scale, scale});
         sprite.setColor(scaled_alpha(sf::Color::White, 0.82f + wave * 0.18f));
         target.draw(sprite);
         return;
@@ -195,9 +197,9 @@ void InformationOverlay::draw_indicator(sf::RenderTarget& target) const {
     arrow.setPoint(4, {7.0f, -49.0f});
     arrow.setPoint(5, {7.0f, -20.0f});
     arrow.setPoint(6, {18.0f, -20.0f});
-    arrow.setPosition(indicator_->position.x, indicator_->position.y - bob);
-    arrow.setRotation(rotation);
-    arrow.setScale(pulse, pulse);
+    arrow.setPosition({indicator_->position.x, indicator_->position.y - bob});
+    arrow.setRotation(sf::degrees(rotation));
+    arrow.setScale({pulse, pulse});
     arrow.setFillColor(config_.indicator_color);
     arrow.setOutlineColor(sf::Color(35, 25, 15, config_.indicator_color.a));
     arrow.setOutlineThickness(1.5f);
@@ -243,7 +245,7 @@ void InformationOverlay::draw_page(sf::RenderTarget& target) const {
     float text_h = 0.0f;
     if (font_ && !page_->text.empty()) {
         const auto measure = [&](const std::string& text) {
-            return sf::Text(utf8(text), *font_, config_.text_size).getLocalBounds().width;
+            return sf::Text(*font_, utf8(text), config_.text_size).getLocalBounds().size.x;
         };
         text_layout =
             layout_text(page_->text, content_w, font_->getLineSpacing(config_.text_size), measure);
@@ -265,12 +267,12 @@ void InformationOverlay::draw_page(sf::RenderTarget& target) const {
     const float top = (screen_h - height) * 0.5f;
 
     sf::RectangleShape shadow({width + 12.0f, height + 12.0f});
-    shadow.setPosition(left + 7.0f, top + 9.0f);
+    shadow.setPosition({left + 7.0f, top + 9.0f});
     shadow.setFillColor(sf::Color(0, 0, 0, 110));
     target.draw(shadow);
 
     sf::RectangleShape panel({width, height});
-    panel.setPosition(left, top);
+    panel.setPosition({left, top});
     panel.setFillColor(config_.panel_color);
     panel.setOutlineColor(config_.panel_outline_color);
     panel.setOutlineThickness(2.0f);
@@ -280,8 +282,9 @@ void InformationOverlay::draw_page(sf::RenderTarget& target) const {
     if (page_texture_ && image_h > 0.0f) {
         sf::Sprite image(*page_texture_);
         const sf::Vector2u size = page_texture_->getSize();
-        image.setScale(image_w / static_cast<float>(size.x), image_h / static_cast<float>(size.y));
-        image.setPosition(left + (width - image_w) * 0.5f, y);
+        image.setScale(
+            {image_w / static_cast<float>(size.x), image_h / static_cast<float>(size.y)});
+        image.setPosition({left + (width - image_w) * 0.5f, y});
         target.draw(image);
         y += image_h + (text_h > 0.0f ? gap : 0.0f);
     }
@@ -301,11 +304,11 @@ void InformationOverlay::draw_page(sf::RenderTarget& target) const {
                         VAnchor::Top);
     }
     if (font_ && hint_h > 0.0f) {
-        sf::Text hint(utf8(page_->dismiss_text), *font_, hint_size);
+        sf::Text hint(*font_, utf8(page_->dismiss_text), hint_size);
         hint.setFillColor(config_.hint_color);
         const sf::FloatRect bounds = hint.getLocalBounds();
-        hint.setPosition(left + (width - bounds.width) * 0.5f - bounds.left,
-                         top + height - padding * 0.65f - bounds.height - bounds.top);
+        hint.setPosition({left + (width - bounds.size.x) * 0.5f - bounds.position.x,
+                          top + height - padding * 0.65f - bounds.size.y - bounds.position.y});
         target.draw(hint);
     }
 }

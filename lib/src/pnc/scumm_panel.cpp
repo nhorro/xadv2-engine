@@ -21,6 +21,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <functional>
 #include <map>
@@ -32,22 +33,21 @@ namespace pac::pnc {
 namespace {
 
 sf::Color with_opacity(sf::Color color, float opacity) {
-    color.a = static_cast<sf::Uint8>(std::clamp(static_cast<float>(color.a) * opacity,
-                                               0.0f,
-                                               255.0f));
+    color.a =
+        static_cast<std::uint8_t>(std::clamp(static_cast<float>(color.a) * opacity, 0.0f, 255.0f));
     return color;
 }
 
 sf::FloatRect padded(sf::FloatRect rect, ScummPanelPadding pad) {
-    rect.left += pad.left;
-    rect.top += pad.top;
-    rect.width -= pad.left + pad.right;
-    rect.height -= pad.top + pad.bottom;
-    if (rect.width < 0.0f) {
-        rect.width = 0.0f;
+    rect.position.x += pad.left;
+    rect.position.y += pad.top;
+    rect.size.x -= pad.left + pad.right;
+    rect.size.y -= pad.top + pad.bottom;
+    if (rect.size.x < 0.0f) {
+        rect.size.x = 0.0f;
     }
-    if (rect.height < 0.0f) {
-        rect.height = 0.0f;
+    if (rect.size.y < 0.0f) {
+        rect.size.y = 0.0f;
     }
     return rect;
 }
@@ -69,28 +69,28 @@ std::string first_existing(const std::map<std::string, std::string>& variants,
 
 void place_text(sf::Text& text, sf::FloatRect rect, const std::string& align, float inset = 6.0f) {
     const sf::FloatRect bounds = text.getLocalBounds();
-    float x = rect.left + (rect.width - bounds.width) / 2.0f - bounds.left;
+    float x = rect.position.x + (rect.size.x - bounds.size.x) / 2.0f - bounds.position.x;
     if (align == "left") {
-        x = rect.left + inset - bounds.left;
+        x = rect.position.x + inset - bounds.position.x;
     } else if (align == "right") {
-        x = rect.left + rect.width - bounds.width - inset - bounds.left;
+        x = rect.position.x + rect.size.x - bounds.size.x - inset - bounds.position.x;
     }
 
     // Vertical centering uses string-independent metrics, not this label's glyph
     // bounds: otherwise a word with a descender ("Agarrar") or none ("Mirar") would
     // sit at a different height than its neighbors. A fixed probe with both an
     // ascender and a descender gives every label the same baseline.
-    float ref_top = bounds.top;
-    float ref_height = bounds.height;
-    if (const sf::Font* font = text.getFont()) {
-        sf::Text probe("Ag", *font, text.getCharacterSize());
+    float ref_top = bounds.position.y;
+    float ref_height = bounds.size.y;
+    if (const sf::Font* font = &text.getFont()) {
+        sf::Text probe(*font, "Ag", text.getCharacterSize());
         probe.setStyle(text.getStyle());
         probe.setOutlineThickness(text.getOutlineThickness());
         const sf::FloatRect pb = probe.getLocalBounds();
-        ref_top = pb.top;
-        ref_height = pb.height;
+        ref_top = pb.position.y;
+        ref_height = pb.size.y;
     }
-    text.setPosition(x, rect.top + (rect.height - ref_height) / 2.0f - ref_top);
+    text.setPosition({x, rect.position.y + (rect.size.y - ref_height) / 2.0f - ref_top});
 }
 
 void center_text(sf::Text& text, sf::FloatRect rect) {
@@ -99,11 +99,11 @@ void center_text(sf::Text& text, sf::FloatRect rect) {
 
 // A small filled triangle used by the icon-inventory paging arrows.
 void draw_v_arrow(sf::RenderTarget& target, sf::FloatRect rect, bool up, sf::Color color) {
-    const float inset = rect.width * 0.2f;
-    const float l = rect.left + inset;
-    const float r = rect.left + rect.width - inset;
-    const float t = rect.top + inset;
-    const float b = rect.top + rect.height - inset;
+    const float inset = rect.size.x * 0.2f;
+    const float l = rect.position.x + inset;
+    const float r = rect.position.x + rect.size.x - inset;
+    const float t = rect.position.y + inset;
+    const float b = rect.position.y + rect.size.y - inset;
     sf::ConvexShape tri;
     tri.setPointCount(3);
     if (up) {
@@ -123,8 +123,8 @@ void draw_v_arrow(sf::RenderTarget& target, sf::FloatRect rect, bool up, sf::Col
 
 ScummPanel::ScummPanel(sf::FloatRect region, const sf::Font* font, ScummPanelTheme theme)
     : ScummPanel(default_scumm_panel_config(region),
-                 {static_cast<unsigned>(std::ceil(region.left + region.width)),
-                  static_cast<unsigned>(std::ceil(region.top + region.height))},
+                 {static_cast<unsigned>(std::ceil(region.position.x + region.size.x)),
+                  static_cast<unsigned>(std::ceil(region.position.y + region.size.y))},
                  font,
                  nullptr,
                  theme) {}
@@ -190,10 +190,8 @@ bool ScummPanel::contains(sf::Vector2f p) const {
 sf::FloatRect ScummPanel::scale_rect(sf::FloatRect design_rect) const {
     const float sx = static_cast<float>(runtime_size_.x) / config_.layout.design_size.x;
     const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
-    return {design_rect.left * sx,
-            design_rect.top * sy,
-            design_rect.width * sx,
-            design_rect.height * sy};
+    return {{design_rect.position.x * sx, design_rect.position.y * sy},
+            {design_rect.size.x * sx, design_rect.size.y * sy}};
 }
 
 const sf::Font* ScummPanel::font_or_default(const sf::Font* configured) const {
@@ -218,26 +216,25 @@ void ScummPanel::apply_text_style(sf::Text& text,
 
 sf::FloatRect ScummPanel::panel_child(sf::FloatRect rect) const {
     const sf::FloatRect panel = config_.layout.panel_rect;
-    return scale_rect({panel.left + rect.left, panel.top + rect.top, rect.width, rect.height});
+    return scale_rect({{panel.position.x + rect.position.x, panel.position.y + rect.position.y},
+                       {rect.size.x, rect.size.y}});
 }
 
 sf::FloatRect ScummPanel::body_child(sf::FloatRect rect) const {
     const sf::FloatRect panel = config_.layout.panel_rect;
     const sf::FloatRect body = config_.layout.body_rect;
-    return scale_rect({panel.left + body.left + rect.left,
-                       panel.top + body.top + rect.top,
-                       rect.width,
-                       rect.height});
+    return scale_rect({{panel.position.x + body.position.x + rect.position.x,
+                        panel.position.y + body.position.y + rect.position.y},
+                       {rect.size.x, rect.size.y}});
 }
 
 sf::FloatRect ScummPanel::inventory_child(sf::FloatRect rect) const {
     const sf::FloatRect panel = config_.layout.panel_rect;
     const sf::FloatRect body = config_.layout.body_rect;
     const sf::FloatRect inv = config_.layout.inventory_panel.rect;
-    return scale_rect({panel.left + body.left + inv.left + rect.left,
-                       panel.top + body.top + inv.top + rect.top,
-                       rect.width,
-                       rect.height});
+    return scale_rect({{panel.position.x + body.position.x + inv.position.x + rect.position.x,
+                        panel.position.y + body.position.y + inv.position.y + rect.position.y},
+                       {rect.size.x, rect.size.y}});
 }
 
 std::vector<ScummPanel::VerbCell> ScummPanel::verb_cells() const {
@@ -252,11 +249,11 @@ std::vector<ScummPanel::VerbCell> ScummPanel::verb_cells() const {
         if (n == 0) {
             return cells;
         }
-        const float cell_w = area.width / static_cast<float>(n);
+        const float cell_w = area.size.x / static_cast<float>(n);
         for (std::size_t i = 0; i < n; ++i) {
-            cells.push_back(
-                {config_.content.verbs[i],
-                 {area.left + static_cast<float>(i) * cell_w, area.top, cell_w, area.height}});
+            cells.push_back({config_.content.verbs[i],
+                             {{area.position.x + static_cast<float>(i) * cell_w, area.position.y},
+                              {cell_w, area.size.y}}});
         }
         return cells;
     }
@@ -265,9 +262,9 @@ std::vector<ScummPanel::VerbCell> ScummPanel::verb_cells() const {
     const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
     const float gap_x = grid.cell_gap.x * sx;
     const float gap_y = grid.cell_gap.y * sy;
-    const float cell_w = (area.width - gap_x * static_cast<float>(std::max(0, grid.columns - 1))) /
+    const float cell_w = (area.size.x - gap_x * static_cast<float>(std::max(0, grid.columns - 1))) /
                          static_cast<float>(grid.columns);
-    const float cell_h = (area.height - gap_y * static_cast<float>(std::max(0, grid.rows - 1))) /
+    const float cell_h = (area.size.y - gap_y * static_cast<float>(std::max(0, grid.rows - 1))) /
                          static_cast<float>(grid.rows);
     for (std::size_t i = 0; i < config_.content.verbs.size(); ++i) {
         if (i >= static_cast<std::size_t>(grid.rows * grid.columns)) {
@@ -276,10 +273,9 @@ std::vector<ScummPanel::VerbCell> ScummPanel::verb_cells() const {
         const int col = static_cast<int>(i) % grid.columns;
         const int row = static_cast<int>(i) / grid.columns;
         cells.push_back({config_.content.verbs[i],
-                         {area.left + static_cast<float>(col) * (cell_w + gap_x),
-                          area.top + static_cast<float>(row) * (cell_h + gap_y),
-                          cell_w - 2.0f,
-                          cell_h - 2.0f}});
+                         {{area.position.x + static_cast<float>(col) * (cell_w + gap_x),
+                           area.position.y + static_cast<float>(row) * (cell_h + gap_y)},
+                          {cell_w - 2.0f, cell_h - 2.0f}}});
     }
     return cells;
 }
@@ -317,9 +313,9 @@ std::vector<ScummPanel::InventoryCell> ScummPanel::inventory_cells(const Invento
     const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
     const float gap_x = grid.cell_gap.x * sx;
     const float gap_y = grid.cell_gap.y * sy;
-    const float cell_w = (area.width - gap_x * static_cast<float>(std::max(0, grid.columns - 1))) /
+    const float cell_w = (area.size.x - gap_x * static_cast<float>(std::max(0, grid.columns - 1))) /
                          static_cast<float>(grid.columns);
-    const float cell_h = (area.height - gap_y * static_cast<float>(std::max(0, grid.rows - 1))) /
+    const float cell_h = (area.size.y - gap_y * static_cast<float>(std::max(0, grid.rows - 1))) /
                          static_cast<float>(grid.rows);
     const int capacity = inventory_capacity();
     const int page = clamped_inventory_page(inventory, page_index);
@@ -330,10 +326,9 @@ std::vector<ScummPanel::InventoryCell> ScummPanel::inventory_cells(const Invento
         const int col = local % grid.columns;
         const int row = local / grid.columns;
         cells.push_back({inventory.list()[static_cast<std::size_t>(item_index)],
-                         {area.left + static_cast<float>(col) * (cell_w + gap_x),
-                          area.top + static_cast<float>(row) * (cell_h + gap_y),
-                          cell_w,
-                          cell_h}});
+                         {{area.position.x + static_cast<float>(col) * (cell_w + gap_x),
+                           area.position.y + static_cast<float>(row) * (cell_h + gap_y)},
+                          {cell_w, cell_h}}});
     }
     return cells;
 }
@@ -349,14 +344,15 @@ ScummPanel::IconInventoryLayout ScummPanel::icon_inventory_layout() const {
     const float sx = static_cast<float>(runtime_size_.x) / config_.layout.design_size.x;
     const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
 
-    float slots_w = area.width;
+    float slots_w = area.size.x;
     const ScummInventoryPagination& paging = config_.layout.inventory_pagination;
     if (paging.enabled) {
         // The arrows live in their own body-relative zone, so the whole inventory
         // rect stays available to the slots.
         const sf::FloatRect zone = config_.layout.inventory_pagination.rect;
         const auto in_zone = [&](sf::FloatRect r) {
-            return body_child({zone.left + r.left, zone.top + r.top, r.width, r.height});
+            return body_child({{zone.position.x + r.position.x, zone.position.y + r.position.y},
+                               {r.size.x, r.size.y}});
         };
         out.prev_arrow = in_zone(paging.previous);
         out.next_arrow = in_zone(paging.next);
@@ -364,30 +360,29 @@ ScummPanel::IconInventoryLayout ScummPanel::icon_inventory_layout() const {
         // Reserve a right-hand gutter for the stacked up/down paging arrows; the
         // slots share the rest. The gutter is reserved whether or not paging is
         // currently needed, so slot positions stay stable as the inventory fills up.
-        const float gutter = std::min(area.width * 0.16f, area.height * 0.6f);
+        const float gutter = std::min(area.size.x * 0.16f, area.size.y * 0.6f);
         const float arrow_gap = gutter * 0.2f;
-        slots_w = std::max(1.0f, area.width - gutter - arrow_gap);
-        out.prev_arrow = {area.left + area.width - gutter, area.top, gutter, area.height * 0.5f};
-        out.next_arrow = {area.left + area.width - gutter,
-                          area.top + area.height * 0.5f,
-                          gutter,
-                          area.height * 0.5f};
+        slots_w = std::max(1.0f, area.size.x - gutter - arrow_gap);
+        out.prev_arrow = {{area.position.x + area.size.x - gutter, area.position.y},
+                          {gutter, area.size.y * 0.5f}};
+        out.next_arrow = {
+            {area.position.x + area.size.x - gutter, area.position.y + area.size.y * 0.5f},
+            {gutter, area.size.y * 0.5f}};
     }
 
     const float gap_x = grid.cell_gap.x * sx;
     const float gap_y = grid.cell_gap.y * sy;
     const float cell_w = (slots_w - gap_x * static_cast<float>(std::max(0, grid.columns - 1))) /
                          static_cast<float>(grid.columns);
-    const float cell_h = (area.height - gap_y * static_cast<float>(std::max(0, grid.rows - 1))) /
+    const float cell_h = (area.size.y - gap_y * static_cast<float>(std::max(0, grid.rows - 1))) /
                          static_cast<float>(grid.rows);
     const int capacity = inventory_capacity();
     for (int i = 0; i < capacity; ++i) {
         const int col = i % grid.columns;
         const int row = i / grid.columns;
-        out.slots.push_back({area.left + static_cast<float>(col) * (cell_w + gap_x),
-                             area.top + static_cast<float>(row) * (cell_h + gap_y),
-                             cell_w,
-                             cell_h});
+        out.slots.push_back({{area.position.x + static_cast<float>(col) * (cell_w + gap_x),
+                              area.position.y + static_cast<float>(row) * (cell_h + gap_y)},
+                             {cell_w, cell_h}});
     }
     return out;
 }
@@ -428,9 +423,9 @@ void ScummPanel::draw_button_box(sf::RenderTarget& target,
     // neighbouring cell (the grid packs cells edge to edge).
     const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
     const float thickness = skin.border_thickness * sy;
-    sf::RectangleShape box(sf::Vector2f(std::max(0.0f, rect.width - 2.0f * thickness),
-                                        std::max(0.0f, rect.height - 2.0f * thickness)));
-    box.setPosition(rect.left + thickness, rect.top + thickness);
+    sf::RectangleShape box(sf::Vector2f(std::max(0.0f, rect.size.x - 2.0f * thickness),
+                                        std::max(0.0f, rect.size.y - 2.0f * thickness)));
+    box.setPosition({rect.position.x + thickness, rect.position.y + thickness});
     box.setFillColor(fill);
     box.setOutlineThickness(thickness);
     box.setOutlineColor(border);
@@ -460,22 +455,20 @@ void ScummPanel::draw_system_buttons(sf::RenderTarget& target,
         // Without an icon the label owns the whole box.
         sf::FloatRect label_rect = cell.rect;
         if (!button.icon.empty()) {
-            const float icon_w = std::min(cell.rect.height, cell.rect.width * 0.32f);
+            const float icon_w = std::min(cell.rect.size.y, cell.rect.size.x * 0.32f);
             const float inset = icon_w * 0.2f;
             draw_image_in_rect(target,
                                button.icon,
-                               {cell.rect.left + inset,
-                                cell.rect.top + inset,
-                                icon_w - 2.0f * inset,
-                                icon_w - 2.0f * inset});
-            label_rect.left += icon_w;
-            label_rect.width -= icon_w;
+                               {{cell.rect.position.x + inset, cell.rect.position.y + inset},
+                                {icon_w - 2.0f * inset, icon_w - 2.0f * inset}});
+            label_rect.position.x += icon_w;
+            label_rect.size.x -= icon_w;
         }
         if (!font || button.label_key.empty()) {
             continue;
         }
-        sf::Text label(pac::core::utf8(strings.ui_label(button.label_key)),
-                       *font,
+        sf::Text label(*font,
+                       pac::core::utf8(strings.ui_label(button.label_key)),
                        scaled_text_size(style.size));
         apply_text_style(label, style, hot ? style.hover_color : style.color);
         place_text(label, label_rect, style.align);
@@ -500,16 +493,16 @@ std::vector<ScummPanel::NotebookCell> ScummPanel::notebook_cells() const {
     sf::FloatRect area = notebook_area();
     // A leading icon (image or placeholder) reserves a square gutter on the left;
     // the entries stack vertically (one row each) to its right.
-    const float icon_w = area.height;
+    const float icon_w = area.size.y;
     const float gap = icon_w * 0.18f;
-    area.left += icon_w + gap;
-    area.width -= icon_w + gap;
-    const float cell_h = area.height / static_cast<float>(nb.entries.size());
+    area.position.x += icon_w + gap;
+    area.size.x -= icon_w + gap;
+    const float cell_h = area.size.y / static_cast<float>(nb.entries.size());
     for (std::size_t i = 0; i < nb.entries.size(); ++i) {
-        cells.push_back(
-            {nb.entries[i].label_key,
-             nb.entries[i].tab,
-             {area.left, area.top + static_cast<float>(i) * cell_h, area.width, cell_h}});
+        cells.push_back({nb.entries[i].label_key,
+                         nb.entries[i].tab,
+                         {{area.position.x, area.position.y + static_cast<float>(i) * cell_h},
+                          {area.size.x, cell_h}}});
     }
     return cells;
 }
@@ -553,10 +546,10 @@ sf::FloatRect ScummPanel::settings_button_area() const {
         break;
     }
 
-    const sf::Vector2f anchor_point{panel.left + button.position.x * panel.width,
-                                    panel.top + button.position.y * panel.height};
+    const sf::Vector2f anchor_point{panel.position.x + button.position.x * panel.size.x,
+                                    panel.position.y + button.position.y * panel.size.y};
     return scale_rect(
-        {anchor_point.x - anchor_offset.x, anchor_point.y - anchor_offset.y, size.x, size.y});
+        {{anchor_point.x - anchor_offset.x, anchor_point.y - anchor_offset.y}, {size.x, size.y}});
 }
 
 PanelIntent ScummPanel::click(sf::Vector2f p,
@@ -702,26 +695,26 @@ bool ScummPanel::draw_background_image(sf::RenderTarget& target,
         sf::Sprite sprite(texture);
         sprite.setColor(with_opacity(sf::Color::White, config_.layout.background.opacity));
         if (mode == ScummPanelScaleMode::FIT) {
-            const float scale = std::min(panel.width / static_cast<float>(size.x),
-                                         panel.height / static_cast<float>(size.y));
-            sprite.setScale(scale, scale);
+            const float scale = std::min(panel.size.x / static_cast<float>(size.x),
+                                         panel.size.y / static_cast<float>(size.y));
+            sprite.setScale({scale, scale});
             sprite.setPosition(
-                panel.left + (panel.width - static_cast<float>(size.x) * scale) / 2.0f,
-                panel.top + (panel.height - static_cast<float>(size.y) * scale) / 2.0f);
+                {panel.position.x + (panel.size.x - static_cast<float>(size.x) * scale) / 2.0f,
+                 panel.position.y + (panel.size.y - static_cast<float>(size.y) * scale) / 2.0f});
             target.draw(sprite);
         } else if (mode == ScummPanelScaleMode::TILE) {
-            for (float y = panel.top; y < panel.top + panel.height;
+            for (float y = panel.position.y; y < panel.position.y + panel.size.y;
                  y += static_cast<float>(size.y)) {
-                for (float x = panel.left; x < panel.left + panel.width;
+                for (float x = panel.position.x; x < panel.position.x + panel.size.x;
                      x += static_cast<float>(size.x)) {
-                    sprite.setPosition(x, y);
+                    sprite.setPosition({x, y});
                     target.draw(sprite);
                 }
             }
         } else {
-            sprite.setPosition(panel.left, panel.top);
-            sprite.setScale(panel.width / static_cast<float>(size.x),
-                            panel.height / static_cast<float>(size.y));
+            sprite.setPosition({panel.position.x, panel.position.y});
+            sprite.setScale({panel.size.x / static_cast<float>(size.x),
+                             panel.size.y / static_cast<float>(size.y)});
             target.draw(sprite);
         }
         return true;
@@ -745,14 +738,14 @@ bool ScummPanel::draw_nine_slice(sf::RenderTarget& target, const std::string& im
     const ScummPanelPadding margin = config_.layout.background.nine_slice;
     const float sx = static_cast<float>(runtime_size_.x) / config_.layout.design_size.x;
     const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
-    const std::array<float, 4> dx{panel.left,
-                                  panel.left + margin.left * sx,
-                                  panel.left + panel.width - margin.right * sx,
-                                  panel.left + panel.width};
-    const std::array<float, 4> dy{panel.top,
-                                  panel.top + margin.top * sy,
-                                  panel.top + panel.height - margin.bottom * sy,
-                                  panel.top + panel.height};
+    const std::array<float, 4> dx{panel.position.x,
+                                  panel.position.x + margin.left * sx,
+                                  panel.position.x + panel.size.x - margin.right * sx,
+                                  panel.position.x + panel.size.x};
+    const std::array<float, 4> dy{panel.position.y,
+                                  panel.position.y + margin.top * sy,
+                                  panel.position.y + panel.size.y - margin.bottom * sy,
+                                  panel.position.y + panel.size.y};
     const std::array<int, 4> sxp{0,
                                  static_cast<int>(margin.left),
                                  static_cast<int>(tex_size.x - margin.right),
@@ -770,10 +763,10 @@ bool ScummPanel::draw_nine_slice(sf::RenderTarget& target, const std::string& im
             if (sw <= 0 || sh <= 0 || dw <= 0.0f || dh <= 0.0f) {
                 continue;
             }
-            sf::Sprite sprite(*texture, sf::IntRect(sxp[col], syp[row], sw, sh));
+            sf::Sprite sprite(*texture, sf::IntRect({sxp[col], syp[row]}, {sw, sh}));
             sprite.setColor(with_opacity(sf::Color::White, config_.layout.background.opacity));
-            sprite.setPosition(dx[col], dy[row]);
-            sprite.setScale(dw / static_cast<float>(sw), dh / static_cast<float>(sh));
+            sprite.setPosition({dx[col], dy[row]});
+            sprite.setScale({dw / static_cast<float>(sw), dh / static_cast<float>(sh)});
             target.draw(sprite);
         }
     }
@@ -812,31 +805,36 @@ void ScummPanel::draw_backdrop(sf::RenderTarget& target,
         const sf::Color background =
             with_opacity(config_.layout.background.color, config_.layout.background.opacity);
         const auto draw_background_rect = [&target, background](sf::FloatRect rect) {
-            if (rect.width <= 0.0f || rect.height <= 0.0f) return;
-            sf::RectangleShape shape({rect.width, rect.height});
-            shape.setPosition(rect.left, rect.top);
+            if (rect.size.x <= 0.0f || rect.size.y <= 0.0f)
+                return;
+            sf::RectangleShape shape({rect.size.x, rect.size.y});
+            shape.setPosition({rect.position.x, rect.position.y});
             shape.setFillColor(background);
             target.draw(shape);
         };
-        const float left = std::max(panel.left, area.left);
-        const float top = std::max(panel.top, area.top);
-        const float right = std::min(panel.left + panel.width, area.left + area.width);
-        const float bottom = std::min(panel.top + panel.height, area.top + area.height);
+        const float left = std::max(panel.position.x, area.position.x);
+        const float top = std::max(panel.position.y, area.position.y);
+        const float right =
+            std::min(panel.position.x + panel.size.x, area.position.x + area.size.x);
+        const float bottom =
+            std::min(panel.position.y + panel.size.y, area.position.y + area.size.y);
         if (left >= right || top >= bottom) {
             draw_background_rect(panel);
         } else {
-            draw_background_rect({panel.left, panel.top, panel.width, top - panel.top});
             draw_background_rect(
-                {panel.left, bottom, panel.width, panel.top + panel.height - bottom});
-            draw_background_rect({panel.left, top, left - panel.left, bottom - top});
+                {{panel.position.x, panel.position.y}, {panel.size.x, top - panel.position.y}});
+            draw_background_rect({{panel.position.x, bottom},
+                                  {panel.size.x, panel.position.y + panel.size.y - bottom}});
             draw_background_rect(
-                {right, top, panel.left + panel.width - right, bottom - top});
+                {{panel.position.x, top}, {left - panel.position.x, bottom - top}});
+            draw_background_rect(
+                {{right, top}, {panel.position.x + panel.size.x - right, bottom - top}});
         }
 
         // The command bar replaces (rather than overlays) the panel material in
         // its rectangle, so its configured alpha is applied exactly once.
-        sf::RectangleShape strip({area.width, area.height});
-        strip.setPosition(area.left, area.top);
+        sf::RectangleShape strip({area.size.x, area.size.y});
+        strip.setPosition({area.position.x, area.position.y});
         strip.setFillColor(with_opacity(bar.background, config_.layout.background.opacity));
         target.draw(strip);
     }
@@ -845,8 +843,8 @@ void ScummPanel::draw_backdrop(sf::RenderTarget& target,
     if (!image_drawn && bar.separator_thickness > 0.0f) {
         const float sy = static_cast<float>(runtime_size_.y) / config_.layout.design_size.y;
         const float thickness = bar.separator_thickness * sy;
-        sf::RectangleShape rule(sf::Vector2f(panel.width, thickness));
-        rule.setPosition(panel.left, area.top + area.height - thickness);
+        sf::RectangleShape rule(sf::Vector2f(panel.size.x, thickness));
+        rule.setPosition({panel.position.x, area.position.y + area.size.y - thickness});
         rule.setFillColor(with_opacity(bar.separator, config_.layout.background.opacity));
         target.draw(rule);
     }
@@ -864,13 +862,13 @@ void ScummPanel::draw_image_in_rect(sf::RenderTarget& target,
         sf::Sprite sprite(texture);
         float src_w = static_cast<float>(texture.getSize().x);
         float src_h = static_cast<float>(texture.getSize().y);
-        if (src.width > 0 && src.height > 0) {
+        if (src.size.x > 0 && src.size.y > 0) {
             sprite.setTextureRect(src);
-            src_w = static_cast<float>(src.width);
-            src_h = static_cast<float>(src.height);
+            src_w = static_cast<float>(src.size.x);
+            src_h = static_cast<float>(src.size.y);
         }
-        sprite.setPosition(rect.left, rect.top);
-        sprite.setScale(rect.width / src_w, rect.height / src_h);
+        sprite.setPosition({rect.position.x, rect.position.y});
+        sprite.setScale({rect.size.x / src_w, rect.size.y / src_h});
         target.draw(sprite);
     } catch (const std::exception&) {
         // Optional button art falls back to no image.
@@ -893,7 +891,10 @@ bool ScummPanel::draw_item_icon(sf::RenderTarget& target,
             const int ch = static_cast<int>(tex.getSize().y) / rows;
             const int col = item.icon_cell % cols;
             const int row = item.icon_cell / cols;
-            draw_image_in_rect(target, sheet.sheet, dest, sf::IntRect(col * cw, row * ch, cw, ch));
+            draw_image_in_rect(target,
+                               sheet.sheet,
+                               dest,
+                               sf::IntRect({col * cw, row * ch}, {cw, ch}));
             return true;
         }
         if (!sheet.production && !item.icon.empty()) {
@@ -919,8 +920,8 @@ void ScummPanel::draw_inventory_arrows(sf::RenderTarget& target,
     const bool next = page < inventory_page_count(inventory) - 1;
     const auto draw_arrow = [&](sf::FloatRect rect, const std::string& label, bool enabled) {
         const bool hot = enabled && rect.contains(cursor);
-        sf::Text text(pac::core::utf8(label),
-                      *arrow_font,
+        sf::Text text(*arrow_font,
+                      pac::core::utf8(label),
                       scaled_text_size(config_.skin.arrows_draw.size));
         text.setFillColor(
             enabled ? (hot ? config_.skin.arrows_draw.hover_color : config_.skin.arrows_draw.color)
@@ -949,8 +950,8 @@ void ScummPanel::draw_settings_button(sf::RenderTarget& target,
         return;
     }
 
-    sf::RectangleShape box(sf::Vector2f(rect.width, rect.height));
-    box.setPosition(rect.left, rect.top);
+    sf::RectangleShape box(sf::Vector2f(rect.size.x, rect.size.y));
+    box.setPosition({rect.position.x, rect.position.y});
     box.setFillColor(hot ? button.panel.hovered_background_color : button.panel.background_color);
     box.setOutlineThickness(1.0f);
     box.setOutlineColor(button.panel.outline_color);
@@ -960,8 +961,8 @@ void ScummPanel::draw_settings_button(sf::RenderTarget& target,
     if (!settings_font) {
         return;
     }
-    sf::Text label(pac::core::utf8(strings.ui_label(button.panel.label_key)),
-                   *settings_font,
+    sf::Text label(*settings_font,
+                   pac::core::utf8(strings.ui_label(button.panel.label_key)),
                    scaled_text_size(button.panel.font_size));
     label.setFillColor(hot ? button.panel.hovered_color : button.panel.normal_color);
     center_text(label, rect);
@@ -979,8 +980,8 @@ void ScummPanel::draw(sf::RenderTarget& target,
     draw_backdrop(target, &inventory, &command_state, cursor);
 
     if (const sf::Font* command_font = font_or_default(command_font_)) {
-        sf::Text bar(pac::core::utf8(command_state.preview_text),
-                     *command_font,
+        sf::Text bar(*command_font,
+                     pac::core::utf8(command_state.preview_text),
                      scaled_text_size(config_.skin.command_text.size));
         apply_text_style(bar, config_.skin.command_text, config_.skin.command_text.color);
         place_text(bar, command_bar_area(), config_.skin.command_text.align);
@@ -997,8 +998,8 @@ void ScummPanel::draw(sf::RenderTarget& target,
                     command_state.selected_verb && *command_state.selected_verb == cell.verb;
                 const bool hot = cell.rect.contains(cursor);
                 sf::Text label(
-                    pac::core::utf8(strings.verb_panel_label(std::string(verb_id(cell.verb)))),
                     *verb_font,
+                    pac::core::utf8(strings.verb_panel_label(std::string(verb_id(cell.verb)))),
                     scaled_text_size(config_.skin.verb_text.size));
                 apply_text_style(label,
                                  config_.skin.verb_text,
@@ -1018,8 +1019,8 @@ void ScummPanel::draw(sf::RenderTarget& target,
 
             if (verb_font) {
                 sf::Text label(
-                    pac::core::utf8(strings.verb_panel_label(std::string(verb_id(cell.verb)))),
                     *verb_font,
+                    pac::core::utf8(strings.verb_panel_label(std::string(verb_id(cell.verb)))),
                     scaled_text_size(config_.skin.verb_text.size));
                 apply_text_style(label,
                                  config_.skin.verb_text,
@@ -1042,18 +1043,18 @@ void ScummPanel::draw(sf::RenderTarget& target,
             const float gap_x = grid.cell_gap.x * sx;
             const float gap_y = grid.cell_gap.y * sy;
             const float cell_w =
-                (area.width - gap_x * static_cast<float>(std::max(0, grid.columns - 1))) /
+                (area.size.x - gap_x * static_cast<float>(std::max(0, grid.columns - 1))) /
                 static_cast<float>(grid.columns);
             const float cell_h =
-                (area.height - gap_y * static_cast<float>(std::max(0, grid.rows - 1))) /
+                (area.size.y - gap_y * static_cast<float>(std::max(0, grid.rows - 1))) /
                 static_cast<float>(grid.rows);
             for (int i = inactive_start; i < verb_capacity; ++i) {
                 const int col = i % grid.columns;
                 const int row = i / grid.columns;
-                const sf::FloatRect rect{area.left + static_cast<float>(col) * (cell_w + gap_x),
-                                         area.top + static_cast<float>(row) * (cell_h + gap_y),
-                                         cell_w - 2.0f,
-                                         cell_h - 2.0f};
+                const sf::FloatRect rect{
+                    {area.position.x + static_cast<float>(col) * (cell_w + gap_x),
+                     area.position.y + static_cast<float>(row) * (cell_h + gap_y)},
+                    {cell_w - 2.0f, cell_h - 2.0f}};
                 draw_button_box(target,
                                 config_.skin.verb_button,
                                 rect,
@@ -1077,8 +1078,8 @@ void ScummPanel::draw(sf::RenderTarget& target,
         for (const InventoryCell& cell : inventory_cells(inventory, page)) {
             const bool hot = cell.rect.contains(cursor);
             if (hot) {
-                sf::RectangleShape hl(sf::Vector2f(cell.rect.width, cell.rect.height - 2.0f));
-                hl.setPosition(cell.rect.left, cell.rect.top);
+                sf::RectangleShape hl(sf::Vector2f(cell.rect.size.x, cell.rect.size.y - 2.0f));
+                hl.setPosition({cell.rect.position.x, cell.rect.position.y});
                 hl.setFillColor(theme_.inventory_hover_bg);
                 target.draw(hl);
             }
@@ -1087,8 +1088,8 @@ void ScummPanel::draw(sf::RenderTarget& target,
                 const std::string source = item ? item->name : cell.item_id;
                 const std::string name =
                     localized_name ? localized_name(cell.item_id, source) : source;
-                sf::Text text(pac::core::utf8(name),
-                              *inventory_font,
+                sf::Text text(*inventory_font,
+                              pac::core::utf8(name),
                               scaled_text_size(config_.skin.inventory_text.size));
                 apply_text_style(text,
                                  config_.skin.inventory_text,
@@ -1142,19 +1143,17 @@ void ScummPanel::draw_inventory_icons(sf::RenderTarget& target,
         const std::string& item_id = items[static_cast<std::size_t>(item_index)];
         const InventoryItem* item = inventory.item(item_id);
         // Inset the art a little inside the frame.
-        const float inset = std::min(rect.width, rect.height) * 0.12f;
-        const sf::FloatRect art{rect.left + inset,
-                                rect.top + inset,
-                                rect.width - 2.0f * inset,
-                                rect.height - 2.0f * inset};
+        const float inset = std::min(rect.size.x, rect.size.y) * 0.12f;
+        const sf::FloatRect art{{rect.position.x + inset, rect.position.y + inset},
+                                {rect.size.x - 2.0f * inset, rect.size.y - 2.0f * inset}};
         const bool drew = item && draw_item_icon(target, *item, inventory.icon_sheet(), art);
         if (!drew && inventory_font) {
             // Placeholder: the item name's first glyph, centered.
             const std::string source = item ? item->name : item_id;
             const std::string label = localized_name ? localized_name(item_id, source) : source;
             const std::string glyph = label.empty() ? std::string("?") : label.substr(0, 1);
-            sf::Text text(pac::core::utf8(glyph),
-                          *inventory_font,
+            sf::Text text(*inventory_font,
+                          pac::core::utf8(glyph),
                           scaled_text_size(config_.skin.inventory_text.size));
             apply_text_style(text, config_.skin.inventory_text, config_.skin.inventory_text.color);
             center_text(text, rect);
@@ -1184,10 +1183,11 @@ void ScummPanel::draw_inventory_icons(sf::RenderTarget& target,
 }
 
 void ScummPanel::draw_inventory_notification(sf::RenderTarget& target, sf::FloatRect rect) const {
-    const float radius = std::clamp(std::min(rect.width, rect.height) * 0.115f, 7.0f, 11.0f);
-    const sf::Vector2f center{rect.left + rect.width - radius * 0.85f, rect.top + radius * 0.85f};
+    const float radius = std::clamp(std::min(rect.size.x, rect.size.y) * 0.115f, 7.0f, 11.0f);
+    const sf::Vector2f center{rect.position.x + rect.size.x - radius * 0.85f,
+                              rect.position.y + radius * 0.85f};
     sf::CircleShape badge(radius);
-    badge.setOrigin(radius, radius);
+    badge.setOrigin({radius, radius});
     badge.setPosition(center);
     badge.setFillColor(sf::Color(245, 193, 72, 255));
     badge.setOutlineColor(sf::Color(34, 27, 18, 245));
@@ -1198,13 +1198,13 @@ void ScummPanel::draw_inventory_notification(sf::RenderTarget& target, sf::Float
     if (!font) {
         return;
     }
-    sf::Text mark("!",
-                  *font,
+    sf::Text mark(*font,
+                  "!",
                   std::max(10u, scaled_text_size(static_cast<unsigned>(radius * 1.55f))));
     mark.setFillColor(sf::Color(35, 27, 17, 255));
-    center_text(mark, {center.x - radius, center.y - radius, radius * 2.0f, radius * 2.0f});
+    center_text(mark, {{center.x - radius, center.y - radius}, {radius * 2.0f, radius * 2.0f}});
     // Cormorant's exclamation sits optically a little high inside its glyph box.
-    mark.move(0.0f, radius * 0.03f);
+    mark.move({0.0f, radius * 0.03f});
     target.draw(mark);
 }
 
@@ -1217,32 +1217,31 @@ void ScummPanel::draw_evidence_indicator(sf::RenderTarget& target,
     }
     sf::FloatRect area = evidence_indicator_area();
     // Leading icon (image, else a small placeholder square), left of the text.
-    const float icon_w = area.height;
-    const sf::FloatRect icon_rect{area.left, area.top, icon_w, area.height};
+    const float icon_w = area.size.y;
+    const sf::FloatRect icon_rect{{area.position.x, area.position.y}, {icon_w, area.size.y}};
     if (!ev.icon.empty()) {
         draw_image_in_rect(target, ev.icon, icon_rect);
     } else {
         const float inset = icon_w * 0.18f;
-        sf::RectangleShape glyph(sf::Vector2f(icon_w - 2.0f * inset, area.height - 2.0f * inset));
-        glyph.setPosition(icon_rect.left + inset, icon_rect.top + inset);
+        sf::RectangleShape glyph(sf::Vector2f(icon_w - 2.0f * inset, area.size.y - 2.0f * inset));
+        glyph.setPosition({icon_rect.position.x + inset, icon_rect.position.y + inset});
         glyph.setFillColor(ev.text.color);
         target.draw(glyph);
     }
-    area.left += icon_w + icon_w * 0.25f;
-    area.width -= icon_w + icon_w * 0.25f;
+    area.position.x += icon_w + icon_w * 0.25f;
+    area.size.x -= icon_w + icon_w * 0.25f;
 
     const sf::Font* font = font_or_default(evidence_font_);
     if (!font) {
         return;
     }
     // Stack the label on top and the "x/y" count below it.
-    const sf::FloatRect label_rect{area.left, area.top, area.width, area.height * 0.5f};
-    const sf::FloatRect count_rect{area.left,
-                                   area.top + area.height * 0.5f,
-                                   area.width,
-                                   area.height * 0.5f};
-    sf::Text label(pac::core::utf8(strings.ui_label(ev.label_key)),
-                   *font,
+    const sf::FloatRect label_rect{{area.position.x, area.position.y},
+                                   {area.size.x, area.size.y * 0.5f}};
+    const sf::FloatRect count_rect{{area.position.x, area.position.y + area.size.y * 0.5f},
+                                   {area.size.x, area.size.y * 0.5f}};
+    sf::Text label(*font,
+                   pac::core::utf8(strings.ui_label(ev.label_key)),
                    scaled_text_size(ev.text.size));
     apply_text_style(label, ev.text, ev.text.color);
     place_text(label, label_rect, ev.text.align);
@@ -1250,7 +1249,7 @@ void ScummPanel::draw_evidence_indicator(sf::RenderTarget& target,
 
     const std::string count =
         std::to_string(evidence.collected) + "/" + std::to_string(evidence.total);
-    sf::Text count_text(pac::core::utf8(count), *font, scaled_text_size(ev.text.size));
+    sf::Text count_text(*font, pac::core::utf8(count), scaled_text_size(ev.text.size));
     apply_text_style(count_text, ev.text, ev.text.color);
     place_text(count_text, count_rect, ev.text.align);
     target.draw(count_text);
@@ -1265,21 +1264,22 @@ void ScummPanel::draw_notebook(sf::RenderTarget& target,
     }
     // Leading icon (image, else a drawn placeholder square), left of the entries.
     const sf::FloatRect area = notebook_area();
-    const sf::FloatRect icon_rect{area.left, area.top, area.height, area.height};
+    const sf::FloatRect icon_rect{{area.position.x, area.position.y}, {area.size.y, area.size.y}};
     if (!nb.icon.empty()) {
         draw_image_in_rect(target, nb.icon, icon_rect);
     } else {
-        const float inset = icon_rect.height * 0.16f;
+        const float inset = icon_rect.size.y * 0.16f;
         sf::RectangleShape glyph(
-            sf::Vector2f(icon_rect.width - 2.0f * inset, icon_rect.height - 2.0f * inset));
-        glyph.setPosition(icon_rect.left + inset, icon_rect.top + inset);
+            sf::Vector2f(icon_rect.size.x - 2.0f * inset, icon_rect.size.y - 2.0f * inset));
+        glyph.setPosition({icon_rect.position.x + inset, icon_rect.position.y + inset});
         glyph.setFillColor(sf::Color::Transparent);
         glyph.setOutlineThickness(2.0f);
         glyph.setOutlineColor(nb.text.color);
         target.draw(glyph);
         // A spine line to read as a little book/notebook.
-        sf::RectangleShape spine(sf::Vector2f(2.0f, icon_rect.height - 2.0f * inset));
-        spine.setPosition(icon_rect.left + icon_rect.width * 0.5f - 1.0f, icon_rect.top + inset);
+        sf::RectangleShape spine(sf::Vector2f(2.0f, icon_rect.size.y - 2.0f * inset));
+        spine.setPosition(
+            {icon_rect.position.x + icon_rect.size.x * 0.5f - 1.0f, icon_rect.position.y + inset});
         spine.setFillColor(nb.text.color);
         target.draw(spine);
     }
@@ -1289,8 +1289,8 @@ void ScummPanel::draw_notebook(sf::RenderTarget& target,
     }
     for (const NotebookCell& cell : notebook_cells()) {
         const bool hot = cell.rect.contains(cursor);
-        sf::Text text(pac::core::utf8(strings.ui_label(cell.label_key)),
-                      *font,
+        sf::Text text(*font,
+                      pac::core::utf8(strings.ui_label(cell.label_key)),
                       scaled_text_size(nb.text.size));
         apply_text_style(text, nb.text, hot ? nb.text.hover_color : nb.text.color);
         place_text(text, cell.rect, nb.text.align);

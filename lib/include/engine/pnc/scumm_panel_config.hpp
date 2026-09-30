@@ -75,18 +75,18 @@ struct ScummInventoryPagination {
 
 struct ScummPanelLayout {
     sf::Vector2f design_size{1280.0f, 720.0f};
-    sf::FloatRect panel_rect{0.0f, 612.0f, 1280.0f, 108.0f};
+    sf::FloatRect panel_rect{{0.0f, 612.0f}, {1280.0f, 108.0f}};
     ScummPanelPadding panel_padding{10.0f, 10.0f, 10.0f, 10.0f};
     ScummPanelBackground background;
-    sf::FloatRect command_bar_rect{0.0f, 0.0f, 1280.0f, 32.0f};
-    sf::FloatRect body_rect{10.0f, 42.0f, 1260.0f, 56.0f};
+    sf::FloatRect command_bar_rect{{0.0f, 0.0f}, {1280.0f, 32.0f}};
+    sf::FloatRect body_rect{{10.0f, 42.0f}, {1260.0f, 56.0f}};
     float body_gap = 10.0f;
-    ScummGridLayout verb_panel{{0.0f, 0.0f, 569.0f, 56.0f},
+    ScummGridLayout verb_panel{{{0.0f, 0.0f}, {569.0f, 56.0f}},
                                3,
                                3,
                                {0.0f, 0.0f, 0.0f, 0.0f},
                                {0.0f, 0.0f}};
-    ScummGridLayout inventory_panel{{589.0f, 0.0f, 671.0f, 56.0f},
+    ScummGridLayout inventory_panel{{{589.0f, 0.0f}, {671.0f, 56.0f}},
                                     2,
                                     4,
                                     {0.0f, 0.0f, 52.0f, 0.0f},
@@ -94,8 +94,8 @@ struct ScummPanelLayout {
     InventoryArrowLayout inventory_arrows{
         InventoryArrowMode::DRAW,
         InventoryArrowPlacement::RIGHT,
-        {619.0f, 0.0f, 24.0f, 56.0f},
-        {645.0f, 0.0f, 24.0f, 56.0f},
+        {{619.0f, 0.0f}, {24.0f, 56.0f}},
+        {{645.0f, 0.0f}, {24.0f, 56.0f}},
     };
     ScummInventoryPagination inventory_pagination;
     // Presentation styles (issue #172). Defaults preserve the classic layout so the

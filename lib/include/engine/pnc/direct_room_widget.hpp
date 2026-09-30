@@ -9,6 +9,7 @@
 #include <SFML/Graphics/Rect.hpp>
 #include <SFML/System/Vector2.hpp>
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -85,7 +86,7 @@ private:
     bool draw_item_icon(sf::RenderTarget& target,
                         const std::string& item_id,
                         sf::FloatRect rect,
-                        sf::Uint8 opacity = 255) const;
+                        std::uint8_t opacity = 255) const;
     void draw_action_text(sf::RenderTarget& target) const;
     void draw_context_menu(sf::RenderTarget& target) const;
     void draw_action_icon(sf::RenderTarget& target,
@@ -95,7 +96,7 @@ private:
     [[nodiscard]] bool draw_atlas_icon(sf::RenderTarget& target,
                                        int cell,
                                        sf::FloatRect rect,
-                                       sf::Uint8 opacity = 255) const;
+                                       std::uint8_t opacity = 255) const;
     [[nodiscard]] int action_icon_cell(Verb verb) const;
 
     DirectRoomUiConfig config_;

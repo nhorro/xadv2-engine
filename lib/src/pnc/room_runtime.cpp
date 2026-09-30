@@ -219,9 +219,9 @@ void RoomRuntime::update_objects(float dt) {
     // pose (position = pivot, like an avatar). A finished one-shot clears `acting`.
     for (auto& [id, sprite] : object_sprites_) {
         ObjectRuntime& rt = object_rt_[id];
-        sprite.setPosition(rt.position.x, rt.position.y);
-        sprite.setScale(rt.scale, rt.scale);
-        sprite.setRotation(rt.rotation);
+        sprite.setPosition({rt.position.x, rt.position.y});
+        sprite.setScale({rt.scale, rt.scale});
+        sprite.setRotation(sf::degrees(rt.rotation));
         sprite.update(dt);
         if (!rt.acting.empty() && sprite.finished()) {
             rt.acting.clear();
