@@ -150,3 +150,62 @@ TEST_CASE("AnimatedSprite mirrors bounds and frame-local anchors around its pivo
     CHECK(sprite.anchor_world("hand")->x == doctest::Approx(94.0f));
     CHECK(sprite.anchor_world("hand")->y == doctest::Approx(187.0f));
 }
+
+TEST_CASE("AnimatedSprite rotates and scales around its pivot") {
+    sf::Texture texture;
+    SpritesheetData sheet_data;
+    Frame frame;
+    frame.rect = sf::IntRect(0, 0, 10, 20);
+    frame.anchors["foot"] = {2.0f, 18.0f};
+    frame.anchors["hand"] = {8.0f, 5.0f};
+    sheet_data.frames.emplace("frame", std::move(frame));
+
+    Animation anim;
+    anim.pivot = "foot";
+    Sequence normal;
+    normal.frames.push_back({"frame", 0.1f});
+    anim.sequences.emplace("normal", normal);
+    Sequence mirrored = normal;
+    mirrored.h_mirror = true;
+    anim.sequences.emplace("mirrored", mirrored);
+
+    AnimatedSprite sprite(Spritesheet(std::move(sheet_data), texture), std::move(anim));
+    sprite.setPosition(100.0f, 200.0f);
+    sprite.play("normal");
+
+    // Hand is (+6, -13) from the foot. Scale 2 keeps the foot put.
+    sprite.setScale(2.0f, 2.0f);
+    sf::FloatRect bounds = sprite.global_bounds();
+    CHECK(bounds.left == doctest::Approx(96.0f));
+    CHECK(bounds.top == doctest::Approx(164.0f));
+    CHECK(bounds.width == doctest::Approx(20.0f));
+    CHECK(bounds.height == doctest::Approx(40.0f));
+    REQUIRE(sprite.anchor_world("hand").has_value());
+    CHECK(sprite.anchor_world("hand")->x == doctest::Approx(112.0f));
+    CHECK(sprite.anchor_world("hand")->y == doctest::Approx(174.0f));
+
+    // +90 degrees is clockwise in screen space: (+6, -13) -> (+13, +6).
+    sprite.setScale(1.0f, 1.0f);
+    sprite.setRotation(90.0f);
+    bounds = sprite.global_bounds();
+    CHECK(bounds.left == doctest::Approx(98.0f));
+    CHECK(bounds.top == doctest::Approx(198.0f));
+    CHECK(bounds.width == doctest::Approx(20.0f));
+    CHECK(bounds.height == doctest::Approx(10.0f));
+    REQUIRE(sprite.anchor_world("hand").has_value());
+    CHECK(sprite.anchor_world("hand")->x == doctest::Approx(113.0f));
+    CHECK(sprite.anchor_world("hand")->y == doctest::Approx(206.0f));
+
+    // User scale composes with the sequence mirror; the foot stays the pivot.
+    sprite.setRotation(0.0f);
+    sprite.setScale(2.0f, 2.0f);
+    sprite.play("mirrored");
+    bounds = sprite.global_bounds();
+    CHECK(bounds.left == doctest::Approx(84.0f));
+    CHECK(bounds.top == doctest::Approx(164.0f));
+    CHECK(bounds.width == doctest::Approx(20.0f));
+    CHECK(bounds.height == doctest::Approx(40.0f));
+    REQUIRE(sprite.anchor_world("hand").has_value());
+    CHECK(sprite.anchor_world("hand")->x == doctest::Approx(88.0f));
+    CHECK(sprite.anchor_world("hand")->y == doctest::Approx(174.0f));
+}

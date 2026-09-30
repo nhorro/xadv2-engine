@@ -58,8 +58,11 @@ CompositeDefinition parse_composite(const std::string& yaml_text);
 
 /// A hierarchy of independently animated sprites. The object-level transform is
 /// inherited by every node; child transforms are attached through frame anchors.
-/// High-level sequences can select each part's frame sequence and run a simple
-/// rotation track, which covers wheels/propellers without a general timeline.
+/// Each part is an AnimatedSprite: its setRotation and setScale are applied
+/// around the attachment (parent anchor, child anchor). High-level sequences can
+/// select each part's frame sequence and run a simple rotation track, which
+/// covers wheels/propellers without a general timeline. A live set_part_rotation
+/// cancels that track so the next update does not overwrite the angle.
 class CompositeSprite : public sf::Transformable {
 public:
     CompositeSprite(CompositeDefinition definition, std::vector<AnimatedSprite> sprites);
@@ -73,6 +76,14 @@ public:
     void set_shaders(std::vector<ShaderEffect> shaders);
     [[nodiscard]] sf::FloatRect global_bounds() const;
     [[nodiscard]] std::optional<sf::Vector2f> anchor_world(const std::string& name) const;
+
+    /// Set a part's rotation in degrees around its attachment. Cancels a playing
+    /// rotation track on that part. Returns false if `id` is unknown.
+    bool set_part_rotation(const std::string& id, float degrees);
+
+    /// Set a part's scale around the same attachment. (1, 1) is the authored
+    /// size. Returns false if `id` is unknown or either component is not finite.
+    bool set_part_scale(const std::string& id, float scale_x, float scale_y);
 
     void draw(sf::RenderTarget& target,
               pac::core::ResourceCache& resources,
@@ -89,7 +100,6 @@ private:
         CompositeNodeDefinition definition;
         std::size_t parent = 0;
         AnimatedSprite sprite;
-        float rotation = 0.0f;
         bool sequence_tracked = false;
         std::optional<RotationPlayback> rotation_track;
     };

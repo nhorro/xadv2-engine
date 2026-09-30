@@ -170,7 +170,7 @@ sf::FloatRect AnimatedSprite::local_bounds() const {
     }
     // The frame is drawn with its pivot anchor at the origin (see draw()), so in
     // local space it spans [-pivot, size - pivot). getTransform() then applies
-    // position + scale to give world-space bounds.
+    // position, rotation, and scale to give world-space bounds.
     sf::Vector2f pivot(0.0f, 0.0f);
     if (const sf::Vector2f* p = frame->anchor(pivot_)) {
         pivot = *p;

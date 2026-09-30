@@ -24,8 +24,11 @@ namespace pac::gfx {
 class ShaderChain;
 
 /// An animated sprite: a spritesheet + animation driven by a SequencePlayer.
-/// Inherits sf::Transformable, so setPosition places the current frame's pivot
-/// anchor at that point (feet/hands stay stable across frames).
+/// Inherits sf::Transformable. setPosition places the current frame's pivot
+/// anchor at that point (feet/hands stay stable across frames). setRotation and
+/// setScale rotate and scale around that same pivot, not the frame's top-left.
+/// global_bounds() and anchor_world() follow the full transform. A sequence's
+/// horizontal mirror composes with setScale; it does not replace it.
 ///
 /// Shaders (design 03 §Shaders) are an optional declarative stack — the same
 /// `gfx::ShaderEffect`s used on background layers / regions / objects. The base
@@ -45,9 +48,10 @@ public:
     const std::string& current_sequence() const { return player_.current_sequence(); }
 
     /// World-space axis-aligned bounds of the current frame with this sprite's
-    /// transform (position + scale) applied — the pivot anchor sits at the
-    /// transform's position, like draw(). Empty (zero-size at the position) when
-    /// there is no valid current frame. Used for hit-testing a moving avatar.
+    /// transform (position, rotation, and scale) applied — the pivot anchor sits
+    /// at the transform's position, like draw(). Empty (zero-size at the
+    /// position) when there is no valid current frame. Used for hit-testing a
+    /// moving avatar.
     [[nodiscard]] sf::FloatRect global_bounds() const;
 
     /// Current frame bounds in pivot-relative local coordinates. This is the
