@@ -2,6 +2,9 @@
 
 Companion: [tour index](index.md). Read this before editing `room_scene.cpp` or the verb panel.
 
+For an explorable component map with links to the exact implementation, open
+the [room / point-and-click architecture view](../room-point-and-click.html).
+
 The room view is not one class. It is a **session** (`RoomScene`) that wires an
 **action model** (commands) to **widgets** (classic SCUMM panel, direct room
 controls, dialog list) and a **world** (room data, avatars, camera). Each room UI

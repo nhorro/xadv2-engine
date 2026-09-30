@@ -34,6 +34,7 @@ option(PAC_INSTALL "Generate install + export rules for the engine" ${PROJECT_IS
 option(PAC_BUILD_SHARED "Build the engine as a shared library" OFF)
 option(PAC_ENABLE_WARNINGS "Enable -Wall -Wextra -Wpedantic" ON)
 option(PAC_ENABLE_SANITIZERS "Enable ASan + UBSan (development only)" OFF)
+option(PAC_BUILD_DOXYGEN "Add the HTML-only Doxygen code-browser target" OFF)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
@@ -77,4 +78,15 @@ endif()
 if(PAC_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+if(PAC_BUILD_DOXYGEN)
+    find_package(Doxygen REQUIRED)
+
+    add_custom_target(doxygen
+        COMMAND "${DOXYGEN_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        BYPRODUCTS "${CMAKE_CURRENT_SOURCE_DIR}/.doc/doxygen/html/index.html"
+        COMMENT "Generating xadv2-engine HTML code browser"
+        VERBATIM)
 endif()

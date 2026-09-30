@@ -119,6 +119,13 @@ pip install -r docs/requirements.txt
 mkdocs serve -a localhost:8002 # Room/closeup editors use 8000/8001 by default
 ~~~
 
+For a searchable HTML browser over the C++ headers and implementation:
+
+~~~bash
+doxygen Doxyfile
+# open .doc/doxygen/html/index.html
+~~~
+
 Start with the [as-built architecture tour](docs/development/tour/index.md).
 The older [design folder](docs/development/history/design/) is frozen history.
 Game authors use the [authoring API](docs/authoring/index.md) (Lua, YAML, tools).

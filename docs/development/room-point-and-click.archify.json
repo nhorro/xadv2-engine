@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Room / point-and-click architecture",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/nhorro/xadv2-engine",
+      "provider": "github",
+      "revision": "d17f10a5fb00016dd02081238141d9c7e9262424"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [54, 72],
+    "cols": 4,
+    "gapX": 80,
+    "gapY": 80,
+    "cellW": 168,
+    "cellH": 84
+  },
+  "components": [
+    {
+      "id": "input-ui",
+      "type": "frontend",
+      "label": "Input router + widgets",
+      "sublabel": "Dialog · room UI · scenery",
+      "tag": "first consumer wins",
+      "row": 0,
+      "col": 0,
+      "size": [168, 84],
+      "sources": [
+        {"path": "lib/include/engine/pnc/room_input_router.hpp", "line": 13, "end_line": 44, "label": "routing contracts"},
+        {"path": "lib/src/pnc/room_input_router.cpp", "line": 5, "end_line": 21, "label": "routing loop"}
+      ]
+    },
+    {
+      "id": "room-scene",
+      "type": "backend",
+      "label": "RoomScene",
+      "sublabel": "session orchestrator + host interfaces",
+      "tag": "4,539-line implementation",
+      "row": 0,
+      "col": 1,
+      "size": [168, 84],
+      "sources": [
+        {"path": "lib/include/engine/pnc/room_scene.hpp", "line": 58, "end_line": 73, "label": "scene and host roles"},
+        {"path": "lib/src/pnc/room_scene.cpp", "line": 299, "end_line": 440, "label": "enter and UI wiring"},
+        {"path": "lib/src/pnc/room_scene.cpp", "line": 2611, "end_line": 2740, "label": "frame update"}
+      ]
+    },
+    {
+      "id": "command-system",
+      "type": "backend",
+      "label": "Command system",
+      "sublabel": "Controller/Builder → Processor",
+      "tag": "state vs execution",
+      "row": 0,
+      "col": 2,
+      "size": [168, 84],
+      "sources": [
+        {"path": "lib/include/engine/pnc/command.hpp", "line": 8, "end_line": 37, "label": "verb and command"},
+        {"path": "lib/include/engine/pnc/command_controller.hpp", "line": 34, "end_line": 76, "label": "builder state owner"},
+        {"path": "lib/src/pnc/room_command_processor.cpp", "line": 13, "end_line": 62, "label": "submit and defer"}
+      ]
+    },
+    {
+      "id": "lua-behavior",
+      "type": "external",
+      "label": "Lua behavior",
+      "sublabel": "inventory → hotspot → game fallback",
+      "tag": "room-scoped tasks",
+      "row": 0,
+      "col": 3,
+      "size": [168, 84],
+      "sources": [
+        {"path": "lib/src/pnc/room_command_processor.cpp", "line": 163, "end_line": 195, "label": "handler precedence"},
+        {"path": "lib/src/pnc/room_runtime.cpp", "line": 418, "end_line": 506, "label": "behavior hooks"}
+      ]
+    },
+    {
+      "id": "authored-content",
+      "type": "external",
+      "label": "Authored content",
+      "sublabel": "rooms/<id>.{yaml,lua}",
+      "tag": "data + behavior",
+      "row": 2,
+      "col": 1,
+      "size": [168, 84],
+      "sources": [
+        {"path": "lib/include/engine/pnc/room.hpp", "line": 373, "end_line": 413, "label": "RoomData aggregate"},
+        {"path": "lib/src/pnc/room_scene.cpp", "line": 1145, "end_line": 1190, "label": "room load inputs"}
+      ]
+    },
+    {
+      "id": "core-services",
+      "type": "cloud",
+      "label": "EngineContext",
+      "sublabel": "resources · scripting · state · audio",
+      "tag": "core layer",
+      "row": 2,
+      "col": 0,
+      "size": [168, 84],
+      "sources": [
+        {"path": "lib/include/engine/core/engine_context.hpp", "line": 31, "end_line": 64, "label": "service aggregate"}
+      ]
+    },
+    {
+      "id": "world-runtime",
+      "type": "database",
+      "label": "World runtime",
+      "sublabel": "data · hotspots · actors · camera",
+      "tag": "owned by RoomScene",
+      "row": 2,
+      "col": 2,
+      "size": [168, 84],
+      "sources": [
+        {"path": "lib/include/engine/pnc/room_runtime.hpp", "line": 24, "end_line": 78, "label": "loaded room state"},
+        {"path": "lib/include/engine/pnc/avatar.hpp", "line": 34, "end_line": 84, "label": "avatar facade"},
+        {"path": "lib/src/pnc/room_runtime.cpp", "line": 60, "end_line": 115, "label": "hit testing"}
+      ]
+    },
+    {
+      "id": "rendering",
+      "type": "frontend",
+      "label": "Room renderer",
+      "sublabel": "z-sort · light · smoke · post FX",
+      "tag": "world → virtual view",
+      "row": 2,
+      "col": 3,
+      "size": [168, 84],
+      "sources": [
+        {"path": "lib/include/engine/pnc/room_renderer.hpp", "line": 45, "end_line": 77, "label": "renderer boundary"},
+        {"path": "lib/src/pnc/room_renderer.cpp", "line": 142, "end_line": 230, "label": "world composition"},
+        {"path": "lib/src/pnc/room_scene.cpp", "line": 3005, "end_line": 3125, "label": "scene compositing"}
+      ]
+    }
+  ],
+  "connections": [
+    {"id": "ui-intents", "from": "input-ui", "to": "room-scene", "label": "intent", "variant": "emphasis"},
+    {"id": "compose-command", "from": "room-scene", "to": "command-system", "label": "compose", "variant": "emphasis"},
+    {"id": "dispatch-lua", "from": "command-system", "to": "lua-behavior", "label": "dispatch", "variant": "emphasis"},
+    {"id": "content-load", "from": "authored-content", "to": "room-scene", "label": "YAML + Lua resources", "variant": "dashed", "fromSide": "top", "toSide": "bottom"},
+    {"id": "services-host", "from": "core-services", "to": "room-scene", "label": "EngineContext", "fromSide": "top", "toSide": "bottom"},
+    {"id": "approach-motion", "from": "command-system", "to": "world-runtime", "label": "target + approach", "fromSide": "bottom", "toSide": "top", "labelAt": [634, 170]},
+    {"id": "world-render", "from": "world-runtime", "to": "rendering", "label": "state + frames", "labelAt": [758, 508]},
+    {"id": "script-mutations", "from": "lua-behavior", "to": "world-runtime", "label": "hooks mutate runtime", "variant": "dashed", "fromSide": "bottom", "toSide": "right"}
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Read the command path left to right",
+      "items": [
+        "Widgets emit intents; they do not execute game behavior.",
+        "CommandController builds a domain Command; RoomCommandProcessor owns execution policy.",
+        "Lua dispatch order is inventory, hotspot, then game fallback."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Why RoomScene feels huge",
+      "items": [
+        "It owns the session and implements host seams for input, commands, scripting, persistence, and presentation.",
+        "The extracted collaborators are real boundaries, but lifecycle wiring and many Lua façades remain centralized."
+      ]
+    }
+  ]
+}

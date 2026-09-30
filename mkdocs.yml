@@ -95,6 +95,7 @@ nav:
           - Proposed code layout and Doxygen: development/plans/code-layout.md
       - Coding guides:
           - Conventions & formatting: development/coding-conventions.md
+          - C++ code browser: development/doxygen.md
       - Internals:
           - SCUMM command flow: development/scumm-command-flow.md
       - Historical design:

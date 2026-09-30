@@ -1,8 +1,8 @@
 # Code layout and Doxygen
 
-!!! warning "Proposal, not current layout"
-    Only the **Current tree** section describes the repository today. The
-    target tree and Doxygen setup below have not been implemented.
+!!! warning "Target layout is a proposal"
+    The **Current tree** and Doxygen sections describe the repository today.
+    The target tree has not been implemented.
 
 Directories and namespaces already encode layers (`core`, `geom`, `gfx`, `pnc`),
 but each folder is a flat dump. `pnc` in particular mixes command grammar,
@@ -109,29 +109,26 @@ sprites live” without opening the session file.
 
 ---
 
-## Doxygen — yes, as an index
+## Doxygen — implemented as an index
 
-MkDocs remains the narrative (this tour). Doxygen is the clickable API for
-public headers.
+MkDocs remains the narrative (this tour). Doxygen is the searchable,
+cross-linked implementation index. See [C++ code browser](../doxygen.md) for the
+build command and exact scope.
 
-Do:
+The implementation deliberately:
 
-- Generate from `lib/include/engine/**/*.hpp` only.
-- `@defgroup core gfx geom pnc` matching folders; later `kits_pnc_command`.
-- Brief class comments on types the tour names (`Scene`, `CommandBuilder`,
-  `ResourceSource`, …).
-- Link Doxygen from the tour (“see `CommandBuilder`”) once a `docs/api` job exists.
+- Generates from `lib/include/engine` and `lib/src`. Source definitions are
+  necessary to follow `RoomScene` and other implementation-heavy types.
+- Exposes private, static, local, and undocumented symbols for code navigation.
+- Supports bounded include, inheritance, and collaboration graphs when
+  `HAVE_DOT` is enabled locally and Graphviz is installed.
+- Disables call/caller graphs because they explode around `RoomScene`.
 
-Do not:
+It does not:
 
-- Comment every getter.
-- Generate HTML for `lib/src`.
-- Treat Doxygen graphs as the architecture story. They explode on `RoomScene`.
-- Block PRs on missing `/** */` until the include tree is grouped.
-
-A later `Doxyfile` + CI artifact is enough. PlantUML in this tour is optional
-for people who already render it; **published diagrams are Mermaid** so MkDocs
-Material can show them without a PlantUML server.
+- Generate PDF/LaTeX output.
+- Treat Doxygen graphs as the architecture story.
+- Warn on every undocumented symbol or block PRs on comment coverage.
 
 ---
 
