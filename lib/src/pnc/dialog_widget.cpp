@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <utility>
 
 namespace pac::pnc {
@@ -107,10 +108,10 @@ sf::Color color(const YAML::Node& node, const std::string& field, sf::Color fall
             fail("dialog-widget.color-invalid", field + " contains a non-hex digit", node);
         }
     }
-    return {static_cast<sf::Uint8>(n[0] * 16 + n[1]),
-            static_cast<sf::Uint8>(n[2] * 16 + n[3]),
-            static_cast<sf::Uint8>(n[4] * 16 + n[5]),
-            alpha ? static_cast<sf::Uint8>(n[6] * 16 + n[7]) : sf::Uint8{255}};
+    return {static_cast<std::uint8_t>(n[0] * 16 + n[1]),
+            static_cast<std::uint8_t>(n[2] * 16 + n[3]),
+            static_cast<std::uint8_t>(n[4] * 16 + n[5]),
+            alpha ? static_cast<std::uint8_t>(n[6] * 16 + n[7]) : std::uint8_t{255}};
 }
 
 std::string asset(const YAML::Node& node, const std::string& base_dir, const std::string& field) {
@@ -126,11 +127,11 @@ std::string asset(const YAML::Node& node, const std::string& base_dir, const std
 
 void draw_arrow(sf::RenderTarget& target, sf::FloatRect rect, bool up, sf::Color color) {
     sf::ConvexShape triangle(3);
-    const float inset = std::min(rect.width, rect.height) * 0.22f;
-    const float left = rect.left + inset;
-    const float right = rect.left + rect.width - inset;
-    const float top = rect.top + inset;
-    const float bottom = rect.top + rect.height - inset;
+    const float inset = std::min(rect.size.x, rect.size.y) * 0.22f;
+    const float left = rect.position.x + inset;
+    const float right = rect.position.x + rect.size.x - inset;
+    const float top = rect.position.y + inset;
+    const float bottom = rect.position.y + rect.size.y - inset;
     if (up) {
         triangle.setPoint(0, {(left + right) * 0.5f, top});
         triangle.setPoint(1, {left, bottom});
@@ -154,11 +155,11 @@ DialogPageLayout layout_dialog_options(const std::vector<std::string>& labels,
                                        float arrow_size,
                                        const std::function<float(const std::string&)>& measure) {
     DialogPageLayout out;
-    if (labels.empty() || line_height <= 0.0f || area.height <= 0.0f) {
+    if (labels.empty() || line_height <= 0.0f || area.size.y <= 0.0f) {
         return out;
     }
     const float gutter = arrow_size > 0.0f ? arrow_size + option_gap : 0.0f;
-    const float text_width = std::max(1.0f, area.width - gutter);
+    const float text_width = std::max(1.0f, area.size.x - gutter);
     std::vector<std::vector<std::string>> wrapped;
     std::vector<float> heights;
     for (const std::string& label : labels) {
@@ -168,11 +169,11 @@ DialogPageLayout layout_dialog_options(const std::vector<std::string>& labels,
     }
     std::vector<int> page_of(labels.size(), 0);
     int page = 0;
-    float y = area.top;
+    float y = area.position.y;
     for (std::size_t i = 0; i < labels.size(); ++i) {
-        if (y > area.top + 0.001f && y + heights[i] > area.top + area.height) {
+        if (y > area.position.y + 0.001f && y + heights[i] > area.position.y + area.size.y) {
             ++page;
-            y = area.top;
+            y = area.position.y;
         }
         page_of[i] = page;
         y += heights[i] + option_gap;
@@ -181,18 +182,19 @@ DialogPageLayout layout_dialog_options(const std::vector<std::string>& labels,
     out.page_index = std::clamp(page_index, 0, out.page_count - 1);
     out.has_prev = out.page_index > 0;
     out.has_next = out.page_index < out.page_count - 1;
-    y = area.top;
+    y = area.position.y;
     for (std::size_t i = 0; i < labels.size(); ++i) {
         if (page_of[i] != out.page_index)
             continue;
         out.rows.push_back(
-            {static_cast<int>(i), wrapped[i], {area.left, y, text_width, heights[i]}});
+            {static_cast<int>(i), wrapped[i], {{area.position.x, y}, {text_width, heights[i]}}});
         y += heights[i] + option_gap;
     }
     if (gutter > 0.0f) {
-        const float x = area.left + area.width - arrow_size;
-        out.prev_arrow = {x, area.top, arrow_size, arrow_size};
-        out.next_arrow = {x, area.top + area.height - arrow_size, arrow_size, arrow_size};
+        const float x = area.position.x + area.size.x - arrow_size;
+        out.prev_arrow = {{x, area.position.y}, {arrow_size, arrow_size}};
+        out.next_arrow = {{x, area.position.y + area.size.y - arrow_size},
+                          {arrow_size, arrow_size}};
     }
     return out;
 }
@@ -215,8 +217,8 @@ DialogWidgetConfig parse_dialog_widget_config(const std::string& yaml_text,
         if (!size.IsSequence() || size.size() != 2) {
             fail("dialog-widget.design-size-invalid", "design_size must be [width, height]", size);
         }
-        config.design_size = {number(size[0], "design_size.width", 1280.0f, 1.0f, 100000.0f),
-                              number(size[1], "design_size.height", 720.0f, 1.0f, 100000.0f)};
+        config.design_size = {number(size[0], "design_size.size.x", 1280.0f, 1.0f, 100000.0f),
+                              number(size[1], "design_size.size.y", 720.0f, 1.0f, 100000.0f)};
     }
     config.min_width =
         number(node["min_width"], "min_width", config.min_width, 1.0f, config.design_size.x);
@@ -234,7 +236,7 @@ DialogWidgetConfig parse_dialog_widget_config(const std::string& yaml_text,
                                            0.0f,
                                            20.0f);
     if (config.min_width > config.max_width) {
-        fail("dialog-widget.width-invalid", "min_width must be <= max_width", node);
+        fail("dialog-widget.size.x-invalid", "min_width must be <= max_width", node);
     }
     if (const YAML::Node placement = node["placement"]) {
         if (!placement.IsMap()) {
@@ -282,10 +284,11 @@ DialogWidgetConfig parse_dialog_widget_config(const std::string& yaml_text,
                  "padding must be [left, top, right, bottom]",
                  padding);
         }
-        config.padding = {number(padding[0], "padding.left", 20.0f, 0.0f, config.design_size.x),
-                          number(padding[1], "padding.top", 14.0f, 0.0f, config.design_size.y),
-                          number(padding[2], "padding.right", 20.0f, 0.0f, config.design_size.x),
-                          number(padding[3], "padding.bottom", 14.0f, 0.0f, config.design_size.y)};
+        config.padding = {
+            {number(padding[0], "padding.position.x", 20.0f, 0.0f, config.design_size.x),
+             number(padding[1], "padding.position.y", 14.0f, 0.0f, config.design_size.y)},
+            {number(padding[2], "padding.right", 20.0f, 0.0f, config.design_size.x),
+             number(padding[3], "padding.bottom", 14.0f, 0.0f, config.design_size.y)}};
     }
     config.font = asset(node["font"], base_dir, "font");
     config.font_size = static_cast<unsigned>(
@@ -363,7 +366,8 @@ InputResult DialogWidget::handle(const RoutedInput& input) {
 }
 
 sf::FloatRect DialogWidget::input_bounds() const {
-    return {0.0f, 0.0f, static_cast<float>(runtime_size_.x), static_cast<float>(runtime_size_.y)};
+    return {{0.0f, 0.0f},
+            {static_cast<float>(runtime_size_.x), static_cast<float>(runtime_size_.y)}};
 }
 
 bool DialogWidget::captures(sf::Vector2f point) const {
@@ -386,15 +390,15 @@ DialogPageLayout DialogWidget::current_layout() const {
     const unsigned size = std::max(1u, static_cast<unsigned>(std::lround(config_.font_size * sy)));
     const float line_height = font_ ? font_->getLineSpacing(size) : static_cast<float>(size) * 1.3f;
     const auto measure = [this, size](const std::string& value) {
-        return font_ ? sf::Text(pac::core::utf8(value), *font_, size).getLocalBounds().width
+        return font_ ? sf::Text(*font_, pac::core::utf8(value), size).getLocalBounds().size.x
                      : static_cast<float>(value.size()) * static_cast<float>(size) * 0.5f;
     };
     const float gap = config_.option_gap * sy;
     const float arrow = line_height;
-    const float pad_left = config_.padding.left * sx;
-    const float pad_top = config_.padding.top * sy;
-    const float pad_right = config_.padding.width * sx;
-    const float pad_bottom = config_.padding.height * sy;
+    const float pad_left = config_.padding.position.x * sx;
+    const float pad_top = config_.padding.position.y * sy;
+    const float pad_right = config_.padding.size.x * sx;
+    const float pad_bottom = config_.padding.size.y * sy;
     const float gutter = arrow + gap;
     const float min_text = std::max(1.0f, config_.min_width * sx - pad_left - pad_right);
     const float max_text =
@@ -405,19 +409,20 @@ DialogPageLayout DialogWidget::current_layout() const {
     const float text_width = std::clamp(widest, min_text, max_text);
     const float max_content_height =
         std::max(line_height, config_.max_height * sy - pad_top - pad_bottom);
-    DialogPageLayout layout = layout_dialog_options(state_.dialog_options,
-                                                    state_.dialog_page,
-                                                    {0.0f, 0.0f, text_width, max_content_height},
-                                                    line_height,
-                                                    gap,
-                                                    0.0f,
-                                                    measure);
+    DialogPageLayout layout =
+        layout_dialog_options(state_.dialog_options,
+                              state_.dialog_page,
+                              {{0.0f, 0.0f}, {text_width, max_content_height}},
+                              line_height,
+                              gap,
+                              0.0f,
+                              measure);
     const bool paged = layout.page_count > 1;
     const float content_width = text_width + (paged ? gutter : 0.0f);
     if (paged) {
         layout = layout_dialog_options(state_.dialog_options,
                                        state_.dialog_page,
-                                       {0.0f, 0.0f, content_width, max_content_height},
+                                       {{0.0f, 0.0f}, {content_width, max_content_height}},
                                        line_height,
                                        gap,
                                        arrow,
@@ -425,7 +430,7 @@ DialogPageLayout DialogWidget::current_layout() const {
     }
     float used_height = 0.0f;
     for (const auto& row : layout.rows)
-        used_height = std::max(used_height, row.rect.top + row.rect.height);
+        used_height = std::max(used_height, row.rect.position.y + row.rect.size.y);
     if (layout.has_prev || layout.has_next)
         used_height = std::max(used_height, 2.0f * arrow + gap);
     used_height = std::max(used_height, line_height);
@@ -434,24 +439,24 @@ DialogPageLayout DialogWidget::current_layout() const {
     WidgetPlacement runtime_placement = config_.placement;
     runtime_placement.offset = {config_.placement.offset.x * sx, config_.placement.offset.y * sy};
     const sf::Vector2f origin = place_widget(
-        {0.0f, 0.0f, static_cast<float>(runtime_size_.x), static_cast<float>(runtime_size_.y)},
+        {{0.0f, 0.0f}, {static_cast<float>(runtime_size_.x), static_cast<float>(runtime_size_.y)}},
         {box_width, box_height},
         runtime_placement);
-    layout.box = {origin.x, origin.y, box_width, box_height};
+    layout.box = {{origin.x, origin.y}, {box_width, box_height}};
     const float left = origin.x;
     const float top = origin.y;
     const sf::Vector2f shift{left + pad_left, top + pad_top};
     for (auto& row : layout.rows) {
-        row.rect.left += shift.x;
-        row.rect.top += shift.y;
+        row.rect.position.x += shift.x;
+        row.rect.position.y += shift.y;
     }
     if (layout.has_prev) {
-        layout.prev_arrow.left += shift.x;
-        layout.prev_arrow.top = shift.y;
+        layout.prev_arrow.position.x += shift.x;
+        layout.prev_arrow.position.y = shift.y;
     }
     if (layout.has_next) {
-        layout.next_arrow.left += shift.x;
-        layout.next_arrow.top = shift.y + used_height - arrow;
+        layout.next_arrow.position.x += shift.x;
+        layout.next_arrow.position.y = shift.y + used_height - arrow;
     }
     return layout;
 }
@@ -461,8 +466,8 @@ void DialogWidget::draw(sf::RenderTarget& target) const {
         return;
     const DialogPageLayout layout = current_layout();
     surface_.draw(target, presentation_, layout.box, [this, &layout](sf::RenderTarget& surface) {
-        sf::RectangleShape box({layout.box.width, layout.box.height});
-        box.setPosition(layout.box.left, layout.box.top);
+        sf::RectangleShape box({layout.box.size.x, layout.box.size.y});
+        box.setPosition({layout.box.position.x, layout.box.position.y});
         box.setFillColor(config_.background);
         const float sx = static_cast<float>(runtime_size_.x) / config_.design_size.x;
         box.setOutlineThickness(config_.border_thickness * sx);
@@ -482,14 +487,14 @@ void DialogWidget::draw(sf::RenderTarget& target) const {
             const sf::Color fill = row.rect.contains(cursor_)
                                        ? config_.hover_text
                                        : (selected ? config_.selected_text : config_.text);
-            float y = row.rect.top;
+            float y = row.rect.position.y;
             for (const std::string& line : row.lines) {
-                sf::Text text(pac::core::utf8(line), *font_, size);
+                sf::Text text(*font_, pac::core::utf8(line), size);
                 text.setFillColor(fill);
                 text.setOutlineThickness(config_.text_outline_thickness * sx);
                 text.setOutlineColor(config_.text_outline);
                 const auto bounds = text.getLocalBounds();
-                text.setPosition(row.rect.left - bounds.left, y);
+                text.setPosition({row.rect.position.x - bounds.position.x, y});
                 surface.draw(text);
                 y += line_height;
             }

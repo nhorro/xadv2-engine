@@ -63,7 +63,7 @@ sf::FloatRect polygon_bounds(const Polygon& poly) {
         max_x = std::max(max_x, p.x);
         max_y = std::max(max_y, p.y);
     }
-    return {min_x, min_y, max_x - min_x, max_y - min_y};
+    return {{min_x, min_y}, {max_x - min_x, max_y - min_y}};
 }
 
 std::optional<Point> segment_intersection(Point a, Point b, Point c, Point d) {

@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.16)
-project(xadv2_engine VERSION 0.9.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.24)
+project(xadv2_engine VERSION 0.9.0 LANGUAGES C CXX)
 
 # This project is built in two situations, and it must behave differently in each:
 #

@@ -62,10 +62,8 @@ SpritesheetData parse_spritesheet(const std::string& yaml_text) {
             sheet_fail("spritesheet.rect-missing", "sprite '" + id + "' is missing 'rect'", sn);
         }
         Frame frame;
-        frame.rect = sf::IntRect(r["x"].as<int>(),
-                                 r["y"].as<int>(),
-                                 r["width"].as<int>(),
-                                 r["height"].as<int>());
+        frame.rect = sf::IntRect({r["x"].as<int>(), r["y"].as<int>()},
+                                 {r["width"].as<int>(), r["height"].as<int>()});
         if (const YAML::Node anchors = sn["anchors"]) {
             for (const auto& kv : anchors) {
                 frame.anchors[kv.first.as<std::string>()] = {kv.second["x"].as<float>(),

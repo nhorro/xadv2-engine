@@ -24,16 +24,16 @@ struct ProbeLayer : RoomInputLayer {
     }
 };
 
-ScummPanelConfig widget_panel_config(sf::FloatRect panel = {0.0f, 0.0f, 100.0f, 100.0f}) {
+ScummPanelConfig widget_panel_config(sf::FloatRect panel = {{0.0f, 0.0f}, {100.0f, 100.0f}}) {
     ScummPanelConfig config;
     config.layout.design_size = {100.0f, 100.0f};
     config.layout.panel_rect = panel;
-    config.layout.command_bar_rect = {0.0f, 0.0f, 100.0f, 10.0f};
-    config.layout.body_rect = {0.0f, 10.0f, 100.0f, 90.0f};
-    config.layout.verb_panel.rect = {0.0f, 0.0f, 20.0f, 90.0f};
+    config.layout.command_bar_rect = {{0.0f, 0.0f}, {100.0f, 10.0f}};
+    config.layout.body_rect = {{0.0f, 10.0f}, {100.0f, 90.0f}};
+    config.layout.verb_panel.rect = {{0.0f, 0.0f}, {20.0f, 90.0f}};
     config.layout.verb_panel.rows = 1;
     config.layout.verb_panel.columns = 1;
-    config.layout.inventory_panel.rect = {20.0f, 0.0f, 80.0f, 90.0f};
+    config.layout.inventory_panel.rect = {{20.0f, 0.0f}, {80.0f, 90.0f}};
     config.layout.inventory_panel.rows = 1;
     config.layout.inventory_panel.columns = 2;
     config.content.verbs = {Verb::OPEN};
@@ -83,27 +83,27 @@ struct WidgetFixture {
 } // namespace
 
 TEST_CASE("routed pointer input is independent of platform event payloads") {
-    sf::Event move{};
-    move.type = sf::Event::MouseMoved;
-    move.mouseMove.x = 12;
-    move.mouseMove.y = 34;
+    sf::Event move{sf::Event::Closed{}};
+    move = sf::Event::MouseMoved{};
+    move.getIf<sf::Event::MouseMoved>()->position.x = 12;
+    move.getIf<sf::Event::MouseMoved>()->position.y = 34;
     const auto routed_move = routed_pointer_input(move);
     REQUIRE(routed_move.has_value());
     CHECK(routed_move->kind == RoutedInputKind::POINTER_MOVED);
     CHECK(routed_move->position == sf::Vector2f(12.0f, 34.0f));
 
-    sf::Event click{};
-    click.type = sf::Event::MouseButtonReleased;
-    click.mouseButton.button = sf::Mouse::Left;
-    click.mouseButton.x = 50;
-    click.mouseButton.y = 60;
+    sf::Event click{sf::Event::Closed{}};
+    click = sf::Event::MouseButtonReleased{};
+    click.getIf<sf::Event::MouseButtonReleased>()->button = sf::Mouse::Button::Left;
+    click.getIf<sf::Event::MouseButtonReleased>()->position.x = 50;
+    click.getIf<sf::Event::MouseButtonReleased>()->position.y = 60;
     const auto routed_click = routed_pointer_input(click);
     REQUIRE(routed_click.has_value());
     CHECK(routed_click->primary_release());
     CHECK(routed_click->position == sf::Vector2f(50.0f, 60.0f));
 
-    sf::Event key{};
-    key.type = sf::Event::KeyPressed;
+    sf::Event key{sf::Event::Closed{}};
+    key = sf::Event::KeyPressed{};
     CHECK_FALSE(routed_pointer_input(key).has_value());
 }
 
@@ -203,22 +203,24 @@ TEST_CASE("independent command and dialog widgets remain modal without leaking c
 
 TEST_CASE("SCUMM widget bounds follow configured position and runtime scaling") {
     ScummWidgetModel model;
-    ScummWidget widget(
-        ScummPanel(widget_panel_config({10.0f, 20.0f, 50.0f, 40.0f}), {200, 200}, nullptr, nullptr),
-        std::move(model),
-        {});
+    ScummWidget widget(ScummPanel(widget_panel_config({{10.0f, 20.0f}, {50.0f, 40.0f}}),
+                                  {200, 200},
+                                  nullptr,
+                                  nullptr),
+                       std::move(model),
+                       {});
 
     const sf::FloatRect bounds = widget.input_bounds();
-    CHECK(bounds.left == doctest::Approx(20.0f));
-    CHECK(bounds.top == doctest::Approx(40.0f));
-    CHECK(bounds.width == doctest::Approx(100.0f));
-    CHECK(bounds.height == doctest::Approx(80.0f));
+    CHECK(bounds.position.x == doctest::Approx(20.0f));
+    CHECK(bounds.position.y == doctest::Approx(40.0f));
+    CHECK(bounds.size.x == doctest::Approx(100.0f));
+    CHECK(bounds.size.y == doctest::Approx(80.0f));
     CHECK(widget.captures({25.0f, 45.0f}));
     CHECK_FALSE(widget.captures({5.0f, 5.0f}));
 
     widget.set_position({30.0f, 50.0f});
-    CHECK(widget.input_bounds().left == doctest::Approx(30.0f));
-    CHECK(widget.input_bounds().top == doctest::Approx(50.0f));
+    CHECK(widget.input_bounds().position.x == doctest::Approx(30.0f));
+    CHECK(widget.input_bounds().position.y == doctest::Approx(50.0f));
     CHECK(widget.captures({35.0f, 55.0f}));
     CHECK_FALSE(widget.captures({25.0f, 45.0f}));
 }

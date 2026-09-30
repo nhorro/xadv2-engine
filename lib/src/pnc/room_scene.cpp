@@ -27,11 +27,10 @@
 #include "engine/pnc/dev_actions.hpp"
 #include "engine/pnc/pause_overlay.hpp"
 #include "engine/pnc/room.hpp"
-#include "gfx/gles2_compat.hpp"
 #include "pnc/dialog_internal.hpp"
+#include "pnc/room_control_service.hpp"
 #include "pnc/room_lighting.hpp"
 #include "pnc/room_smoke.hpp"
-#include "pnc/room_control_service.hpp"
 #include "pnc/room_tuning_overlay.hpp"
 
 #include <SFML/Graphics/Font.hpp>
@@ -48,6 +47,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <utility>
@@ -677,9 +677,9 @@ end
             std::string explicit_id;
             if (opts) {
                 if (sol::optional<sol::table> c = (*opts)["color"]) {
-                    color = sf::Color(static_cast<sf::Uint8>((*c)["r"].get_or(255)),
-                                      static_cast<sf::Uint8>((*c)["g"].get_or(255)),
-                                      static_cast<sf::Uint8>((*c)["b"].get_or(255)));
+                    color = sf::Color(static_cast<std::uint8_t>((*c)["r"].get_or(255)),
+                                      static_cast<std::uint8_t>((*c)["g"].get_or(255)),
+                                      static_cast<std::uint8_t>((*c)["b"].get_or(255)));
                 }
                 explicit_id = (*opts)["id"].get_or(std::string());
             }
@@ -1504,7 +1504,7 @@ geom::Point RoomScene::speech_anchor(const Avatar& a) const {
         return *p;
     }
     const sf::FloatRect b = a.bounds();
-    return {a.position().x, b.top};
+    return {a.position().x, b.position.y};
 }
 
 void RoomScene::say(const std::string& text,
@@ -1575,7 +1575,7 @@ geom::Point RoomScene::ambient_anchor_point(const AmbientLabel& label) const {
         }
     } else if (label.anchor == AmbientLabel::Anchor::OBJECT) {
         if (const std::optional<sf::FloatRect> b = object_frame_bounds(label.ref)) {
-            return {b->left + b->width / 2.0f, b->top};
+            return {b->position.x + b->size.x / 2.0f, b->position.y};
         }
     }
     return label.fixed;
@@ -1587,13 +1587,14 @@ void RoomScene::draw_ambient(sf::RenderTarget& target) const {
     }
     for (const AmbientLabel& label : ambient_) {
         const geom::Point at = ambient_anchor_point(label);
-        sf::Text text(pac::core::utf8(label.text), *font_, 22);
+        sf::Text text(*font_, pac::core::utf8(label.text), 22);
         text.setFillColor(label.color);
         text.setOutlineColor(sf::Color(0, 0, 0, 200));
         text.setOutlineThickness(2.0f);
         const sf::FloatRect b = text.getLocalBounds();
         // Centred just above the anchor (the NPC head / object top / point).
-        text.setPosition(at.x - b.width / 2.0f - b.left, at.y - b.height - 12.0f - b.top);
+        text.setPosition(
+            {at.x - b.size.x / 2.0f - b.position.x, at.y - b.size.y - 12.0f - b.position.y});
         target.draw(text);
     }
 }
@@ -1639,8 +1640,8 @@ void RoomScene::handle_event(const sf::Event& event) {
     // F9 opens a dev-only render tuning panel over the SCUMM controls. It is a
     // separate input layer rather than ViewState::BLOCKED: the room keeps
     // rendering and updating while every player-facing input is consumed here.
-    if (ctx_.dev.edit_mode && event.type == sf::Event::KeyPressed &&
-        event.key.code == sf::Keyboard::F9) {
+    if (ctx_.dev.edit_mode && event.is<sf::Event::KeyPressed>() &&
+        event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::F9) {
         if (tuning_overlay_active()) {
             tuning_overlay_->close();
         } else if (view_state_ == ViewState::COMMAND && room_ &&
@@ -1656,10 +1657,8 @@ void RoomScene::handle_event(const sf::Event& event) {
                 // cluster. The tuner is a full-width development surface.
                 const sf::Vector2u resolution = ctx_.display.virtual_resolution();
                 constexpr float kTunerHeight = 108.0f;
-                controls = {0.0f,
-                            std::max(0.0f, static_cast<float>(resolution.y) - kTunerHeight),
-                            static_cast<float>(resolution.x),
-                            kTunerHeight};
+                controls = {{0.0f, std::max(0.0f, static_cast<float>(resolution.y) - kTunerHeight)},
+                            {static_cast<float>(resolution.x), kTunerHeight}};
             }
             tuning_overlay_->open(room_->render_state(),
                                   room_->authored_render_state(),
@@ -1699,25 +1698,25 @@ void RoomScene::handle_event(const sf::Event& event) {
     // Debug overlay toggles (#37): F1-F4 flip a layer. Only in dev (edit_mode);
     // a shipped game never reacts to these keys. Handled before all view-state
     // routing so overlays can be toggled during dialogs and the pause menu too.
-    if (ctx_.dev.edit_mode && event.type == sf::Event::KeyPressed &&
-        debug_flags_.toggle(event.key.code)) {
+    if (ctx_.dev.edit_mode && event.is<sf::Event::KeyPressed>() &&
+        debug_flags_.toggle(event.getIf<sf::Event::KeyPressed>()->code)) {
         return;
     }
     // Dev actions (#38): F5-F8 authoring helpers. Dev-only, and only from COMMAND
     // so they can't disrupt a running dialog or the pause menu.
-    if (ctx_.dev.edit_mode && event.type == sf::Event::KeyPressed &&
+    if (ctx_.dev.edit_mode && event.is<sf::Event::KeyPressed>() &&
         view_state_ == ViewState::COMMAND) {
-        switch (event.key.code) {
-        case sf::Keyboard::F5:
+        switch (event.getIf<sf::Event::KeyPressed>()->code) {
+        case sf::Keyboard::Key::F5:
             dev_reload_room();
             return;
-        case sf::Keyboard::F6:
+        case sf::Keyboard::Key::F6:
             dev_jump_to_next_room();
             return;
-        case sf::Keyboard::F7:
+        case sf::Keyboard::Key::F7:
             dev_give_next_item();
             return;
-        case sf::Keyboard::F8:
+        case sf::Keyboard::Key::F8:
             dev_remove_last_item();
             return;
         default:
@@ -1731,14 +1730,17 @@ void RoomScene::handle_event(const sf::Event& event) {
     // same inputs used for story text advance one page while leaving the owning
     // room cutscene alive so its following choreography still runs.
     const bool advance_text_key =
-        event.type == sf::Event::KeyPressed &&
-        (event.key.code == sf::Keyboard::Enter || event.key.code == sf::Keyboard::Space);
+        event.is<sf::Event::KeyPressed>() &&
+        (event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Enter ||
+         event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Space);
     const bool advance_text_click =
-        event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left;
+        event.is<sf::Event::MouseButtonReleased>() &&
+        event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Left;
     if ((advance_text_key || advance_text_click) && ctx_.scripting.advance_current_text()) {
         return;
     }
-    if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+    if (event.is<sf::Event::KeyPressed>() &&
+        event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Escape) {
         // ESC retains the room controls: toggle pause from ordinary gameplay,
         // or skip an explicitly skippable cutscene. Application-level Space and
         // focus loss can pause safely from every state via enter_pause_menu().
@@ -1753,13 +1755,16 @@ void RoomScene::handle_event(const sf::Event& event) {
         }
         return;
     }
-    if (view_state_ == ViewState::DIALOG && event.type == sf::Event::KeyPressed) {
+    if (view_state_ == ViewState::DIALOG && event.is<sf::Event::KeyPressed>()) {
         int option = -1;
-        if (event.key.code >= sf::Keyboard::Num1 && event.key.code <= sf::Keyboard::Num9) {
-            option = static_cast<int>(event.key.code) - static_cast<int>(sf::Keyboard::Num1);
-        } else if (event.key.code >= sf::Keyboard::Numpad1 &&
-                   event.key.code <= sf::Keyboard::Numpad9) {
-            option = static_cast<int>(event.key.code) - static_cast<int>(sf::Keyboard::Numpad1);
+        if (event.getIf<sf::Event::KeyPressed>()->code >= sf::Keyboard::Key::Num1 &&
+            event.getIf<sf::Event::KeyPressed>()->code <= sf::Keyboard::Key::Num9) {
+            option = static_cast<int>(event.getIf<sf::Event::KeyPressed>()->code) -
+                     static_cast<int>(sf::Keyboard::Key::Num1);
+        } else if (event.getIf<sf::Event::KeyPressed>()->code >= sf::Keyboard::Key::Numpad1 &&
+                   event.getIf<sf::Event::KeyPressed>()->code <= sf::Keyboard::Key::Numpad9) {
+            option = static_cast<int>(event.getIf<sf::Event::KeyPressed>()->code) -
+                     static_cast<int>(sf::Keyboard::Key::Numpad1);
         }
         if (option >= 0) {
             RoomUiIntent intent;
@@ -2468,7 +2473,7 @@ void RoomScene::face_command_target(const Command& cmd) {
 
 std::optional<geom::Point> RoomScene::hotspot_focus(const RoomHotspot& hs) const {
     const auto centre = [](const sf::FloatRect& b) {
-        return geom::Point{b.left + (b.width / 2.0f), b.top + (b.height / 2.0f)};
+        return geom::Point{b.position.x + (b.size.x / 2.0f), b.position.y + (b.size.y / 2.0f)};
     };
     if (!hs.area.empty()) {
         return centre(geom::polygon_bounds(hs.area));
@@ -2514,10 +2519,8 @@ std::optional<sf::FloatRect> RoomScene::object_frame_bounds(const std::string& o
         const sf::Vector2u sz = tex.getSize();
         const float s = room_->object_scale(object_id);            // runtime scale (#142)
         const geom::Point pos = room_->object_position(object_id); // runtime position (#142)
-        return sf::FloatRect(pos.x,
-                             pos.y,
-                             static_cast<float>(sz.x) * s,
-                             static_cast<float>(sz.y) * s);
+        return sf::FloatRect({pos.x, pos.y},
+                             {static_cast<float>(sz.x) * s, static_cast<float>(sz.y) * s});
     } catch (const std::exception&) {
         return std::nullopt;
     }
@@ -3117,8 +3120,8 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                                          static_cast<unsigned>(std::ceil(viewport_size.y))};
             if (!post_process_target_ || post_process_target_->getSize() != post_size) {
                 auto next = std::make_unique<sf::RenderTexture>();
-                if (next->create(post_size.x, post_size.y)) {
-                    pac::gfx::configure_gles2_target(*next);
+                if (next->resize({post_size.x, post_size.y})) {
+
                     next->setSmooth(ctx_.resources.smooth_textures());
                     post_process_target_ = std::move(next);
                     const std::size_t next_bytes =
@@ -3162,10 +3165,9 @@ void RoomScene::draw(sf::RenderTarget& target) const {
                         ? smoke_system_->render_density(camera_->view_rect(), post_size)
                         : nullptr;
 
-                const sf::IntRect full(0,
-                                       0,
-                                       static_cast<int>(post_size.x),
-                                       static_cast<int>(post_size.y));
+                const sf::IntRect full(
+                    {0, 0},
+                    {static_cast<int>(post_size.x), static_cast<int>(post_size.y)});
                 gfx::RuntimeShaderPass lighting_pass;
                 const gfx::RuntimeShaderPass* lighting_prefix = nullptr;
                 RoomLighting neutral_lighting;
@@ -3298,12 +3300,12 @@ void RoomScene::draw(sf::RenderTarget& target) const {
 
     // change_room fade overlay: a black quad over the whole window (bars too),
     // drawn last so it covers the scenery and panel during the transition.
-    const sf::Uint8 fade_a = room_fade_.alpha255();
+    const std::uint8_t fade_a = room_fade_.alpha255();
     if (fade_a > 0) {
         const sf::View prev = target.getView();
         const sf::Vector2f size(static_cast<float>(target.getSize().x),
                                 static_cast<float>(target.getSize().y));
-        target.setView(sf::View(sf::FloatRect(0.0f, 0.0f, size.x, size.y)));
+        target.setView(sf::View(sf::FloatRect({0.0f, 0.0f}, {size.x, size.y})));
         sf::RectangleShape quad(size);
         quad.setFillColor(sf::Color(0, 0, 0, fade_a));
         target.draw(quad);
@@ -3546,8 +3548,8 @@ RoomScene::resolve_room_target(const RoomTargetRef& target) const {
         resolved.facing = avatar->facing();
         if (target.anchor == "center") {
             const sf::FloatRect& bounds = *resolved.bounds;
-            resolved.position =
-                {bounds.left + bounds.width * 0.5f, bounds.top + bounds.height * 0.5f};
+            resolved.position = {bounds.position.x + bounds.size.x * 0.5f,
+                                 bounds.position.y + bounds.size.y * 0.5f};
         } else if (!target.anchor.empty() && target.anchor != "pivot") {
             if (const auto anchor = avatar->anchor(target.anchor)) {
                 resolved.position = *anchor;
@@ -3585,8 +3587,8 @@ RoomScene::resolve_room_target(const RoomTargetRef& target) const {
     resolved.bounds = object_frame_bounds(target.id);
     if (target.anchor == "center") {
         if (resolved.bounds) {
-            resolved.position = {resolved.bounds->left + resolved.bounds->width * 0.5f,
-                                 resolved.bounds->top + resolved.bounds->height * 0.5f};
+            resolved.position = {resolved.bounds->position.x + resolved.bounds->size.x * 0.5f,
+                                 resolved.bounds->position.y + resolved.bounds->size.y * 0.5f};
         } else {
             warn_anchor();
         }
@@ -4234,18 +4236,19 @@ std::vector<RoomScene::MenuButton> RoomScene::menu_buttons() const {
     const float top = (static_cast<float>(vres.y) - total_h) / 2.0f;
     for (int i = 0; i < count; ++i) {
         const float y = top + static_cast<float>(i) * (row_h + gap);
-        out[static_cast<std::size_t>(i)].rect = {left, y, w, row_h};
+        out[static_cast<std::size_t>(i)].rect = {{left, y}, {w, row_h}};
     }
     return out;
 }
 
 void RoomScene::handle_menu_event(const sf::Event& event) {
-    if (event.type != sf::Event::MouseButtonReleased ||
-        event.mouseButton.button != sf::Mouse::Left) {
+    if (!event.is<sf::Event::MouseButtonReleased>() ||
+        event.getIf<sf::Event::MouseButtonReleased>()->button != sf::Mouse::Button::Left) {
         return;
     }
-    const sf::Vector2f vp{static_cast<float>(event.mouseButton.x),
-                          static_cast<float>(event.mouseButton.y)};
+    const sf::Vector2f vp{
+        static_cast<float>(event.getIf<sf::Event::MouseButtonReleased>()->position.x),
+        static_cast<float>(event.getIf<sf::Event::MouseButtonReleased>()->position.y)};
     for (const MenuButton& b : menu_buttons()) {
         if (b.enabled && b.rect.contains(vp)) {
             ui_sounds_.activate(ctx_);
@@ -4330,19 +4333,19 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
     }
 
     // Heading.
-    sf::Text title(pac::core::utf8(ctx_.strings.ui_label("pause")), *font_, 36);
+    sf::Text title(*font_, pac::core::utf8(ctx_.strings.ui_label("pause")), 36);
     title.setFillColor(sf::Color(245, 224, 177));
     const sf::FloatRect tb = title.getLocalBounds();
-    title.setPosition((static_cast<float>(vres.x) - tb.width) / 2.0f - tb.left,
-                      static_cast<float>(vres.y) * 0.18f);
+    title.setPosition({(static_cast<float>(vres.x) - tb.size.x) / 2.0f - tb.position.x,
+                       static_cast<float>(vres.y) * 0.18f});
     target.draw(title);
 
     // Single column of five buttons; the actual save/load picker is the
     // SaveLoadScene (issue #108) opened by OPEN_SAVE / OPEN_LOAD.
     for (const MenuButton& bt : menu_buttons()) {
         const bool hot = bt.enabled && bt.rect.contains(hover_vp_);
-        sf::RectangleShape box(sf::Vector2f(bt.rect.width, bt.rect.height));
-        box.setPosition(bt.rect.left, bt.rect.top);
+        sf::RectangleShape box(sf::Vector2f(bt.rect.size.x, bt.rect.size.y));
+        box.setPosition({bt.rect.position.x, bt.rect.position.y});
         if (!bt.enabled) {
             box.setFillColor(sf::Color(26, 22, 18));
             box.setOutlineColor(sf::Color(78, 64, 47));
@@ -4353,12 +4356,12 @@ void RoomScene::draw_menu(sf::RenderTarget& target) const {
         box.setOutlineThickness(1.5f);
         target.draw(box);
 
-        sf::Text txt(pac::core::utf8(bt.label), *font_, 20);
+        sf::Text txt(*font_, pac::core::utf8(bt.label), 20);
         txt.setFillColor(!bt.enabled ? sf::Color(112, 98, 79)
                                      : (hot ? sf::Color(245, 224, 177) : sf::Color(230, 218, 190)));
         const sf::FloatRect b = txt.getLocalBounds();
-        txt.setPosition(bt.rect.left + (bt.rect.width - b.width) / 2.0f - b.left,
-                        bt.rect.top + (bt.rect.height - b.height) / 2.0f - b.top);
+        txt.setPosition({bt.rect.position.x + (bt.rect.size.x - b.size.x) / 2.0f - b.position.x,
+                         bt.rect.position.y + (bt.rect.size.y - b.size.y) / 2.0f - b.position.y});
         target.draw(txt);
     }
 }

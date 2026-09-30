@@ -43,7 +43,7 @@ bool build_current_sprite(const Spritesheet& sheet,
         out_origin = *p;
     }
     if (player.current_h_mirror()) {
-        out_sprite.setScale(-1.0f, 1.0f);
+        out_sprite.setScale({-1.0f, 1.0f});
     }
     out_sprite.setColor(color);
     return true;
@@ -55,7 +55,7 @@ AnimatedSprite::AnimatedSprite(Spritesheet sheet, Animation anim)
     : sheet_(std::move(sheet)), pivot_(anim.pivot), player_(std::move(anim)) {}
 
 void AnimatedSprite::draw(sf::RenderTarget& target, sf::RenderStates states) const {
-    sf::Sprite sprite;
+    sf::Sprite sprite(sheet_.texture());
     sf::IntRect rect;
     sf::Vector2f origin;
     if (!build_current_sprite(sheet_, player_, pivot_, color_, sprite, rect, origin)) {
@@ -77,7 +77,7 @@ void AnimatedSprite::draw_transformed(sf::RenderTarget& target,
                                       pac::core::ResourceCache& resources,
                                       float time,
                                       ShaderChain* chain) const {
-    sf::Sprite sprite;
+    sf::Sprite sprite(sheet_.texture());
     sf::IntRect rect;
     sf::Vector2f origin;
     if (!build_current_sprite(sheet_, player_, pivot_, color_, sprite, rect, origin)) {
@@ -109,8 +109,8 @@ void AnimatedSprite::draw_transformed(sf::RenderTarget& target,
                 }
                 if (program->uses_resolution) {
                     program->shader.setUniform("u_resolution",
-                                               sf::Glsl::Vec2(static_cast<float>(rect.width),
-                                                              static_cast<float>(rect.height)));
+                                               sf::Glsl::Vec2(static_cast<float>(rect.size.x),
+                                                              static_cast<float>(rect.size.y)));
                 }
                 if (program->uses_texture) {
                     program->shader.setUniform("texture", sf::Shader::CurrentTexture);
@@ -135,10 +135,10 @@ void AnimatedSprite::draw_transformed(sf::RenderTarget& target,
         target.draw(sprite, states);
         return;
     }
-    sf::Sprite blit(*result, sf::IntRect(0, 0, rect.width, rect.height));
+    sf::Sprite blit(*result, sf::IntRect({0, 0}, {rect.size.x, rect.size.y}));
     blit.setOrigin(origin);
     if (player_.current_h_mirror()) {
-        blit.setScale(-1.0f, 1.0f);
+        blit.setScale({-1.0f, 1.0f});
     }
     blit.setColor(color_);
     target.draw(blit, states);
@@ -147,7 +147,7 @@ void AnimatedSprite::draw_transformed(sf::RenderTarget& target,
 void AnimatedSprite::draw_transformed(sf::RenderTarget& target,
                                       const sf::Transform& transform,
                                       sf::Color tint) const {
-    sf::Sprite sprite;
+    sf::Sprite sprite(sheet_.texture());
     sf::IntRect rect;
     sf::Vector2f origin;
     if (!build_current_sprite(sheet_, player_, pivot_, tint, sprite, rect, origin)) {
@@ -166,7 +166,7 @@ sf::FloatRect AnimatedSprite::local_bounds() const {
     const std::string frame_id = player_.current_frame_id();
     const Frame* frame = frame_id.empty() ? nullptr : sheet_.frame(frame_id);
     if (!frame) {
-        return sf::FloatRect(0.0f, 0.0f, 0.0f, 0.0f);
+        return sf::FloatRect({0.0f, 0.0f}, {0.0f, 0.0f});
     }
     // The frame is drawn with its pivot anchor at the origin (see draw()), so in
     // local space it spans [-pivot, size - pivot). getTransform() then applies
@@ -176,11 +176,10 @@ sf::FloatRect AnimatedSprite::local_bounds() const {
         pivot = *p;
     }
     const float left =
-        player_.current_h_mirror() ? pivot.x - static_cast<float>(frame->rect.width) : -pivot.x;
-    const sf::FloatRect local(left,
-                              -pivot.y,
-                              static_cast<float>(frame->rect.width),
-                              static_cast<float>(frame->rect.height));
+        player_.current_h_mirror() ? pivot.x - static_cast<float>(frame->rect.size.x) : -pivot.x;
+    const sf::FloatRect local(
+        {left, -pivot.y},
+        {static_cast<float>(frame->rect.size.x), static_cast<float>(frame->rect.size.y)});
     return local;
 }
 

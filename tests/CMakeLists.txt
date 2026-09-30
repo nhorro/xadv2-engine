@@ -89,30 +89,13 @@ target_link_libraries(pac_core_tests PRIVATE pac_sol2)
 
 add_test(NAME core_tests COMMAND pac_core_tests)
 
-# The pinned SFML implementation is built shared on every platform. Windows
-# does not search sibling CMake target directories when CTest launches an
-# executable, so stage the runtime DLLs beside the test binary. OpenAL is the
-# only bundled SFML dependency that is itself a DLL; the remaining codec/font
-# dependencies are linked statically by the fork.
+# Copy transitive runtime DLLs (SFML 3 audio uses miniaudio, not OpenAL).
 if(WIN32)
-    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-        set(PAC_SFML_WINDOWS_ARCH x64)
-    else()
-        set(PAC_SFML_WINDOWS_ARCH x86)
-    endif()
-    get_target_property(PAC_SFML_AUDIO_SOURCE_DIR sfml-audio SOURCE_DIR)
-    get_filename_component(PAC_SFML_SOURCE_DIR
-        "${PAC_SFML_AUDIO_SOURCE_DIR}/../../.." ABSOLUTE)
     add_custom_command(TARGET pac_core_tests POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:sfml-system>
-            $<TARGET_FILE:sfml-window>
-            $<TARGET_FILE:sfml-graphics>
-            $<TARGET_FILE:sfml-audio>
-            $<TARGET_FILE:sfml-network>
-            "${PAC_SFML_SOURCE_DIR}/extlibs/bin/${PAC_SFML_WINDOWS_ARCH}/openal32.dll"
+            $<TARGET_RUNTIME_DLLS:pac_core_tests>
             $<TARGET_FILE_DIR:pac_core_tests>
-        COMMENT "Staging SFML runtime DLLs for pac_core_tests")
+        COMMAND_EXPAND_LISTS)
 endif()
 
 # Every example is smoke-run: it must load its manifest, build its scenes, and

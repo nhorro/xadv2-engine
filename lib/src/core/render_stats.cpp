@@ -1,5 +1,7 @@
 #include "engine/core/render_stats.hpp"
 
+#include <cstdint>
+
 namespace pac::core {
 
 namespace {

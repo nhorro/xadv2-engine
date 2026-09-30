@@ -113,7 +113,7 @@ TEST_CASE("AnimatedSprite mirrors bounds and frame-local anchors around its pivo
     sf::Texture texture;
     SpritesheetData sheet_data;
     Frame frame;
-    frame.rect = sf::IntRect(0, 0, 10, 20);
+    frame.rect = sf::IntRect({0, 0}, {10, 20});
     frame.anchors["foot"] = {2.0f, 18.0f};
     frame.anchors["hand"] = {8.0f, 5.0f};
     sheet_data.frames.emplace("frame", std::move(frame));
@@ -128,24 +128,24 @@ TEST_CASE("AnimatedSprite mirrors bounds and frame-local anchors around its pivo
     anim.sequences.emplace("mirrored", mirrored);
 
     AnimatedSprite sprite(Spritesheet(std::move(sheet_data), texture), std::move(anim));
-    sprite.setPosition(100.0f, 200.0f);
+    sprite.setPosition({100.0f, 200.0f});
 
     sprite.play("normal");
     sf::FloatRect bounds = sprite.global_bounds();
-    CHECK(bounds.left == doctest::Approx(98.0f));
-    CHECK(bounds.top == doctest::Approx(182.0f));
-    CHECK(bounds.width == doctest::Approx(10.0f));
-    CHECK(bounds.height == doctest::Approx(20.0f));
+    CHECK(bounds.position.x == doctest::Approx(98.0f));
+    CHECK(bounds.position.y == doctest::Approx(182.0f));
+    CHECK(bounds.size.x == doctest::Approx(10.0f));
+    CHECK(bounds.size.y == doctest::Approx(20.0f));
     REQUIRE(sprite.anchor_world("hand").has_value());
     CHECK(sprite.anchor_world("hand")->x == doctest::Approx(106.0f));
     CHECK(sprite.anchor_world("hand")->y == doctest::Approx(187.0f));
 
     sprite.play("mirrored");
     bounds = sprite.global_bounds();
-    CHECK(bounds.left == doctest::Approx(92.0f));
-    CHECK(bounds.top == doctest::Approx(182.0f));
-    CHECK(bounds.width == doctest::Approx(10.0f));
-    CHECK(bounds.height == doctest::Approx(20.0f));
+    CHECK(bounds.position.x == doctest::Approx(92.0f));
+    CHECK(bounds.position.y == doctest::Approx(182.0f));
+    CHECK(bounds.size.x == doctest::Approx(10.0f));
+    CHECK(bounds.size.y == doctest::Approx(20.0f));
     REQUIRE(sprite.anchor_world("hand").has_value());
     CHECK(sprite.anchor_world("hand")->x == doctest::Approx(94.0f));
     CHECK(sprite.anchor_world("hand")->y == doctest::Approx(187.0f));

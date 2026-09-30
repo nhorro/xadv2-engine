@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <exception>
 #include <string>
 #include <vector>
@@ -47,10 +48,9 @@ constexpr float kTau = 6.28318530717958647692f;
 
 #if defined(SFML_SYSTEM_ANDROID)
 sf::FloatRect skip_button_bounds(float virtual_width, float virtual_height) {
-    return {virtual_width - kHintMargin - kSkipButtonWidth,
-            virtual_height - kHintMargin - kSkipButtonHeight,
-            kSkipButtonWidth,
-            kSkipButtonHeight};
+    return {{virtual_width - kHintMargin - kSkipButtonWidth,
+             virtual_height - kHintMargin - kSkipButtonHeight},
+            {kSkipButtonWidth, kSkipButtonHeight}};
 }
 #endif
 
@@ -59,8 +59,9 @@ float smoothstep(float value) {
     return t * t * (3.0f - 2.0f * t);
 }
 
-sf::Uint8 scaled_channel(sf::Uint8 channel, float factor) {
-    return static_cast<sf::Uint8>(std::clamp(static_cast<float>(channel) * factor, 0.0f, 255.0f));
+std::uint8_t scaled_channel(std::uint8_t channel, float factor) {
+    return static_cast<std::uint8_t>(
+        std::clamp(static_cast<float>(channel) * factor, 0.0f, 255.0f));
 }
 
 sf::Color with_alpha(sf::Color color, float opacity) {
@@ -114,8 +115,8 @@ void anchor_image(sf::Sprite& sprite,
         draw_w = tx * scale;
         draw_h = ty * scale;
     }
-    sprite.setScale(draw_w / tx, draw_h / ty);
-    sprite.setOrigin(tx / 2.0f, ty / 2.0f); // texture-space center
+    sprite.setScale({draw_w / tx, draw_h / ty});
+    sprite.setOrigin({tx / 2.0f, ty / 2.0f}); // texture-space center
     sprite.setPosition(anchor_px);
 }
 
@@ -259,20 +260,22 @@ void CutsceneScene::handle_event(const sf::Event& event) {
     if (!loaded_ || finished_) {
         return;
     }
-    if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+    if (event.is<sf::Event::KeyPressed>() &&
+        event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Escape) {
         // Esc always skips the whole cutscene — regardless of mode.
         finish();
         return;
     }
 #if defined(SFML_SYSTEM_ANDROID)
     const bool skip_visible = data_.mode == CutsceneAdvanceMode::Manual || data_.show_skip_hint;
-    if (skip_visible && event.type == sf::Event::MouseButtonReleased &&
-        event.mouseButton.button == sf::Mouse::Left) {
+    if (skip_visible && event.is<sf::Event::MouseButtonReleased>() &&
+        event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Left) {
         const auto resolution = ctx_.display.virtual_resolution();
         const sf::FloatRect button =
             skip_button_bounds(static_cast<float>(resolution.x), static_cast<float>(resolution.y));
-        if (button.contains(static_cast<float>(event.mouseButton.x),
-                            static_cast<float>(event.mouseButton.y))) {
+        if (button.contains(
+                {static_cast<float>(event.getIf<sf::Event::MouseButtonReleased>()->position.x),
+                 static_cast<float>(event.getIf<sf::Event::MouseButtonReleased>()->position.y)})) {
             finish();
             return;
         }
@@ -282,10 +285,12 @@ void CutsceneScene::handle_event(const sf::Event& event) {
         return;
     }
     const bool advance_key =
-        event.type == sf::Event::KeyPressed &&
-        (event.key.code == sf::Keyboard::Enter || event.key.code == sf::Keyboard::Space);
+        event.is<sf::Event::KeyPressed>() &&
+        (event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Enter ||
+         event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Space);
     const bool advance_click =
-        event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left;
+        event.is<sf::Event::MouseButtonReleased>() &&
+        event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Left;
     if (advance_key || advance_click) {
         if (phase_ == Phase::FadeIn) {
             // Snap a slow fade-in to fully visible so the first click feels responsive.
@@ -422,7 +427,7 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
             const sf::Vector2f anchor(breathing_position.x * vw, breathing_position.y * vh);
             const sf::Vector2f box(backdrop.size.x * vw, backdrop.size.y * vh);
             anchor_image(sprite, tex.getSize(), box, anchor, backdrop.fit);
-            sprite.scale(breathing_scale, breathing_scale);
+            sprite.scale({breathing_scale, breathing_scale});
 
             float pulse = 1.0f;
             if (backdrop.pulse_period > 0.0f && backdrop.pulse_strength > 0.0f) {
@@ -517,8 +522,8 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
             const sf::Vector2f anchor(position.x * vw, position.y * vh);
             const sf::Vector2f box(foreground.size.x * vw, foreground.size.y * vh);
             anchor_image(sprite, tex.getSize(), box, anchor, foreground.fit);
-            sprite.scale(scale, scale);
-            sprite.rotate(rotation);
+            sprite.scale({scale, scale});
+            sprite.rotate(sf::degrees(rotation));
             sprite.setColor(with_alpha(foreground.tint, opacity));
             target.draw(sprite);
         } catch (const std::exception& e) {
@@ -547,7 +552,7 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
         if (slide.text_band.height > 0.0f) {
             const float bh = slide.text_band.height * vh;
             sf::RectangleShape band(sf::Vector2f(vw, bh));
-            band.setPosition(0.0f, vh - bh);
+            band.setPosition({0.0f, vh - bh});
             band.setFillColor(with_alpha(slide.text_band.color, opacity));
             target.draw(band);
         }
@@ -593,7 +598,7 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
     if (fa > 0.0f) {
         sf::RectangleShape overlay(sf::Vector2f(vw, vh));
         sf::Color c = data_.slides[current_].fade.color;
-        c.a = static_cast<sf::Uint8>(std::clamp(fa, 0.0f, 1.0f) * 255.0f);
+        c.a = static_cast<std::uint8_t>(std::clamp(fa, 0.0f, 1.0f) * 255.0f);
         overlay.setFillColor(c);
         target.draw(overlay);
     }
@@ -605,44 +610,45 @@ void CutsceneScene::draw(sf::RenderTarget& target) const {
         if (const sf::Font* font = fallback_font_) {
 #if defined(SFML_SYSTEM_ANDROID)
             const sf::FloatRect button = skip_button_bounds(vw, vh);
-            sf::RectangleShape background({button.width, button.height});
-            background.setPosition(button.left, button.top);
+            sf::RectangleShape background({button.size.x, button.size.y});
+            background.setPosition({button.position.x, button.position.y});
             background.setFillColor(sf::Color(12, 12, 16, 210));
             background.setOutlineColor(sf::Color(200, 200, 210, 230));
             background.setOutlineThickness(1.0f);
             target.draw(background);
 
-            sf::Text skip(pac::core::utf8(ctx_.strings.ui_label("cutscene_skip_button")),
-                          *font,
+            sf::Text skip(*font,
+                          pac::core::utf8(ctx_.strings.ui_label("cutscene_skip_button")),
                           kSkipTextSize);
             skip.setFillColor(sf::Color(235, 235, 242));
             const sf::FloatRect skip_bounds = skip.getLocalBounds();
-            skip.setPosition(
-                button.left + (button.width - skip_bounds.width) * 0.5f - skip_bounds.left,
-                button.top + (button.height - skip_bounds.height) * 0.5f - skip_bounds.top - 1.0f);
+            skip.setPosition({button.position.x + (button.size.x - skip_bounds.size.x) * 0.5f -
+                                  skip_bounds.position.x,
+                              button.position.y + (button.size.y - skip_bounds.size.y) * 0.5f -
+                                  skip_bounds.position.y - 1.0f});
             target.draw(skip);
 
             if (data_.mode == CutsceneAdvanceMode::Manual) {
-                sf::Text hint(pac::core::utf8(ctx_.strings.ui_label("manual_continue_touch_hint")),
-                              *font,
+                sf::Text hint(*font,
+                              pac::core::utf8(ctx_.strings.ui_label("manual_continue_touch_hint")),
                               kHintTextSize);
                 hint.setFillColor(sf::Color(200, 200, 210, 220));
                 const sf::FloatRect hint_bounds = hint.getLocalBounds();
-                hint.setPosition(button.left - kHintButtonGap - hint_bounds.width -
-                                     hint_bounds.left,
-                                 button.top + (button.height - hint_bounds.height) * 0.5f -
-                                     hint_bounds.top - 1.0f);
+                hint.setPosition({button.position.x - kHintButtonGap - hint_bounds.size.x -
+                                      hint_bounds.position.x,
+                                  button.position.y + (button.size.y - hint_bounds.size.y) * 0.5f -
+                                      hint_bounds.position.y - 1.0f});
                 target.draw(hint);
             }
 #else
             const std::string label = ctx_.strings.ui_label(
                 data_.mode == CutsceneAdvanceMode::Manual ? "manual_continue_hint"
                                                           : "cutscene_skip_hint");
-            sf::Text hint(pac::core::utf8(label), *font, kHintTextSize);
+            sf::Text hint(*font, pac::core::utf8(label), kHintTextSize);
             hint.setFillColor(sf::Color(200, 200, 210, 220));
             const sf::FloatRect bounds = hint.getLocalBounds();
-            hint.setPosition(vw - bounds.width - kHintMargin - bounds.left,
-                             vh - bounds.height - kHintMargin - bounds.top);
+            hint.setPosition({vw - bounds.size.x - kHintMargin - bounds.position.x,
+                              vh - bounds.size.y - kHintMargin - bounds.position.y});
             target.draw(hint);
 #endif
         }

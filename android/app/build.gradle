@@ -50,10 +50,8 @@ android {
 
     buildTypes {
         debug {
-            manifestPlaceholders = [sfmlActivityLib: "sfml-activity-d"]
         }
         release {
-            manifestPlaceholders = [sfmlActivityLib: "sfml-activity"]
             // Installable QA artifact. Store publication will replace this with
             // the production/upload signing configuration.
             signingConfig signingConfigs.debug
@@ -81,7 +79,7 @@ android {
 
     packaging {
         jniLibs {
-            // SFML 2's bootstrap activity resolves libraries through
+            // The native activity resolves libraries through
             // ApplicationInfo.nativeLibraryDir and expects real files there.
             useLegacyPackaging = true
         }

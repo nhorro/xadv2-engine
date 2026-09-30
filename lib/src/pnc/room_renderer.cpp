@@ -99,9 +99,9 @@ void draw_shaded_sprite(sf::RenderTarget& target,
         sf::Sprite sprite(tex, sub);
         sprite.setPosition(position);
         if (uniform_scale != 1.0f) {
-            sprite.setScale(uniform_scale, uniform_scale);
+            sprite.setScale({uniform_scale, uniform_scale});
         }
-        sprite.setRotation(rotation);
+        sprite.setRotation(sf::degrees(rotation));
         sf::RenderStates states;
         if (n == 1) {
             const gfx::ShaderEffect* fx = first_applicable(effects);
@@ -122,18 +122,18 @@ void draw_shaded_sprite(sf::RenderTarget& target,
         sf::Sprite sprite(tex, sub);
         sprite.setPosition(position);
         if (uniform_scale != 1.0f) {
-            sprite.setScale(uniform_scale, uniform_scale);
+            sprite.setScale({uniform_scale, uniform_scale});
         }
-        sprite.setRotation(rotation);
+        sprite.setRotation(sf::degrees(rotation));
         target.draw(sprite);
         return;
     }
-    sf::Sprite blit(*result, sf::IntRect(0, 0, sub.width, sub.height));
+    sf::Sprite blit(*result, sf::IntRect({0, 0}, {sub.size.x, sub.size.y}));
     blit.setPosition(position);
     if (uniform_scale != 1.0f) {
-        blit.setScale(uniform_scale, uniform_scale);
+        blit.setScale({uniform_scale, uniform_scale});
     }
-    blit.setRotation(rotation);
+    blit.setRotation(sf::degrees(rotation));
     target.draw(blit);
 }
 
@@ -180,10 +180,9 @@ void RoomRenderer::draw(sf::RenderTarget& target,
             [this, &resources, &log, image, origin, scale, fx, shader_time](sf::RenderTarget& t) {
                 try {
                     const sf::Texture& tex = resources.texture(image);
-                    const sf::IntRect full(0,
-                                           0,
-                                           static_cast<int>(tex.getSize().x),
-                                           static_cast<int>(tex.getSize().y));
+                    const sf::IntRect full(
+                        {0, 0},
+                        {static_cast<int>(tex.getSize().x), static_cast<int>(tex.getSize().y)});
                     draw_shaded_sprite(t,
                                        chain_,
                                        resources,
@@ -248,16 +247,15 @@ void RoomRenderer::draw(sf::RenderTarget& target,
             [this, &resources, &log, image, bounds, effective, shader_time](sf::RenderTarget& t) {
                 try {
                     const sf::Texture& tex = resources.texture(image);
-                    const sf::IntRect full(0,
-                                           0,
-                                           static_cast<int>(tex.getSize().x),
-                                           static_cast<int>(tex.getSize().y));
+                    const sf::IntRect full(
+                        {0, 0},
+                        {static_cast<int>(tex.getSize().x), static_cast<int>(tex.getSize().y)});
                     draw_shaded_sprite(t,
                                        chain_,
                                        resources,
                                        tex,
                                        full,
-                                       sf::Vector2f(bounds.left, bounds.top),
+                                       sf::Vector2f(bounds.position.x, bounds.position.y),
                                        1.0f,
                                        effective,
                                        shader_time);
@@ -281,7 +279,7 @@ void RoomRenderer::draw(sf::RenderTarget& target,
                 room.object_animated(id) ? room.object_sprite(id) : nullptr) {
             const sf::FloatRect b = spr->global_bounds();
             float z = object.baseline ? *object.baseline
-                      : object.z_auto ? b.top + b.height
+                      : object.z_auto ? b.position.y + b.size.y
                                       : object.z;
             items.emplace_back(z, [spr, &resources, shader_time, this](sf::RenderTarget& t) {
                 spr->draw(t, resources, shader_time, &chain_);
@@ -299,15 +297,13 @@ void RoomRenderer::draw(sf::RenderTarget& target,
             const sf::Texture& tex = resources.texture(image);
             if (!object.baseline && object.z_auto) {
                 sf::Transform transform;
-                transform.translate(pos.x, pos.y);
-                transform.rotate(obj_rotation);
-                transform.scale(obj_scale, obj_scale);
+                transform.translate({pos.x, pos.y});
+                transform.rotate(sf::degrees(obj_rotation));
+                transform.scale({obj_scale, obj_scale});
                 const sf::FloatRect bounds = transform.transformRect(
-                    {0.0f,
-                     0.0f,
-                     static_cast<float>(tex.getSize().x),
-                     static_cast<float>(tex.getSize().y)});
-                z = bounds.top + bounds.height;
+                    {{0.0f, 0.0f},
+                     {static_cast<float>(tex.getSize().x), static_cast<float>(tex.getSize().y)}});
+                z = bounds.position.y + bounds.size.y;
             }
         } catch (const std::exception& e) {
             log.error(e.what());
@@ -327,10 +323,9 @@ void RoomRenderer::draw(sf::RenderTarget& target,
              shader_time](sf::RenderTarget& t) {
                 try {
                     const sf::Texture& tex = resources.texture(image);
-                    const sf::IntRect full(0,
-                                           0,
-                                           static_cast<int>(tex.getSize().x),
-                                           static_cast<int>(tex.getSize().y));
+                    const sf::IntRect full(
+                        {0, 0},
+                        {static_cast<int>(tex.getSize().x), static_cast<int>(tex.getSize().y)});
                     draw_shaded_sprite(t,
                                        chain_,
                                        resources,
@@ -372,7 +367,7 @@ void RoomRenderer::draw(sf::RenderTarget& target,
         const std::string image = pac::core::logical_join(room_dir, src->image);
         const geom::Point origin = src->origin;
         const float scale = src->scale;
-        sf::VertexArray fan(sf::TriangleFan, wb.area.size());
+        sf::VertexArray fan(sf::PrimitiveType::TriangleFan, wb.area.size());
         for (std::size_t i = 0; i < wb.area.size(); ++i) {
             const geom::Point& p = wb.area[i];
             fan[i].position = sf::Vector2f(p.x, p.y);

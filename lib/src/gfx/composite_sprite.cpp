@@ -323,8 +323,8 @@ std::vector<sf::Transform> CompositeSprite::node_transforms() const {
     }
     sf::Transform root_local;
     root_local.translate(nodes_[0].definition.offset);
-    root_local.rotate(nodes_[0].rotation);
-    root_local.scale(nodes_[0].definition.scale, nodes_[0].definition.scale);
+    root_local.rotate(sf::degrees(nodes_[0].rotation));
+    root_local.scale({nodes_[0].definition.scale, nodes_[0].definition.scale});
     transforms[0] = getTransform() * root_local;
 
     for (std::size_t i = 1; i < nodes_.size(); ++i) {
@@ -336,8 +336,8 @@ std::vector<sf::Transform> CompositeSprite::node_transforms() const {
             node.sprite.anchor_local(node.definition.child_anchor).value_or(sf::Vector2f());
         sf::Transform local;
         local.translate(parent_anchor + node.definition.offset);
-        local.rotate(node.rotation);
-        local.scale(node.definition.scale, node.definition.scale);
+        local.rotate(sf::degrees(node.rotation));
+        local.scale({node.definition.scale, node.definition.scale});
         local.translate(-child_anchor);
         transforms[i] = transforms[node.parent] * local;
     }
@@ -353,18 +353,18 @@ sf::FloatRect CompositeSprite::global_bounds() const {
     float bottom = std::numeric_limits<float>::lowest();
     for (std::size_t i = 0; i < nodes_.size(); ++i) {
         const sf::FloatRect local = nodes_[i].sprite.local_bounds();
-        if (local.width <= 0.0f || local.height <= 0.0f) {
+        if (local.size.x <= 0.0f || local.size.y <= 0.0f) {
             continue;
         }
         const sf::FloatRect bounds = transforms[i].transformRect(local);
         any = true;
-        left = std::min(left, bounds.left);
-        top = std::min(top, bounds.top);
-        right = std::max(right, bounds.left + bounds.width);
-        bottom = std::max(bottom, bounds.top + bounds.height);
+        left = std::min(left, bounds.position.x);
+        top = std::min(top, bounds.position.y);
+        right = std::max(right, bounds.position.x + bounds.size.x);
+        bottom = std::max(bottom, bounds.position.y + bounds.size.y);
     }
-    return any ? sf::FloatRect(left, top, right - left, bottom - top)
-               : sf::FloatRect(getPosition().x, getPosition().y, 0.0f, 0.0f);
+    return any ? sf::FloatRect({left, top}, {right - left, bottom - top})
+               : sf::FloatRect({getPosition().x, getPosition().y}, {0.0f, 0.0f});
 }
 
 std::optional<sf::Vector2f> CompositeSprite::anchor_world(const std::string& name) const {

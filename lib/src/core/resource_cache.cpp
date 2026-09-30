@@ -2,23 +2,8 @@
 
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/resource_source.hpp"
-#include "gfx/gles2_compat.hpp"
 
-#include <SFML/Config.hpp>
-
-namespace {
-
-#if defined(SFML_SYSTEM_ANDROID)
-std::string gles2_shader_variant(const std::string& logical) {
-    constexpr const char* suffix = ".frag";
-    if (logical.size() >= 5 && logical.compare(logical.size() - 5, 5, suffix) == 0) {
-        return logical.substr(0, logical.size() - 5) + ".gles.frag";
-    }
-    return logical + ".gles";
-}
-#endif
-
-} // namespace
+#include <cstdint>
 
 namespace pac::core {
 
@@ -75,7 +60,7 @@ const sf::Font* ResourceCache::try_font(const std::string& logical) {
         return nullptr;
     }
     auto [pos, inserted] = fonts_.try_emplace(logical);
-    if (!pos->second.loadFromMemory(bytes->data(), bytes->size())) {
+    if (!pos->second.openFromMemory(bytes->data(), bytes->size())) {
         fonts_.erase(pos);
         log_.warn("font: could not decode '" + logical + "'");
         return nullptr;
@@ -164,38 +149,22 @@ ShaderProgram* ResourceCache::shader(const std::string& logical) {
         return nullptr;
     }
     std::string source;
-    std::string selected_logical = logical;
     try {
-#if defined(SFML_SYSTEM_ANDROID)
-        const std::string variant = gles2_shader_variant(logical);
-        if (source_.exists(variant)) {
-            selected_logical = variant;
-        }
-#endif
-        source = source_.read_text(selected_logical);
+        source = source_.read_text(logical);
     } catch (const std::exception& e) {
         log_.error(std::string("shader: ") + e.what());
         shaders_.emplace(logical, nullptr);
         return nullptr;
     }
     auto program = std::make_unique<ShaderProgram>();
-#if defined(SFML_SYSTEM_ANDROID)
-    const std::string es_source = pac::gfx::make_gles2_fragment_shader(source);
-    const bool loaded = program->shader.loadFromMemory(pac::gfx::gles2_vertex_shader_source(),
-                                                        es_source);
-#else
-    const bool loaded = program->shader.loadFromMemory(source, sf::Shader::Fragment);
-#endif
+    const bool loaded = program->shader.loadFromMemory(source, sf::Shader::Type::Fragment);
+
     if (!loaded) {
-        log_.error("shader: '" + selected_logical + "' failed to compile");
+        log_.error("shader: '" + logical + "' failed to compile");
         shaders_.emplace(logical, nullptr);
         return nullptr;
     }
-#if defined(SFML_SYSTEM_ANDROID)
-    if (selected_logical != logical) {
-        log_.info("shader: using Android variant '" + selected_logical + "'");
-    }
-#endif
+
     program->uses_time = shader_source_uses(source, "u_time");
     program->uses_resolution = shader_source_uses(source, "u_resolution");
     program->uses_texture = shader_source_uses(source, "texture");
@@ -214,7 +183,7 @@ ResourceStats ResourceCache::stats() const {
     s.font_count = fonts_.size();
     s.sound_count = sounds_.size();
     for (const auto& [logical, buf] : sounds_) {
-        s.sound_bytes += static_cast<std::size_t>(buf.getSampleCount()) * sizeof(sf::Int16);
+        s.sound_bytes += static_cast<std::size_t>(buf.getSampleCount()) * sizeof(std::int16_t);
     }
     // A present key with a null program records a load that already failed; only
     // count programs that actually hold a compiled shader.

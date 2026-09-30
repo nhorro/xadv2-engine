@@ -1,7 +1,5 @@
 #include "engine/pnc/widget_presentation.hpp"
 
-#include "gfx/gles2_compat.hpp"
-
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/RenderTexture.hpp>
@@ -10,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <utility>
 
 namespace pac::pnc {
@@ -17,8 +16,8 @@ namespace pac::pnc {
 sf::Vector2f place_widget(sf::FloatRect container,
                           sf::Vector2f widget_size,
                           const WidgetPlacement& placement) {
-    const sf::Vector2f point{container.left + container.width * placement.position.x,
-                            container.top + container.height * placement.position.y};
+    const sf::Vector2f point{container.position.x + container.size.x * placement.position.x,
+                             container.position.y + container.size.y * placement.position.y};
     sf::Vector2f anchor_factor;
     switch (placement.anchor) {
     case WidgetAnchor::TOP_LEFT: anchor_factor = {0.0f, 0.0f}; break;
@@ -41,13 +40,13 @@ WidgetPresentation::WidgetPresentation(bool initially_visible, WidgetTransition 
       progress_(initially_visible ? 1.0f : 0.0f) {}
 
 void WidgetPresentation::set_position(sf::Vector2f position) {
-    bounds_.left = position.x;
-    bounds_.top = position.y;
+    bounds_.position.x = position.x;
+    bounds_.position.y = position.y;
 }
 
 void WidgetPresentation::set_size(sf::Vector2f size) {
-    bounds_.width = std::max(0.0f, size.x);
-    bounds_.height = std::max(0.0f, size.y);
+    bounds_.size.x = std::max(0.0f, size.x);
+    bounds_.size.y = std::max(0.0f, size.y);
 }
 
 void WidgetPresentation::set_opacity(float opacity) {
@@ -87,10 +86,8 @@ void WidgetPresentation::update(float dt) {
 }
 
 sf::FloatRect WidgetPresentation::bounds() const {
-    return {bounds_.left + translation_.x,
-            bounds_.top + translation_.y,
-            bounds_.width,
-            bounds_.height};
+    return {{bounds_.position.x + translation_.x, bounds_.position.y + translation_.y},
+            {bounds_.size.x, bounds_.size.y}};
 }
 
 float WidgetPresentation::opacity() const {
@@ -114,16 +111,17 @@ void WidgetSurface::draw(sf::RenderTarget& target,
                          const std::function<void(sf::RenderTarget&)>& painter) const {
     if (!presentation.rendered() || presentation.opacity() <= 0.0f) return;
     const sf::FloatRect bounds = presentation.bounds();
-    const unsigned width = std::max(1u, static_cast<unsigned>(std::ceil(bounds.width)));
-    const unsigned height = std::max(1u, static_cast<unsigned>(std::ceil(bounds.height)));
+    const unsigned width = std::max(1u, static_cast<unsigned>(std::ceil(bounds.size.x)));
+    const unsigned height = std::max(1u, static_cast<unsigned>(std::ceil(bounds.size.y)));
     if (!texture_ || texture_->getSize() != sf::Vector2u{width, height}) {
         auto next = std::make_unique<sf::RenderTexture>();
-        if (!next->create(width, height)) return;
+        if (!next->resize({width, height}))
+            return;
         // RenderTextures are independent RenderTargets. On Android they need
         // the engine's GLES default shader just like the main window; otherwise
         // the first unshaded widget primitive dereferences a null shader in
         // sf::RenderTarget::setupDraw().
-        pac::gfx::configure_gles2_target(*next);
+
         texture_ = std::move(next);
     }
     texture_->setView(sf::View(content_bounds));
@@ -131,8 +129,9 @@ void WidgetSurface::draw(sf::RenderTarget& target,
     painter(*texture_);
     texture_->display();
     sf::Sprite sprite(texture_->getTexture());
-    sprite.setPosition(bounds.left, bounds.top);
-    sprite.setColor({255, 255, 255, static_cast<sf::Uint8>(std::lround(255.0f * presentation.opacity()))});
+    sprite.setPosition({bounds.position.x, bounds.position.y});
+    sprite.setColor(
+        {255, 255, 255, static_cast<std::uint8_t>(std::lround(255.0f * presentation.opacity()))});
     target.draw(sprite);
 }
 

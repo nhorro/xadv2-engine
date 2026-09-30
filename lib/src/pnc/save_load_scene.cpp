@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <ctime>
 #include <exception>
@@ -90,7 +91,8 @@ std::string format_unix_seconds(std::int64_t s) {
 }
 
 bool contains(const sf::FloatRect& r, float x, float y) {
-    return x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height;
+    return x >= r.position.x && x <= r.position.x + r.size.x && y >= r.position.y &&
+           y <= r.position.y + r.size.y;
 }
 
 } // namespace
@@ -185,14 +187,14 @@ void SaveLoadScene::refresh_summaries() {
     const float bk_w = 180.0f;
     const float bk_y = top0 + total_h + 24.0f;
     back_button_ =
-        sf::FloatRect((static_cast<float>(vres.x) - bk_w) / 2.0f, bk_y, bk_w, kButtonH + 4.0f);
+        sf::FloatRect({(static_cast<float>(vres.x) - bk_w) / 2.0f, bk_y}, {bk_w, kButtonH + 4.0f});
 }
 
 void SaveLoadScene::compute_row_rects(float top, SlotView& v) const {
     const sf::Vector2u vres = ctx_.display.virtual_resolution();
     const float panel_left = (static_cast<float>(vres.x) - kPanelWidth) / 2.0f;
 
-    v.row = sf::FloatRect(panel_left, top, kPanelWidth, kRowHeight);
+    v.row = sf::FloatRect({panel_left, top}, {kPanelWidth, kRowHeight});
 
     const float input_top = top + (kRowHeight - kInputH) - kInnerPad;
     // The input fills the space between the thumb and the button. Reserved for
@@ -201,14 +203,14 @@ void SaveLoadScene::compute_row_rects(float top, SlotView& v) const {
     if (mode_ == Mode::SAVE && manual) {
         const float input_left = panel_left + kThumbW + kInnerPad * 2.0f;
         const float input_w = kPanelWidth - kThumbW - kButtonW - kInnerPad * 4.0f;
-        v.input_rect = sf::FloatRect(input_left, input_top, input_w, kInputH);
+        v.input_rect = sf::FloatRect({input_left, input_top}, {input_w, kInputH});
     } else {
         v.input_rect = sf::FloatRect();
     }
 
     const float btn_top = top + (kRowHeight - kButtonH) / 2.0f;
     const float btn_left = panel_left + kPanelWidth - kButtonW - kInnerPad;
-    v.button = sf::FloatRect(btn_left, btn_top, kButtonW, kButtonH);
+    v.button = sf::FloatRect({btn_left, btn_top}, {kButtonW, kButtonH});
 }
 
 std::string SaveLoadScene::format_when(const SlotView& view) const {
@@ -244,38 +246,40 @@ std::string SaveLoadScene::format_when(const SlotView& view) const {
 }
 
 void SaveLoadScene::handle_event(const sf::Event& event) {
-    if (event.type == sf::Event::MouseMoved) {
+    if (event.is<sf::Event::MouseMoved>()) {
         const int previous_row = hovered_row_;
         const bool previous_back = back_hovered_;
         hovered_row_ = -1;
         for (std::size_t i = 0; i < rows_.size(); ++i) {
             if (contains(rows_[i].row,
-                         static_cast<float>(event.mouseMove.x),
-                         static_cast<float>(event.mouseMove.y))) {
+                         static_cast<float>(event.getIf<sf::Event::MouseMoved>()->position.x),
+                         static_cast<float>(event.getIf<sf::Event::MouseMoved>()->position.y))) {
                 hovered_row_ = static_cast<int>(i);
                 break;
             }
         }
-        back_hovered_ = contains(back_button_,
-                                 static_cast<float>(event.mouseMove.x),
-                                 static_cast<float>(event.mouseMove.y));
+        back_hovered_ =
+            contains(back_button_,
+                     static_cast<float>(event.getIf<sf::Event::MouseMoved>()->position.x),
+                     static_cast<float>(event.getIf<sf::Event::MouseMoved>()->position.y));
         if ((hovered_row_ >= 0 && hovered_row_ != previous_row) ||
             (back_hovered_ && !previous_back)) {
             ui_sounds_.selection(ctx_);
         }
         return;
     }
-    if (event.type == sf::Event::MouseButtonReleased &&
-        event.mouseButton.button == sf::Mouse::Left) {
-        on_click(static_cast<float>(event.mouseButton.x), static_cast<float>(event.mouseButton.y));
+    if (event.is<sf::Event::MouseButtonReleased>() &&
+        event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Left) {
+        on_click(static_cast<float>(event.getIf<sf::Event::MouseButtonReleased>()->position.x),
+                 static_cast<float>(event.getIf<sf::Event::MouseButtonReleased>()->position.y));
         return;
     }
-    if (event.type == sf::Event::TextEntered) {
-        on_text(event.text.unicode);
+    if (event.is<sf::Event::TextEntered>()) {
+        on_text(event.getIf<sf::Event::TextEntered>()->unicode);
         return;
     }
-    if (event.type == sf::Event::KeyPressed) {
-        on_key(event.key.code);
+    if (event.is<sf::Event::KeyPressed>()) {
+        on_key(event.getIf<sf::Event::KeyPressed>()->code);
         return;
     }
 }
@@ -314,7 +318,7 @@ void SaveLoadScene::on_click(float vx, float vy) {
     }
 }
 
-void SaveLoadScene::on_text(sf::Uint32 codepoint) {
+void SaveLoadScene::on_text(std::uint32_t codepoint) {
     if (mode_ != Mode::SAVE || focused_row_ < 0 || focused_row_ >= static_cast<int>(rows_.size())) {
         return;
     }
@@ -336,16 +340,16 @@ void SaveLoadScene::on_text(sf::Uint32 codepoint) {
     if (v.draft.getSize() >= kMaxDescriptionLen) {
         return;
     }
-    v.draft += sf::String(static_cast<sf::Uint32>(codepoint));
+    v.draft += sf::String(static_cast<char32_t>(codepoint));
 }
 
 void SaveLoadScene::on_key(sf::Keyboard::Key key) {
     switch (key) {
-    case sf::Keyboard::Escape:
+    case sf::Keyboard::Key::Escape:
         ui_sounds_.activate(ctx_);
         cancel();
         return;
-    case sf::Keyboard::Enter:
+    case sf::Keyboard::Key::Enter:
         if (mode_ == Mode::SAVE && focused_row_ >= 0 &&
             focused_row_ < static_cast<int>(rows_.size())) {
             SlotView& v = rows_[static_cast<std::size_t>(focused_row_)];
@@ -355,10 +359,10 @@ void SaveLoadScene::on_key(sf::Keyboard::Key key) {
             }
         }
         return;
-    case sf::Keyboard::BackSpace:
+    case sf::Keyboard::Key::Backspace:
         on_text(8u);
         return;
-    case sf::Keyboard::Tab:
+    case sf::Keyboard::Key::Tab:
         if (!rows_.empty()) {
             // Cycle through manual rows (skip autosave).
             int next = focused_row_;
@@ -437,8 +441,8 @@ void draw_thumbnail_placeholder(sf::RenderTarget& target,
                                 const sf::FloatRect& dst,
                                 const sf::Font* font,
                                 const std::string& placeholder) {
-    sf::RectangleShape box(sf::Vector2f(dst.width, dst.height));
-    box.setPosition(dst.left, dst.top);
+    sf::RectangleShape box(sf::Vector2f(dst.size.x, dst.size.y));
+    box.setPosition({dst.position.x, dst.position.y});
     box.setFillColor(kSurfaceDeep);
     box.setOutlineColor(kBorderQuiet);
     box.setOutlineThickness(1.0f);
@@ -446,11 +450,11 @@ void draw_thumbnail_placeholder(sf::RenderTarget& target,
     if (!font) {
         return;
     }
-    sf::Text txt(pac::core::utf8(placeholder), *font, 14);
+    sf::Text txt(*font, pac::core::utf8(placeholder), 14);
     txt.setFillColor(kTextMuted);
     const sf::FloatRect b = txt.getLocalBounds();
-    txt.setPosition(dst.left + (dst.width - b.width) / 2.0f - b.left,
-                    dst.top + (dst.height - b.height) / 2.0f - b.top);
+    txt.setPosition({dst.position.x + (dst.size.x - b.size.x) / 2.0f - b.position.x,
+                     dst.position.y + (dst.size.y - b.size.y) / 2.0f - b.position.y});
     target.draw(txt);
 }
 
@@ -461,11 +465,11 @@ void draw_text_at(sf::RenderTarget& target,
                   float y,
                   unsigned size,
                   sf::Color color) {
-    sf::Text txt(pac::core::utf8(s), font, size);
+    sf::Text txt(font, pac::core::utf8(s), size);
     txt.setFillColor(color);
     txt.setOutlineColor(sf::Color(0, 0, 0, 200));
     txt.setOutlineThickness(1.5f);
-    txt.setPosition(x, y);
+    txt.setPosition({x, y});
     target.draw(txt);
 }
 
@@ -475,8 +479,8 @@ void draw_button(sf::RenderTarget& target,
                  const std::string& label,
                  bool enabled,
                  bool hot) {
-    sf::RectangleShape box(sf::Vector2f(rect.width, rect.height));
-    box.setPosition(rect.left, rect.top);
+    sf::RectangleShape box(sf::Vector2f(rect.size.x, rect.size.y));
+    box.setPosition({rect.position.x, rect.position.y});
     if (!enabled) {
         box.setFillColor(kSurface);
         box.setOutlineColor(kBorderQuiet);
@@ -489,11 +493,11 @@ void draw_button(sf::RenderTarget& target,
     if (!font) {
         return;
     }
-    sf::Text txt(pac::core::utf8(label), *font, 18);
+    sf::Text txt(*font, pac::core::utf8(label), 18);
     txt.setFillColor(!enabled ? kTextDisabled : (hot ? kTextStrong : kText));
     const sf::FloatRect b = txt.getLocalBounds();
-    txt.setPosition(rect.left + (rect.width - b.width) / 2.0f - b.left,
-                    rect.top + (rect.height - b.height) / 2.0f - b.top);
+    txt.setPosition({rect.position.x + (rect.size.x - b.size.x) / 2.0f - b.position.x,
+                     rect.position.y + (rect.size.y - b.size.y) / 2.0f - b.position.y});
     target.draw(txt);
 }
 
@@ -503,8 +507,8 @@ void draw_input(sf::RenderTarget& target,
                 const sf::String& text,
                 const std::string& hint,
                 bool focused) {
-    sf::RectangleShape box(sf::Vector2f(rect.width, rect.height));
-    box.setPosition(rect.left, rect.top);
+    sf::RectangleShape box(sf::Vector2f(rect.size.x, rect.size.y));
+    box.setPosition({rect.position.x, rect.position.y});
     box.setFillColor(focused ? kSurfaceDeep : kSurface);
     box.setOutlineColor(focused ? kBorderHot : kBorderQuiet);
     box.setOutlineThickness(focused ? 2.0f : 1.0f);
@@ -513,15 +517,15 @@ void draw_input(sf::RenderTarget& target,
         return;
     }
     const bool empty = text.isEmpty();
-    sf::Text txt(empty ? pac::core::utf8(hint) : text, *font, 16);
+    sf::Text txt(*font, empty ? pac::core::utf8(hint) : text, 16);
     txt.setFillColor(empty ? kTextMuted : kText);
     const sf::FloatRect b = txt.getLocalBounds();
-    txt.setPosition(rect.left + 10.0f - b.left,
-                    rect.top + (rect.height - b.height) / 2.0f - b.top - 1.0f);
+    txt.setPosition({rect.position.x + 10.0f - b.position.x,
+                     rect.position.y + (rect.size.y - b.size.y) / 2.0f - b.position.y - 1.0f});
     target.draw(txt);
     if (focused && !empty) {
-        sf::RectangleShape caret(sf::Vector2f(1.5f, rect.height - 10.0f));
-        caret.setPosition(rect.left + 10.0f + b.width + 2.0f, rect.top + 5.0f);
+        sf::RectangleShape caret(sf::Vector2f(1.5f, rect.size.y - 10.0f));
+        caret.setPosition({rect.position.x + 10.0f + b.size.x + 2.0f, rect.position.y + 5.0f});
         caret.setFillColor(kTextStrong);
         target.draw(caret);
     }
@@ -544,7 +548,7 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
             sf::Sprite sprite(tex);
             const sf::Vector2u ts = tex.getSize();
             if (ts.x > 0 && ts.y > 0) {
-                sprite.setScale(vw / static_cast<float>(ts.x), vh / static_cast<float>(ts.y));
+                sprite.setScale({vw / static_cast<float>(ts.x), vh / static_cast<float>(ts.y)});
             }
             target.draw(sprite);
         } catch (const std::exception& e) {
@@ -565,12 +569,12 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
     if (font_) {
         const std::string title =
             mode_ == Mode::SAVE ? strings.ui_label("save_game") : strings.ui_label("load_game");
-        sf::Text title_text(pac::core::utf8(title), *font_, font_size_ + 14u);
+        sf::Text title_text(*font_, pac::core::utf8(title), font_size_ + 14u);
         title_text.setFillColor(kTextStrong);
         title_text.setOutlineColor(sf::Color(0, 0, 0, 200));
         title_text.setOutlineThickness(2.0f);
         const sf::FloatRect b = title_text.getLocalBounds();
-        title_text.setPosition((vw - b.width) / 2.0f - b.left, top0 - b.height - 36.0f);
+        title_text.setPosition({(vw - b.size.x) / 2.0f - b.position.x, top0 - b.size.y - 36.0f});
         target.draw(title_text);
     }
 
@@ -588,8 +592,8 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
         const bool focused = (focused_row_ == static_cast<int>(i));
         const bool hovered = (hovered_row_ == static_cast<int>(i));
         // Row backplate
-        sf::RectangleShape plate(sf::Vector2f(v.row.width, v.row.height));
-        plate.setPosition(v.row.left, v.row.top);
+        sf::RectangleShape plate(sf::Vector2f(v.row.size.x, v.row.size.y));
+        plate.setPosition({v.row.position.x, v.row.position.y});
         plate.setFillColor(focused ? sf::Color(58, 43, 27, 235)
                                    : sf::Color(24, 20, 16, hovered ? 235 : 216));
         plate.setOutlineColor(focused ? kBorderHot : kBorderQuiet);
@@ -599,22 +603,21 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
         // Thumbnail: the loaded sidecar texture when present (#119), else the
         // placeholder. The thumb rect is the same shape either way so layout
         // (label start, button position) stays identical.
-        sf::FloatRect thumb(v.row.left + kInnerPad,
-                            v.row.top + (v.row.height - kThumbH) / 2.0f,
-                            kThumbW,
-                            kThumbH);
+        sf::FloatRect thumb(
+            {v.row.position.x + kInnerPad, v.row.position.y + (v.row.size.y - kThumbH) / 2.0f},
+            {kThumbW, kThumbH});
         if (v.thumbnail) {
             const sf::Vector2u ts = v.thumbnail->getSize();
             sf::Sprite sprite(*v.thumbnail);
-            sprite.setPosition(thumb.left, thumb.top);
+            sprite.setPosition({thumb.position.x, thumb.position.y});
             if (ts.x > 0 && ts.y > 0) {
-                sprite.setScale(kThumbW / static_cast<float>(ts.x),
-                                kThumbH / static_cast<float>(ts.y));
+                sprite.setScale(
+                    {kThumbW / static_cast<float>(ts.x), kThumbH / static_cast<float>(ts.y)});
             }
             target.draw(sprite);
             // Faint outline so the image reads as a contained "card".
             sf::RectangleShape outline(sf::Vector2f(kThumbW, kThumbH));
-            outline.setPosition(thumb.left, thumb.top);
+            outline.setPosition({thumb.position.x, thumb.position.y});
             outline.setFillColor(sf::Color::Transparent);
             outline.setOutlineColor(kBorderQuiet);
             outline.setOutlineThickness(1.0f);
@@ -631,8 +634,8 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
             draw_text_at(target,
                          *font_,
                          label,
-                         thumb.left + kThumbW + kInnerPad * 2.0f,
-                         v.row.top + kInnerPad,
+                         thumb.position.x + kThumbW + kInnerPad * 2.0f,
+                         v.row.position.y + kInnerPad,
                          font_size_,
                          kText);
 
@@ -648,14 +651,14 @@ void SaveLoadScene::draw(sf::RenderTarget& target) const {
             draw_text_at(target,
                          *font_,
                          secondary,
-                         thumb.left + kThumbW + kInnerPad * 2.0f,
-                         v.row.top + kInnerPad + static_cast<float>(font_size_) + 6.0f,
+                         thumb.position.x + kThumbW + kInnerPad * 2.0f,
+                         v.row.position.y + kInnerPad + static_cast<float>(font_size_) + 6.0f,
                          16,
                          v.exists ? sf::Color(194, 179, 148) : kTextMuted);
         }
 
         // Input (save mode + manual slot).
-        if (v.input_rect.width > 0.0f) {
+        if (v.input_rect.size.x > 0.0f) {
             draw_input(target, font_, v.input_rect, v.draft, desc_hint, focused);
         }
 

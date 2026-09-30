@@ -7,6 +7,7 @@
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Window/VideoMode.hpp>
 
+#include <cstdint>
 #include <filesystem>
 
 using namespace pac::core;
@@ -16,11 +17,11 @@ TEST_CASE("full screenshot remains window-sized after thumbnail framebuffer capt
         std::filesystem::temp_directory_path() / "pac_full_screenshot_after_thumbnail.png";
     std::filesystem::remove(path);
 
-    sf::RenderWindow window(sf::VideoMode(320, 180), "screenshot test", sf::Style::None);
+    sf::RenderWindow window(sf::VideoMode({320, 180}), "screenshot test", sf::Style::None);
     Display display({1280, 720}, {320, 180}, false);
     Thumbnail thumbnail;
     for (int capture = 0; capture < 5; ++capture) {
-        window.clear(sf::Color(20, 40, static_cast<sf::Uint8>(60 + capture)));
+        window.clear(sf::Color(20, 40, static_cast<std::uint8_t>(60 + capture)));
         thumbnail.capture(window, display.viewport());
         REQUIRE(thumbnail.valid());
         REQUIRE(save_screenshot(window, path));

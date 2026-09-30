@@ -56,12 +56,13 @@ void StoryTextScene::finish() {
 }
 
 void StoryTextScene::handle_event(const sf::Event& event) {
-    const bool skip_key =
-        event.type == sf::Event::KeyPressed &&
-        (event.key.code == sf::Keyboard::Enter || event.key.code == sf::Keyboard::Space ||
-         event.key.code == sf::Keyboard::Escape);
+    const bool skip_key = event.is<sf::Event::KeyPressed>() &&
+                          (event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Enter ||
+                           event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Space ||
+                           event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Escape);
     const bool skip_click =
-        event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left;
+        event.is<sf::Event::MouseButtonReleased>() &&
+        event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Left;
     if (skip_key || skip_click) {
         finish();
     }

@@ -25,7 +25,7 @@ TEST_CASE("layout_dialog_options: short list fits one page, no arrows") {
     const std::vector<std::string> labels{"look", "talk", "leave"};
     const DialogPageLayout l = layout_dialog_options(labels,
                                                      0,
-                                                     {0.0f, 0.0f, 100.0f, 100.0f},
+                                                     {{0.0f, 0.0f}, {100.0f, 100.0f}},
                                                      10.0f,
                                                      5.0f,
                                                      10.0f,
@@ -39,16 +39,16 @@ TEST_CASE("layout_dialog_options: short list fits one page, no arrows") {
     CHECK(l.rows[0].option_index == 0);
     CHECK(l.rows[2].option_index == 2);
     // Single-line options at line_height 10, gap 5: rows stack from the top.
-    CHECK(l.rows[0].rect.top == doctest::Approx(0.0f));
-    CHECK(l.rows[1].rect.top == doctest::Approx(15.0f));
-    CHECK(l.rows[2].rect.top == doctest::Approx(30.0f));
+    CHECK(l.rows[0].rect.position.y == doctest::Approx(0.0f));
+    CHECK(l.rows[1].rect.position.y == doctest::Approx(15.0f));
+    CHECK(l.rows[2].rect.position.y == doctest::Approx(30.0f));
 }
 
 TEST_CASE("layout_dialog_options: reserves a gutter and wraps at word boundaries") {
     // area width 40, arrow_size 10, gap 5 -> text width 40 - (10 + 5) = 25.
     const DialogPageLayout l = layout_dialog_options({kTwoLine},
                                                      0,
-                                                     {0.0f, 0.0f, 40.0f, 200.0f},
+                                                     {{0.0f, 0.0f}, {40.0f, 200.0f}},
                                                      10.0f,
                                                      5.0f,
                                                      10.0f,
@@ -58,14 +58,14 @@ TEST_CASE("layout_dialog_options: reserves a gutter and wraps at word boundaries
     CHECK(l.rows[0].lines[0] == "aaaaaaaaaaaaa"); // last word fully on its own line
     CHECK(l.rows[0].lines[1] == "bbbbbbbbbbbbb");
     // The wrapped option is two lines tall.
-    CHECK(l.rows[0].rect.width == doctest::Approx(25.0f));
-    CHECK(l.rows[0].rect.height == doctest::Approx(20.0f));
+    CHECK(l.rows[0].rect.size.x == doctest::Approx(25.0f));
+    CHECK(l.rows[0].rect.size.y == doctest::Approx(20.0f));
 }
 
 TEST_CASE("layout_dialog_options: packs whole options across pages") {
     // area height 35, line_height 10, gap 5 -> two single-line options per page.
     const std::vector<std::string> labels{"a", "b", "c", "d", "e"};
-    const sf::FloatRect area{0.0f, 0.0f, 40.0f, 35.0f};
+    const sf::FloatRect area{{0.0f, 0.0f}, {40.0f, 35.0f}};
 
     const DialogPageLayout p0 =
         layout_dialog_options(labels, 0, area, 10.0f, 5.0f, 10.0f, by_chars);
@@ -85,7 +85,7 @@ TEST_CASE("layout_dialog_options: packs whole options across pages") {
     CHECK(p1.rows[0].option_index == 2);
     CHECK(p1.rows[1].option_index == 3);
     // Page rows always restart at the top of the area.
-    CHECK(p1.rows[0].rect.top == doctest::Approx(0.0f));
+    CHECK(p1.rows[0].rect.position.y == doctest::Approx(0.0f));
 
     const DialogPageLayout p2 =
         layout_dialog_options(labels, 2, area, 10.0f, 5.0f, 10.0f, by_chars);
@@ -99,7 +99,7 @@ TEST_CASE("layout_dialog_options: promotes a too-tall option to the next page (n
     // area height 30; option 0 is one line (10), option 1 wraps to two lines (20):
     // 10 + gap 5 + 20 = 35 > 30, so option 1 is promoted whole to page 2.
     const std::vector<std::string> labels{"a", kTwoLine};
-    const sf::FloatRect area{0.0f, 0.0f, 40.0f, 30.0f};
+    const sf::FloatRect area{{0.0f, 0.0f}, {40.0f, 30.0f}};
 
     const DialogPageLayout p0 =
         layout_dialog_options(labels, 0, area, 10.0f, 5.0f, 10.0f, by_chars);
@@ -118,7 +118,7 @@ TEST_CASE("layout_dialog_options: an option taller than a whole page still gets 
     // Page capacity ~3 lines (height 30 / line 10); a 4-line option overflows but
     // is placed alone rather than clipped.
     const std::vector<std::string> labels{"a", kFourLine};
-    const sf::FloatRect area{0.0f, 0.0f, 40.0f, 30.0f};
+    const sf::FloatRect area{{0.0f, 0.0f}, {40.0f, 30.0f}};
 
     const DialogPageLayout p1 =
         layout_dialog_options(labels, 1, area, 10.0f, 5.0f, 10.0f, by_chars);
@@ -130,8 +130,13 @@ TEST_CASE("layout_dialog_options: an option taller than a whole page still gets 
 
 TEST_CASE("layout_dialog_options: clamps an out-of-range page index") {
     const std::vector<std::string> labels{"a", "b", "c", "d", "e"};
-    const DialogPageLayout l =
-        layout_dialog_options(labels, 99, {0.0f, 0.0f, 40.0f, 35.0f}, 10.0f, 5.0f, 10.0f, by_chars);
+    const DialogPageLayout l = layout_dialog_options(labels,
+                                                     99,
+                                                     {{0.0f, 0.0f}, {40.0f, 35.0f}},
+                                                     10.0f,
+                                                     5.0f,
+                                                     10.0f,
+                                                     by_chars);
     CHECK(l.page_index == 2); // last page (3 pages total)
     REQUIRE(l.rows.size() == 1);
     CHECK(l.rows[0].option_index == 4);
@@ -139,18 +144,23 @@ TEST_CASE("layout_dialog_options: clamps an out-of-range page index") {
 
 TEST_CASE("layout_dialog_options: arrow rects sit in the right-hand gutter") {
     const std::vector<std::string> labels{"a", "b", "c", "d", "e"};
-    const DialogPageLayout l =
-        layout_dialog_options(labels, 1, {0.0f, 0.0f, 40.0f, 35.0f}, 10.0f, 5.0f, 10.0f, by_chars);
+    const DialogPageLayout l = layout_dialog_options(labels,
+                                                     1,
+                                                     {{0.0f, 0.0f}, {40.0f, 35.0f}},
+                                                     10.0f,
+                                                     5.0f,
+                                                     10.0f,
+                                                     by_chars);
     // arrow_size 10 -> gutter column at x = 40 - 10 = 30.
-    CHECK(l.prev_arrow.left == doctest::Approx(30.0f));
-    CHECK(l.prev_arrow.top == doctest::Approx(0.0f)); // up arrow at the top
-    CHECK(l.next_arrow.left == doctest::Approx(30.0f));
-    CHECK(l.next_arrow.top == doctest::Approx(25.0f)); // down arrow at the bottom
+    CHECK(l.prev_arrow.position.x == doctest::Approx(30.0f));
+    CHECK(l.prev_arrow.position.y == doctest::Approx(0.0f)); // up arrow at the top
+    CHECK(l.next_arrow.position.x == doctest::Approx(30.0f));
+    CHECK(l.next_arrow.position.y == doctest::Approx(25.0f)); // down arrow at the bottom
 }
 
 TEST_CASE("layout_dialog_options: empty list yields no rows") {
     const DialogPageLayout l =
-        layout_dialog_options({}, 0, {0.0f, 0.0f, 40.0f, 35.0f}, 10.0f, 5.0f, 10.0f, by_chars);
+        layout_dialog_options({}, 0, {{0.0f, 0.0f}, {40.0f, 35.0f}}, 10.0f, 5.0f, 10.0f, by_chars);
     CHECK(l.rows.empty());
     CHECK_FALSE(l.has_prev);
     CHECK_FALSE(l.has_next);
@@ -186,7 +196,7 @@ dialog_widget:
 
 TEST_CASE("widget presentation fades reversibly and keeps geometry independent") {
     WidgetPresentation presentation(false, {1.0f, true});
-    presentation.set_bounds({10.0f, 20.0f, 100.0f, 40.0f});
+    presentation.set_bounds({{10.0f, 20.0f}, {100.0f, 40.0f}});
     presentation.set_translation({4.0f, -2.0f});
     presentation.set_opacity(0.8f);
 
@@ -194,8 +204,8 @@ TEST_CASE("widget presentation fades reversibly and keeps geometry independent")
     presentation.update(0.5f);
     CHECK(presentation.visibility() == WidgetVisibility::SHOWING);
     CHECK(presentation.opacity() == doctest::Approx(0.4f));
-    CHECK(presentation.bounds().left == doctest::Approx(14.0f));
-    CHECK(presentation.bounds().top == doctest::Approx(18.0f));
+    CHECK(presentation.bounds().position.x == doctest::Approx(14.0f));
+    CHECK(presentation.bounds().position.y == doctest::Approx(18.0f));
 
     presentation.hide();
     presentation.update(0.25f);
@@ -211,7 +221,7 @@ TEST_CASE("widget presentation fades reversibly and keeps geometry independent")
 TEST_CASE("widget placement supports future centered and radial-style components") {
     WidgetPlacement placement{{0.5f, 0.5f}, WidgetAnchor::CENTER, {10.0f, -5.0f}};
     const sf::Vector2f origin =
-        place_widget({0.0f, 0.0f, 1280.0f, 720.0f}, {300.0f, 200.0f}, placement);
+        place_widget({{0.0f, 0.0f}, {1280.0f, 720.0f}}, {300.0f, 200.0f}, placement);
     CHECK(origin.x == doctest::Approx(500.0f));
     CHECK(origin.y == doctest::Approx(255.0f));
 }

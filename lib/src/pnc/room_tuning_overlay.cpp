@@ -52,7 +52,7 @@ void draw_label(sf::RenderTarget& target,
     if (!font) {
         return;
     }
-    sf::Text text(label, *font, size);
+    sf::Text text(*font, label, size);
     text.setFillColor(color);
     text.setPosition(position);
     target.draw(text);
@@ -62,12 +62,11 @@ sf::FloatRect
 row_cell(sf::FloatRect region, std::size_t index, std::size_t count, float top, float height) {
     constexpr float margin = 8.0f;
     constexpr float gap = 6.0f;
-    const float available = region.width - margin * 2.0f - gap * static_cast<float>(count - 1);
+    const float available = region.size.x - margin * 2.0f - gap * static_cast<float>(count - 1);
     const float width = available / static_cast<float>(count);
-    return {region.left + margin + static_cast<float>(index) * (width + gap),
-            region.top + top,
-            width,
-            height};
+    return {{region.position.x + margin + static_cast<float>(index) * (width + gap),
+             region.position.y + top},
+            {width, height}};
 }
 
 std::string modulation_name(LightModulation::Type type) {
@@ -406,11 +405,13 @@ void RoomTuningOverlay::rebuild_controls() {
     }
     clamp_selection();
 
-    const float x = region_.left + 8.0f;
-    const float y = region_.top + 5.0f;
+    const float x = region_.position.x + 8.0f;
+    const float y = region_.position.y + 5.0f;
     const float h = 23.0f;
     const auto top_button = [&](float left, float width, std::string label, auto action) {
-        add_button({region_.left + left, y, width, h}, std::move(label), std::move(action));
+        add_button({{region_.position.x + left, y}, {width, h}},
+                   std::move(label),
+                   std::move(action));
     };
     top_button(8.0f, 88.0f, tab_ == Tab::AMBIENT ? "[ Ambient ]" : "Ambient", [this] {
         tab_ = Tab::AMBIENT;
@@ -421,12 +422,12 @@ void RoomTuningOverlay::rebuild_controls() {
     top_button(196.0f, 88.0f, tab_ == Tab::GRADING ? "[ Grading ]" : "Grading", [this] {
         tab_ = Tab::GRADING;
     });
-    top_button(region_.width - 286.0f,
+    top_button(region_.size.x - 286.0f,
                90.0f,
                compare_original_ ? "View: YAML" : "View: Live",
                [this] { compare_original_ = !compare_original_; });
-    top_button(region_.width - 190.0f, 72.0f, "Reset", [this] { reset(); });
-    top_button(region_.width - 112.0f, 104.0f, "Copy YAML", [this] { copy_yaml(); });
+    top_button(region_.size.x - 190.0f, 72.0f, "Reset", [this] { reset(); });
+    top_button(region_.size.x - 112.0f, 104.0f, "Copy YAML", [this] { copy_yaml(); });
 
     if (tab_ == Tab::AMBIENT) {
         const std::array<std::string, 4> labels{"Ambient R", "Ambient G", "Ambient B", "Intensity"};
@@ -452,29 +453,29 @@ void RoomTuningOverlay::rebuild_controls() {
     if (tab_ == Tab::LIGHTS) {
         RoomLight* light = selected_light();
         if (!light) {
-            add_button({x, region_.top + 45.0f, 280.0f, 28.0f},
+            add_button({{x, region_.position.y + 45.0f}, {280.0f, 28.0f}},
                        "No authored lights (ambient is still editable)",
                        {});
             return;
         }
-        add_button({x, region_.top + 34.0f, 30.0f, 21.0f}, "<", [this] {
+        add_button({{x, region_.position.y + 34.0f}, {30.0f, 21.0f}}, "<", [this] {
             selected_light_ =
                 selected_light_ == 0 ? working_lighting_.lights.size() - 1 : selected_light_ - 1;
         });
-        add_button({x + 36.0f, region_.top + 34.0f, 210.0f, 21.0f},
+        add_button({{x + 36.0f, region_.position.y + 34.0f}, {210.0f, 21.0f}},
                    std::to_string(selected_light_ + 1) + "/" +
                        std::to_string(working_lighting_.lights.size()) + "  " + light->id,
                    {});
-        add_button({x + 252.0f, region_.top + 34.0f, 30.0f, 21.0f}, ">", [this] {
+        add_button({{x + 252.0f, region_.position.y + 34.0f}, {30.0f, 21.0f}}, ">", [this] {
             selected_light_ = (selected_light_ + 1) % working_lighting_.lights.size();
         });
-        add_button({x + 294.0f, region_.top + 34.0f, 72.0f, 21.0f},
+        add_button({{x + 294.0f, region_.position.y + 34.0f}, {72.0f, 21.0f}},
                    light_page_ == LightPage::CORE ? "[ Core ]" : "Core",
                    [this] { light_page_ = LightPage::CORE; });
-        add_button({x + 372.0f, region_.top + 34.0f, 78.0f, 21.0f},
+        add_button({{x + 372.0f, region_.position.y + 34.0f}, {78.0f, 21.0f}},
                    light_page_ == LightPage::SHAPE ? "[ Shape ]" : "Shape",
                    [this] { light_page_ = LightPage::SHAPE; });
-        add_button({x + 456.0f, region_.top + 34.0f, 104.0f, 21.0f},
+        add_button({{x + 456.0f, region_.position.y + 34.0f}, {104.0f, 21.0f}},
                    light_page_ == LightPage::MODULATION ? "[ Modulation ]" : "Modulation",
                    [this] { light_page_ = LightPage::MODULATION; });
 
@@ -572,53 +573,55 @@ void RoomTuningOverlay::rebuild_controls() {
     }
 
     if (!working_post_process_ || working_post_process_->shaders.empty()) {
-        add_button({x, region_.top + 45.0f, 300.0f, 28.0f},
+        add_button({{x, region_.position.y + 45.0f}, {300.0f, 28.0f}},
                    "No post-process shader in this room",
                    {});
         return;
     }
 
     gfx::ShaderEffect* effect = selected_effect();
-    add_button({x, region_.top + 34.0f, 124.0f, 21.0f},
+    add_button({{x, region_.position.y + 34.0f}, {124.0f, 21.0f}},
                working_post_process_->enabled ? "[x] Post process" : "[ ] Post process",
                [this] { working_post_process_->enabled = !working_post_process_->enabled; });
-    add_button({x + 132.0f, region_.top + 34.0f, 30.0f, 21.0f}, "<", [this] {
+    add_button({{x + 132.0f, region_.position.y + 34.0f}, {30.0f, 21.0f}}, "<", [this] {
         selected_effect_ = selected_effect_ == 0 ? working_post_process_->shaders.size() - 1
                                                  : selected_effect_ - 1;
         selected_param_ = selected_component_ = 0;
     });
-    add_button({x + 168.0f, region_.top + 34.0f, 250.0f, 21.0f},
+    add_button({{x + 168.0f, region_.position.y + 34.0f}, {250.0f, 21.0f}},
                std::to_string(selected_effect_ + 1) + "/" +
                    std::to_string(working_post_process_->shaders.size()) + "  " + effect->source,
                {});
-    add_button({x + 424.0f, region_.top + 34.0f, 30.0f, 21.0f}, ">", [this] {
+    add_button({{x + 424.0f, region_.position.y + 34.0f}, {30.0f, 21.0f}}, ">", [this] {
         selected_effect_ = (selected_effect_ + 1) % working_post_process_->shaders.size();
         selected_param_ = selected_component_ = 0;
     });
-    add_button({x + 462.0f, region_.top + 34.0f, 108.0f, 21.0f},
+    add_button({{x + 462.0f, region_.position.y + 34.0f}, {108.0f, 21.0f}},
                effect->enabled ? "[x] Pass" : "[ ] Pass",
                [effect] { effect->enabled = !effect->enabled; });
 
     gfx::ShaderParam* param = selected_param();
     if (!param) {
-        add_button({x, region_.top + 64.0f, 260.0f, 30.0f}, "Shader has no authored params", {});
+        add_button({{x, region_.position.y + 64.0f}, {260.0f, 30.0f}},
+                   "Shader has no authored params",
+                   {});
         return;
     }
-    add_button({x, region_.top + 64.0f, 30.0f, 32.0f}, "<", [this, effect] {
+    add_button({{x, region_.position.y + 64.0f}, {30.0f, 32.0f}}, "<", [this, effect] {
         selected_param_ = selected_param_ == 0 ? effect->params.size() - 1 : selected_param_ - 1;
         selected_component_ = 0;
     });
-    add_button({x + 36.0f, region_.top + 64.0f, 205.0f, 32.0f},
+    add_button({{x + 36.0f, region_.position.y + 64.0f}, {205.0f, 32.0f}},
                std::to_string(selected_param_ + 1) + "/" + std::to_string(effect->params.size()) +
                    "  " + param->name,
                {});
-    add_button({x + 247.0f, region_.top + 64.0f, 30.0f, 32.0f}, ">", [this, effect] {
+    add_button({{x + 247.0f, region_.position.y + 64.0f}, {30.0f, 32.0f}}, ">", [this, effect] {
         selected_param_ = (selected_param_ + 1) % effect->params.size();
         selected_component_ = 0;
     });
 
     if (is_bool(param->value)) {
-        add_button({x + 285.0f, region_.top + 64.0f, 190.0f, 32.0f},
+        add_button({{x + 285.0f, region_.position.y + 64.0f}, {190.0f, 32.0f}},
                    component_value(param->value, 0) > 0.5f ? "[x] true" : "[ ] false",
                    [param] {
                        set_component(param->value,
@@ -629,23 +632,21 @@ void RoomTuningOverlay::rebuild_controls() {
     }
     const std::size_t count = component_count(param->value);
     if (count > 1) {
-        add_button({x + 285.0f, region_.top + 64.0f, 30.0f, 32.0f}, "<", [this, count] {
+        add_button({{x + 285.0f, region_.position.y + 64.0f}, {30.0f, 32.0f}}, "<", [this, count] {
             selected_component_ = selected_component_ == 0 ? count - 1 : selected_component_ - 1;
         });
-        add_button({x + 321.0f, region_.top + 64.0f, 78.0f, 32.0f},
+        add_button({{x + 321.0f, region_.position.y + 64.0f}, {78.0f, 32.0f}},
                    "component " + std::to_string(selected_component_ + 1),
                    {});
-        add_button({x + 405.0f, region_.top + 64.0f, 30.0f, 32.0f}, ">", [this, count] {
+        add_button({{x + 405.0f, region_.position.y + 64.0f}, {30.0f, 32.0f}}, ">", [this, count] {
             selected_component_ = (selected_component_ + 1) % count;
         });
     }
     const float slider_left = count > 1 ? x + 443.0f : x + 285.0f;
     const auto [minimum, maximum] = shader_range(*param);
     add_slider(
-        {slider_left,
-         region_.top + 64.0f,
-         region_.left + region_.width - 8.0f - slider_left,
-         32.0f},
+        {{slider_left, region_.position.y + 64.0f},
+         {region_.position.x + region_.size.x - 8.0f - slider_left, 32.0f}},
         param->name + component_suffix(*param, selected_component_),
         component_value(param->value, selected_component_),
         minimum,
@@ -662,7 +663,8 @@ void RoomTuningOverlay::activate(Control& control, float mouse_x) {
         control.action(0.0f);
         return;
     }
-    const float t = std::clamp((mouse_x - control.rect.left) / control.rect.width, 0.0f, 1.0f);
+    const float t =
+        std::clamp((mouse_x - control.rect.position.x) / control.rect.size.x, 0.0f, 1.0f);
     float value = control.minimum + (control.maximum - control.minimum) * t;
     if (control.step > 0.0f) {
         value = std::round(value / control.step) * control.step;
@@ -675,18 +677,20 @@ bool RoomTuningOverlay::handle_event(const sf::Event& event) {
     if (!active_) {
         return false;
     }
-    if (event.type == sf::Event::KeyPressed) {
-        if (event.key.code == sf::Keyboard::Escape) {
+    if (event.is<sf::Event::KeyPressed>()) {
+        if (event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Escape) {
             close();
             return true;
         }
-        if (event.key.control && event.key.code == sf::Keyboard::C) {
+        if (event.getIf<sf::Event::KeyPressed>()->control &&
+            event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::C) {
             copy_yaml();
             return true;
         }
     }
-    if (event.type == sf::Event::MouseMoved) {
-        pointer_ = {static_cast<float>(event.mouseMove.x), static_cast<float>(event.mouseMove.y)};
+    if (event.is<sf::Event::MouseMoved>()) {
+        pointer_ = {static_cast<float>(event.getIf<sf::Event::MouseMoved>()->position.x),
+                    static_cast<float>(event.getIf<sf::Event::MouseMoved>()->position.y)};
         if (dragged_control_) {
             rebuild_controls();
             if (*dragged_control_ < controls_.size()) {
@@ -695,10 +699,10 @@ bool RoomTuningOverlay::handle_event(const sf::Event& event) {
         }
         return true;
     }
-    if (event.type == sf::Event::MouseButtonPressed &&
-        event.mouseButton.button == sf::Mouse::Left) {
-        pointer_ = {static_cast<float>(event.mouseButton.x),
-                    static_cast<float>(event.mouseButton.y)};
+    if (event.is<sf::Event::MouseButtonPressed>() &&
+        event.getIf<sf::Event::MouseButtonPressed>()->button == sf::Mouse::Button::Left) {
+        pointer_ = {static_cast<float>(event.getIf<sf::Event::MouseButtonPressed>()->position.x),
+                    static_cast<float>(event.getIf<sf::Event::MouseButtonPressed>()->position.y)};
         rebuild_controls();
         for (std::size_t i = controls_.size(); i-- > 0;) {
             if (!controls_[i].rect.contains(pointer_)) {
@@ -712,8 +716,8 @@ bool RoomTuningOverlay::handle_event(const sf::Event& event) {
         }
         return true;
     }
-    if (event.type == sf::Event::MouseButtonReleased &&
-        event.mouseButton.button == sf::Mouse::Left) {
+    if (event.is<sf::Event::MouseButtonReleased>() &&
+        event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Left) {
         dragged_control_.reset();
         return true;
     }
@@ -726,8 +730,8 @@ void RoomTuningOverlay::draw(sf::RenderTarget& target) {
     }
     rebuild_controls();
 
-    sf::RectangleShape panel({region_.width, region_.height});
-    panel.setPosition(region_.left, region_.top);
+    sf::RectangleShape panel({region_.size.x, region_.size.y});
+    panel.setPosition({region_.position.x, region_.position.y});
     panel.setFillColor(kPanel);
     panel.setOutlineColor(kBorder);
     panel.setOutlineThickness(1.0f);
@@ -735,8 +739,8 @@ void RoomTuningOverlay::draw(sf::RenderTarget& target) {
 
     for (const Control& control : controls_) {
         const bool hovered = control.rect.contains(pointer_);
-        sf::RectangleShape box({control.rect.width, control.rect.height});
-        box.setPosition(control.rect.left, control.rect.top);
+        sf::RectangleShape box({control.rect.size.x, control.rect.size.y});
+        box.setPosition({control.rect.position.x, control.rect.position.y});
         box.setFillColor(hovered ? kControlHover : kControl);
         box.setOutlineColor(kBorder);
         box.setOutlineThickness(1.0f);
@@ -747,27 +751,33 @@ void RoomTuningOverlay::draw(sf::RenderTarget& target) {
                 std::clamp((control.value - control.minimum) / (control.maximum - control.minimum),
                            0.0f,
                            1.0f);
-            sf::RectangleShape fill({control.rect.width * t, 5.0f});
-            fill.setPosition(control.rect.left, control.rect.top + control.rect.height - 5.0f);
+            sf::RectangleShape fill({control.rect.size.x * t, 5.0f});
+            fill.setPosition(
+                {control.rect.position.x, control.rect.position.y + control.rect.size.y - 5.0f});
             fill.setFillColor(kAccent);
             target.draw(fill);
             draw_label(target,
                        font_,
                        control.label + "  " + decimal(control.value),
-                       {control.rect.left + 6.0f, control.rect.top + 4.0f},
+                       {control.rect.position.x + 6.0f, control.rect.position.y + 4.0f},
                        12);
         } else {
             draw_label(target,
                        font_,
                        control.label,
-                       {control.rect.left + 6.0f, control.rect.top + 3.0f},
+                       {control.rect.position.x + 6.0f, control.rect.position.y + 3.0f},
                        12,
                        control.label.starts_with("[") ? sf::Color::White : kText);
         }
     }
 
     if (!status_.empty()) {
-        draw_label(target, font_, status_, {region_.left + 300.0f, region_.top + 8.0f}, 11, kMuted);
+        draw_label(target,
+                   font_,
+                   status_,
+                   {region_.position.x + 300.0f, region_.position.y + 8.0f},
+                   11,
+                   kMuted);
     }
 }
 

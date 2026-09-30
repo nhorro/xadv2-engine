@@ -50,11 +50,12 @@ jobs:
             pkg-config \
             libx11-dev \
             libxrandr-dev \
+            libxi-dev \
             libxcursor-dev \
             libudev-dev \
             libgl1-mesa-dev \
             libfreetype-dev \
-            libopenal-dev \
+            libharfbuzz-dev \
             libflac-dev \
             libvorbis-dev \
             liblua5.4-dev \
@@ -122,7 +123,7 @@ jobs:
 
       - name: Pin vcpkg baseline
         # The committed manifest omits builtin-baseline (no fixed SHA available
-        # offline); add the runner's vcpkg baseline so the sfml 2.6.1 override resolves.
+        # offline); add the runner's vcpkg baseline so the Lua override resolves.
         shell: pwsh
         run: |
           & "$env:VCPKG_ROOT\vcpkg.exe" x-update-baseline --add-initial-baseline

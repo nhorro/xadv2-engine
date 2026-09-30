@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 namespace pac::pnc {
@@ -96,10 +97,10 @@ geom::Point RoomSmokeSystem::random_point(std::size_t emitter_index) {
         return area.front();
     }
     const sf::FloatRect bounds = geom::polygon_bounds(area);
-    geom::Point candidate{bounds.left, bounds.top};
+    geom::Point candidate{bounds.position.x, bounds.position.y};
     for (int attempt = 0; attempt < 24; ++attempt) {
-        candidate = {bounds.left + random01(emitter_index) * bounds.width,
-                     bounds.top + random01(emitter_index) * bounds.height};
+        candidate = {bounds.position.x + random01(emitter_index) * bounds.size.x,
+                     bounds.position.y + random01(emitter_index) * bounds.size.y};
         if (geom::point_in_polygon(candidate, area)) {
             return candidate;
         }
@@ -174,7 +175,7 @@ void RoomSmokeSystem::update(float dt) {
 bool RoomSmokeSystem::ensure_graphics() const {
     if (!particle_texture_) {
         sf::Image image;
-        image.create(kParticleTextureSize, kParticleTextureSize, sf::Color::Transparent);
+        image.resize({kParticleTextureSize, kParticleTextureSize}, sf::Color::Transparent);
         const float center = (static_cast<float>(kParticleTextureSize) - 1.0f) * 0.5f;
         for (unsigned y = 0; y < kParticleTextureSize; ++y) {
             for (unsigned x = 0; x < kParticleTextureSize; ++x) {
@@ -182,10 +183,11 @@ bool RoomSmokeSystem::ensure_graphics() const {
                 const float dy = (static_cast<float>(y) - center) / center;
                 const float distance = std::sqrt(dx * dx + dy * dy);
                 const float alpha = std::pow(std::clamp(1.0f - distance, 0.0f, 1.0f), 2.2f);
-                image.setPixel(
-                    x,
-                    y,
-                    sf::Color(255, 255, 255, static_cast<sf::Uint8>(std::lround(alpha * 255.0f))));
+                image.setPixel({x, y},
+                               sf::Color(255,
+                                         255,
+                                         255,
+                                         static_cast<std::uint8_t>(std::lround(alpha * 255.0f))));
             }
         }
         auto texture = std::make_unique<sf::Texture>();
@@ -209,7 +211,7 @@ const sf::Texture* RoomSmokeSystem::render_density(sf::FloatRect camera_view,
         std::max(1u, static_cast<unsigned>(std::ceil(viewport.y * config_.resolution_scale)))};
     if (!density_target_ || density_target_->getSize() != density_size) {
         auto target = std::make_unique<sf::RenderTexture>();
-        if (!target->create(density_size.x, density_size.y)) {
+        if (!target->resize({density_size.x, density_size.y})) {
             return nullptr;
         }
         target->setSmooth(true);
@@ -220,7 +222,7 @@ const sf::Texture* RoomSmokeSystem::render_density(sf::FloatRect camera_view,
         density_rt_bytes_ = bytes;
     }
 
-    sf::VertexArray vertices(sf::Quads, particles_.size() * 4);
+    sf::VertexArray vertices(sf::PrimitiveType::Triangles, particles_.size() * 6);
     std::size_t vertex = 0;
     for (const RoomSmokeParticle& particle : particles_) {
         const RoomSmokeEmitter& emitter = config_.emitters[particle.emitter];
@@ -228,20 +230,27 @@ const sf::Texture* RoomSmokeSystem::render_density(sf::FloatRect camera_view,
         const float size = emitter.size_start + (emitter.size_end - emitter.size_start) * age;
         const float half = size * 0.5f;
         const float alpha = std::clamp(emitter.density * particle_envelope(age), 0.0f, 1.0f);
-        const sf::Color color(255, 255, 255, static_cast<sf::Uint8>(std::lround(alpha * 255.0f)));
+        const sf::Color color(255,
+                              255,
+                              255,
+                              static_cast<std::uint8_t>(std::lround(alpha * 255.0f)));
         const float texture_max = static_cast<float>(kParticleTextureSize);
-        vertices[vertex++] = sf::Vertex({particle.position.x - half, particle.position.y - half},
+        vertices[vertex++] = sf::Vertex{{particle.position.x - half, particle.position.y - half},
                                         color,
-                                        {0.0f, 0.0f});
-        vertices[vertex++] = sf::Vertex({particle.position.x + half, particle.position.y - half},
+                                        {0.0f, 0.0f}};
+        vertices[vertex++] = sf::Vertex{{particle.position.x + half, particle.position.y - half},
                                         color,
-                                        {texture_max, 0.0f});
-        vertices[vertex++] = sf::Vertex({particle.position.x + half, particle.position.y + half},
+                                        {texture_max, 0.0f}};
+        vertices[vertex++] = sf::Vertex{{particle.position.x + half, particle.position.y + half},
                                         color,
-                                        {texture_max, texture_max});
-        vertices[vertex++] = sf::Vertex({particle.position.x - half, particle.position.y + half},
+                                        {texture_max, texture_max}};
+        vertices[vertex] = vertices[vertex - 3];
+        ++vertex;
+        vertices[vertex] = vertices[vertex - 2];
+        ++vertex;
+        vertices[vertex++] = sf::Vertex{{particle.position.x - half, particle.position.y + half},
                                         color,
-                                        {0.0f, texture_max});
+                                        {0.0f, texture_max}};
     }
 
     density_target_->setView(sf::View(camera_view));

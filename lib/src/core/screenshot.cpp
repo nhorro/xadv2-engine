@@ -20,7 +20,7 @@ bool save_screenshot(sf::RenderWindow& window, const std::filesystem::path& path
         return false;
     }
     sf::Texture framebuffer;
-    if (!framebuffer.create(size.x, size.y)) {
+    if (!framebuffer.resize({size.x, size.y})) {
         return false;
     }
     framebuffer.update(window);

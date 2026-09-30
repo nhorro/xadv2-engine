@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -92,7 +93,9 @@ sf::Color parse_cursor_color(const YAML::Node& node, const std::string& field, s
                       "'cursor.blink." + field + "' channels must be between 0 and 255",
                       node);
     }
-    return {static_cast<sf::Uint8>(r), static_cast<sf::Uint8>(g), static_cast<sf::Uint8>(b)};
+    return {static_cast<std::uint8_t>(r),
+            static_cast<std::uint8_t>(g),
+            static_cast<std::uint8_t>(b)};
 }
 
 sf::Color
@@ -114,10 +117,10 @@ parse_information_color(const YAML::Node& node, const std::string& field, sf::Co
                       "'information_overlay." + field + "' channels must be between 0 and 255",
                       node);
     }
-    return {static_cast<sf::Uint8>(r),
-            static_cast<sf::Uint8>(g),
-            static_cast<sf::Uint8>(b),
-            static_cast<sf::Uint8>(a)};
+    return {static_cast<std::uint8_t>(r),
+            static_cast<std::uint8_t>(g),
+            static_cast<std::uint8_t>(b),
+            static_cast<std::uint8_t>(a)};
 }
 
 // Parse the UI-strings language declaration (issue #72). Two accepted forms:
@@ -576,8 +579,8 @@ Manifest parse_manifest(const std::string& yaml_text) {
     if (!res) {
         manifest_fail("manifest.resolution-missing", "'resolution' is required", root);
     }
-    m.resolution = {require_dimension(res["width"], "resolution.width"),
-                    require_dimension(res["height"], "resolution.height")};
+    m.resolution = {require_dimension(res["width"], "resolution.size.x"),
+                    require_dimension(res["height"], "resolution.size.y")};
 
     const YAML::Node win = root["window"];
     if (!win) {

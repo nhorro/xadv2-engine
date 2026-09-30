@@ -3,6 +3,7 @@
 #include "engine/core/diagnostics.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <iomanip>
 #include <sstream>

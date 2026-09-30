@@ -100,7 +100,7 @@ public:
     /// scale applied). Hit-tests a hotspot bound to this avatar (#141).
     [[nodiscard]] sf::FloatRect bounds() const {
         return visible_ ? sprite_.global_bounds()
-                        : sf::FloatRect(position().x, position().y, 0.0f, 0.0f);
+                        : sf::FloatRect({position().x, position().y}, {0.0f, 0.0f});
     }
 
     /// Play an explicit animation sequence, overriding the mover-driven

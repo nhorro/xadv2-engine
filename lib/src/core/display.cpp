@@ -70,16 +70,15 @@ Viewport Display::viewport() const {
 }
 
 sf::View Display::view() const {
-    sf::View v(sf::FloatRect(0.0f,
-                             0.0f,
-                             static_cast<float>(virtual_res_.x),
-                             static_cast<float>(virtual_res_.y)));
+    sf::View v(
+        sf::FloatRect({0.0f, 0.0f},
+                      {static_cast<float>(virtual_res_.x), static_cast<float>(virtual_res_.y)}));
     const Viewport vp = letterbox(window_, virtual_res_);
     if (window_.x > 0 && window_.y > 0) {
-        v.setViewport(sf::FloatRect(vp.offset.x / static_cast<float>(window_.x),
-                                    vp.offset.y / static_cast<float>(window_.y),
-                                    vp.size.x / static_cast<float>(window_.x),
-                                    vp.size.y / static_cast<float>(window_.y)));
+        v.setViewport(sf::FloatRect({vp.offset.x / static_cast<float>(window_.x),
+                                     vp.offset.y / static_cast<float>(window_.y)},
+                                    {vp.size.x / static_cast<float>(window_.x),
+                                     vp.size.y / static_cast<float>(window_.y)}));
     }
     return v;
 }
@@ -91,14 +90,13 @@ sf::Vector2f Display::to_virtual(sf::Vector2i px) const {
 sf::FloatRect Display::viewport_for(sf::FloatRect virtual_rect) const {
     const Viewport vp = letterbox(window_, virtual_res_);
     if (window_.x == 0 || window_.y == 0) {
-        return {0.0f, 0.0f, 1.0f, 1.0f};
+        return {{0.0f, 0.0f}, {1.0f, 1.0f}};
     }
     const float wx = static_cast<float>(window_.x);
     const float wy = static_cast<float>(window_.y);
-    return {(vp.offset.x + virtual_rect.left * vp.scale) / wx,
-            (vp.offset.y + virtual_rect.top * vp.scale) / wy,
-            (virtual_rect.width * vp.scale) / wx,
-            (virtual_rect.height * vp.scale) / wy};
+    return {{(vp.offset.x + virtual_rect.position.x * vp.scale) / wx,
+             (vp.offset.y + virtual_rect.position.y * vp.scale) / wy},
+            {(virtual_rect.size.x * vp.scale) / wx, (virtual_rect.size.y * vp.scale) / wy}};
 }
 
 } // namespace pac::core

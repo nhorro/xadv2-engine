@@ -53,11 +53,11 @@ snapshot. `export_yaml` returns a snippet but does not write project files.
 
 ## Python and Jupyter
 
-[`control_client.py`](../../examples/tools/control_client.py) uses only the Python
+[`control_client.py`](https://github.com/nhorro/xadv2-engine/blob/develop/examples/tools/control_client.py) uses only the Python
 standard library. The example
-[`room_lighting_control.ipynb`](../../examples/tools/room_lighting_control.ipynb)
+[`room_lighting_control.ipynb`](https://github.com/nhorro/xadv2-engine/blob/develop/examples/tools/room_lighting_control.ipynb)
 adds an `ipywidgets` presentation whose implementation lives in
-[`room_lighting_widgets.py`](../../examples/tools/room_lighting_widgets.py).
+[`room_lighting_widgets.py`](https://github.com/nhorro/xadv2-engine/blob/develop/examples/tools/room_lighting_widgets.py).
 
 The widget UI is optional and needs Jupyter plus ipywidgets:
 

@@ -90,19 +90,19 @@ scumm_panel:
 ScummPanelConfig paging_panel_config(InventoryArrowMode arrow_mode) {
     ScummPanelConfig cfg;
     cfg.layout.design_size = {100.0f, 100.0f};
-    cfg.layout.panel_rect = {0.0f, 0.0f, 100.0f, 100.0f};
-    cfg.layout.command_bar_rect = {0.0f, 0.0f, 100.0f, 10.0f};
-    cfg.layout.body_rect = {0.0f, 10.0f, 100.0f, 90.0f};
-    cfg.layout.verb_panel.rect = {0.0f, 0.0f, 20.0f, 90.0f};
+    cfg.layout.panel_rect = {{0.0f, 0.0f}, {100.0f, 100.0f}};
+    cfg.layout.command_bar_rect = {{0.0f, 0.0f}, {100.0f, 10.0f}};
+    cfg.layout.body_rect = {{0.0f, 10.0f}, {100.0f, 90.0f}};
+    cfg.layout.verb_panel.rect = {{0.0f, 0.0f}, {20.0f, 90.0f}};
     cfg.layout.verb_panel.rows = 1;
     cfg.layout.verb_panel.columns = 1;
-    cfg.layout.inventory_panel.rect = {20.0f, 0.0f, 80.0f, 90.0f};
+    cfg.layout.inventory_panel.rect = {{20.0f, 0.0f}, {80.0f, 90.0f}};
     cfg.layout.inventory_panel.rows = 1;
     cfg.layout.inventory_panel.columns = 2;
     cfg.layout.inventory_panel.padding = {0.0f, 0.0f, 20.0f, 0.0f};
     cfg.layout.inventory_arrows.mode = arrow_mode;
-    cfg.layout.inventory_arrows.previous_hitbox = {60.0f, 0.0f, 10.0f, 90.0f};
-    cfg.layout.inventory_arrows.next_hitbox = {70.0f, 0.0f, 10.0f, 90.0f};
+    cfg.layout.inventory_arrows.previous_hitbox = {{60.0f, 0.0f}, {10.0f, 90.0f}};
+    cfg.layout.inventory_arrows.next_hitbox = {{70.0f, 0.0f}, {10.0f, 90.0f}};
     cfg.content.verbs = {Verb::OPEN};
     return cfg;
 }
@@ -120,11 +120,11 @@ TEST_CASE("scumm panel config parses layout, skin, and relative asset paths") {
 
     CHECK(cfg.layout.design_size.x == doctest::Approx(1280.0f));
     CHECK(cfg.layout.design_size.y == doctest::Approx(720.0f));
-    CHECK(cfg.layout.panel_rect.top == doctest::Approx(612.0f));
+    CHECK(cfg.layout.panel_rect.position.y == doctest::Approx(612.0f));
     CHECK(cfg.layout.background.type == ScummPanelBackgroundType::IMAGE);
     CHECK(cfg.layout.background.image == "ui/panel.png");
     CHECK(cfg.layout.background.opacity == doctest::Approx(0.82f));
-    CHECK(cfg.layout.command_bar_rect.left == doctest::Approx(8.0f));
+    CHECK(cfg.layout.command_bar_rect.position.x == doctest::Approx(8.0f));
     CHECK(cfg.layout.inventory_panel.rows == 2);
     CHECK(cfg.layout.inventory_panel.columns == 4);
     CHECK(cfg.layout.inventory_arrows.mode == InventoryArrowMode::BACKGROUND_VARIANTS);
@@ -567,7 +567,7 @@ TEST_CASE("scumm panel systemic buttons emit their configured action") {
     ScummPanel panel(cfg, {128, 72}, nullptr, nullptr);
     const InventoryModel inventory = inventory_with_three_items();
 
-    // Body starts at panel.top + 3.2 = 62.4. The controls column is x 116.8..128;
+    // Body starts at panel.position.y + 3.2 = 62.4. The controls column is x 116.8..128;
     // "Opciones" is the top half (y 62.4..67.2), "Menú" the bottom (67.2..72).
     const PanelIntent options = panel.click({122.0f, 64.0f}, inventory, {});
     CHECK(options.kind == PanelIntent::Kind::OPEN_SETTINGS);

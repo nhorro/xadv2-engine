@@ -140,7 +140,6 @@ add_library(pac_engine ${PAC_ENGINE_LIBRARY_TYPE}
     src/gfx/script_scene.cpp
     src/gfx/shader_effect.cpp
     src/gfx/shader_chain.cpp
-    src/gfx/gles2_compat.cpp
     src/pnc/blank_scene.cpp
     src/pnc/shader_yaml.cpp
     src/pnc/ui_sound_cues.cpp
@@ -222,7 +221,7 @@ target_include_directories(pac_engine
 # $<LINK_ONLY:...>), so a plain PRIVATE link would drag the engine's warning flags
 # into the export — and into every consumer's own compile line.
 target_link_libraries(pac_engine
-    PUBLIC sfml-graphics sfml-window sfml-audio sfml-system pac_sanitizers
+    PUBLIC SFML::Graphics SFML::Window SFML::Audio SFML::System pac_sanitizers
     PRIVATE ${PAC_YAMLCPP} ${PAC_SOL2} pac_lua $<BUILD_INTERFACE:pac_warnings>)
 
 # --- install + export ---------------------------------------------------------
@@ -270,7 +269,6 @@ if(PAC_INSTALL)
             ${CMAKE_CURRENT_BINARY_DIR}/pac_engineConfig.cmake
             ${CMAKE_CURRENT_BINARY_DIR}/pac_engineConfigVersion.cmake
             ${PROJECT_SOURCE_DIR}/cmake/pacEngineDeps.cmake
-            ${PROJECT_SOURCE_DIR}/cmake/pacModifiedSfml.cmake
-            ${PROJECT_SOURCE_DIR}/android/cmake/patch-sfml-gles2.cmake
+            ${PROJECT_SOURCE_DIR}/cmake/pacSfml.cmake
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pac_engine)
 endif()

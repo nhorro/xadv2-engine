@@ -6,6 +6,7 @@
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/View.hpp>
 
+#include <cstdint>
 #include <utility>
 
 namespace pac::core {
@@ -317,12 +318,12 @@ void SceneManager::draw(sf::RenderTarget& target) const {
 
     // Fade overlay: a black quad over the whole window (bars included), drawn in
     // window pixels so it is independent of whatever view a scene left set.
-    const sf::Uint8 a = fade_.alpha255();
+    const std::uint8_t a = fade_.alpha255();
     if (a > 0) {
         const sf::View prev = target.getView();
         const sf::Vector2f size(static_cast<float>(target.getSize().x),
                                 static_cast<float>(target.getSize().y));
-        target.setView(sf::View(sf::FloatRect(0.0f, 0.0f, size.x, size.y)));
+        target.setView(sf::View(sf::FloatRect({0.0f, 0.0f}, {size.x, size.y})));
         sf::RectangleShape quad(size);
         quad.setFillColor(sf::Color(0, 0, 0, a));
         target.draw(quad);

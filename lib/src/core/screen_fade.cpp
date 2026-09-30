@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 namespace pac::core {
 
@@ -48,9 +49,9 @@ void ScreenFade::skip() {
     speed_ = 0.0f;
 }
 
-sf::Uint8 ScreenFade::alpha255() const {
+std::uint8_t ScreenFade::alpha255() const {
     const float a = std::clamp(alpha_, 0.0f, 1.0f);
-    return static_cast<sf::Uint8>(std::lround(a * 255.0f));
+    return static_cast<std::uint8_t>(std::lround(a * 255.0f));
 }
 
 bool ScreenFade::opaque() const {

@@ -65,8 +65,8 @@ public:
     void update(float dt);
 
     [[nodiscard]] sf::FloatRect bounds() const;
-    [[nodiscard]] sf::Vector2f position() const { return {bounds_.left, bounds_.top}; }
-    [[nodiscard]] sf::Vector2f size() const { return {bounds_.width, bounds_.height}; }
+    [[nodiscard]] sf::Vector2f position() const { return {bounds_.position.x, bounds_.position.y}; }
+    [[nodiscard]] sf::Vector2f size() const { return {bounds_.size.x, bounds_.size.y}; }
     [[nodiscard]] sf::Vector2f translation() const { return translation_; }
     [[nodiscard]] float opacity() const;
     [[nodiscard]] WidgetVisibility visibility() const { return visibility_; }

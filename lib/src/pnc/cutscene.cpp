@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <stdexcept>
 #include <utility>
 
@@ -103,8 +104,8 @@ sf::Color parse_color(const YAML::Node& node) {
                           node);
         }
     }
-    auto hex = [&](std::size_t i) -> sf::Uint8 {
-        return static_cast<sf::Uint8>(std::stoul(s.substr(i, 2), nullptr, 16));
+    auto hex = [&](std::size_t i) -> std::uint8_t {
+        return static_cast<std::uint8_t>(std::stoul(s.substr(i, 2), nullptr, 16));
     };
     sf::Color out;
     out.r = hex(0);

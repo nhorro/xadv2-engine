@@ -18,7 +18,7 @@ struct RoomViewport {
     }
 
     [[nodiscard]] bool valid() const { return size.x > 0.0f && size.y > 0.0f; }
-    [[nodiscard]] sf::FloatRect virtual_rect() const { return {0.0f, 0.0f, size.x, size.y}; }
+    [[nodiscard]] sf::FloatRect virtual_rect() const { return {{0.0f, 0.0f}, {size.x, size.y}}; }
 };
 
 } // namespace pac::pnc

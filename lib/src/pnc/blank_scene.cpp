@@ -17,7 +17,8 @@ BlankScene::BlankScene(pac::core::EngineContext& ctx, const pac::core::ScenePara
 }
 
 void BlankScene::handle_event(const sf::Event& event) {
-    if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+    if (event.is<sf::Event::KeyPressed>() &&
+        event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Escape) {
         ctx_.scenes.quit();
     }
 }

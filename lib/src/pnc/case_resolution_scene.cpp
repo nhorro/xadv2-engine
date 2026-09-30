@@ -75,10 +75,11 @@ void centered(sf::RenderTarget& target,
               float y,
               float w,
               float h) {
-    sf::Text text(pac::core::utf8(value), font, size);
+    sf::Text text(font, pac::core::utf8(value), size);
     text.setFillColor(color);
     const sf::FloatRect b = text.getLocalBounds();
-    text.setPosition(x + (w - b.width) / 2.0f - b.left, y + (h - b.height) / 2.0f - b.top - 1.0f);
+    text.setPosition({x + (w - b.size.x) / 2.0f - b.position.x,
+                      y + (h - b.size.y) / 2.0f - b.position.y - 1.0f});
     target.draw(text);
 }
 
@@ -131,17 +132,17 @@ void fitted_to_slot(sf::RenderTarget& target,
         ay = 0.0f;
     }
 
-    sf::Text text(pac::core::utf8(value), font, size);
+    sf::Text text(font, pac::core::utf8(value), size);
     text.setFillColor(color);
     const sf::FloatRect b = text.getLocalBounds();
     const float available_w = std::max(1.0f, width - 16.0f);
     const float available_h = std::max(1.0f, height - 8.0f);
     const float scale = std::min(
-        {available_w / std::max(1.0f, b.width), available_h / std::max(1.0f, b.height), 1.35f});
-    text.setOrigin(b.left + b.width * 0.5f, b.top + b.height * 0.5f);
-    text.setScale(scale, scale);
-    text.setRotation(std::atan2(ay, ax) * 180.0f / 3.14159265358979323846f);
-    text.setPosition((p0.x + p1.x + p2.x + p3.x) * 0.25f, (p0.y + p1.y + p2.y + p3.y) * 0.25f);
+        {available_w / std::max(1.0f, b.size.x), available_h / std::max(1.0f, b.size.y), 1.35f});
+    text.setOrigin({b.position.x + b.size.x * 0.5f, b.position.y + b.size.y * 0.5f});
+    text.setScale({scale, scale});
+    text.setRotation(sf::degrees(std::atan2(ay, ax) * 180.0f / 3.14159265358979323846f));
+    text.setPosition({(p0.x + p1.x + p2.x + p3.x) * 0.25f, (p0.y + p1.y + p2.y + p3.y) * 0.25f});
     target.draw(text);
 }
 } // namespace
@@ -357,26 +358,32 @@ bool CaseResolutionScene::pointer_is_actionable(geom::Point p) const {
 }
 
 void CaseResolutionScene::handle_event(const sf::Event& event) {
-    if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+    if (event.is<sf::Event::KeyPressed>() &&
+        event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Escape) {
         exit();
         return;
     }
-    if (event.type == sf::Event::MouseMoved)
-        mouse_ = {float(event.mouseMove.x), float(event.mouseMove.y)};
-    if (event.type == sf::Event::MouseButtonPressed &&
-        event.mouseButton.button == sf::Mouse::Left && loaded_) {
-        mouse_ = {float(event.mouseButton.x), float(event.mouseButton.y)};
+    if (event.is<sf::Event::MouseMoved>())
+        mouse_ = {float(event.getIf<sf::Event::MouseMoved>()->position.x),
+                  float(event.getIf<sf::Event::MouseMoved>()->position.y)};
+    if (event.is<sf::Event::MouseButtonPressed>() &&
+        event.getIf<sf::Event::MouseButtonPressed>()->button == sf::Mouse::Button::Left &&
+        loaded_) {
+        mouse_ = {float(event.getIf<sf::Event::MouseButtonPressed>()->position.x),
+                  float(event.getIf<sf::Event::MouseButtonPressed>()->position.y)};
         press_point_ = mouse_;
         left_pressed_ = true;
         picked_up_on_press_ = pick_up_at(mouse_);
     }
-    if (event.type == sf::Event::MouseButtonReleased) {
-        mouse_ = {float(event.mouseButton.x), float(event.mouseButton.y)};
-        if (event.mouseButton.button == sf::Mouse::Right) {
+    if (event.is<sf::Event::MouseButtonReleased>()) {
+        mouse_ = {float(event.getIf<sf::Event::MouseButtonReleased>()->position.x),
+                  float(event.getIf<sf::Event::MouseButtonReleased>()->position.y)};
+        if (event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Right) {
             exit();
             return;
         }
-        if (event.mouseButton.button == sf::Mouse::Left && loaded_ && left_pressed_) {
+        if (event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Left &&
+            loaded_ && left_pressed_) {
             const bool dragged = distance(press_point_, mouse_) >= kDragThreshold;
             if (!picked_up_on_press_ || dragged) {
                 if (!held_term_.empty())
@@ -410,7 +417,7 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
             sf::Sprite image(texture);
             const auto size = texture.getSize();
             if (size.x && size.y)
-                image.setScale(vw / float(size.x), py / float(size.y));
+                image.setScale({vw / float(size.x), py / float(size.y)});
             target.draw(image);
         } catch (const std::exception& e) {
             ctx_.log.error(e.what());
@@ -443,16 +450,16 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
     }
 
     sf::RectangleShape panel({vw, vh - py});
-    panel.setPosition(0, py);
+    panel.setPosition({0, py});
     panel.setFillColor(kPanel);
     panel.setOutlineColor(kBorder);
     panel.setOutlineThickness(-2);
     target.draw(panel);
     if (!font_)
         return;
-    sf::Text title(pac::core::utf8(ctx_.strings.ui_label("case_terms_title")), *font_, 18);
+    sf::Text title(*font_, pac::core::utf8(ctx_.strings.ui_label("case_terms_title")), 18);
     title.setFillColor(kText);
-    title.setPosition(12, py + 2);
+    title.setPosition({12, py + 2});
     target.draw(title);
     centered(target, *font_, "‹", 22, page_ > 0 ? kText : kDisabled, vw - 132, py, 36, kHeader);
     centered(target,
@@ -480,7 +487,7 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
             break;
         const float x = (local % 6) * cw, y = py + kHeader + (local / 6) * ch;
         sf::RectangleShape cell({cw, ch});
-        cell.setPosition(x, y);
+        cell.setPosition({x, y});
         cell.setFillColor(case_term_color(bank_.terms[index].tag, 135));
         const bool selected = held_term_ == bank_.terms[index].id,
                    hover = inside(mouse_, x, y, cw, ch);
@@ -500,7 +507,7 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
     const bool complete = assignments_.complete(data_);
     const bool check_hover = complete && inside(mouse_, controls.check);
     sf::RectangleShape check({controls.check.width, controls.check.height});
-    check.setPosition(controls.check.x, controls.check.y);
+    check.setPosition({controls.check.x, controls.check.y});
     check.setFillColor(complete ? kCell : kPanel);
     check.setOutlineColor(feedback_left_ > 0 ? (feedback_success_ ? kGold : sf::Color(190, 70, 60))
                                              : (check_hover ? kHover : kBorder));
@@ -524,7 +531,7 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
 
     const bool exit_hover = inside(mouse_, controls.exit);
     sf::RectangleShape exit_button({controls.exit.width, controls.exit.height});
-    exit_button.setPosition(controls.exit.x, controls.exit.y);
+    exit_button.setPosition({controls.exit.x, controls.exit.y});
     exit_button.setFillColor(exit_hover ? kCell : kPanel);
     exit_button.setOutlineColor(exit_hover ? kHover : kBorder);
     exit_button.setOutlineThickness(-2);
@@ -542,14 +549,14 @@ void CaseResolutionScene::draw(sf::RenderTarget& target) const {
     if (!held_term_.empty()) {
         if (const CaseTerm* term = bank_.find(held_term_)) {
             const std::string localized_name = term_name(*term);
-            sf::Text label(pac::core::utf8(localized_name), *font_, 17);
+            sf::Text label(*font_, pac::core::utf8(localized_name), 17);
             const sf::FloatRect bounds = label.getLocalBounds();
-            const float width = std::clamp(bounds.width + 28.0f, 112.0f, 280.0f);
+            const float width = std::clamp(bounds.size.x + 28.0f, 112.0f, 280.0f);
             const float height = 38.0f;
             const float x = std::clamp(mouse_.x + 18.0f, 4.0f, vw - width - 4.0f);
             const float y = std::clamp(mouse_.y + 18.0f, 4.0f, vh - height - 4.0f);
             sf::RectangleShape chip({width, height});
-            chip.setPosition(x, y);
+            chip.setPosition({x, y});
             chip.setFillColor(case_term_color(term->tag, 235));
             chip.setOutlineColor(kGold);
             chip.setOutlineThickness(2.0f);

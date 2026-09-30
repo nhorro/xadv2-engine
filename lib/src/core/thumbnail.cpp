@@ -1,7 +1,6 @@
 #include "engine/core/thumbnail.hpp"
 
 #include "engine/core/display.hpp"
-#include "gfx/gles2_compat.hpp"
 
 #include <SFML/Graphics/Rect.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
@@ -19,11 +18,11 @@ bool Thumbnail::ensure_rt() {
         return true;
     }
     rt_ = std::make_unique<sf::RenderTexture>();
-    if (!rt_->create(kWidth, kHeight)) {
+    if (!rt_->resize({kWidth, kHeight})) {
         rt_.reset();
         return false;
     }
-    pac::gfx::configure_gles2_target(*rt_);
+
     rt_->setSmooth(true);
     rt_ready_ = true;
     return true;
@@ -53,22 +52,20 @@ void Thumbnail::capture(sf::RenderWindow& window, const Viewport& vp) {
     // SFML's sf::Texture::update(window) copies the framebuffer to a GPU texture
     // in one call; it's the same path the `--shot` smoke uses.
     sf::Texture full;
-    if (!full.create(wsize.x, wsize.y)) {
+    if (!full.resize({wsize.x, wsize.y})) {
         return;
     }
     full.update(window);
 
     sf::Sprite sprite(full);
-    const sf::IntRect src(static_cast<int>(vp.offset.x),
-                          static_cast<int>(vp.offset.y),
-                          static_cast<int>(vp.size.x),
-                          static_cast<int>(vp.size.y));
+    const sf::IntRect src({static_cast<int>(vp.offset.x), static_cast<int>(vp.offset.y)},
+                          {static_cast<int>(vp.size.x), static_cast<int>(vp.size.y)});
     sprite.setTextureRect(src);
 
-    // Scale the sprite so the (src.width, src.height) subset fills the small RT.
-    const float sx = static_cast<float>(kWidth) / static_cast<float>(src.width);
-    const float sy = static_cast<float>(kHeight) / static_cast<float>(src.height);
-    sprite.setScale(sx, sy);
+    // Scale the sprite so the (src.size.x, src.size.y) subset fills the small RT.
+    const float sx = static_cast<float>(kWidth) / static_cast<float>(src.size.x);
+    const float sy = static_cast<float>(kHeight) / static_cast<float>(src.size.y);
+    sprite.setScale({sx, sy});
 
     rt_->clear(sf::Color::Black);
     rt_->setView(rt_->getDefaultView());

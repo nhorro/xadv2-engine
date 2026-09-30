@@ -53,14 +53,14 @@ Build instructions
 
 ### Linux
 
-The engine builds its pinned modified SFML source on every platform. On
+The engine builds its pinned upstream SFML 3.1 source on every platform. On
 Ubuntu/Debian, install its native window/audio dependencies together with the
 engine's YAML and Lua dependencies:
 
 ~~~bash
-sudo apt install build-essential cmake libx11-dev libxrandr-dev libxcursor-dev \
+sudo apt install build-essential cmake libx11-dev libxrandr-dev libxi-dev libxcursor-dev \
     libudev-dev libgl1-mesa-dev \
-    libfreetype-dev libopenal-dev libflac-dev libvorbis-dev \
+    libfreetype-dev libharfbuzz-dev libflac-dev libvorbis-dev \
     libyaml-cpp-dev liblua5.4-dev
 ~~~
 
@@ -81,9 +81,12 @@ to it (the script also auto-detects a sibling `..\vcpkg`), then:
 ~~~
 
 This stamps the vcpkg baseline, vcpkg-installs yaml-cpp and Lua 5.4, fetches the
-same pinned modified SFML source used on Linux/Android, and builds the engine +
+same pinned upstream SFML 3.1 source used on Linux/Android, and builds the engine +
 examples (sol2 and doctest stay header-only). CI uses the
 `cmake --preset windows-msvc` preset.
+
+[Migration notes and patch inventory](docs/development/sfml3-migration.md) describe
+SFML-facing API changes and pending game/Android validation.
 
 ### Android (experimental)
 

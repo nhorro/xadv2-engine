@@ -1,8 +1,9 @@
 #include "engine/core/application.hpp"
 
+#include "control_services.hpp"
 #include "engine/core/audio.hpp"
-#include "engine/core/cursor.hpp"
 #include "engine/core/control.hpp"
+#include "engine/core/cursor.hpp"
 #include "engine/core/diagnostics.hpp"
 #include "engine/core/display.hpp"
 #include "engine/core/engine_context.hpp"
@@ -23,29 +24,29 @@
 #include "engine/core/scene_manager.hpp"
 #include "engine/core/screenshot.hpp"
 #include "engine/core/scripting.hpp"
-#include "engine/core/socket_control_server.hpp"
 #include "engine/core/settings.hpp"
 #include "engine/core/settings_store.hpp"
+#include "engine/core/socket_control_server.hpp"
 #include "engine/core/state_store.hpp"
 #include "engine/core/strings.hpp"
 #include "engine/core/system_language.hpp"
 #include "engine/core/text_encoding.hpp"
 #include "engine/core/thumbnail.hpp"
 #include "engine/core/user_data.hpp"
-#include "gfx/gles2_compat.hpp"
-#include "control_services.hpp"
 
 #include <SFML/Graphics/Image.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Text.hpp>
+#include <SFML/Graphics/Texture.hpp>
 #include <SFML/System/Clock.hpp>
 #include <SFML/System/Sleep.hpp>
-#include <SFML/Window/Cursor.hpp>
 #include <SFML/Window/Event.hpp>
 
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
@@ -77,11 +78,11 @@ void draw_generic_pause(sf::RenderTarget& target,
         return;
     }
 
-    sf::Text title(utf8(strings.ui_label("pause")), *font, 36);
+    sf::Text title(*font, utf8(strings.ui_label("pause")), 36);
     title.setFillColor(sf::Color(245, 224, 177));
     const sf::FloatRect title_bounds = title.getLocalBounds();
-    title.setPosition((width - title_bounds.width) / 2.0f - title_bounds.left,
-                      height * 0.34f - title_bounds.top);
+    title.setPosition({(width - title_bounds.size.x) / 2.0f - title_bounds.position.x,
+                       height * 0.34f - title_bounds.position.y});
     target.draw(title);
 
     const sf::Vector2f button_size{360.0f, 56.0f};
@@ -93,22 +94,23 @@ void draw_generic_pause(sf::RenderTarget& target,
     button.setOutlineThickness(1.5f);
     target.draw(button);
 
-    sf::Text resume(utf8(strings.ui_label("resume")), *font, 20);
+    sf::Text resume(*font, utf8(strings.ui_label("resume")), 20);
     resume.setFillColor(sf::Color(230, 218, 190));
     const sf::FloatRect resume_bounds = resume.getLocalBounds();
     resume.setPosition(
-        button_pos.x + (button_size.x - resume_bounds.width) / 2.0f - resume_bounds.left,
-        button_pos.y + (button_size.y - resume_bounds.height) / 2.0f - resume_bounds.top);
+        {button_pos.x + (button_size.x - resume_bounds.size.x) / 2.0f - resume_bounds.position.x,
+         button_pos.y + (button_size.y - resume_bounds.size.y) / 2.0f - resume_bounds.position.y});
     target.draw(resume);
 }
 
 bool resumes_generic_pause(const sf::Event& event) {
-    if (event.type == sf::Event::KeyPressed) {
-        return event.key.code == sf::Keyboard::Space || event.key.code == sf::Keyboard::Escape ||
-               event.key.code == sf::Keyboard::Enter;
+    if (event.is<sf::Event::KeyPressed>()) {
+        return event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Space ||
+               event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Escape ||
+               event.getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::Enter;
     }
-    return event.type == sf::Event::MouseButtonReleased &&
-           event.mouseButton.button == sf::Mouse::Left;
+    return event.is<sf::Event::MouseButtonReleased>() &&
+           event.getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Left;
 }
 
 // Engine-handled scenes are located by their conventional manifest type string;
@@ -206,22 +208,16 @@ int as_int(float value) {
 // only ever see virtual coordinates.
 sf::Event to_virtual_event(const sf::Event& in, const Display& display) {
     sf::Event ev = in;
-    switch (in.type) {
-    case sf::Event::MouseMoved: {
-        const sf::Vector2f v = display.to_virtual({in.mouseMove.x, in.mouseMove.y});
-        ev.mouseMove.x = as_int(v.x);
-        ev.mouseMove.y = as_int(v.y);
-        break;
-    }
-    case sf::Event::MouseButtonPressed:
-    case sf::Event::MouseButtonReleased: {
-        const sf::Vector2f v = display.to_virtual({in.mouseButton.x, in.mouseButton.y});
-        ev.mouseButton.x = as_int(v.x);
-        ev.mouseButton.y = as_int(v.y);
-        break;
-    }
-    default:
-        break;
+    const auto convert = [&display](sf::Vector2i position) {
+        const auto v = display.to_virtual(position);
+        return sf::Vector2i{as_int(v.x), as_int(v.y)};
+    };
+    if (auto* move = ev.getIf<sf::Event::MouseMoved>()) {
+        move->position = convert(move->position);
+    } else if (auto* press = ev.getIf<sf::Event::MouseButtonPressed>()) {
+        press->position = convert(press->position);
+    } else if (auto* release = ev.getIf<sf::Event::MouseButtonReleased>()) {
+        release->position = convert(release->position);
     }
     return ev;
 }
@@ -237,22 +233,29 @@ void apply_window_mode(sf::RenderWindow& window,
                        const DisplayMode& mode,
                        const std::string& title) {
     if (mode.fullscreen) {
-        window.create(sf::VideoMode::getDesktopMode(), title, sf::Style::Fullscreen);
+        window.create(sf::VideoMode::getDesktopMode(),
+                      title,
+                      sf::Style::Default,
+                      sf::State::Fullscreen);
     } else {
-        window.create(sf::VideoMode(mode.size.x, mode.size.y), title, sf::Style::Default);
+        window.create(sf::VideoMode({mode.size.x, mode.size.y}), title, sf::Style::Default);
     }
     window.setVerticalSyncEnabled(true);
 }
 
-// Load a hardware cursor from a logical image path. Returns nullptr on any
-// failure (no path, missing/undecodable image, or a platform that can't host a
-// pixel cursor) so the caller keeps the OS cursor.
-std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
-                                        const std::string& logical,
-                                        sf::Vector2u hotspot,
-                                        Diagnostics& log,
-                                        bool inverted = false,
-                                        std::optional<sf::Color> solid_tint = std::nullopt) {
+// Cursor textures are rendered last in window pixel coordinates. The authored
+// hotspot, inversion, blinking and action variants keep their existing semantics.
+struct CursorVisual {
+    sf::Texture texture;
+    sf::Vector2u hotspot;
+};
+
+std::unique_ptr<CursorVisual> load_cursor(const ResourceSource& source,
+                                          const std::string& logical,
+                                          sf::Vector2u hotspot,
+                                          Diagnostics& log,
+                                          bool inverted = false,
+                                          std::optional<sf::Color> solid_tint = std::nullopt) {
     if (logical.empty()) {
         return nullptr;
     }
@@ -267,24 +270,25 @@ std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
             const sf::Vector2u size = image.getSize();
             for (unsigned y = 0; y < size.y; ++y) {
                 for (unsigned x = 0; x < size.x; ++x) {
-                    sf::Color pixel = image.getPixel(x, y);
+                    sf::Color pixel = image.getPixel({x, y});
                     if (solid_tint) {
                         pixel.r = solid_tint->r;
                         pixel.g = solid_tint->g;
                         pixel.b = solid_tint->b;
                     }
                     if (inverted) {
-                        pixel.r = static_cast<sf::Uint8>(255U - pixel.r);
-                        pixel.g = static_cast<sf::Uint8>(255U - pixel.g);
-                        pixel.b = static_cast<sf::Uint8>(255U - pixel.b);
+                        pixel.r = static_cast<std::uint8_t>(255U - pixel.r);
+                        pixel.g = static_cast<std::uint8_t>(255U - pixel.g);
+                        pixel.b = static_cast<std::uint8_t>(255U - pixel.b);
                     }
-                    image.setPixel(x, y, pixel);
+                    image.setPixel({x, y}, pixel);
                 }
             }
         }
-        auto cursor = std::make_unique<sf::Cursor>();
-        if (!cursor->loadFromPixels(image.getPixelsPtr(), image.getSize(), hotspot)) {
-            log.warn("cursor: hardware cursor unsupported for '" + logical + "'");
+        auto cursor = std::make_unique<CursorVisual>();
+        cursor->hotspot = hotspot;
+        if (!cursor->texture.loadFromImage(image)) {
+            log.warn("cursor: texture upload failed for '" + logical + "'");
             return nullptr;
         }
         return cursor;
@@ -295,20 +299,20 @@ std::unique_ptr<sf::Cursor> load_cursor(const ResourceSource& source,
 }
 
 sf::Color blend_cursor_color(sf::Color dark, sf::Color light, float amount) {
-    const auto blend = [amount](sf::Uint8 a, sf::Uint8 b) {
-        return static_cast<sf::Uint8>(
+    const auto blend = [amount](std::uint8_t a, std::uint8_t b) {
+        return static_cast<std::uint8_t>(
             std::lround(static_cast<float>(a) + (static_cast<float>(b) - a) * amount));
     };
     return {blend(dark.r, light.r), blend(dark.g, light.g), blend(dark.b, light.b)};
 }
 
-std::vector<std::unique_ptr<sf::Cursor>> load_cursor_blink_frames(const ResourceSource& source,
-                                                                  const std::string& logical,
-                                                                  sf::Vector2u hotspot,
-                                                                  Diagnostics& log,
-                                                                  const CursorBlinkConfig& blink,
-                                                                  bool inverted) {
-    std::vector<std::unique_ptr<sf::Cursor>> frames;
+std::vector<std::unique_ptr<CursorVisual>> load_cursor_blink_frames(const ResourceSource& source,
+                                                                    const std::string& logical,
+                                                                    sf::Vector2u hotspot,
+                                                                    Diagnostics& log,
+                                                                    const CursorBlinkConfig& blink,
+                                                                    bool inverted) {
+    std::vector<std::unique_ptr<CursorVisual>> frames;
     if (!blink.enabled() || blink.steps < 2) {
         return frames;
     }
@@ -629,108 +633,99 @@ static int run_impl(const std::string& manifest_path,
     apply_window_mode(window,
                       {{settings.window_width, settings.window_height}, settings.fullscreen},
                       manifest.title);
-    if (!pac::gfx::initialize_gles2_renderer(window, log)) {
-        return 1;
-    }
+#if defined(SFML_SYSTEM_ANDROID)
+    log.warn("renderer: SFML 3.1 Android uses GLES1; advanced lighting, shadows and "
+             "shader effects await renderer review (issue #210)");
+#endif
     display.set_window_size(window.getSize());
 
-    // Custom point-and-click cursor (#73). When the manifest declares one, swap
-    // the OS cursor for it; an interact variant (optional) is shown over hotspots
-    // via cursor_state. Both keep the OS cursor on any load failure.
-    //
-    // Skipped in the headless smoke (--frames): setMouseCursor is an X11/Win call,
-    // and a minimal/virtual display (no ARGB-cursor support) raises an
-    // unrecoverable BadCursor that would abort the smoke. The cursors are still
-    // loaded above, so that path is exercised.
-    const bool apply_cursor = opts.max_frames == 0;
-    const std::unique_ptr<sf::Cursor> cursor_default =
+    // Software cursors work under the same rendering path as game sprites,
+    // including virtual-display smoke tests; no native cursor handle is needed.
+    const std::unique_ptr<CursorVisual> cursor_default =
         load_cursor(source, manifest.cursor.image, manifest.cursor.hotspot, log);
-    const std::unique_ptr<sf::Cursor> cursor_interact =
+    const std::unique_ptr<CursorVisual> cursor_interact =
         cursor_default
             ? load_cursor(source, manifest.cursor.interact, manifest.cursor.action_hotspot, log)
             : nullptr;
-    const std::unique_ptr<sf::Cursor> cursor_look =
+    const std::unique_ptr<CursorVisual> cursor_look =
         cursor_default
             ? load_cursor(source, manifest.cursor.look, manifest.cursor.action_hotspot, log)
             : nullptr;
-    const std::unique_ptr<sf::Cursor> cursor_look_seen =
+    const std::unique_ptr<CursorVisual> cursor_look_seen =
         cursor_default
             ? load_cursor(source, manifest.cursor.look_seen, manifest.cursor.action_hotspot, log)
             : nullptr;
-    const std::unique_ptr<sf::Cursor> cursor_talk =
+    const std::unique_ptr<CursorVisual> cursor_talk =
         cursor_default
             ? load_cursor(source, manifest.cursor.talk, manifest.cursor.action_hotspot, log)
             : nullptr;
-    const std::unique_ptr<sf::Cursor> cursor_exit =
+    const std::unique_ptr<CursorVisual> cursor_exit =
         cursor_default
             ? load_cursor(source, manifest.cursor.exit, manifest.cursor.action_hotspot, log)
             : nullptr;
-    const std::unique_ptr<sf::Cursor> cursor_walk =
+    const std::unique_ptr<CursorVisual> cursor_walk =
         cursor_default
             ? load_cursor(source, manifest.cursor.walk, manifest.cursor.action_hotspot, log)
             : nullptr;
-    const std::unique_ptr<sf::Cursor> cursor_default_inverted =
+    const std::unique_ptr<CursorVisual> cursor_default_inverted =
         cursor_default
             ? load_cursor(source, manifest.cursor.image, manifest.cursor.hotspot, log, true)
             : nullptr;
-    const std::unique_ptr<sf::Cursor> cursor_interact_inverted =
+    const std::unique_ptr<CursorVisual> cursor_interact_inverted =
         cursor_interact ? load_cursor(source,
                                       manifest.cursor.interact,
                                       manifest.cursor.action_hotspot,
                                       log,
                                       true)
                         : nullptr;
-    const std::unique_ptr<sf::Cursor> cursor_look_inverted =
+    const std::unique_ptr<CursorVisual> cursor_look_inverted =
         cursor_look
             ? load_cursor(source, manifest.cursor.look, manifest.cursor.action_hotspot, log, true)
             : nullptr;
-    const std::unique_ptr<sf::Cursor> cursor_look_seen_inverted =
+    const std::unique_ptr<CursorVisual> cursor_look_seen_inverted =
         cursor_look_seen ? load_cursor(source,
                                        manifest.cursor.look_seen,
                                        manifest.cursor.action_hotspot,
                                        log,
                                        true)
                          : nullptr;
-    const std::unique_ptr<sf::Cursor> cursor_talk_inverted =
+    const std::unique_ptr<CursorVisual> cursor_talk_inverted =
         cursor_talk
             ? load_cursor(source, manifest.cursor.talk, manifest.cursor.action_hotspot, log, true)
             : nullptr;
-    const std::unique_ptr<sf::Cursor> cursor_exit_inverted =
+    const std::unique_ptr<CursorVisual> cursor_exit_inverted =
         cursor_exit
             ? load_cursor(source, manifest.cursor.exit, manifest.cursor.action_hotspot, log, true)
             : nullptr;
-    const std::unique_ptr<sf::Cursor> cursor_walk_inverted =
+    const std::unique_ptr<CursorVisual> cursor_walk_inverted =
         cursor_walk
             ? load_cursor(source, manifest.cursor.walk, manifest.cursor.action_hotspot, log, true)
             : nullptr;
-    const std::vector<std::unique_ptr<sf::Cursor>> cursor_blink_frames =
+    const std::vector<std::unique_ptr<CursorVisual>> cursor_blink_frames =
         cursor_default ? load_cursor_blink_frames(source,
                                                   manifest.cursor.image,
                                                   manifest.cursor.hotspot,
                                                   log,
                                                   manifest.cursor.blink,
                                                   false)
-                       : std::vector<std::unique_ptr<sf::Cursor>>{};
-    const std::vector<std::unique_ptr<sf::Cursor>> cursor_blink_frames_inverted =
+                       : std::vector<std::unique_ptr<CursorVisual>>{};
+    const std::vector<std::unique_ptr<CursorVisual>> cursor_blink_frames_inverted =
         !cursor_blink_frames.empty() ? load_cursor_blink_frames(source,
                                                                 manifest.cursor.image,
                                                                 manifest.cursor.hotspot,
                                                                 log,
                                                                 manifest.cursor.blink,
                                                                 true)
-                                     : std::vector<std::unique_ptr<sf::Cursor>>{};
+                                     : std::vector<std::unique_ptr<CursorVisual>>{};
     const bool cursor_blinks = !cursor_blink_frames.empty();
 
-    const sf::Cursor* initial_cursor =
+    const CursorVisual* initial_cursor =
         cursor_blinks ? cursor_blink_frames.front().get() : cursor_default.get();
-    if (apply_cursor && initial_cursor) {
-        window.setMouseCursor(*initial_cursor);
-    }
-    const sf::Cursor* applied_cursor = initial_cursor;
+    if (initial_cursor)
+        window.setMouseCursorVisible(false);
     CursorKind active_cursor_kind = CursorKind::DEFAULT;
     bool active_cursor_inverted = false;
     bool active_cursor_hidden = false;
-    bool applied_cursor_visible = true;
     float cursor_blink_elapsed = 0.0f;
 
     // Enable fade-to-black between full-screen scene swaps, and fade the first
@@ -795,11 +790,11 @@ static int run_impl(const std::string& manifest_path,
     while (window.isOpen() && scenes.running()) {
         work_clock.restart();
         bool rendering_context_needs_activation = false;
-        sf::Event event;
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed) {
+        while (const auto polled = window.pollEvent()) {
+            const sf::Event& event = *polled;
+            if (event.is<sf::Event::Closed>()) {
                 scenes.request_quit();
-            } else if (event.type == sf::Event::LostFocus) {
+            } else if (event.is<sf::Event::FocusLost>()) {
                 space_down = false;
 #if defined(SFML_SYSTEM_ANDROID)
                 begin_pause();
@@ -808,19 +803,21 @@ static int run_impl(const std::string& manifest_path,
                     begin_pause();
                 }
 #endif
-            } else if (event.type == sf::Event::GainedFocus) {
+            } else if (event.is<sf::Event::FocusGained>()) {
                 // Android recreates its EGL surface while delivering this event.
                 // Keep the application paused until the player explicitly resumes.
                 space_down = false;
                 rendering_context_needs_activation = true;
-            } else if (event.type == sf::Event::Resized) {
-                display.set_window_size({event.size.width, event.size.height});
+            } else if (event.is<sf::Event::Resized>()) {
+                display.set_window_size({event.getIf<sf::Event::Resized>()->size.x,
+                                         event.getIf<sf::Event::Resized>()->size.y});
             } else {
                 for (const sf::Event& pointer_event : pointer_input.translate(event)) {
                     const sf::Event virtual_event = to_virtual_event(pointer_event, display);
 #ifndef NDEBUG
-                    if (virtual_event.type == sf::Event::KeyPressed &&
-                        virtual_event.key.code == sf::Keyboard::F12) {
+                    if (virtual_event.is<sf::Event::KeyPressed>() &&
+                        virtual_event.getIf<sf::Event::KeyPressed>()->code ==
+                            sf::Keyboard::Key::F12) {
                         screenshot_requested = true;
                         continue;
                     }
@@ -828,13 +825,15 @@ static int run_impl(const std::string& manifest_path,
                     if (information.handle_event(virtual_event)) {
                         continue;
                     }
-                    if (virtual_event.type == sf::Event::KeyReleased &&
-                        virtual_event.key.code == sf::Keyboard::Space) {
+                    if (virtual_event.is<sf::Event::KeyReleased>() &&
+                        virtual_event.getIf<sf::Event::KeyReleased>()->code ==
+                            sf::Keyboard::Key::Space) {
                         space_down = false;
                         continue;
                     }
-                    if (virtual_event.type == sf::Event::KeyPressed &&
-                        virtual_event.key.code == sf::Keyboard::Space) {
+                    if (virtual_event.is<sf::Event::KeyPressed>() &&
+                        virtual_event.getIf<sf::Event::KeyPressed>()->code ==
+                            sf::Keyboard::Key::Space) {
                         if (!space_down) {
                             space_down = true;
                             if (paused) {
@@ -882,13 +881,13 @@ static int run_impl(const std::string& manifest_path,
         // change; recreate the window before simulating/drawing this frame.
         if (const std::optional<DisplayMode> mode = display.take_pending_mode()) {
             apply_window_mode(window, *mode, manifest.title);
-            pac::gfx::configure_gles2_target(window);
+
             display.set_window_size(window.getSize());
             display.set_fullscreen(mode->fullscreen);
             // A recreated OS window starts with its cursor visible and has not
             // received our custom cursor yet.
-            applied_cursor = nullptr;
-            applied_cursor_visible = true;
+            if (cursor_default)
+                window.setMouseCursorVisible(false);
         }
 
         const float frame_seconds = clock.restart().asSeconds();
@@ -969,11 +968,11 @@ static int run_impl(const std::string& manifest_path,
                 ? static_cast<std::size_t>(std::lround(
                       blink_progress * static_cast<float>(cursor_blink_frames.size() - 1)))
                 : 0;
-        const sf::Cursor* requested_cursor = nullptr;
+        const CursorVisual* requested_cursor = nullptr;
         const auto action_cursor =
-            [&](const std::unique_ptr<sf::Cursor>& normal,
-                const std::unique_ptr<sf::Cursor>& inverted) -> const sf::Cursor* {
-            const sf::Cursor* fallback = nullptr;
+            [&](const std::unique_ptr<CursorVisual>& normal,
+                const std::unique_ptr<CursorVisual>& inverted) -> const CursorVisual* {
+            const CursorVisual* fallback = nullptr;
             if (cursor_interact) {
                 fallback = active_cursor_inverted && cursor_interact_inverted
                                ? cursor_interact_inverted.get()
@@ -1020,19 +1019,8 @@ static int run_impl(const std::string& manifest_path,
             requested_cursor = cursor_blinks ? cursor_blink_frames[blink_frame].get()
                                               : cursor_default.get();
         }
-        // Some OS backends make a hardware cursor visible again when its image is
-        // replaced. Freeze animated/tinted cursor swaps while hidden; on return,
-        // apply the current frame before restoring visibility.
-        if (apply_cursor && !active_cursor_hidden && requested_cursor &&
-            requested_cursor != applied_cursor) {
-            window.setMouseCursor(*requested_cursor);
-            applied_cursor = requested_cursor;
-        }
-        const bool requested_cursor_visible = !active_cursor_hidden;
-        if (apply_cursor && requested_cursor_visible != applied_cursor_visible) {
-            window.setMouseCursorVisible(requested_cursor_visible);
-            applied_cursor_visible = requested_cursor_visible;
-        }
+        // Hide the native cursor only while a drawable replacement is available.
+        window.setMouseCursorVisible(!requested_cursor && !active_cursor_hidden);
 
         window.clear(sf::Color::Black); // letterbox bars
         window.setView(display.view());
@@ -1103,6 +1091,15 @@ static int run_impl(const std::string& manifest_path,
                              scenes.current_scene_id()});
             reset_shader_passes();
         }
+#if !defined(SFML_SYSTEM_ANDROID)
+        if (requested_cursor && !active_cursor_hidden && window.hasFocus()) {
+            window.setView(window.getDefaultView());
+            sf::Sprite cursor_sprite(requested_cursor->texture);
+            cursor_sprite.setOrigin(sf::Vector2f(requested_cursor->hotspot));
+            cursor_sprite.setPosition(sf::Vector2f(sf::Mouse::getPosition(window)));
+            window.draw(cursor_sprite);
+        }
+#endif
         window.display();
         if (!first_frame_rendered) {
             first_frame_rendered = true;
@@ -1116,12 +1113,7 @@ static int run_impl(const std::string& manifest_path,
         }
     }
 
-    // Close the window now, while the custom cursors below are still alive. SFML's
-    // X11 teardown re-asserts the last-set cursor (setMouseCursorVisible(true) in
-    // ~WindowImplX11::cleanup). The sf::Cursors are declared after `window`, so at
-    // scope exit they are freed first; that re-assert would then reference a freed
-    // X cursor → BadCursor on exit. Closing here runs the teardown against a live
-    // cursor. (A no-op when the window is already closed.)
+    // Tear down the window before renderer resources.
     window.close();
 
     if (profiler) {
