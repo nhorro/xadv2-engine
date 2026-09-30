@@ -6,6 +6,7 @@
 #include <android/log.h>
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,15 +38,18 @@ public:
         if (!stream.open(logical)) {
             throw pac::core::ResourceError("cannot read Android asset '" + logical + "'");
         }
-        const sf::Int64 size = stream.getSize();
-        if (size < 0) {
+        const std::optional<std::size_t> size = stream.getSize();
+        if (!size) {
             throw pac::core::ResourceError("cannot determine Android asset size for '" + logical +
                                            "'");
         }
 
-        std::vector<std::byte> bytes(static_cast<std::size_t>(size));
-        if (size > 0 && stream.read(bytes.data(), size) != size) {
-            throw pac::core::ResourceError("short read from Android asset '" + logical + "'");
+        std::vector<std::byte> bytes(*size);
+        if (*size > 0) {
+            const std::optional<std::size_t> read = stream.read(bytes.data(), *size);
+            if (!read || *read != *size) {
+                throw pac::core::ResourceError("short read from Android asset '" + logical + "'");
+            }
         }
         return bytes;
     }

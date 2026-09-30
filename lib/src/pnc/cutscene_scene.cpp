@@ -48,10 +48,9 @@ constexpr float kTau = 6.28318530717958647692f;
 
 #if defined(SFML_SYSTEM_ANDROID)
 sf::FloatRect skip_button_bounds(float virtual_width, float virtual_height) {
-    return {virtual_width - kHintMargin - kSkipButtonWidth,
-            virtual_height - kHintMargin - kSkipButtonHeight,
-            kSkipButtonWidth,
-            kSkipButtonHeight};
+    return {{virtual_width - kHintMargin - kSkipButtonWidth,
+             virtual_height - kHintMargin - kSkipButtonHeight},
+            {kSkipButtonWidth, kSkipButtonHeight}};
 }
 #endif
 
