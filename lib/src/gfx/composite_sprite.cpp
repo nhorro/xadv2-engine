@@ -222,8 +222,9 @@ CompositeSprite::CompositeSprite(CompositeDefinition definition,
             parent = it->second;
         }
         indices.emplace(def.id, i);
-        nodes_.push_back(
-            Node{def, parent, std::move(sprites[i]), def.rotation, false, std::nullopt});
+        sprites[i].setRotation(def.rotation);
+        sprites[i].setScale(def.scale, def.scale);
+        nodes_.push_back(Node{def, parent, std::move(sprites[i]), false, std::nullopt});
     }
     for (const auto& [sequence_id, sequence] : sequences_) {
         for (const auto& [node_id, part] : sequence.parts) {
@@ -261,7 +262,8 @@ void CompositeSprite::play(const std::string& sequence, bool restart) {
     }
     current_sequence_ = sequence;
     for (Node& node : nodes_) {
-        node.rotation = node.definition.rotation;
+        node.sprite.setRotation(node.definition.rotation);
+        node.sprite.setScale(node.definition.scale, node.definition.scale);
         node.sequence_tracked = false;
         node.rotation_track.reset();
     }
@@ -273,7 +275,7 @@ void CompositeSprite::play(const std::string& sequence, bool restart) {
             node.sequence_tracked = true;
         }
         if (part.rotation) {
-            node.rotation = part.rotation->from;
+            node.sprite.setRotation(part.rotation->from);
             node.rotation_track = RotationPlayback{*part.rotation, 0.0f, false};
         }
     }
@@ -292,10 +294,12 @@ void CompositeSprite::update(float dt) {
         if (playback.track.loop) {
             const float phase =
                 std::fmod(playback.elapsed, playback.track.duration) / playback.track.duration;
-            node.rotation = playback.track.from + (playback.track.to - playback.track.from) * phase;
+            node.sprite.setRotation(playback.track.from +
+                                    (playback.track.to - playback.track.from) * phase);
         } else {
             const float phase = std::min(1.0f, playback.elapsed / playback.track.duration);
-            node.rotation = playback.track.from + (playback.track.to - playback.track.from) * phase;
+            node.sprite.setRotation(playback.track.from +
+                                    (playback.track.to - playback.track.from) * phase);
             playback.finished = phase >= 1.0f;
         }
     }
@@ -323,8 +327,9 @@ std::vector<sf::Transform> CompositeSprite::node_transforms() const {
     }
     sf::Transform root_local;
     root_local.translate(nodes_[0].definition.offset);
-    root_local.rotate(nodes_[0].rotation);
-    root_local.scale(nodes_[0].definition.scale, nodes_[0].definition.scale);
+    root_local.rotate(nodes_[0].sprite.getRotation());
+    const sf::Vector2f root_scale = nodes_[0].sprite.getScale();
+    root_local.scale(root_scale.x, root_scale.y);
     transforms[0] = getTransform() * root_local;
 
     for (std::size_t i = 1; i < nodes_.size(); ++i) {
@@ -336,8 +341,9 @@ std::vector<sf::Transform> CompositeSprite::node_transforms() const {
             node.sprite.anchor_local(node.definition.child_anchor).value_or(sf::Vector2f());
         sf::Transform local;
         local.translate(parent_anchor + node.definition.offset);
-        local.rotate(node.rotation);
-        local.scale(node.definition.scale, node.definition.scale);
+        local.rotate(node.sprite.getRotation());
+        const sf::Vector2f scale = node.sprite.getScale();
+        local.scale(scale.x, scale.y);
         local.translate(-child_anchor);
         transforms[i] = transforms[node.parent] * local;
     }
@@ -392,6 +398,27 @@ void CompositeSprite::set_shaders(std::vector<ShaderEffect> shaders) {
     for (Node& node : nodes_) {
         node.sprite.set_shaders(shaders);
     }
+}
+
+bool CompositeSprite::set_part_rotation(const std::string& id, float degrees) {
+    const std::optional<std::size_t> index = node_index(id);
+    if (!index || !std::isfinite(degrees)) {
+        return false;
+    }
+    Node& node = nodes_[*index];
+    node.sprite.setRotation(degrees);
+    node.rotation_track.reset();
+    refresh_finished();
+    return true;
+}
+
+bool CompositeSprite::set_part_scale(const std::string& id, float scale_x, float scale_y) {
+    const std::optional<std::size_t> index = node_index(id);
+    if (!index || !std::isfinite(scale_x) || !std::isfinite(scale_y)) {
+        return false;
+    }
+    nodes_[*index].sprite.setScale(scale_x, scale_y);
+    return true;
 }
 
 void CompositeSprite::draw(sf::RenderTarget& target,

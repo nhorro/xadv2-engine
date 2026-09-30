@@ -4,6 +4,8 @@
 #include <doctest/doctest.h>
 #include <SFML/Graphics/Texture.hpp>
 
+#include <limits>
+
 using namespace pac::gfx;
 
 namespace {
@@ -123,4 +125,60 @@ TEST_CASE("composite child stays attached while its local rotation advances") {
     CHECK(composite.anchor_world("wheel.marker")->x == doctest::Approx(110.0f));
     CHECK(composite.anchor_world("wheel.marker")->y == doctest::Approx(225.0f));
     CHECK_FALSE(composite.finished()); // looping track/part remains active
+}
+
+TEST_CASE("composite part rotation and scale are live and survive update") {
+    sf::Texture texture;
+    CompositeDefinition definition;
+    CompositeNodeDefinition body;
+    body.id = "body";
+    body.animation = "body.anim.yml";
+    definition.nodes.push_back(body);
+    CompositeNodeDefinition wheel;
+    wheel.id = "wheel";
+    wheel.parent = "body";
+    wheel.animation = "wheel.anim.yml";
+    wheel.parent_anchor = "mount";
+    wheel.child_anchor = "center";
+    definition.nodes.push_back(wheel);
+
+    CompositeSequence moving;
+    moving.parts["body"].sequence = "idle";
+    moving.parts["wheel"].sequence = "idle";
+    moving.parts["wheel"].rotation = CompositeRotationTrack{0.0f, 360.0f, 1.0f, true};
+    definition.sequences.emplace("moving", std::move(moving));
+
+    std::vector<AnimatedSprite> sprites;
+    sprites.push_back(part_sprite(texture,
+                                  {0, 0, 100, 50},
+                                  {{"pivot", {0.0f, 0.0f}}, {"mount", {10.0f, 20.0f}}},
+                                  "pivot"));
+    sprites.push_back(part_sprite(texture,
+                                  {0, 0, 10, 10},
+                                  {{"center", {5.0f, 5.0f}}, {"marker", {10.0f, 5.0f}}},
+                                  "center"));
+
+    CompositeSprite composite(std::move(definition), std::move(sprites));
+    composite.setPosition(100.0f, 200.0f);
+    composite.play("moving");
+
+    CHECK_FALSE(composite.set_part_rotation("missing", 90.0f));
+    CHECK_FALSE(composite.set_part_scale("wheel", 1.0f, std::numeric_limits<float>::quiet_NaN()));
+    REQUIRE(composite.set_part_rotation("wheel", 90.0f));
+    REQUIRE(composite.anchor_world("wheel.marker").has_value());
+    CHECK(composite.anchor_world("wheel.marker")->x == doctest::Approx(110.0f));
+    CHECK(composite.anchor_world("wheel.marker")->y == doctest::Approx(225.0f));
+
+    composite.update(0.5f); // the cancelled track must not keep turning the part
+    CHECK(composite.anchor_world("wheel.marker")->x == doctest::Approx(110.0f));
+    CHECK(composite.anchor_world("wheel.marker")->y == doctest::Approx(225.0f));
+
+    REQUIRE(composite.set_part_rotation("wheel", 0.0f));
+    REQUIRE(composite.set_part_scale("wheel", 2.0f, 1.0f));
+    CHECK(composite.anchor_world("wheel.marker")->x == doctest::Approx(120.0f));
+    CHECK(composite.anchor_world("wheel.marker")->y == doctest::Approx(220.0f));
+
+    composite.play("moving"); // authored scale and the track's start angle return
+    CHECK(composite.anchor_world("wheel.marker")->x == doctest::Approx(115.0f));
+    CHECK(composite.anchor_world("wheel.marker")->y == doctest::Approx(220.0f));
 }
