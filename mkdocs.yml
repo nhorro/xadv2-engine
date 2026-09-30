@@ -98,6 +98,7 @@ nav:
           - Conventions & formatting: development/coding-conventions.md
       - Internals:
           - SCUMM command flow: development/scumm-command-flow.md
+          - Development control endpoint: development/control-endpoint.md
       - Historical design:
           - History note: development/history/README.md
           - Index: development/history/design/00-index.md
